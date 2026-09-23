@@ -104,16 +104,8 @@ export function AccessibilityTab({ deps }: { deps: MenuDeps }) {
             />
           </div>
         </ActionRow>
-        <Toggle
-          label="Treffermarker"
-          value={g.hitmarkers}
-          onChange={(v) => setG({ hitmarkers: v })}
-        />
-        <Toggle
-          label="Schadenszahlen"
-          value={g.damageNumbers}
-          onChange={(v) => setG({ damageNumbers: v })}
-        />
+        <Toggle label="Treffermarker" value={g.hitmarkers} onChange={(v) => setG({ hitmarkers: v })} />
+        <Toggle label="Schadenszahlen" value={g.damageNumbers} onChange={(v) => setG({ damageNumbers: v })} />
       </Section>
 
       <div class="menu-tab__footer">

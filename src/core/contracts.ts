@@ -490,7 +490,12 @@ export interface CombatWorldApi {
    * Nearest hit along the ray against static world geometry (three-mesh-bvh on level meshes) and
    * registered damageables' hitboxes. The returned object is reused – copy what you keep.
    */
-  raycast(origin: Vec3Like, direction: Vec3Like, maxDistance: number, opts?: { ignore?: Damageable | null }): CombatHit | null;
+  raycast(
+    origin: Vec3Like,
+    direction: Vec3Like,
+    maxDistance: number,
+    opts?: { ignore?: Damageable | null },
+  ): CombatHit | null;
   /** Damageables whose bounds intersect the sphere (explosions, melee). Fills and returns `out`. */
   queryRadius(center: Vec3Like, radius: number, out: Damageable[]): Damageable[];
   /** Apply damage and emit combat:damage / combat:kill. */
@@ -544,4 +549,3 @@ export interface VfxApi {
   readonly stats: { particles: number; decals: number; lights: number };
   dispose(): void;
 }
-

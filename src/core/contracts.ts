@@ -19,7 +19,16 @@ import type {
   SettingsSection,
 } from '../save/settingsSchema';
 import type { EventBus } from './EventBus';
-import type { GameEvents, MovementState, SurfaceType, Vec3Like } from './events';
+import type {
+  DamageElement,
+  FleshSurface,
+  GameEvents,
+  HitZone,
+  ImpactKind,
+  MovementState,
+  SurfaceType,
+  Vec3Like,
+} from './events';
 
 // ---------------------------------------------------------------------------
 // Settings & save
@@ -411,3 +420,128 @@ export interface DevConsoleApi {
   toggle(force?: boolean): void;
   dispose(): void;
 }
+
+// ---------------------------------------------------------------------------
+// Combat (M2+)
+// ---------------------------------------------------------------------------
+
+/** World-space hit volume of a damageable, refreshed by its owner every tick. */
+export interface Hitbox {
+  shape: 'sphere' | 'capsule';
+  zone: HitZone;
+  /** Sphere center or capsule segment start (world space, meters). */
+  a: THREE.Vector3;
+  /** Capsule segment end (ignored for spheres). */
+  b: THREE.Vector3;
+  radius: number;
+}
+
+export interface DamageInfo {
+  amount: number;
+  zone: HitZone;
+  point: Vec3Like;
+  /** Normalized direction the damage travels (shot direction / blast outward). */
+  direction: Vec3Like;
+  weaponId: string;
+  element: DamageElement;
+  source: 'player' | 'enemy' | 'trap' | 'environment';
+  kind: ImpactKind;
+  /** Knockback impulse magnitude (m/s applied to the target), optional. */
+  impulse?: number;
+}
+
+export interface DamageResult {
+  /** Damage actually applied after armor/resistances (0 if immune/dead). */
+  applied: number;
+  killed: boolean;
+}
+
+export interface Damageable {
+  readonly id: number;
+  readonly alive: boolean;
+  readonly team: 'player' | 'enemy' | 'neutral';
+  readonly surface: FleshSurface;
+  /** Broadphase sphere (world space). */
+  readonly boundsCenter: THREE.Vector3;
+  readonly boundsRadius: number;
+  readonly hitboxes: readonly Hitbox[];
+  /** Point aim assist pulls towards (usually upper chest). */
+  readonly aimPoint: THREE.Vector3;
+  applyDamage(info: DamageInfo): DamageResult;
+}
+
+export interface CombatHit {
+  point: THREE.Vector3;
+  normal: THREE.Vector3;
+  distance: number;
+  /** Damageable hit, or null for world geometry. */
+  target: Damageable | null;
+  zone: HitZone | null;
+  surface: SurfaceType | FleshSurface;
+  /** World surface is thin enough to shoot through (glass, grates, crates...). */
+  penetrable: boolean;
+}
+
+export interface CombatWorldApi {
+  register(target: Damageable): void;
+  unregister(target: Damageable): void;
+  readonly targets: readonly Damageable[];
+  /**
+   * Nearest hit along the ray against static world geometry (three-mesh-bvh on level meshes) and
+   * registered damageables' hitboxes. The returned object is reused – copy what you keep.
+   */
+  raycast(origin: Vec3Like, direction: Vec3Like, maxDistance: number, opts?: { ignore?: Damageable | null }): CombatHit | null;
+  /** Damageables whose bounds intersect the sphere (explosions, melee). Fills and returns `out`. */
+  queryRadius(center: Vec3Like, radius: number, out: Damageable[]): Damageable[];
+  /** Apply damage and emit combat:damage / combat:kill. */
+  dealDamage(target: Damageable, info: DamageInfo): DamageResult;
+  /** Static-world line of sight check (no damageables). */
+  lineOfSight(from: Vec3Like, to: Vec3Like): boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Weapons (M2+)
+// ---------------------------------------------------------------------------
+
+/** A procedurally built (or glTF) first-person weapon model with animation sockets. */
+export interface WeaponViewmodel {
+  readonly weaponId: string;
+  readonly root: THREE.Object3D;
+  /** Barrel tip (muzzle flash, tracer origin). */
+  readonly muzzle: THREE.Object3D;
+  /** Shell ejection port (casings). */
+  readonly ejectPort: THREE.Object3D;
+  /** Point that must sit on the view axis while aiming down sights. */
+  readonly sight: THREE.Object3D;
+  /** Named moving parts for procedural animation (slide, magazine, bolt, pump, trigger, ...). */
+  readonly parts: Readonly<Record<string, THREE.Object3D>>;
+  dispose(): void;
+}
+
+export interface WeaponSystemApi {
+  readonly currentWeaponId: string | null;
+  /** 0..1 aim-down-sights blend of the current weapon (drives FOV zoom, DoF, sensitivity, move speed). */
+  readonly adsAmount: number;
+  /** 0..1 normalized current spread for the crosshair. */
+  readonly spread: number;
+  readonly ammo: { mag: number; reserve: number; magSize: number } | null;
+  /** Add a weapon (replaces the current slot when full, CoD style) and equip it. */
+  give(weaponId: string): void;
+  /** Refill reserve (and optionally magazines) of all carried weapons. */
+  refillAmmo(fillMagazines?: boolean): void;
+  fixedUpdate(dt: number): void;
+  update(dt: number): void;
+  dispose(): void;
+}
+
+export interface VfxApi {
+  /** Spawn a named effect preset (see defs/vfx.ts) at a world position oriented along `normal`. */
+  spawn(effect: string, position: Vec3Like, normal?: Vec3Like, scale?: number): void;
+  tracer(from: Vec3Like, to: Vec3Like, color?: number): void;
+  explosion(position: Vec3Like, radius: number, element?: DamageElement): void;
+  decal(kind: string, position: Vec3Like, normal: Vec3Like, size?: number): void;
+  update(dt: number): void;
+  readonly stats: { particles: number; decals: number; lights: number };
+  dispose(): void;
+}
+

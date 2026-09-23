@@ -11,7 +11,9 @@
  * - `weapon:ammoChanged` (mag / reserve / magSize, low-ammo + empty states, NACHLADEN / KEINE
  *   MUNITION prompt), `weapon:reloadStart` / `weapon:reloadEnd` (prompt hidden while reloading),
  *   `weapon:dryFire` (counter flash), `weapon:inventoryChanged` / `weapon:raiseStart` /
- *   `weapon:equipped` (weapon name + slot chips, switched when the new weapon comes up).
+ *   `weapon:equipped` (weapon name + slot chips, switched when the new weapon comes up),
+ * - `wave:*`, `run:over`, `run:restart` (M3, WaveHud): wave counter (tally marks → numeral),
+ *   remaining enemies, intermission countdown, wave start / complete banners.
  * Game.ts feeds per frame: setSpreadCone(weapons.spreadDegrees, render.camera.fov),
  * setAds(weapons.adsAmount), update(dt, yaw);
  * once: setCamera(render.camera) – damage numbers are projected with it.
@@ -26,6 +28,7 @@ import { HUD } from '../../defs/ui';
 import type { Settings } from '../../save/settingsSchema';
 import { coneRadiusPx } from '../../weapons/spread';
 import { CombatHud } from './CombatHud';
+import { WaveHud } from './WaveHud';
 import { WeaponHud } from './WeaponHud';
 import './hud-combat.css';
 
@@ -84,7 +87,7 @@ export class Hud {
   private readonly combat: CombatHud;
   private readonly weapon: WeaponHud;
   private readonly pointsValue: HTMLSpanElement;
-  private readonly waveValue: HTMLSpanElement;
+  private readonly waves: WaveHud;
   private readonly indicators: DamageIndicator[] = [];
 
   // cached shown values
@@ -157,12 +160,9 @@ export class Hud {
     // --- hit feedback (hitmarker, damage numbers, kill confirmation) ---
     this.combat = new CombatHud(this.el);
 
-    // --- top left: wave ---
+    // --- top left: wave counter; countdown + banners centered (M3, WaveHud subscribes itself) ---
     const tl = h('div', 'hud-corner hud-corner--tl', this.el);
-    const wave = h('div', 'hud-wave hud-placeholder', tl);
-    h('span', 'hud-label', wave).textContent = 'WELLE';
-    this.waveValue = h('span', 'hud-wave__value', wave);
-    this.waveValue.textContent = '—';
+    this.waves = new WaveHud(tl, this.el, events);
 
     // --- top right: fps ---
     const tr = h('div', 'hud-corner hud-corner--tr', this.el);
@@ -362,10 +362,12 @@ export class Hud {
     this.pointsValue.parentElement?.classList.toggle('hud-placeholder', points === null);
   }
 
-  /** M3+: wave number (null shows the placeholder). */
+  /**
+   * Wave number (null shows the placeholder). Normally fed by the wave:* events (WaveHud);
+   * a change plays the tally / numeral animation.
+   */
   setWave(wave: number | null): void {
-    this.setPlaceholderText(this.waveValue, wave === null ? '—' : String(wave));
-    this.waveValue.parentElement?.classList.toggle('hud-placeholder', wave === null);
+    this.waves.setWave(wave);
   }
 
   setVisible(visible: boolean): void {
@@ -381,6 +383,7 @@ export class Hud {
     this.updateFps();
     this.combat.update(d, this.viewportW, this.viewportH);
     this.weapon.update(d);
+    this.waves.update(d);
   }
 
   dispose(): void {
@@ -388,6 +391,7 @@ export class Hud {
     this.unsubs.length = 0;
     if (typeof window !== 'undefined') window.removeEventListener('resize', this.onResize);
     this.combat.setCamera(null);
+    this.waves.dispose();
     this.el.remove();
   }
 

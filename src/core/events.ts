@@ -169,7 +169,8 @@ export interface GameEvents {
 
   // --- waves / run flow (M3) ---
   'wave:intermission': { nextWave: number; duration: number };
-  'wave:start': { wave: number; total: number };
+  /** `kind` (optional): 'normal', 'swarm' or an announced special type id ('tank') – HUD banner. */
+  'wave:start': { wave: number; total: number; kind?: string };
   'wave:progress': { wave: number; remaining: number; alive: number };
   'wave:complete': { wave: number; duration: number };
   'player:died': { position: Vec3Like };

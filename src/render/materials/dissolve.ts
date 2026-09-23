@@ -181,11 +181,14 @@ export function patchDissolveVertex(src: string): string | null {
 /**
  * Fragment shader with the dissolve clip (and the HDR edge when `emissive`); null if the anchors
  * are missing (e.g. a future three.js renamed a chunk) – the caller then leaves the material as is.
+ * `amount`: GLSL float expression for the progress instead of the `uDissolve` uniform (per-instance
+ * dissolve of instanced enemies passes a varying; the caller then writes `vRfDissolvePos` itself).
  */
-export function patchDissolveFragment(src: string, emissive: boolean): string | null {
+export function patchDissolveFragment(src: string, emissive: boolean, amount?: string): string | null {
+  const use = (code: string): string => (amount ? code.replace(/\buDissolve\b/g, `(${amount})`) : code);
   let out = injectAfter(src, COMMON, FRAGMENT_PARS);
-  if (out !== null) out = injectAfter(out, CLIP_FRAGMENT, FRAGMENT_CLIP);
-  if (out !== null && emissive) out = injectAfter(out, EMISSIVE_FRAGMENT, FRAGMENT_EMISSIVE);
+  if (out !== null) out = injectAfter(out, CLIP_FRAGMENT, use(FRAGMENT_CLIP));
+  if (out !== null && emissive) out = injectAfter(out, EMISSIVE_FRAGMENT, use(FRAGMENT_EMISSIVE));
   return out;
 }
 

@@ -128,6 +128,27 @@ export const HUD = {
     /** Label of an empty inventory slot. */
     emptySlot: '—',
   },
+  /** Wave HUD (M3, WaveHud): counter, remaining enemies, intermission countdown, banners. */
+  wave: {
+    /** Waves 1..tallyMax are drawn as tally marks (the fifth strikes through), later ones as numerals. */
+    tallyMax: 5,
+    /** Banner time on screen (s, game time): wave start / wave complete. */
+    bannerStartSeconds: 3.2,
+    bannerCompleteSeconds: 2.8,
+    /** The countdown turns urgent (orange pulse) for the last seconds. */
+    countdownUrgentSeconds: 5,
+    labels: {
+      wave: 'WELLE',
+      remaining: 'GEGNER',
+      countdown: 'NÄCHSTE WELLE IN',
+      complete: 'ÜBERSTANDEN',
+    },
+    /** Banner subtitles per wave kind (wave:start `kind`); other kinds show none. */
+    kindLabels: {
+      swarm: 'SCHWARMWELLE',
+      tank: 'EIN KOLOSS NÄHERT SICH',
+    } as Readonly<Record<string, string>>,
+  },
 } as const;
 
 export const DEBUG_OVERLAY = {

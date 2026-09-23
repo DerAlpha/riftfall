@@ -735,6 +735,11 @@ export interface EnemyTargetApi {
   readonly eyePosition: THREE.Vector3;
   readonly velocity: THREE.Vector3;
   readonly alive: boolean;
+  /**
+   * Look yaw (radians, PlayerApi convention: 0 looks down −Z). Optional: flanking enemies avoid the
+   * view direction; without it they use the aim of the last shot / the movement direction.
+   */
+  readonly yaw?: number;
   damage(amount: number, direction?: Vec3Like): number;
 }
 

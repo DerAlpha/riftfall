@@ -23,9 +23,11 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",
+    "@recast-navigation/three": "^0.43.1",
     "n8ao": "^2.0.1",
     "postprocessing": "^6.39.5",
     "preact": "^10.29.8",
+    "recast-navigation": "^0.43.1",
     "three": "~0.186.0",
     "three-mesh-bvh": "^0.9.15"
   },

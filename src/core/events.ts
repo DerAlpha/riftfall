@@ -150,6 +150,42 @@ export interface GameEvents {
    */
   'combat:explosion': { position: Vec3Like; radius: number; element: DamageElement };
 
+  // --- enemies (M3) ---
+  'enemy:spawned': { id: number; type: string; position: Vec3Like; elite: boolean };
+  /** First time an enemy notices the player (audio roar / screech cue). */
+  'enemy:alert': { id: number; type: string; position: Vec3Like };
+  /** Attack wind-up started (telegraph) – audio/VFX cue; `attack` is the attack id from defs/enemies. */
+  'enemy:attack': { id: number; type: string; attack: string; position: Vec3Like; windup: number };
+  'enemy:staggered': { id: number; type: string; position: Vec3Like };
+  'enemy:died': {
+    id: number;
+    type: string;
+    position: Vec3Like;
+    weaponId: string | null;
+    zone: HitZone | null;
+    elite: boolean;
+    source: 'player' | 'enemy' | 'trap' | 'environment';
+  };
+
+  // --- waves / run flow (M3) ---
+  'wave:intermission': { nextWave: number; duration: number };
+  'wave:start': { wave: number; total: number };
+  'wave:progress': { wave: number; remaining: number; alive: number };
+  'wave:complete': { wave: number; duration: number };
+  'player:died': { position: Vec3Like };
+  'run:over': {
+    mapId: string;
+    mode: string;
+    wave: number;
+    kills: number;
+    headshots: number;
+    shotsFired: number;
+    shotsHit: number;
+    timeSurvived: number;
+    score: number;
+  };
+  'run:restart': Record<string, never>;
+
   // --- ui ---
   'ui:console': { open: boolean };
   'ui:debugOverlay': { visible: boolean };

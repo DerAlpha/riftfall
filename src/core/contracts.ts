@@ -402,6 +402,10 @@ export interface LevelInstance {
   readonly atmosphere: MapAtmosphereDef;
   readonly root: THREE.Object3D;
   readonly spawn: { position: THREE.Vector3; yaw: number };
+  /** Enemy spawn points (wave maps; the calibration hall has a few for testing). */
+  readonly spawnPoints?: readonly SpawnPointDef[];
+  /** Meshes the navmesh is built from (default: every static level mesh). */
+  readonly navSources?: readonly THREE.Mesh[];
   update(dt: number, time: number): void;
   fixedUpdate?(dt: number): void;
   readonly stats: { meshes: number; lights: number; colliders: number; dynamicBodies: number };
@@ -670,4 +674,104 @@ export interface VfxWeaponApi extends VfxApi {
   hideMuzzleFlash(): void;
   applyGraphics(g: Readonly<GraphicsSettings>): void;
   applyAccessibility(a: Readonly<AccessibilitySettings>): void;
+}
+
+// ---------------------------------------------------------------------------
+// Navigation, enemies, waves (M3+)
+// ---------------------------------------------------------------------------
+
+export interface NavAgentParams {
+  radius: number;
+  height: number;
+  maxSpeed: number;
+  maxAcceleration: number;
+  /** 0..1 how strongly the agent keeps distance to others (crowd separation). */
+  separationWeight?: number;
+}
+
+/** Navmesh + crowd simulation (recast-navigation). Agent ids are opaque numbers (-1 = failed). */
+export interface NavApi {
+  readonly ready: boolean;
+  /** Build the navmesh from static level geometry (in a worker when possible). Never rejects. */
+  build(sources: readonly THREE.Mesh[]): Promise<boolean>;
+  /** Snap a point to the navmesh; false if nothing within the search extents. */
+  closestPoint(p: Vec3Like, out: THREE.Vector3): boolean;
+  /** Random reachable navmesh point within `radius` of `center`. */
+  randomPointAround(center: Vec3Like, radius: number, out: THREE.Vector3): boolean;
+  /** Straight-path corners from -> to, written into `out` (reused vectors); returns the count (0 = no path). */
+  findPath(from: Vec3Like, to: Vec3Like, out: THREE.Vector3[]): number;
+  /** Walkable straight line on the navmesh (no wall/ledge in between). */
+  walkable(from: Vec3Like, to: Vec3Like): boolean;
+  addAgent(position: Vec3Like, params: NavAgentParams): number;
+  removeAgent(id: number): void;
+  setAgentTarget(id: number, target: Vec3Like): void;
+  /** Stop steering (agent brakes and holds position). */
+  stopAgent(id: number): void;
+  setAgentMaxSpeed(id: number, speed: number): void;
+  teleportAgent(id: number, position: Vec3Like): void;
+  getAgentPosition(id: number, out: THREE.Vector3): THREE.Vector3;
+  getAgentVelocity(id: number, out: THREE.Vector3): THREE.Vector3;
+  /** Advance the crowd (fixed tick). */
+  update(dt: number): void;
+  /** Optional debug visualization (dev console `nav`). */
+  setDebugVisible(visible: boolean, scene: THREE.Object3D): void;
+  readonly stats: { agents: number; polys: number; buildMs: number };
+  dispose(): void;
+}
+
+/** Enemy spawn location authored by the map ("rift tear"); `zone` gates it behind doors (M4). */
+export interface SpawnPointDef {
+  id: string;
+  position: THREE.Vector3;
+  /** Direction enemies face / move when emerging. */
+  yaw: number;
+  zone: string;
+  kind: 'rift' | 'vent' | 'floor';
+}
+
+/** What enemies need from the player. */
+export interface EnemyTargetApi {
+  readonly position: THREE.Vector3;
+  readonly eyePosition: THREE.Vector3;
+  readonly velocity: THREE.Vector3;
+  readonly alive: boolean;
+  damage(amount: number, direction?: Vec3Like): number;
+}
+
+export interface EnemySpawnOptions {
+  /** Elite affix ids (M6). */
+  affixes?: readonly string[];
+  healthMultiplier?: number;
+  speedMultiplier?: number;
+  damageMultiplier?: number;
+  /** Spawn point used (for emerge VFX orientation). */
+  spawnPoint?: SpawnPointDef | null;
+}
+
+export interface EnemyManagerApi {
+  readonly alive: number;
+  readonly capacity: number;
+  /** Spawn an enemy; returns its id or null when the pool is exhausted / the type is unknown. */
+  spawn(type: string, position: Vec3Like, opts?: EnemySpawnOptions): number | null;
+  /** Remove every enemy (restart, nuke power-up in M4 kills with credit instead). */
+  clear(): void;
+  /** Kill all with death effects (nuke). `credit` gives kill points to the player. */
+  killAll(credit: boolean): number;
+  fixedUpdate(dt: number): void;
+  update(dt: number, alpha: number): void;
+  readonly stats: { alive: number; byType: Readonly<Record<string, number>>; aiMs: number };
+  dispose(): void;
+}
+
+export interface WaveDirectorApi {
+  readonly wave: number;
+  readonly state: 'idle' | 'intermission' | 'active' | 'over';
+  readonly remaining: number;
+  /** Begin the run at `wave` (default 1) after the first intermission. */
+  start(wave?: number): void;
+  /** Dev console `wave <n>`: jump to wave n (clears current enemies). */
+  setWave(wave: number): void;
+  skipIntermission(): void;
+  stop(): void;
+  fixedUpdate(dt: number): void;
 }

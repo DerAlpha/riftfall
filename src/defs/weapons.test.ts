@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { getMaterialDef } from './materials';
 import { COMBAT } from './combat';
+import { ACTIONS, DEFAULT_BINDINGS } from './input';
 import {
+  IMPLEMENTED_WEAPON_KINDS,
   WEAPON_IDS,
   WEAPON_RULES,
   WEAPONS,
@@ -87,6 +89,20 @@ describe('weapon defs', () => {
     expect(WEAPONS.pistol.spread.hip).toBeLessThan(WEAPONS.rifle.spread.hip);
     expect(WEAPONS.shotgun.recoil.shake).toBeGreaterThan(WEAPONS.pistol.recoil.shake);
     expect(WEAPONS.shotgun.recoil.pattern[0]![1]).toBeGreaterThan(WEAPONS.pistol.recoil.pattern[0]![1]);
+  });
+
+  it('every shipped weapon has a kind the weapon system can fire', () => {
+    for (const d of Object.values(WEAPONS)) expect(IMPLEMENTED_WEAPON_KINDS, d.id).toContain(d.kind);
+  });
+
+  it('every inventory slot has its own bound selection action', () => {
+    const slotActions = WEAPON_RULES.inventory.slotActions;
+    expect(slotActions.length).toBeGreaterThanOrEqual(WEAPON_RULES.inventory.maxSlots);
+    for (const a of slotActions) {
+      expect(ACTIONS).toContain(a);
+      expect(DEFAULT_BINDINGS[a].length, a).toBeGreaterThan(0);
+    }
+    expect(new Set(slotActions).size).toBe(slotActions.length);
   });
 
   it('loadouts reference existing weapons and fit their slots', () => {

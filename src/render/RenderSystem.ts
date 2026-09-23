@@ -154,6 +154,7 @@ export class RenderSystem implements RenderApi {
   /** Reused every frame (no per-frame allocation). */
   private readonly fxState: PostFXFrameState = {
     dt: 0,
+    simDt: 0,
     adsAmount: 0,
     focusDistance: POSTFX.depthOfField.defaultFocusDistance,
     caPulse: 0,
@@ -173,6 +174,8 @@ export class RenderSystem implements RenderApi {
   private healthTarget = 1;
   private lowHealth = 0;
   private time = 0;
+  /** Game time accumulated since the last rendered frame (advanceWorldTime). */
+  private simDt = 0;
 
   // Resize bookkeeping (applied lazily in render(), throttled).
   private resizeDirty = true;
@@ -430,7 +433,8 @@ export class RenderSystem implements RenderApi {
 
   /**
    * Screen-space shockwave (explosions): a distortion ring around the world `position` that grows
-   * to `radius` meters over POSTFX.shockwave.duration; `strength` scales the displacement.
+   * to `radius` meters over POSTFX.shockwave.duration of game time (advanceWorldTime); `strength`
+   * scales the displacement.
    */
   addShockwave(position: Vec3Like, radius: number, strength = 1): void {
     if (this.disposed) return;
@@ -440,6 +444,23 @@ export class RenderSystem implements RenderApi {
   setHealthFraction(f: number): void {
     if (!Number.isFinite(f)) return;
     this.healthTarget = clamp01(f);
+  }
+
+  /**
+   * Advance game time for render-side effects that belong to the simulation (shockwaves). Call from
+   * the unpaused update with its time-scaled dt; rendering itself runs on real time and continues
+   * while paused, so without this the rings would play out behind the pause menu.
+   */
+  advanceWorldTime(dt: number): void {
+    if (dt > 0 && Number.isFinite(dt)) this.simDt += dt;
+  }
+
+  /**
+   * Reports whether VFX content (particles, tracers) is live on RENDER.volumetricLayer. With level
+   * volumetrics off the volumetric pass runs only while it returns true; without a probe it always runs.
+   */
+  setVolumetricContentProbe(probe: (() => boolean) | null): void {
+    this.post.setVolumetricContentProbe(probe);
   }
 
   render(realDt: number): void {
@@ -488,6 +509,8 @@ export class RenderSystem implements RenderApi {
     this.shadows.update(dt);
     const fx = this.fxState;
     fx.dt = dt;
+    fx.simDt = this.simDt;
+    this.simDt = 0;
     fx.adsAmount = this.ads;
     fx.focusDistance = this.focus;
     fx.caPulse = this.hitPulse * flashScale;

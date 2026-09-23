@@ -1,8 +1,9 @@
 /**
  * Shell casing simulation (pure, struct-of-arrays, fixed pool). Casings fly with gravity and
- * tumble, bounce off up to two planes – the floor found at ejection and the last surface hit by a
- * sparse raycast along the velocity (done by CasingSystem every few frames) – then settle flat,
- * lie on the ground for a while and shrink out. When the pool is full the oldest casing is reused.
+ * tumble, bounce off up to two planes – the floor under the casing and the last surface hit by a
+ * sparse raycast along the velocity (both re-probed by CasingSystem every few frames while the
+ * casing moves) – then settle flat, lie on the ground for a while and shrink out. When the pool is
+ * full the oldest casing is reused.
  *
  * Orientation is a quaternion per casing (x, y, z, w arrays) integrated from the angular velocity.
  */

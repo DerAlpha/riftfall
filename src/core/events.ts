@@ -1,7 +1,8 @@
 /**
  * Global game event map. Add new events here (one place = discoverable API).
- * Payloads are plain data; handlers must not keep references to mutable vectors
- * passed in payloads (copy if needed) because emitters may reuse them.
+ * Payloads are plain data, and hot-path emitters (weapons, combat, VFX) reuse one payload object
+ * per event: handlers must not keep references to a payload or its vectors (copy what you keep),
+ * and must read everything they need before doing anything that may emit or raycast again.
  */
 import type { Settings, SettingsSection } from '../save/settingsSchema';
 import type { QualityPreset } from '../save/settingsSchema';
@@ -68,13 +69,24 @@ export interface GameEvents {
 
   // --- camera / fx ---
   'camera:shake': { trauma: number };
-  /** Hit pulse from sources other than player damage (M2 weapons: hit markers, explosions). */
+  /**
+   * Chromatic-aberration / hit-flash pulse (0..1) from sources other than player damage: VfxSystem
+   * emits it for effect presets with a `hitPulse` def (explosions), scaled by proximity. Game
+   * forwards it to RenderApi.addHitPulse, which applies accessibility.reduceFlashing.
+   */
   'fx:hitPulse': { strength: number };
 
   // --- weapons (M2) – emitted by WeaponSystem, consumed by viewmodel animator, VFX, audio, HUD ---
   /** The current weapon starts lowering (switch); `next` is equipped when it is done. */
   'weapon:holsterStart': { weaponId: string; slot: number; duration: number; next: string | null };
+  /**
+   * A raise is announced. For a switch this comes when the HOLSTER begins (`duration` = rest of
+   * the holster + equip, `previous` = the weapon going down) – the viewmodel animator plans the
+   * whole switch from it. Equip sound / HUD use `weapon:raiseStart`.
+   */
   'weapon:equipStart': { weaponId: string; slot: number; duration: number; previous: string | null };
+  /** The weapon in hand starts coming up now (initial equip, after a switch's holster, re-raise). */
+  'weapon:raiseStart': { weaponId: string; slot: number; duration: number };
   'weapon:equipped': { weaponId: string; slot: number };
   /** `muzzle` is the world-space muzzle position (viewmodel socket mapped into the world camera). */
   'weapon:fired': {
@@ -94,6 +106,11 @@ export interface GameEvents {
   'weapon:ammoChanged': { weaponId: string; mag: number; reserve: number; magSize: number };
   'weapon:adsChanged': { aiming: boolean; weaponId: string };
   'weapon:inspect': { weaponId: string; duration: number };
+  /**
+   * The inspect ended in the weapon system (`cancelled`: early, by fire/ADS/sprint – also a dry
+   * trigger pull that fires no shot). Melee, reload and switches end it with their own events.
+   */
+  'weapon:inspectEnd': { weaponId: string; cancelled: boolean };
   'weapon:melee': { weaponId: string; duration: number; hit: boolean };
   'weapon:inventoryChanged': { slots: (string | null)[]; current: number };
 
@@ -127,7 +144,10 @@ export interface GameEvents {
     position: Vec3Like;
     source: 'player' | 'enemy' | 'trap' | 'environment';
   };
-  /** Generic explosion (grenades, explosive enemies, barrels) for VFX/SFX/shake. */
+  /**
+   * Generic explosion (grenades, explosive enemies, barrels): VfxBridge → VFX (+ camera shake,
+   * shockwave, hit pulse), AudioEventBridge → one positional blast. Deals no damage by itself.
+   */
   'combat:explosion': { position: Vec3Like; radius: number; element: DamageElement };
 
   // --- ui ---

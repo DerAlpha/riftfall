@@ -478,6 +478,34 @@ const shotgunBoom: Recipe = (g, t) => {
   });
 };
 
+/** Explosion (mono → HRTF): crack, sub thump, rolling low-passed blast, debris rattle. */
+const explosion: Recipe = (g, t) => {
+  const k = kitOf(g);
+  const b = k.bus({ drive: 2.2, lowpass: 7000 });
+  b.click(t, 1600 * k.j(0.1), 0.025, 0.9);
+  b.thump(t, { f0: 118 * k.j(0.08), f1: 26, pitchTime: 0.09, decay: 0.75, peak: 1, drive: 1.6 });
+  b.noise(t, {
+    color: 'brown',
+    filter: 'lowpass',
+    freq: 1500 * k.j(0.1),
+    sweepTo: 110,
+    attack: 0.003,
+    decay: 1.05 * k.j(0.1),
+    peak: 1,
+  });
+  b.noise(t + 0.008, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 720 * k.j(0.15),
+    q: 0.8,
+    sweepTo: 170,
+    attack: 0.004,
+    decay: 0.45,
+    peak: 0.55,
+  });
+  k.ticks(t + 0.09, 12, 0.6, 3000, 3, 0.16);
+};
+
 /** Dark low-end bloom after a shot (not a reverb – the room comes from the reverb send). */
 function tail(decay: number, freq: number): Recipe {
   return (g, t) => {
@@ -968,6 +996,8 @@ export const WEAPON_SYNTH_DEFS = {
   'weapon.tail.small': { variants: 2, duration: 0.5, channels: 2, level: 0.7, recipe: tail(0.3, 420) },
   'weapon.tail.medium': { variants: 3, duration: 0.7, channels: 2, level: 0.75, recipe: tail(0.45, 380) },
   'weapon.tail.large': { variants: 2, duration: 1.1, channels: 2, level: 0.85, recipe: tail(0.75, 320) },
+  // --- explosions (mono → HRTF) ---
+  explosion: { variants: 3, duration: 1.9, channels: 1, level: 1, recipe: explosion },
   // --- handling ---
   'weapon.pistol.dry': { variants: 2, duration: 0.08, channels: 1, level: 0.8, recipe: dry(HANDLING.pistol) },
   'weapon.rifle.dry': { variants: 2, duration: 0.08, channels: 1, level: 0.8, recipe: dry(HANDLING.rifle) },

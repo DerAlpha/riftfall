@@ -6,6 +6,9 @@
  * Allocation: a flash takes a dark slot, else the dimmest slot of lower or equal priority; low
  * priority flashes (impacts) are capped per frame so a shotgun blast cannot steal every light.
  * The slot bookkeeping (LightSlots) is pure and unit-tested; LightPool maps it onto PointLights.
+ *
+ * The weapon is drawn in its own scene (viewmodel pass), which these lights never reach: one more
+ * pooled light there carries the flash with the most irradiance at the eye (updateViewmodel).
  */
 import * as THREE from 'three';
 import type { Vec3Like } from '../core/events';
@@ -131,14 +134,24 @@ export class LightSlots {
 export class LightPool {
   readonly lights: THREE.PointLight[] = [];
   readonly slots: LightSlots;
+  /** Flash light in the viewmodel scene (null without one); intensity 0 while nothing flashes. */
+  readonly viewmodelLight: THREE.PointLight | null;
+  /** Per slot: the flash may light the viewmodel (LightFlashDef.viewmodel). */
+  private readonly litViewmodel: Uint8Array;
   private intensityScale = 1;
 
+  /**
+   * `viewmodelScene`: construct before the viewmodel materials compile – the extra light there
+   * changes that scene's light count once, at boot.
+   */
   constructor(
     scene: THREE.Object3D,
     private readonly rand: () => number = Math.random,
+    viewmodelScene: THREE.Object3D | null = null,
   ) {
     const c = VFX.lights;
     this.slots = new LightSlots(c.count, c.lowPriorityPerFrame);
+    this.litViewmodel = new Uint8Array(c.count);
     for (let i = 0; i < c.count; i++) {
       const light = new THREE.PointLight(0xffffff, 0, 1, c.decay);
       light.name = `VfxFlashLight${i}`;
@@ -147,6 +160,16 @@ export class LightPool {
       light.position.set(0, -1e4, 0);
       scene.add(light);
       this.lights.push(light);
+    }
+    if (viewmodelScene) {
+      // No cutoff distance: updateViewmodel applies the world light's cutoff itself.
+      const light = new THREE.PointLight(0xffffff, 0, 0, c.decay);
+      light.name = 'VfxViewmodelFlashLight';
+      light.castShadow = false;
+      viewmodelScene.add(light);
+      this.viewmodelLight = light;
+    } else {
+      this.viewmodelLight = null;
     }
   }
 
@@ -181,6 +204,7 @@ export class LightPool {
     else if (color) col.setRGB(color[0], color[1], color[2], THREE.LinearSRGBColorSpace);
     else col.setRGB(def.color[0], def.color[1], def.color[2], THREE.LinearSRGBColorSpace);
     this.slots.start(slot, peak, def.duration, def.priority, def.flicker ?? 0, this.rand());
+    this.litViewmodel[slot] = def.viewmodel === false ? 0 : 1;
     light.intensity = peak;
     return true;
   }
@@ -194,6 +218,49 @@ export class LightPool {
   /** After the last flash of the frame started (end of the VFX update). */
   endFrame(): void {
     this.slots.endFrame();
+  }
+
+  /**
+   * Put the flash with the most irradiance at `eye` (world camera position) onto the viewmodel
+   * light, × VFX.lights.viewmodel.gain. The viewmodel camera sits at the origin with the world
+   * camera's rotation, so the flash's offset from the eye is its position there; farther than
+   * maxDistance it is pulled in along that direction and the intensity scaled by
+   * (pulled / real)^decay so the irradiance at the eye stays the same. Call after the frame's
+   * flashes started.
+   */
+  updateViewmodel(eye: Vec3Like): void {
+    const vl = this.viewmodelLight;
+    if (!vl) return;
+    const cfg = VFX.lights.viewmodel;
+    const decay = VFX.lights.decay;
+    const minFalloff = cfg.minDistance ** decay;
+    let best = -1;
+    let bestE = 0;
+    let bestWindow = 0;
+    let bestD = 0;
+    for (let i = 0; i < this.lights.length; i++) {
+      const intensity = this.slots.intensity[i]!;
+      if (!(intensity > 0) || !this.litViewmodel[i]) continue;
+      const l = this.lights[i]!;
+      const d = Math.hypot(l.position.x - eye.x, l.position.y - eye.y, l.position.z - eye.z);
+      const window = cutoffWindow(d, l.distance);
+      const e = (intensity * window) / Math.max(d ** decay, minFalloff);
+      if (e > bestE) {
+        bestE = e;
+        best = i;
+        bestWindow = window;
+        bestD = d;
+      }
+    }
+    if (best < 0) {
+      vl.intensity = 0;
+      return;
+    }
+    const l = this.lights[best]!;
+    const k = bestD > cfg.maxDistance ? cfg.maxDistance / bestD : 1;
+    vl.position.set((l.position.x - eye.x) * k, (l.position.y - eye.y) * k, (l.position.z - eye.z) * k);
+    vl.color.copy(l.color);
+    vl.intensity = this.slots.intensity[best]! * bestWindow * k ** decay * cfg.gain;
   }
 
   /** Copy the current flashes into particle lighting uniforms (color premultiplied by intensity · scale). */
@@ -213,6 +280,7 @@ export class LightPool {
   clear(): void {
     this.slots.clear();
     for (const l of this.lights) l.intensity = 0;
+    if (this.viewmodelLight) this.viewmodelLight.intensity = 0;
   }
 
   dispose(): void {
@@ -221,5 +289,15 @@ export class LightPool {
       l.dispose();
     }
     this.lights.length = 0;
+    this.viewmodelLight?.removeFromParent();
+    this.viewmodelLight?.dispose();
   }
+}
+
+/** three's point light range window at distance d: (1 − (d / cutoff)⁴)² clamped, 1 without cutoff. */
+export function cutoffWindow(d: number, cutoff: number): number {
+  if (!(cutoff > 0)) return 1;
+  const r = d / cutoff;
+  const w = Math.min(1, Math.max(0, 1 - r * r * r * r));
+  return w * w;
 }

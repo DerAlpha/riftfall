@@ -3,7 +3,8 @@
  * cross-system consumers depend on them where possible. The composition root
  * (src/game/Game.ts) wires the concrete classes and may use members beyond these contracts
  * (e.g. RenderSystem.sunDirection, SettingsStore.flush); some player-side rigs (PlayerCamera,
- * ViewmodelRig) still take the concrete PlayerController for its gait/velocity internals.
+ * ViewmodelRig) still take the concrete PlayerController for its gait/velocity internals, and
+ * WeaponSystem reads Picks of PlayerController/PlayerCamera (WeaponPlayer, WeaponCamera).
  * Keeping contracts in one file makes the architecture reviewable at a glance and lets
  * systems be developed/tested in isolation.
  */
@@ -12,6 +13,7 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import type { Action, Binding } from '../defs/input';
 import type { MapAtmosphereDef } from '../defs/maps';
 import type {
+  AccessibilitySettings,
   AudioSettings,
   GraphicsSettings,
   QualityPreset,
@@ -126,7 +128,10 @@ export interface InputApi {
 export interface ColliderData {
   kind: 'world' | 'prop' | 'player' | 'enemy' | 'trigger';
   surface: SurfaceType;
-  /** Thin materials can be penetrated by bullets (M5+). */
+  /**
+   * Thin prop bullets can pass through (M2 penetration, COMBAT.penetrationCost[surface]). Static
+   * level meshes take it from their material def (MaterialDef.penetrable) instead.
+   */
   penetrable?: boolean;
   entityId?: number;
 }
@@ -353,13 +358,39 @@ export interface PlayerApi {
   unlocks: { doubleJump: boolean; dash: boolean };
   noclip: boolean;
   godMode: boolean;
-  /** 0..1 aim-down-sights amount (driven by input in M1, weapons later). */
+  /** 0..1 aim-down-sights amount (raw `ads` input, or the AdsProvider while one is set). */
   readonly adsAmount: number;
   teleport(position: Vec3Like, yaw?: number): void;
   /** Sample input intents (per frame; edges are latched until the next tick consumes them). */
   update(dt: number, alpha: number): void;
   fixedUpdate(dt: number): void;
   dispose(): void;
+}
+
+/**
+ * External aim-down-sights source (the weapon system, `PlayerController.adsProvider`). While set,
+ * it replaces the raw `ads` input: its adsAmount is the player's, its move speed multiplier
+ * replaces MOVEMENT.ground.adsSpeedMultiplier, and `blocksSprint` stops sprinting (firing,
+ * reloading).
+ */
+export interface AdsProvider {
+  /** 0..1 blend this frame. */
+  readonly adsAmount: number;
+  /** Ground speed multiplier at full ADS. */
+  readonly adsMoveSpeedMultiplier: number;
+  readonly blocksSprint: boolean;
+}
+
+/**
+ * External look hook (the weapon system, `PlayerCamera.lookModifier`). When set it replaces the
+ * default ADS handling: it scales and may bend this frame's look delta (weapon ADS sensitivity,
+ * gamepad aim assist), and its FOV multiplier replaces CAMERA.fov.adsZoom.
+ */
+export interface LookModifier {
+  /** Adjust the look delta in place (radians, InputApi.getLook convention: yaw + = right, pitch + = up). */
+  modifyLook(look: LookOut): void;
+  /** Horizontal FOV multiplier (ADS zoom), 1 = unzoomed. */
+  readonly fovMultiplier: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -478,7 +509,7 @@ export interface CombatHit {
   target: Damageable | null;
   zone: HitZone | null;
   surface: SurfaceType | FleshSurface;
-  /** World surface is thin enough to shoot through (glass, grates, crates...). */
+  /** Surface is thin enough to shoot through (glass, grates, crates...); false for damageables. */
   penetrable: boolean;
 }
 
@@ -487,8 +518,10 @@ export interface CombatWorldApi {
   unregister(target: Damageable): void;
   readonly targets: readonly Damageable[];
   /**
-   * Nearest hit along the ray against static world geometry (three-mesh-bvh on level meshes) and
-   * registered damageables' hitboxes. The returned object is reused – copy what you keep.
+   * Nearest hit along the ray against static world geometry (three-mesh-bvh on level meshes named
+   * `level:<materialId>` / `panel:<materialId>` – COMBAT.staticMeshPrefixes; other meshes do not stop
+   * bullets), registered damageables' hitboxes and dynamic props (Rapier colliders: `target` null,
+   * surface/penetrable from their ColliderData). The returned object is reused – copy what you keep.
    */
   raycast(
     origin: Vec3Like,
@@ -502,6 +535,40 @@ export interface CombatWorldApi {
   dealDamage(target: Damageable, info: DamageInfo): DamageResult;
   /** Static-world line of sight check (no damageables). */
   lineOfSight(from: Vec3Like, to: Vec3Like): boolean;
+}
+
+export interface CombatRaycastOptions {
+  /** Skip this damageable (the shooter, a target the bullet already passed). */
+  ignore?: Damageable | null;
+  /** Skip several damageables (penetration through bodies). */
+  ignoreMany?: readonly Damageable[];
+  /**
+   * Skip the dynamic prop hit by the previous raycast (penetration continuation: the new ray
+   * starts inside that prop).
+   */
+  skipLastProp?: boolean;
+  /** Test dynamic props (default true). */
+  props?: boolean;
+}
+
+/** CombatWorldApi extensions the weapon system uses: penetration-aware raycasts, prop impulses. */
+export interface WeaponCombatApi extends CombatWorldApi {
+  raycast(
+    origin: Vec3Like,
+    direction: Vec3Like,
+    maxDistance: number,
+    opts?: CombatRaycastOptions,
+  ): CombatHit | null;
+  /**
+   * Push the dynamic prop behind `hit` (must be the hit returned by the latest raycast) along
+   * `direction` with `impulse` N·s at the hit point. No-op for anything else.
+   */
+  pushProp(hit: CombatHit, direction: Vec3Like, impulse: number): boolean;
+  /**
+   * Is `hit` (the latest raycast result) on a dynamic prop? Such hits get no world-space decal:
+   * the prop moves away from it.
+   */
+  hitsDynamicProp(hit: CombatHit): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -527,8 +594,10 @@ export interface WeaponSystemApi {
   readonly currentWeaponId: string | null;
   /** 0..1 aim-down-sights blend of the current weapon (drives FOV zoom, DoF, sensitivity, move speed). */
   readonly adsAmount: number;
-  /** 0..1 normalized current spread for the crosshair. */
+  /** 0..1 normalized current spread (debug readouts). */
   readonly spread: number;
+  /** Current cone half-angle (degrees): the HUD crosshair projects it with this frame's FOV. */
+  readonly spreadDegrees: number;
   readonly ammo: { mag: number; reserve: number; magSize: number } | null;
   /** Add a weapon (replaces the current slot when full, CoD style) and equip it. */
   give(weaponId: string): void;
@@ -548,4 +617,57 @@ export interface VfxApi {
   update(dt: number): void;
   readonly stats: { particles: number; decals: number; lights: number };
   dispose(): void;
+}
+
+export type VfxSocket = 'muzzle' | 'ejectPort';
+
+/** Viewmodel socket access for VFX (ViewmodelRig satisfies it). */
+export interface VfxSocketSource {
+  /** Viewmodel-space anchor that follows the shown weapon's socket (muzzle flash parent). */
+  getSocketObject(socket: VfxSocket): THREE.Object3D;
+  /** World point that projects where the socket appears on screen. */
+  getSocketWorldPosition(socket: VfxSocket, out: THREE.Vector3): THREE.Vector3;
+  /** World direction of the socket's local −Z (barrel axis / ejection direction). */
+  getSocketWorldDirection?(socket: VfxSocket, out: THREE.Vector3): THREE.Vector3;
+}
+
+/**
+ * The weapon side of the VFX system, driven from events by VfxBridge (muzzle flashes, impacts,
+ * player tracers, settings). Weapon specifics arrive as def data (preset / profile ids, colors).
+ */
+export interface VfxWeaponApi extends VfxApi {
+  /**
+   * A shot was fired: viewmodel flash, world flash light, muzzle smoke and casing, resolved at this
+   * frame's sockets. `muzzle` / `direction`: world muzzle and aim at fire time (no sockets).
+   * `lightColor`: linear hex, 0 = preset color.
+   */
+  muzzle(
+    preset: string,
+    lightColor: number,
+    casing: string | null,
+    ads: boolean,
+    muzzle: Vec3Like,
+    direction: Vec3Like,
+  ): void;
+  /**
+   * A shot hit a surface. `profile`: weapon impact profile id, null = by impact kind. `decal` false
+   * suppresses the surface decal. `direction`: the shot's travel direction when known.
+   */
+  impact(
+    surface: SurfaceType | FleshSurface,
+    profile: string | null,
+    kind: ImpactKind,
+    point: Vec3Like,
+    normal: Vec3Like,
+    decal: boolean,
+    direction?: Vec3Like | null,
+  ): void;
+  /** Player tracer to `to`, starting at the displayed muzzle socket (`from`: fallback). */
+  muzzleTracer(to: Vec3Like, color: number, from: Vec3Like): void;
+  /** Attach / replace / detach the viewmodel sockets (the rig is created after the VFX). */
+  setSockets(sockets: VfxSocketSource | null): void;
+  /** Hide the viewmodel flash (weapon switch). */
+  hideMuzzleFlash(): void;
+  applyGraphics(g: Readonly<GraphicsSettings>): void;
+  applyAccessibility(a: Readonly<AccessibilitySettings>): void;
 }

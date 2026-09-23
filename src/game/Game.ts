@@ -13,7 +13,7 @@ import type { LevelInstance, SaveData } from '../core/contracts';
 import { BOOT_PROGRESS, ENGINE } from '../defs/engine';
 import { MOVEMENT } from '../defs/movement';
 import { GRAPHICS_PRESETS, RENDER } from '../defs/graphics';
-import { COLLISION_GROUP, PHYSICS, interactionGroups } from '../defs/physics';
+import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { POSTFX } from '../defs/postfx';
 import { TEST_ROOM } from '../defs/maps';
 import { SaveSystem } from '../save/SaveSystem';
@@ -33,18 +33,20 @@ import { PlayerCamera } from '../player/PlayerCamera';
 import { ViewmodelRig } from '../player/ViewmodelRig';
 import { PlayerHealth } from '../player/PlayerHealth';
 import { Hud } from '../ui/hud/Hud';
-import { DebugOverlay, type DebugSnapshot } from '../ui/debug/DebugOverlay';
+import { DebugOverlay, type DebugCombatSnapshot, type DebugSnapshot } from '../ui/debug/DebugOverlay';
 import { DevConsole } from '../ui/console/DevConsole';
 import type { LoadingScreen } from '../ui/LoadingScreen';
 import { mountMenus, type MenuController } from '../ui/menus';
 import { CombatWorld } from '../combat/CombatWorld';
 import { WeaponSystem } from '../weapons/WeaponSystem';
 import { getLoadout } from '../defs/weapons';
+import { VFX } from '../defs/vfx';
 import { VfxSystem } from '../vfx/VfxSystem';
 import { VfxBridge } from '../vfx/VfxBridge';
 import { createVfxCommands } from '../vfx/vfxCommands';
 import { TrainingTargets } from '../world/TrainingTargets';
 import { registerDevCommands } from './devCommands';
+import { runFixedTick } from './fixedTick';
 import { GamePersistence } from './GamePersistence';
 import { MenuPadNavigator } from './MenuPadNavigator';
 import { PauseController } from './PauseController';
@@ -114,6 +116,8 @@ export class Game {
   private readonly _yawDir = new THREE.Vector3();
   private readonly _up = new THREE.Vector3(0, 1, 0);
   private readonly _toSun = new THREE.Vector3();
+  /** Frames and combat raycast total at the last debug snapshot (per-frame raycast rate). */
+  private readonly debugRate = { frames: 0, raycasts: 0 };
 
   private constructor(
     readonly opts: GameOptions,
@@ -247,6 +251,11 @@ export class Game {
             reduceFlashing: settings.current.accessibility.reduceFlashing,
           })
         : null;
+    // Particles/tracers and target barriers share the volumetric layer: its pass runs only while
+    // they or level volumetrics draw.
+    render.setVolumetricContentProbe(
+      () => vfx.hasVolumetricContent || (targets?.hasVolumetricContent ?? false),
+    );
 
     progress(BOOT_PROGRESS.environment, 'Kalibriere Umgebung…');
     const hdri = level.atmosphere.environment.hdri
@@ -261,7 +270,13 @@ export class Game {
       unlocks: { doubleJump: unlocks.doubleJump, dash: unlocks.dash },
     });
     const playerCamera = new PlayerCamera({ player, input, render, events, settings });
-    const viewmodel = new ViewmodelRig({ render, player, camera: playerCamera, events });
+    const viewmodel = new ViewmodelRig({
+      render,
+      player,
+      camera: playerCamera,
+      events,
+      reduceFlashing: settings.current.accessibility.reduceFlashing,
+    });
     vfx.setSockets(viewmodel);
     const health = new PlayerHealth({ events, player });
     const weapons = new WeaponSystem({
@@ -332,9 +347,9 @@ export class Game {
     const loadout = getLoadout(level.id);
     weapons.setLoadout(loadout.weapons, loadout.slots);
 
-    // Warm up shaders so the first real frame does not hitch. Weapon models compile against a render
-    // target like the post chain; VFX renders one invisible frame through the composer.
-    render.renderer.compile(render.scene, render.camera);
+    // Warm up shaders so the first real frame does not hitch. VFX renders one invisible frame
+    // through the composer; the world and weapon models are compiled against a render target.
+    compileForPostChain(render.renderer, render.scene, render.camera);
     viewmodel.warmupWeapons(render.renderer);
     vfx.warmup();
 
@@ -372,21 +387,9 @@ export class Game {
   }
 
   private fixedUpdate(dt: number): void {
-    const { player, targets, weapons, physics, health, level } = this.sys;
-    // The player computes its kinematic move against the current world; targets refresh their
-    // hitboxes; weapons then fire against exactly those hitboxes; finally the world steps (props
-    // react to pushes and bullet impulses), so everything ends the tick in a consistent state.
-    player.fixedUpdate(dt);
-    targets?.fixedUpdate(dt);
-    weapons.fixedUpdate(dt);
-    if (!player.noclip && player.position.y < PHYSICS.killPlaneY) {
-      // Fell out of the world (tp/noclip outside the hall, or a collision bug): back to spawn.
-      log.warn(`Player below kill plane (y ${player.position.y.toFixed(1)}) – respawn`);
-      player.teleport(level.spawn.position, level.spawn.yaw);
-    }
-    physics.step(dt);
-    health.fixedUpdate(dt);
-    level.fixedUpdate?.(dt);
+    // player → weapons → targets → kill plane → physics.step → health → level. Weapons fire before
+    // the targets move: shots resolve against the previous tick's hitboxes (what was rendered).
+    runFixedTick(this.sys, dt);
   }
 
   private update(dt: number, alpha: number): void {
@@ -400,6 +403,8 @@ export class Game {
     viewmodel.update(dt);
     // VFX after the viewmodel: muzzle flashes and casings use this frame's socket positions.
     vfx.update(dt);
+    // Shockwaves age on game time with their explosion (frozen while paused, slowed by timeScale).
+    render.advanceWorldTime(dt);
     level.update(dt, this.time);
     targets?.update(dt, alpha);
 
@@ -417,7 +422,8 @@ export class Game {
 
     hud.setDash(player.dashCharges, player.unlocks.dash ? MOVEMENT.dash.charges : 0, player.dashRecharge);
     hud.setMovement(Math.hypot(player.velocity.x, player.velocity.z), player.state);
-    hud.setSpread(weapons.spread);
+    // The crosshair gap shows the real cone: projected with this frame's FOV (after playerCamera).
+    hud.setSpreadCone(weapons.spreadDegrees, render.camera.fov);
     hud.setAds(weapons.adsAmount);
     hud.update(dt, player.yaw);
   }
@@ -428,7 +434,13 @@ export class Game {
     render.render(realDt);
     // Menu frames (backdrop blur, frozen scene) would skew dynamic resolution and the benchmark.
     if (!this.loop.paused) render.quality.onFrame(realDt);
-    if (debug.visible) debug.update(realDt, () => this.debugSnapshot(realDt));
+    if (debug.visible) {
+      this.debugRate.frames++;
+      debug.update(realDt, () => this.debugSnapshot(realDt));
+    } else {
+      this.debugRate.frames = 0;
+      this.debugRate.raycasts = this.sys.combat.stats.raycasts;
+    }
     input.endFrame();
   }
 
@@ -444,7 +456,8 @@ export class Game {
       resetSave: () => this.resetSave(),
       movementSandbox: this.movementSandbox,
     });
-    for (const c of createVfxCommands({ vfx, physics, camera: render.camera })) devConsole.register(c);
+    for (const c of createVfxCommands({ vfx, events: this.sys.events, physics, camera: render.camera }))
+      devConsole.register(c);
   }
 
   // -------------------------------------------------------------------------
@@ -606,6 +619,42 @@ export class Game {
         crouched: p.crouched,
       },
       missingAssets: [...this.sys.assets.missing],
+      combat: this.debugCombatSnapshot(),
+    };
+  }
+
+  private debugCombatSnapshot(): DebugCombatSnapshot {
+    const { combat, vfx, weapons } = this.sys;
+    const rate = this.debugRate;
+    const raycasts = combat.stats.raycasts;
+    const raycastsPerFrame = rate.frames > 0 ? (raycasts - rate.raycasts) / rate.frames : 0;
+    rate.frames = 0;
+    rate.raycasts = raycasts;
+    const fx = vfx.stats;
+    const id = weapons.currentWeaponId;
+    const ammo = weapons.ammo;
+    return {
+      raycastsPerFrame,
+      targets: combat.stats.targets,
+      staticMeshes: combat.stats.staticMeshes,
+      particles: fx.particles,
+      particleCapacity: vfx.particles.additiveBuffer.capacity + vfx.particles.alphaBuffer.capacity,
+      decals: fx.decals,
+      decalCapacity: vfx.decals.capacity,
+      flashLights: fx.lights,
+      flashLightCapacity: VFX.lights.count,
+      casings: vfx.casings.count,
+      weapon:
+        id === null
+          ? null
+          : {
+              id,
+              state: weapons.state,
+              spreadDeg: weapons.spreadDegrees,
+              mag: ammo?.mag ?? 0,
+              magSize: ammo?.magSize ?? 0,
+              reserve: ammo?.reserve ?? 0,
+            },
     };
   }
 
@@ -651,6 +700,26 @@ async function registerAudioAssets(
     if (getAssetEntry(id)?.type !== 'audio') continue;
     const buffer = await assets.loadAudio(id); // cached by preload
     if (buffer) audio.registerBuffer(id, buffer);
+  }
+}
+
+/**
+ * Compile `scene`'s programs for the post chain's buffers. The world is only ever drawn into the
+ * composer's render targets, and three keys programs on the output color space (canvas: sRGB,
+ * render target: working space): compiling with no target bound would build canvas variants that
+ * are never drawn (like ViewmodelRig.warmupWeapons).
+ */
+function compileForPostChain(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
+  const target = new THREE.WebGLRenderTarget(1, 1);
+  const previous = renderer.getRenderTarget();
+  try {
+    renderer.setRenderTarget(target);
+    renderer.compile(scene, camera);
+  } catch (err) {
+    log.warn('World shader warm-up failed', err);
+  } finally {
+    renderer.setRenderTarget(previous);
+    target.dispose();
   }
 }
 

@@ -37,7 +37,11 @@ export interface FakePlane {
   normal: THREE.Vector3;
   d: number;
   data: ColliderData;
+  /** Finite surface: only hit points it contains count (ledges, stair edges). Default: infinite. */
+  contains?: (point: THREE.Vector3) => boolean;
 }
+
+const _candidate = new THREE.Vector3();
 
 /**
  * Physics fake: an infinite floor at y = 0 plus optional extra planes. raycast() returns the
@@ -67,10 +71,17 @@ export class FakePhysics {
       const denom = (n.x * direction.x + n.y * direction.y + n.z * direction.z) / len;
       if (denom >= 0) continue;
       const t = (p.d - (n.x * origin.x + n.y * origin.y + n.z * origin.z)) / denom;
-      if (t >= 0 && t <= bestT) {
-        bestT = t;
-        best = p;
+      if (!(t >= 0 && t <= bestT)) continue;
+      if (p.contains) {
+        _candidate.set(
+          origin.x + (direction.x / len) * t,
+          origin.y + (direction.y / len) * t,
+          origin.z + (direction.z / len) * t,
+        );
+        if (!p.contains(_candidate)) continue;
       }
+      bestT = t;
+      best = p;
     }
     if (!best) return null;
     this.hit.distance = bestT;

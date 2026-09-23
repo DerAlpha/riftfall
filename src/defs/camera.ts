@@ -9,11 +9,15 @@ export const CAMERA = {
   /** Viewmodel is rendered with its own fixed FOV so weapons don't distort with player FOV. */
   viewmodelFov: 62,
   pitchLimitDeg: 89,
-  /** FOV kicks (horizontal degrees added to base FOV), smoothed with `lambda` (1/s). */
+  /**
+   * FOV kicks (horizontal degrees added to base FOV). The base FOV and movement kicks are smoothed
+   * with `lambda` (1/s); the ADS zoom is not (it follows the already eased adsAmount directly).
+   */
   fov: {
     sprintKick: 6,
     slideKick: 9,
     dashKick: 14,
+    /** ADS zoom without a weapon look modifier (the weapon's `ads.zoom` multiplier replaces it). */
     adsZoom: -20,
     lambda: 9,
     /** setFov is only called when the vertical FOV changed by more than this. */

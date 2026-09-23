@@ -20,11 +20,16 @@
  * mantle; `sprintToFireTime` after it) · meleeing · inspecting. Rules in WEAPON_RULES (ADS/sprint)
  * and WeaponReloadDef (commit point, fire interrupts).
  *
+ * Every carried weapon fires with its effective def (resolveWeapon: Rift Forge tier, attachments,
+ * element; `effectiveDef` / `setWeaponMods`) and keeps its own fire cycle deadline (`readyAt`), so
+ * switching away and back never skips a pump or bolt cycle.
+ *
  * Hot-path event payloads (fired, impact, tracer, ammo, shake) are reused objects: handlers must
  * copy what they keep (EventBus contract).
  */
 import { Vector3 } from 'three';
 import type {
+  CombatHit,
   DamageInfo,
   Damageable,
   InputApi,
@@ -43,7 +48,13 @@ import type { Action } from '../defs/input';
 import { GAMEPAD } from '../defs/input';
 import { COMBAT } from '../defs/combat';
 import { MOVEMENT } from '../defs/movement';
-import { WEAPON_RULES, getWeaponDef, type ReloadMarker, type WeaponDef } from '../defs/weapons';
+import {
+  IMPLEMENTED_WEAPON_KINDS,
+  WEAPON_RULES,
+  getWeaponDef,
+  type ReloadMarker,
+  type WeaponDef,
+} from '../defs/weapons';
 import type { WeaponCombatApi, CombatRaycastOptions } from '../combat/types';
 import type { LookModifier, PlayerCamera } from '../player/PlayerCamera';
 import type { AdsProvider, PlayerController } from '../player/PlayerController';
@@ -56,13 +67,14 @@ import {
   recoilKick,
   recoilMultiplier,
   recoverRecoil,
-  resetRecoil,
   type RecoilKick,
 } from './recoil';
+import { resolveWeapon, type WeaponModState } from './resolveWeapon';
 import {
   addBloom,
   aimBasis,
   coneDirection,
+  coneRadiusPx,
   crosshairSpread,
   diskSample,
   pelletOffset,
@@ -92,10 +104,14 @@ export type WeaponPlayer = Pick<
   | 'adsProvider'
 >;
 
-/** What the weapon system uses of the camera rig (PlayerCamera satisfies it). */
+/**
+ * What the weapon system uses of the camera rig (PlayerCamera satisfies it). `aimPitchOffset` is
+ * the movement-driven view pitch (landing dip, mantle) the rendered camera – and so the
+ * crosshair and the sights – shows on top of the player's pitch: shots follow it (WYSIWYG).
+ */
 export type WeaponCamera = Pick<
   PlayerCamera,
-  'lookDelta' | 'lookModifier' | 'addRecoil' | 'addViewPunch' | 'takeRecoilPitchLoss'
+  'lookDelta' | 'lookModifier' | 'addRecoil' | 'addViewPunch' | 'takeRecoilPitchLoss' | 'aimPitchOffset'
 >;
 
 export interface WeaponSystemDeps {
@@ -125,10 +141,14 @@ export interface WeaponSystemOptions {
 }
 
 interface WeaponInstance {
-  readonly def: WeaponDef;
+  /** Effective def (base + Rift Forge tier + attachments + element, see resolveWeapon). */
+  def: WeaponDef;
+  readonly base: WeaponDef;
   mag: number;
   reserve: number;
   tracerCounter: number;
+  /** Sim time its fire cycle (pump, bolt, rpm cap) ends: survives switching away and back. */
+  readyAt: number;
 }
 
 type ShellPhase = 'start' | 'insert' | 'end';
@@ -139,10 +159,10 @@ const EDGE_MELEE = 4;
 const EDGE_INSPECT = 8;
 const EDGE_NEXT = 16;
 const EDGE_PREV = 32;
-const EDGE_W1 = 64;
-const EDGE_W2 = 128;
-const EDGE_W3 = 256;
-const EDGE_SPRINT = 512;
+const EDGE_SPRINT = 64;
+/** Slot selection edges: EDGE_SLOT0 << slot index (WEAPON_RULES.inventory.slotActions). */
+const EDGE_SLOT0 = 128;
+const SLOT_ACTIONS: readonly Action[] = WEAPON_RULES.inventory.slotActions;
 
 const EDGES: readonly (readonly [Action, number])[] = [
   ['fire', EDGE_FIRE],
@@ -151,10 +171,8 @@ const EDGES: readonly (readonly [Action, number])[] = [
   ['inspect', EDGE_INSPECT],
   ['weaponNext', EDGE_NEXT],
   ['weaponPrev', EDGE_PREV],
-  ['weapon1', EDGE_W1],
-  ['weapon2', EDGE_W2],
-  ['weapon3', EDGE_W3],
   ['sprint', EDGE_SPRINT],
+  ...SLOT_ACTIONS.map((a, i) => [a, EDGE_SLOT0 << i] as const),
 ];
 
 const NO_MARKERS: readonly ReloadMarker[] = [];
@@ -181,6 +199,8 @@ const _spreadCtx: SpreadContext = { ads: 0, speedFactor: 0, airborne: false, cro
 export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier {
   /** Dev: shots never consume ammo. */
   infiniteAmmo = false;
+  /** External damage multiplier on top of the weapon's (perks, power-ups; hitDamage `scale`). */
+  damageScale = 1;
   readonly stats = { shots: 0, pellets: 0, hits: 0, kills: 0 };
 
   private readonly events: EventBus<GameEvents>;
@@ -208,6 +228,9 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   private edgeMask = 0;
   private edgeFrame = -1;
   private inputFrame = 0;
+
+  /** Seconds of simulation (fixed ticks) – fire cycles are stored as sim-time deadlines. */
+  private simTime = 0;
 
   // --- firing ---
   private fireCooldown = 0;
@@ -346,8 +369,13 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     const w = this.current;
     return w ? this.currentSpreadDeg(w.def) : 0;
   }
+  /** Normalized spread 0..1 (debug readouts; the crosshair uses crosshairRadiusPx). */
   get spread(): number {
     return crosshairSpread(this.spreadDegrees, WEAPON_RULES.crosshairMaxSpreadDeg);
+  }
+  /** On-screen radius (px) of the current cone for a viewport `viewportHeight` px tall (render camera FOV). */
+  crosshairRadiusPx(viewportHeight: number): number {
+    return coneRadiusPx(this.spreadDegrees, this.render.camera.fov, viewportHeight);
   }
   /** Unrecovered recoil (deg, pitch up) – debug overlay. */
   get recoilOffsetPitch(): number {
@@ -383,7 +411,14 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     }
     const ready = s === 'idle' || s === 'firing' || s === 'sprinting' || s === 'inspecting';
     if (!ready) return false;
-    if (this.input.isDown('fire') && (w.mag > 0 || w.reserve > 0)) return true;
+    // A press still waiting for its shot counts like a held trigger: a tap out of a sprint must
+    // not let hold/auto sprint resume (and lower the weapon again) before the raise is done.
+    const fireWanted =
+      this.input.isDown('fire') ||
+      this.input.pressed('fire') ||
+      (this.latched & EDGE_FIRE) !== 0 ||
+      this.pressBuffer > 0;
+    if (fireWanted && (w.mag > 0 || w.reserve > 0)) return true;
     return this.input.isDown('ads');
   }
 
@@ -470,23 +505,49 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     this.requestSwitch(slot);
   }
 
+  /** Effective def (tier, attachments, element applied) of a carried weapon; null if not carried. */
+  effectiveDef(weaponId: string): WeaponDef | null {
+    for (const s of this.slots) if (s?.def.id === weaponId) return s.def;
+    return null;
+  }
+
+  /**
+   * Rift Forge tier / attachment mods / elemental mod of a carried weapon (M5 entry point); the
+   * previous mod state is replaced. A running reload of it is cancelled (its timing changed); the
+   * magazine is clamped to the new capacity. False if the weapon is not carried.
+   */
+  setWeaponMods(weaponId: string, mods: WeaponModState): boolean {
+    const slot = this.slots.findIndex((s) => s?.def.id === weaponId);
+    const w = slot >= 0 ? this.slots[slot] : null;
+    if (!w) return false;
+    if (slot === this.currentSlot && this._state === 'reloading') this.finishReload(false);
+    w.def = resolveWeapon(w.base, mods);
+    w.mag = Math.min(w.mag, fullMag(w.def));
+    w.reserve = Math.min(w.reserve, w.def.reserve);
+    if (slot === this.currentSlot) this.emitAmmo();
+    return true;
+  }
+
   // -------------------------------------------------------------------------
   // Tick
   // -------------------------------------------------------------------------
 
   fixedUpdate(dt: number): void {
     if (this.disposed || !(dt > 0)) return;
+    this.simTime += dt;
     this.sampleInput();
     const edges = this.latched;
     this.latched = 0;
     const firePressed = (edges & EDGE_FIRE) !== 0;
-    if (firePressed) this.pressBuffer = WEAPON_RULES.pressBuffer;
-    else this.pressBuffer = Math.max(0, this.pressBuffer - dt);
+    this.pressBuffer = Math.max(0, this.pressBuffer - dt);
     this.dryFireTimer = Math.max(0, this.dryFireTimer - dt);
     this.meleeCooldown = Math.max(0, this.meleeCooldown - dt);
+    // The fire cycle runs on in every state (equipSlot restores a weapon's own remaining cycle).
+    if (this.fireCooldown > 0) this.fireCooldown -= dt;
 
     const w = this.current;
     if (!w) {
+      if (firePressed) this.pressBuffer = WEAPON_RULES.pressBuffer;
       const slot = this.switchRequest(edges);
       if (slot >= 0) this.equipSlot(slot, null);
       return;
@@ -499,15 +560,29 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     if (lowered) this.sprintRecovery = def.sprintToFireTime;
     else if (!this.wasLowered) this.sprintRecovery = Math.max(0, this.sprintRecovery - dt);
     this.wasLowered = lowered;
+    if (lowered) {
+      // A lowered weapon forgets queued shots and the rest of a burst: nothing may fire on its
+      // own once the sprint/mantle is over.
+      this.fireQueued = false;
+      this.burstLeft = 0;
+    }
+    // A press lives through the raise after a sprint (sprintToFireTime can exceed the buffer):
+    // a tap out of a sprint always fires once the weapon is up.
+    if (firePressed) {
+      this.pressBuffer = WEAPON_RULES.pressBuffer + (lowered ? def.sprintToFireTime : this.sprintRecovery);
+    }
 
     // --- requests (priority: switch > melee > reload > inspect) ---
     const slot = this.switchRequest(edges);
     if (slot >= 0) this.requestSwitch(slot);
     if ((edges & EDGE_SPRINT) !== 0 && this._state === 'reloading') {
       // A deliberate sprint press cancels an uncommitted magazine reload (the old magazine stays)
-      // and ends a shell reload (inserted shells stay); a committed magazine swap finishes.
-      if (def.reload.perShell || !this.reloadCommitted) this.finishReload(false);
-      else this.reloadSprintOk = true;
+      // and ends a shell reload (inserted shells stay; a shot queued by interrupting it is
+      // dropped); a committed magazine swap finishes.
+      if (def.reload.perShell || !this.reloadCommitted) {
+        this.finishReload(false);
+        this.fireQueued = false;
+      } else this.reloadSprintOk = true;
     }
     if ((edges & EDGE_MELEE) !== 0) this.tryMelee();
     if ((edges & EDGE_RELOAD) !== 0) this.tryReload();
@@ -533,11 +608,15 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       case 'meleeing':
         this.tickMelee(w);
         break;
-      case 'inspecting':
-        if (firePressed || this.fireHeld || this.adsHeld || lowered || this.stateTime >= this.stateDuration) {
+      case 'inspecting': {
+        const done = this.stateTime >= this.stateDuration;
+        if (firePressed || this.fireHeld || this.adsHeld || lowered || done) {
           this.setState('idle', 0);
+          // The viewmodel blends its inspect out on this (a dry trigger pull fires no shot).
+          this.events.emit('weapon:inspectEnd', { weaponId: def.id, cancelled: !done });
         }
         break;
+      }
       case 'idle':
       case 'firing':
         if (lowered) this.setState('sprinting', 0);
@@ -548,7 +627,6 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     }
 
     // --- firing ---
-    if (this.fireCooldown > 0) this.fireCooldown -= dt;
     const current = this.current;
     if (current) this.tickFire(current, firePressed);
 
@@ -558,7 +636,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       this.bloom = recoverBloom(this.bloom, current.def.spread, dt, this.bloomSince);
       recoverRecoil(current.def.recoil, this.recoil, dt, _recover);
       if (_recover.pitch !== 0 || _recover.yaw !== 0) {
-        this.camera.addRecoil(_recover.pitch * DEG2RAD, -_recover.yaw * DEG2RAD, 0);
+        // Eased over the tick: high-refresh frames between ticks each get their share (no 60 Hz steps).
+        this.camera.addRecoil(_recover.pitch * DEG2RAD, -_recover.yaw * DEG2RAD, dt);
       }
     }
   }
@@ -611,9 +690,9 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
 
   private switchRequest(edges: number): number {
     const n = this.slots.length;
-    if ((edges & EDGE_W1) !== 0 && this.slots[0]) return 0;
-    if ((edges & EDGE_W2) !== 0 && this.slots[1]) return 1;
-    if ((edges & EDGE_W3) !== 0 && this.slots[2]) return 2;
+    for (let i = 0; i < n && i < SLOT_ACTIONS.length; i++) {
+      if ((edges & (EDGE_SLOT0 << i)) !== 0 && this.slots[i]) return i;
+    }
     const step = (edges & EDGE_NEXT) !== 0 ? 1 : (edges & EDGE_PREV) !== 0 ? -1 : 0;
     if (step === 0 || n === 0) return -1;
     // Cycle from the weapon being switched to (repeated wheel steps during a switch keep going).
@@ -639,7 +718,19 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       log.warn(`Unknown weapon "${id}" – ignored`);
       return null;
     }
-    return { def, mag: fullMag(def), reserve: def.reserve, tracerCounter: 0 };
+    // Never fire an unimplemented kind as hitscan (a launcher def would become an instant rifle).
+    if (!IMPLEMENTED_WEAPON_KINDS.includes(def.kind)) {
+      log.warn(`Weapon "${id}": kind '${def.kind}' is not implemented – ignored`);
+      return null;
+    }
+    return {
+      def,
+      base: def,
+      mag: fullMag(def),
+      reserve: def.reserve,
+      tracerCounter: 0,
+      readyAt: Number.NEGATIVE_INFINITY,
+    };
   }
 
   private refillInstance(w: WeaponInstance, fillMagazine: boolean): void {
@@ -657,9 +748,10 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     const state = this._state;
     if (state === 'holstering') {
       if (slot === this.currentSlot) {
-        // Changed our mind: raise the same weapon again from where the holster got to.
+        // Changed our mind: raise the same weapon again from where the holster got to (its
+        // recoil pattern and bloom carry on: a wheel flick must not reset them).
         const back = w.def.equipTime * this.stateProgress;
-        this.equipSlot(slot, w.def.id, back);
+        this.equipSlot(slot, w.def.id, back, true, true);
       } else if (slot !== this.pendingSlot) {
         this.pendingSlot = slot;
         const rest = Math.max(0, this.stateDuration - this.stateTime);
@@ -692,6 +784,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
    * weapon:equipStart for a switch is emitted when the holster BEGINS: `duration` covers the
    * remaining holster plus the new weapon's equip time and `previous` is the weapon going down
    * (the viewmodel animator plays holster + raise from it; WEAPONS[previous].holsterTime).
+   * Equip sound and HUD follow weapon:raiseStart, sent when the new weapon actually comes up.
    */
   private announceSwitch(from: WeaponInstance, slot: number, holsterLeft: number): void {
     const next = this.slots[slot];
@@ -704,8 +797,17 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     });
   }
 
-  /** Raise the weapon in `slot`; `announce` = emit weapon:equipStart (switches announced it already). */
-  private equipSlot(slot: number, previous: string | null, duration?: number, announce = true): void {
+  /**
+   * Raise the weapon in `slot`; `announce` = emit weapon:equipStart (switches announced it
+   * already); `reraise` = the weapon in hand comes back up (a cancelled holster).
+   */
+  private equipSlot(
+    slot: number,
+    previous: string | null,
+    duration?: number,
+    announce = true,
+    reraise = false,
+  ): void {
     const w = this.slots[slot];
     if (!w) {
       this._state = 'idle';
@@ -715,14 +817,21 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     this.pendingSlot = -1;
     const d = duration ?? w.def.equipTime;
     this.setState('equipping', d);
-    this.fireCooldown = 0;
+    // The weapon's own fire cycle continues (switching away and back never skips a pump/bolt).
+    this.fireCooldown = Math.max(0, w.readyAt - this.simTime);
     this.burstLeft = 0;
     this.fireQueued = false;
-    this.bloom = 0;
-    this.bloomSince = Number.POSITIVE_INFINITY;
     this.meleeTarget = null;
-    resetRecoil(this.recoil);
+    if (!reraise) {
+      this.bloom = 0;
+      this.bloomSince = Number.POSITIVE_INFINITY;
+      // A new pattern starts, but the unrecovered kick moved the real aim: it keeps drifting
+      // back (at the new weapon's recovery rate, without a delay).
+      this.recoil.shotIndex = 0;
+      this.recoil.sinceShot = Number.POSITIVE_INFINITY;
+    }
     if (announce) this.events.emit('weapon:equipStart', { weaponId: w.def.id, slot, duration: d, previous });
+    this.events.emit('weapon:raiseStart', { weaponId: w.def.id, slot, duration: d });
     this.emitInventory();
     this.emitAmmo();
     if (!(d > 0)) {
@@ -791,8 +900,10 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       wants = def.fireMode === 'semi' ? false : def.fireMode === 'burst' ? this.burstLeft > 0 : this.fireHeld;
     }
     if (!wants && this.fireCooldown < 0) this.fireCooldown = 0;
-    if (shots > 0) this._state = 'firing';
-    else if (this._state === 'firing' && this.fireCooldown <= 0 && !wants) this._state = 'idle';
+    if (shots > 0) {
+      this._state = 'firing';
+      w.readyAt = this.simTime + Math.max(0, this.fireCooldown);
+    } else if (this._state === 'firing' && this.fireCooldown <= 0 && !wants) this._state = 'idle';
 
     // Empty magazine: reload once the last shot's cycle finished.
     if (
@@ -812,7 +923,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     if (!this.infiniteAmmo) w.mag--;
     this.stats.shots++;
     this.eyePosition(_eye);
-    aimBasis(player.yaw, player.pitch, _fwd, _right, _up);
+    aimBasis(player.yaw, this.aimPitch, _fwd, _right, _up);
     const spreadRad = this.currentSpreadDeg(def) * DEG2RAD;
     this.getMuzzleWorld(_muzzle);
     if (!Number.isFinite(_muzzle.x) || !Number.isFinite(_muzzle.y) || !Number.isFinite(_muzzle.z)) {
@@ -867,7 +978,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     const r = def.recoil;
     recoilKick(r, this.recoil, this.rng, recoilMultiplier(r, ads, player.crouched), _kick);
     this.camera.addRecoil(_kick.pitch * DEG2RAD, -_kick.yaw * DEG2RAD, r.kickTime);
-    const punchScale = lerp(1, r.adsMultiplier, ads);
+    const punchScale = lerp(1, r.adsMultiplier, ads) * lerp(1, WEAPON_RULES.adsViewPunchMultiplier, ads);
     // Punch direction is cosmetic jitter (never affects the aim).
     this.camera.addViewPunch(
       r.viewPunch.pitch * DEG2RAD * punchScale,
@@ -918,7 +1029,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
         const zone = hit.zone ?? 'body';
         this.acc.add(
           target,
-          hitDamage(def.damage, zone, distance, keep),
+          hitDamage(def.damage, zone, distance, keep, this.damageScale),
           zone,
           hit.point.x,
           hit.point.y,
@@ -929,13 +1040,15 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
         this.ignoreList.push(target);
         skipProp = false;
       } else {
-        // Query before emitting: handlers may raycast, which invalidates the shared hit.
+        // Read everything before emitting: handlers may raycast, which rewrites the shared hit.
         // World-space decals would float next to a prop that moves away.
         const decal = !combat.hitsDynamicProp(hit);
+        const penetrable = hit.penetrable;
+        const surface = hit.surface;
         combat.pushProp(hit, dir, def.damage.propImpulse * keep);
-        this.emitImpact(hit.point, hit.normal, hit.surface, kind, def.id, decal);
-        if (!hit.penetrable) break;
-        cost = COMBAT.penetrationCost[hit.surface];
+        this.emitImpact(hit.point, hit.normal, surface, kind, def.id, decal);
+        if (!penetrable) break;
+        cost = COMBAT.penetrationCost[surface];
         skipProp = true;
       }
       if (!(power >= cost)) break;
@@ -954,12 +1067,18 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     }
   }
 
-  /** One damage event per target per shot (pellets aggregated). */
+  /**
+   * One damage event per zone hit per target (pellets aggregated per zone, best zone first): the
+   * target applies its own zone multipliers (armor) to exactly the pellets that hit that zone.
+   */
   private flushDamage(def: WeaponDef, kind: ImpactKind): void {
     const acc = this.acc;
     const info = this.damageInfo;
+    let previous: Damageable | null = null;
     for (let i = 0; i < acc.count; i++) {
       const target = acc.targets[i]!;
+      const firstGroup = target !== previous;
+      previous = target;
       if (!target.alive) continue;
       info.amount = acc.amounts[i]!;
       info.zone = acc.zones[i]!;
@@ -974,7 +1093,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       info.kind = kind;
       info.impulse = def.damage.impulse * acc.hits[i]!;
       const res = this.combat.dealDamage(target, info);
-      this.stats.hits++;
+      if (firstGroup) this.stats.hits++;
       if (res.killed) this.stats.kills++;
     }
     acc.reset();
@@ -1005,6 +1124,12 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     _spreadCtx.airborne = !p.grounded;
     _spreadCtx.crouched = p.crouched;
     return spreadDeg(def.spread, _spreadCtx, this.bloom);
+  }
+
+  /** Aim pitch as rendered: the player's pitch plus the camera's movement pitch (landing dip, mantle). */
+  private get aimPitch(): number {
+    const offset = this.camera.aimPitchOffset;
+    return this.player.pitch + (Number.isFinite(offset) ? offset : 0);
   }
 
   /** Shots start at the rendered camera (what the player sees); falls back to the player's eye. */
@@ -1171,11 +1296,15 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     });
   }
 
-  /** Best live target in the melee cone with a clear line (nearest, then most centered). */
+  /**
+   * Best live target in the melee cone within reach (nearest, then most centered). Reach is
+   * measured to the body surface along the line to its aim point, and that line must be clear;
+   * the bounds sphere only gathers candidates (big enemies must not extend the reach).
+   */
   private findMeleeTarget(def: WeaponDef): Damageable | null {
     const m = def.melee;
     this.eyePosition(_eye);
-    aimBasis(this.player.yaw, this.player.pitch, _fwd, _right, _up);
+    aimBasis(this.player.yaw, this.aimPitch, _fwd, _right, _up);
     const cosCone = Math.cos(m.coneDeg * DEG2RAD);
     const list = this.combat.queryRadius(_eye, m.range, this.meleeCandidates);
     let best: Damageable | null = null;
@@ -1191,14 +1320,28 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       if (cos < cosCone) continue;
       const score = dist * (2 - cos);
       if (score >= bestScore) continue;
-      // Line of sight: the first thing along the ray must be this target.
-      const hit = this.combat.raycast(_eye, _dir, m.range + t.boundsRadius);
+      const hit = this.combat.raycast(_eye, _dir, m.range);
       if (!hit || hit.target !== t) continue;
       best = t;
       bestScore = score;
     }
     list.length = 0;
     return best;
+  }
+
+  /**
+   * The melee ray from the eye towards `target`'s aim point, if its first hit within `range` is
+   * that target (leaves the direction in _dir). The result is CombatWorld's shared hit.
+   */
+  private meleeReach(target: Damageable, range: number): CombatHit | null {
+    if (!target.alive) return null;
+    this.eyePosition(_eye);
+    _dir.copy(target.aimPoint).sub(_eye);
+    const dist = _dir.length();
+    if (!(dist > 1e-6)) return null;
+    _dir.multiplyScalar(1 / dist);
+    const hit = this.combat.raycast(_eye, _dir, range);
+    return hit && hit.target === target ? hit : null;
   }
 
   private tickMelee(w: WeaponInstance): void {
@@ -1223,44 +1366,55 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
 
   private resolveMeleeHit(def: WeaponDef): void {
     const m = def.melee;
+    let target = this.meleeTarget;
+    let hit = target ? this.meleeReach(target, m.range) : null;
+    if (!hit) {
+      // The locked target left the reach or died during the windup (or there was none): the
+      // blow lands on whatever is in the cone now.
+      target = this.findMeleeTarget(def);
+      hit = target ? this.meleeReach(target, m.range) : null;
+    }
+    this.meleeTarget = hit ? target : null;
+    if (hit && target) {
+      this.meleeStrike(def, target, hit, _dir);
+      return;
+    }
+    // Nothing in the cone: bash whatever is straight ahead (a body whose aim point is outside the
+    // cone, or sound/impact feedback and a push for the world and props).
     this.eyePosition(_eye);
-    aimBasis(this.player.yaw, this.player.pitch, _fwd, _right, _up);
-    const target = this.meleeTarget;
-    if (target && target.alive) {
-      _dir.copy(target.aimPoint).sub(_eye);
-      const dist = _dir.length();
-      if (dist > 1e-6) _dir.multiplyScalar(1 / dist);
-      else _dir.copy(_fwd);
-      // Moved out of reach since the swing started: whiff.
-      const hit = this.combat.raycast(_eye, _dir, m.range + target.boundsRadius);
-      if (hit && hit.target === target) {
-        this.emitImpact(hit.point, hit.normal, hit.surface, 'melee', def.id, false);
-        const info = this.damageInfo;
-        info.amount = m.damage;
-        info.zone = hit.zone ?? 'body';
-        copyVec(hit.point, info.point);
-        copyVec(_dir, info.direction);
-        info.weaponId = def.id;
-        info.element = 'physical';
-        info.source = 'player';
-        info.kind = 'melee';
-        info.impulse = m.impulse;
-        const res = this.combat.dealDamage(target, info);
-        this.stats.hits++;
-        if (res.killed) this.stats.kills++;
-        this.shakePayload.trauma = m.shake;
-        this.events.emit('camera:shake', this.shakePayload);
-        return;
-      }
+    aimBasis(this.player.yaw, this.aimPitch, _fwd, _right, _up);
+    const front = this.combat.raycast(_eye, _fwd, m.range);
+    if (!front) return;
+    const body = front.target;
+    if (body) {
+      if (body.alive && body.team !== 'player') this.meleeStrike(def, body, front, _fwd);
+      return;
     }
-    // No body in reach: bash whatever is in front (sound/impact feedback, push props).
-    const hit = this.combat.raycast(_eye, _fwd, m.range);
-    if (hit && !hit.target) {
-      this.combat.pushProp(hit, _fwd, m.propImpulse);
-      this.emitImpact(hit.point, hit.normal, hit.surface, 'melee', def.id, false);
-      this.shakePayload.trauma = m.shake * WEAPON_RULES.meleeWorldShakeScale;
-      this.events.emit('camera:shake', this.shakePayload);
-    }
+    this.combat.pushProp(front, _fwd, m.propImpulse);
+    this.emitImpact(front.point, front.normal, front.surface, 'melee', def.id, false);
+    this.shakePayload.trauma = m.shake * WEAPON_RULES.meleeWorldShakeScale;
+    this.events.emit('camera:shake', this.shakePayload);
+  }
+
+  /** The blow connects with `target` at `hit` (CombatWorld's shared hit: read before emitting). */
+  private meleeStrike(def: WeaponDef, target: Damageable, hit: CombatHit, dir: Vec3Like): void {
+    const m = def.melee;
+    const info = this.damageInfo;
+    info.amount = m.damage;
+    info.zone = hit.zone ?? 'body';
+    copyVec(hit.point, info.point);
+    copyVec(dir, info.direction);
+    info.weaponId = def.id;
+    info.element = 'physical';
+    info.source = 'player';
+    info.kind = 'melee';
+    info.impulse = m.impulse;
+    this.emitImpact(hit.point, hit.normal, hit.surface, 'melee', def.id, false);
+    const res = this.combat.dealDamage(target, info);
+    this.stats.hits++;
+    if (res.killed) this.stats.kills++;
+    this.shakePayload.trauma = m.shake;
+    this.events.emit('camera:shake', this.shakePayload);
   }
 
   private tryInspect(): void {
@@ -1298,7 +1452,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     const targets = this.combat.targets;
     this.eyePosition(_eye);
     const yaw = this.player.yaw;
-    const pitch = this.player.pitch;
+    const pitch = this.aimPitch;
     let best: Damageable | null = null;
     for (let i = 0; i < targets.length; i++) {
       const t = targets[i]!;

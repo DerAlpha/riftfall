@@ -153,11 +153,7 @@ export const AUDIO = {
     fireGain: 0.9,
     fireLayerGains: [1, 0.62, 0.5] as readonly number[],
     firePitchVariance: 0.035,
-    /**
-     * Extra per-shot layers by weapon id, until WeaponAudioDef grows a field for them: the SG-12
-     * pump-cycle sound carries its own lead-in so it lines up with the viewmodel's pump stroke.
-     */
-    extraFireLayers: { shotgun: ['weapon.shotgun.pumpCycle'] } as Readonly<Record<string, readonly string[]>>,
+    /** Gain of WeaponAudioDef.extraFire layers (e.g. the SG-12 pump cycle), relative to fireGain. */
     extraLayerGain: 0.7,
     /** Mechanical "last rounds" tick: from ceil(magazine × fraction) rounds (at most maxRounds) down. */
     lowAmmo: { id: 'weapon.lowAmmo', fraction: 0.25, maxRounds: 6, gain: 0.3, pitchRise: 0.35 },
@@ -185,7 +181,10 @@ export const AUDIO = {
       shield: 'impact.shield',
     } satisfies Record<SurfaceType | FleshSurface, string>,
     impactGain: 0.62,
-    /** Per-kind gain multipliers (pellets: nine at once; melee: one heavy blow). */
+    /**
+     * Per-kind gain multipliers (pellets: nine at once; melee: one heavy blow). Explosion impacts
+     * are silent: the blast itself sounds once through combat:explosion (`explosion` below).
+     */
     impactKindGain: {
       bullet: 1,
       pellet: 0.55,
@@ -195,6 +194,17 @@ export const AUDIO = {
       beam: 0.6,
     } satisfies Record<ImpactKind, number>,
     impactPitchVariance: 0.09,
+    /**
+     * Explosions (combat:explosion): positional; gain × radius / referenceRadius clamped to
+     * radiusGain (bigger blasts are louder, the engine's distance model attenuates).
+     */
+    explosion: {
+      id: 'explosion',
+      gain: 0.85,
+      referenceRadius: 4,
+      radiusGain: [0.5, 1.4] as const,
+      pitchVariance: 0.06,
+    },
     /** Token bucket for impact sounds: burst capacity and refill per second (shotgun blasts, walls of lead). */
     impactBurst: 5,
     impactRefillPerSecond: 45,

@@ -94,18 +94,21 @@ describe('VFX defs', () => {
       if (!id.startsWith('muzzle.')) continue;
       expect(p.flash!.duration, id).toBeLessThanOrEqual(0.06);
       expect(p.light!.duration, id).toBeLessThanOrEqual(0.08);
+      // The viewmodel rig has its own muzzle light: the world one must not light the gun twice.
+      expect(p.light!.viewmodel, id).toBe(false);
     }
     expect(VFX.tracers.minTravel).toBeGreaterThan(0);
     expect(VFX.tracers.maxTravel).toBeLessThanOrEqual(0.08);
   });
 
-  it('explosions are complete: reference radius, light, shake, shockwave, scorch', () => {
+  it('explosions are complete: reference radius, light, shake, hit pulse, shockwave, scorch', () => {
     for (const el of Object.keys(ELEMENT_TINTS) as (keyof typeof ELEMENT_TINTS)[]) {
       const p = getEffectPreset(EXPLOSION_PRESET[el])!;
       expect(p, el).toBeDefined();
       expect(p.referenceRadius, el).toBeGreaterThan(0);
       expect(p.light?.priority, el).toBe(2);
       expect(p.shake, el).toBeDefined();
+      expect(p.hitPulse?.strength, el).toBeGreaterThan(0);
       expect(p.shockwave, el).toBeDefined();
       expect(DECAL_CELLS).toContain(p.groundDecal!.kind);
     }

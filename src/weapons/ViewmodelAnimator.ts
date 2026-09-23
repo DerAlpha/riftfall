@@ -130,6 +130,13 @@ export interface ViewmodelAnimatorDeps {
    * placeholder). Called when an equip swaps models.
    */
   showModel(weaponId: string | null): WeaponViewmodelModel | null;
+  /**
+   * Weapon def lookup (timing, kick peaks). Default: the static table; pass the weapon system's
+   * effective defs (WeaponSystem.effectiveDef) once weapons carry upgrades/attachments.
+   */
+  defs?: (weaponId: string) => WeaponDef | null | undefined;
+  /** Initial accessibility "reduce flashing" (live changes arrive via settings:changed). */
+  reduceFlashing?: boolean;
 }
 
 export class ViewmodelAnimator {
@@ -140,7 +147,10 @@ export class ViewmodelAnimator {
 
   private readonly events: EventBus<GameEvents>;
   private readonly showModelFn: (id: string | null) => WeaponViewmodelModel | null;
+  private readonly lookupDef: (id: string) => WeaponDef | null | undefined;
   private readonly unsubscribers: (() => void)[] = [];
+  /** Reduce-flashing multiplier for the per-shot accent flash and the muzzle light envelope. */
+  private flashScale = 1;
 
   /** Weapon whose events drive the animation (the one being equipped / shown). */
   private weaponId: string | null = null;
@@ -171,7 +181,7 @@ export class ViewmodelAnimator {
   private lightFlash = 0;
   private time = 0;
   private ads = 0;
-  private readonly fx: ViewmodelFxState = { time: 0, heat: 0, flash: 0 };
+  private readonly fx: ViewmodelFxState = { time: 0, heat: 0, flash: 0, flicker: 1 };
 
   // Equip / holster
   private lower = 0;
@@ -216,6 +226,8 @@ export class ViewmodelAnimator {
   constructor(deps: ViewmodelAnimatorDeps) {
     this.events = deps.events;
     this.showModelFn = deps.showModel;
+    this.lookupDef = deps.defs ?? getWeaponDef;
+    this.setReduceFlashing(deps.reduceFlashing ?? false);
     for (let i = 0; i < MAX_IMPULSES; i++)
       this.impulses.push({ active: false, delay: 0, pose: createPose() });
     for (let i = 0; i < MAX_PENDING; i++) this.pending.push({ def: null, step: 'magIn', at: 0 });
@@ -232,8 +244,20 @@ export class ViewmodelAnimator {
       ev.on('weapon:ammoChanged', (e) => this.onAmmo(e.weaponId, e.mag, e.reserve, e.magSize)),
       ev.on('weapon:adsChanged', (e) => this.onAds(e.weaponId, e.aiming)),
       ev.on('weapon:inspect', (e) => this.onInspect(e.weaponId, e.duration)),
+      ev.on('weapon:inspectEnd', (e) => {
+        if (e.cancelled && e.weaponId === this.weaponId) this.cancelInspect();
+      }),
       ev.on('weapon:melee', (e) => this.onMelee(e.weaponId, e.duration, e.hit)),
+      ev.on('settings:changed', ({ settings, sections }) => {
+        if (sections.includes('accessibility')) this.setReduceFlashing(settings.accessibility.reduceFlashing);
+      }),
     );
+  }
+
+  /** accessibility.reduceFlashing: tones down the per-shot flash and muzzle light, stops the heat shimmer. */
+  setReduceFlashing(on: boolean): void {
+    this.flashScale = on ? A.reducedFlashScale : 1;
+    this.fx.flicker = on ? 0 : 1;
   }
 
   get currentWeaponId(): string | null {
@@ -266,8 +290,8 @@ export class ViewmodelAnimator {
   }
 
   /**
-   * Blend a running inspect out (the rig calls this when sprinting/mantling lowers the weapon:
-   * the weapon system ends the inspect then without an event).
+   * Blend a running inspect out (weapon:inspectEnd; the rig also calls it when sprinting or
+   * mantling lowers the weapon).
    */
   cancelInspect(): void {
     if (this.inspectActive) this.inspectCancelled = true;
@@ -279,7 +303,7 @@ export class ViewmodelAnimator {
     this.weaponId = weaponId;
     this.model = model;
     this.vdef = model ? model.def : weaponId ? (getViewmodelDef(weaponId) ?? null) : null;
-    this.wdef = weaponId ? getWeaponDef(weaponId) : undefined;
+    this.wdef = weaponId ? (this.lookupDef(weaponId) ?? undefined) : undefined;
     this.resetMotion();
     poseFromDef(this.lowered, this.vdef?.lowered ?? A.equip.lowered);
     const k = this.vdef ? this.vdef.kickSpring : A.poseFollow;
@@ -350,8 +374,8 @@ export class ViewmodelAnimator {
       this.sustained = Math.max(0, this.sustained - vdef.sustained.decay * dt);
       this.heat = Math.max(0, this.heat - vdef.heat.decay * dt);
     }
-    const accentFlash = this.accentFlash;
-    this.muzzleFlash = this.lightFlash;
+    const accentFlash = this.accentFlash * this.flashScale;
+    this.muzzleFlash = this.lightFlash * this.flashScale;
     this.accentFlash *= Math.exp(-A.accentPulse.flashDecay * dt);
     this.lightFlash *= Math.exp(-A.muzzleLight.decay * dt);
 
@@ -399,7 +423,7 @@ export class ViewmodelAnimator {
     this.endActions();
     this.holsterNext = next;
     // Refined by the weapon:equipStart that announces the switch in the same tick.
-    this.pendingRaise = next !== null ? (getWeaponDef(next)?.equipTime ?? 0) : 0;
+    this.pendingRaise = next !== null ? (this.lookupDef(next)?.equipTime ?? 0) : 0;
     this.startEquip(this.lower, 1, Math.max(0, duration));
   }
 
@@ -422,7 +446,7 @@ export class ViewmodelAnimator {
     }
     // A switch announced without holsterStart: time beyond the new weapon's equip time lowers
     // the shown weapon first.
-    const equipTime = getWeaponDef(weaponId)?.equipTime ?? dur;
+    const equipTime = this.lookupDef(weaponId)?.equipTime ?? dur;
     const holster = dur - Math.min(equipTime, dur);
     if (previous !== null && shown === previous && holster >= A.equip.holsterTolerance) {
       this.holsterNext = weaponId;
@@ -471,7 +495,9 @@ export class ViewmodelAnimator {
   }
 
   private onDryFire(weaponId: string): void {
-    if (weaponId !== this.weaponId || !this.vdef) return;
+    if (weaponId !== this.weaponId) return;
+    this.cancelInspect();
+    if (!this.vdef) return;
     this.runMotions(this.vdef.dryFire);
     this.impulse(A.dryFireImpulse, 0, 1);
   }

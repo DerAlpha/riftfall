@@ -546,6 +546,11 @@ export const VIEWMODEL_ANIM = {
   heatFlicker: { rate: 23, depth: 0.12 },
   /** Accent emissive breathing (rad/s, 0..1) and the flash on each shot (added intensity). */
   accentPulse: { rate: 2.2, depth: 0.18, fireFlash: 2.5, flashDecay: 14 },
+  /**
+   * accessibility.reduceFlashing: per-shot accent flash and viewmodel muzzle light × this (like
+   * VFX.lights.reducedFlashingScale); the heat shimmer stops.
+   */
+  reducedFlashScale: 0.45,
   /** Readouts blink at this rate (rad/s) down to `emptyBlinkLow` × intensity when the magazine is empty. */
   emptyBlinkRate: 9,
   emptyBlinkLow: 0.25,

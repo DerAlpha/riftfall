@@ -15,7 +15,7 @@ import {
   stepSpringSubstepped,
   verticalToHorizontalFov,
 } from './cameraMath';
-import { PlayerCamera } from './PlayerCamera';
+import { PlayerCamera, type LookModifier } from './PlayerCamera';
 import { PlayerController } from './PlayerController';
 import { FakeInput, fakeRender, fakeSettings, type FakeRender } from './testHelpers';
 import { ViewmodelRig } from './ViewmodelRig';
@@ -320,5 +320,35 @@ describe('PlayerCamera + ViewmodelRig', () => {
     frame(1);
     expect(render.fovCalls.length).toBe(calls);
     expect(render.camera.fov).toBeCloseTo(expected, 6);
+  });
+
+  it('ADS zoom follows adsAmount without an extra FOV damp', () => {
+    frame(30);
+    const base = settings.current.controls.fov;
+    const vFovAt = (h: number): number => horizontalToVerticalFov(h, CAMERA.fovReferenceAspect);
+    // Default ADS (no look modifier): every frame of the blend shows exactly the adsAmount's zoom.
+    input.press('ads');
+    let mid = false;
+    for (let i = 0; i < 40; i++) {
+      frame(1);
+      const ads = player.adsAmount;
+      if (ads > 0.3 && ads < 0.7) mid = true;
+      expect(render.camera.fov).toBeCloseTo(vFovAt(base + CAMERA.fov.adsZoom * ads), 1);
+    }
+    expect(mid).toBe(true);
+    input.release('ads');
+    frame(90);
+    expect(render.camera.fov).toBeCloseTo(vFovAt(base), 1);
+    // Weapon look modifier: its (already eased) zoom multiplier applies in the same frame.
+    const mod: { -readonly [K in keyof LookModifier]: LookModifier[K] } = {
+      modifyLook() {},
+      fovMultiplier: 0.6,
+    };
+    camera.lookModifier = mod;
+    frame(1);
+    expect(render.camera.fov).toBeCloseTo(vFovAt(base * 0.6), 6);
+    mod.fovMultiplier = 1;
+    frame(1);
+    expect(render.camera.fov).toBeCloseTo(vFovAt(base), 6);
   });
 });

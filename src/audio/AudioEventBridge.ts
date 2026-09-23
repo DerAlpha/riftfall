@@ -3,12 +3,16 @@
  * head, HRTF would only smear them); world sounds (impacts, casing clinks) pass `position`.
  * PlayOptions objects are reused for every call – the engine reads them synchronously.
  *
- * Weapons (M2): gunshot layers come from WeaponDef.audio (data-driven) and share one random detune
- * per shot, plus a mechanical "last rounds" tick; handling sounds prefer the per-weapon id `weapon.<id>.<key>` when the engine
- * knows it and fall back to the def's (possibly shared) id. Impacts play positionally (HRTF) through
- * a token bucket (a shotgun blast is nine impacts). The player's own hits get dry UI-bus feedback
- * (hitmarker tick, headshot ding, kill punch). Casing clinks come from the VFX casing callback via
- * playCasing().
+ * Weapons (M2): gunshot layers come from WeaponDef.audio (data-driven: `fire` shares one random
+ * detune per shot, `extraFire` layers detune on their own), plus a mechanical "last rounds" tick;
+ * handling sounds prefer the per-weapon id `weapon.<id>.<key>` when the engine knows it and fall
+ * back to the def's (possibly shared) id. The equip rack follows weapon:raiseStart (the weapon
+ * actually comes up); a raise that starts while nothing can sound (audio still locked behind the
+ * start menu, game paused) racks on game:resumed instead, when its animation really plays.
+ * Impacts play positionally (HRTF) through a token bucket (a shotgun blast is nine impacts). The
+ * player's own hits get dry UI-bus feedback (hitmarker tick, headshot ding, kill punch). Casing
+ * clinks come from the VFX casing callback via playCasing(). Explosions (combat:explosion) play one
+ * positional blast scaled by their radius.
  */
 import type { PlayOptions } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
@@ -26,6 +30,11 @@ export interface AudioBridgeTarget {
   stopLoop(handle: number, fadeSeconds?: number): void;
   /** True if `id` resolves to a sound (asset or procedural). Optional: without it def ids are used as given. */
   has?(id: string): boolean;
+  /**
+   * False while the engine cannot make any sound yet (no AudioContext before the first user
+   * gesture). Optional: without it the bridge assumes it can play.
+   */
+  readonly unlocked?: boolean;
 }
 
 const M = AUDIO.movement;
@@ -73,6 +82,13 @@ export function fireSoundLayers(weaponId: string): readonly string[] {
     fallbackFire.set(weaponId, f);
   }
   return f;
+}
+
+const NO_LAYERS: readonly string[] = [];
+
+/** Extra per-shot layers of a weapon (WeaponAudioDef.extraFire), empty if it has none. */
+export function extraFireSoundLayers(weaponId: string): readonly string[] {
+  return getWeaponDef(weaponId)?.audio.extraFire ?? NO_LAYERS;
 }
 
 /** Gain of fire layer `index` (later layers reuse the last configured gain). */
@@ -141,6 +157,10 @@ export class AudioEventBridge {
   /** Live magazine sizes (weapon:ammoChanged) – upgrades change them; defs are the fallback. */
   private readonly magSizes = new Map<string, number>();
   private readonly has: ((id: string) => boolean) | undefined;
+  /** Seen game:paused without a game:resumed since (nothing animates, sfx are muted). */
+  private gamePaused = false;
+  /** Weapon whose raise started while nothing could sound; it racks on game:resumed unless the raise ended first. */
+  private pendingRaise: string | null = null;
 
   /**
    * Casing bounce hook with the VFX ClinkCallback signature (position, sound id, impact speed) –
@@ -234,11 +254,9 @@ export class AudioEventBridge {
         for (let i = 0; i < layers.length; i++) {
           this.play(layers[i]!, W.fireGain * fireLayerGain(i), 0, 'sfx', pitch);
         }
-        const extra = W.extraFireLayers[e.weaponId];
-        if (extra) {
-          for (let i = 0; i < extra.length; i++) {
-            this.play(extra[i]!, W.fireGain * W.extraLayerGain, W.handlingPitchVariance);
-          }
+        const extra = extraFireSoundLayers(e.weaponId);
+        for (let i = 0; i < extra.length; i++) {
+          this.play(extra[i]!, W.fireGain * W.extraLayerGain, W.handlingPitchVariance);
         }
         const magSize = this.magSizes.get(e.weaponId) ?? getWeaponDef(e.weaponId)?.magazine ?? 0;
         const threshold = lowAmmoThreshold(magSize);
@@ -253,10 +271,32 @@ export class AudioEventBridge {
       events.on('weapon:dryFire', (e) => {
         this.play(weaponSoundId(e.weaponId, 'dry', has), W.dryGain, W.handlingPitchVariance);
       }),
-      events.on('weapon:equipStart', (e) => {
-        this.play(weaponSoundId(e.weaponId, 'equip', has), W.equipGain, W.handlingPitchVariance);
+      // The rack plays when the weapon actually comes up (weapon:equipStart of a switch comes at
+      // the start of the holster). The boot loadout is raised behind the start menu, before the
+      // gesture that unlocks audio: hold its rack until the game runs and the raise animates.
+      events.on('weapon:raiseStart', (e) => {
+        if (this.gamePaused || this.audio.unlocked === false) {
+          this.pendingRaise = e.weaponId;
+          return;
+        }
+        this.pendingRaise = null;
+        this.playEquip(e.weaponId);
+      }),
+      // A raise that finished (e.g. `?autostart` never pauses) or was cut short racks no more.
+      events.on('weapon:equipped', () => {
+        this.pendingRaise = null;
+      }),
+      events.on('game:paused', () => {
+        this.gamePaused = true;
+      }),
+      events.on('game:resumed', () => {
+        this.gamePaused = false;
+        const id = this.pendingRaise;
+        this.pendingRaise = null;
+        if (id !== null) this.playEquip(id);
       }),
       events.on('weapon:holsterStart', (e) => {
+        this.pendingRaise = null;
         this.play(weaponSoundId(e.weaponId, 'holster', has), W.holsterGain, W.handlingPitchVariance);
       }),
       events.on('weapon:reloadStart', (e) => {
@@ -278,6 +318,12 @@ export class AudioEventBridge {
         // The blow itself (2D): only melee impacts come from the player's own arm in M2.
         if (e.kind === 'melee') this.play(W.meleeHitId, W.meleeHitGain, W.handlingPitchVariance);
       }),
+      events.on('combat:explosion', (e) => {
+        const X = W.explosion;
+        const size = e.radius / X.referenceRadius;
+        const k = Number.isFinite(size) ? Math.min(X.radiusGain[1], Math.max(X.radiusGain[0], size)) : 1;
+        this.playAt(X.id, e.position, X.gain * k, X.pitchVariance);
+      }),
       events.on('combat:damage', (e) => {
         if (e.source !== 'player' || e.killed || !(e.amount > 0)) return;
         const now = this.now();
@@ -297,6 +343,10 @@ export class AudioEventBridge {
         if (isCritZone(e.zone)) this.play(W.hitSounds.crit, W.critKillLayerGain, 0, 'ui');
       }),
     );
+  }
+
+  private playEquip(weaponId: string): void {
+    this.play(weaponSoundId(weaponId, 'equip', this.has), W.equipGain, W.handlingPitchVariance);
   }
 
   private play(

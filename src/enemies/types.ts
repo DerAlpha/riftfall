@@ -82,7 +82,12 @@ export interface EnemyVisualsApi {
   /** Aim-assist / look-at point (upper chest). */
   computeAimPoint(type: EnemyTypeId, handle: EnemyInstanceHandle, out: THREE.Vector3): THREE.Vector3;
   /** World position of a named socket (mouth for spit, fists for slam) for the latest tick pose. */
-  computeSocket(type: EnemyTypeId, handle: EnemyInstanceHandle, socket: string, out: THREE.Vector3): THREE.Vector3;
+  computeSocket(
+    type: EnemyTypeId,
+    handle: EnemyInstanceHandle,
+    socket: string,
+    out: THREE.Vector3,
+  ): THREE.Vector3;
   /** Per frame: interpolate between tick snapshots with `alpha` and upload instance buffers once. */
   update(dt: number, alpha: number): void;
   readonly stats: { instances: number; drawCalls: number };

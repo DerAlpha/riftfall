@@ -30,30 +30,50 @@ src/
   game/Game.ts       composition root – constructs every system, wires events, owns the GameLoop
   game/              PauseController (pause/pointer-lock/visibility/console state machine),
                      GamePersistence (save wiring, session-only ?preset=, resetsave),
-                     MenuPadNavigator (gamepad D-pad/A/B menu navigation), devCommands
+                     MenuPadNavigator (gamepad D-pad/A/B menu navigation), devCommands,
+                     fixedTick (the fixed-tick order, see below)
   core/              engine-agnostic building blocks (no three.js imports except contracts.ts)
     contracts.ts     ALL public system interfaces (RenderApi, PhysicsApi, InputApi, …) – read this first
     events.ts        GameEvents map for the typed EventBus
     EventBus.ts      typed pub/sub, isolates throwing handlers
     GameLoop.ts      fixed-timestep loop (60 Hz sim) + interpolated rendering, timeScale, pause, fps limit
     Rng.ts           seeded sfc32 RNG (daily challenge determinism) – never Math.random() for gameplay
-    Pool.ts          generic object pool (for M2+ projectiles, particles, decals, enemies; unused in M1 –
-                     AudioEngine keeps its own voice free list)
+    Pool.ts          generic object pool (for projectiles/enemies; still unused – VFX pools are
+                     preallocated typed-array buffers/rings, AudioEngine keeps its own voice free list)
     math.ts          damp/spring/noise/ring buffer helpers
     log.ts           tagged logger with history (dev console / debug overlay)
-  defs/              ALL balancing & tuning data (no magic numbers in systems)
+  defs/              ALL balancing & tuning data (no magic numbers in systems): weapons, combat,
+                     viewmodels, vfx, targets, … (weapons.ts: every weapon is data, no per-id code)
   input/             InputSystem (keyboard/mouse/gamepad → Actions, rebinding, pointer lock)
   physics/           PhysicsWorld (Rapier wrapper, collision groups, raycasts, interpolated props)
-  player/            PlayerController (movement state machine on Rapier KCC), PlayerCamera, ViewmodelRig
+  player/            PlayerController (movement state machine on Rapier KCC), PlayerCamera (look, bob,
+                     shake, recoil kicks, FOV), ViewmodelRig (own scene/camera/FOV, sway, bob, sockets)
+  weapons/           WeaponSystem (inventory, state machine, hitscan + penetration, reload, ADS, melee,
+                     inspect, switching), recoil/spread/damage/aimAssist math, resolveWeapon (Rift Forge
+                     tier, attachments, element → effective def), ViewmodelAnimator (procedural kicks,
+                     reloads, inspect, equip)
+    viewmodels/      procedural weapon models (registry by weapon id, sockets muzzle/ejectPort/sight)
+  combat/            CombatWorld (hit resolution: BVH static meshes, analytic hitboxes, Rapier props;
+                     damage + combat:* events), hitMath (ray vs sphere/capsule)
+  vfx/               VfxSystem + VfxBridge (event → VFX): GPU instanced particles, decal ring, tracers,
+                     casings (cheap CPU physics, raycast bounces), pooled flash lights, muzzle flash,
+                     screen-space shockwave effect
+  enemies/           M3 contract: enemy visuals/AI (EnemyVisualsApi, pose-driven hitboxes)
   render/            RenderSystem (renderer, scenes, cameras), QualityManager, Environment, CSM shadows
-    postfx/          PostFX pipeline (N8AO, bloom, DoF, motion blur, height fog, CA, grading LUT, grain, SMAA)
-    materials/       GPU procedural PBR texture generator + MaterialLibrary (asset textures override)
-    vfx/             volumetric light cones, dust particles (GPU/instanced)
-  world/             level module kit (batched geometry + colliders) and level builders (TestRoom)
+    postfx/          PostFX pipeline (N8AO, bloom, DoF, motion blur, height fog, shockwave, CA, grading
+                     LUT, grain, SMAA)
+    materials/       GPU procedural PBR texture generator + MaterialLibrary (asset textures override),
+                     dissolve (noise dissolve patch for dying targets/enemies)
+    vfx/             volumetric light cones, dust particles (GPU/instanced) – level atmosphere only
+  world/             level module kit (batched geometry + colliders), level builders (TestRoom),
+                     TrainingTargets (calibration-hall dummies: rails, shields, weakpoints)
   assets/            manifest, loader (glTF+Draco/Meshopt, KTX2, HDR), placeholder system
-  audio/             AudioEngine (buses, ducking, reverb zones, HRTF), procedural synth fallbacks
+  audio/             AudioEngine (buses, ducking, reverb zones, HRTF), procedural synth fallbacks,
+                     weaponSynth (procedural gunshots/impacts/casings/hit sounds), AudioEventBridge
   save/              SaveSystem (IndexedDB → localStorage → memory), migrations, SettingsStore
-  ui/                DOM HUD, debug overlay (F3), dev console (^), Preact menus, loading screen
+  ui/                DOM HUD (hud/: crosshair, WeaponHud ammo/slots, CombatHud hitmarker/damage
+                     numbers/kill confirmation), debug overlay (F3), dev console (^), Preact menus,
+                     loading screen
 ```
 
 ### Frame / tick flow
@@ -62,17 +82,33 @@ src/
 rAF → GameLoop.advance(dt)
   ├─ beginFrame (every frame, also paused): input.beginFrame (poll pads, compute edges)
   │     → pauseState.onFrame (pause binding opens/closes the pause menu)
-  │     → padNav.update (menus open: D-pad/A/B) → playerCamera.applyLook (unpaused: mouse/stick look)
-  ├─ fixedUpdate (60 Hz, 0..maxSubSteps times, unpaused): player.fixedUpdate (samples input, latches
-  │     edges once per frame) → kill plane → physics.step → health.fixedUpdate → level.fixedUpdate
+  │     → padNav.update (menus open: D-pad/A/B) → playerCamera.applyLook (unpaused: mouse/stick look
+  │       through the weapon LookModifier: ADS sensitivity, gamepad-only aim assist)
+  ├─ fixedUpdate (60 Hz, 0..maxSubSteps times, unpaused) – game/fixedTick.ts:
+  │     player.fixedUpdate (samples input, latches edges once per frame) → weapons.fixedUpdate (fire,
+  │     reload, melee: shots resolve NOW) → targets.fixedUpdate (M3: enemies here, after the weapons)
+  │     → kill plane → physics.step → health.fixedUpdate → level.fixedUpdate
   ├─ update (per frame, unpaused): player.update (latches edges of frames without a tick, ADS, eye)
-  │     → playerCamera.update (bob/roll/shake/FOV/DoF) → viewmodel → level.update
-  │     → audio listener + sun probe → HUD
+  │     → weapons.update (ADS blend, recoil counter-pull) → playerCamera.update (bob/roll/shake/
+  │     recoil/FOV incl. ADS zoom/DoF) → viewmodel (sway, bob, animator) → vfx.update (flashes,
+  │     casings, tracers at this frame's sockets) → render.advanceWorldTime (shockwaves)
+  │     → level.update → targets.update(alpha) → audio listener + sun probe → HUD (crosshair cone
+  │     projected with this frame's FOV)
   └─ render (every frame): physics.syncVisuals(alpha) → render.render → quality.onFrame (unpaused only)
         → debug overlay → input.endFrame
 ```
 
 - Simulation state (positions, velocities) only changes in `fixedUpdate`. Visuals interpolate with `alpha`.
+- **Shots resolve against the previous tick's hitboxes**: weapons tick before targets/enemies. The last
+  rendered frame showed damageables at lerp(prev, cur, alpha), so their hitboxes lead the visible model by
+  (1 − alpha) ticks; stepping them before the weapons would add a full tick (cm-scale misses on moving
+  weakpoints/heads). New damageables tick after `weapons.fixedUpdate` and before `physics.step`
+  (kinematic moves must land in the same step); `fixedTick.test.ts` guards the order.
+- Hitscan starts at the rendered camera (`render.camera.position`, incl. the movement-driven view pitch):
+  the player hits what the crosshair shows. Tracers/flashes start at the muzzle socket as displayed.
+- `weapons.update` runs before `playerCamera.update` (the camera reads this frame's ADS blend, recoil and
+  FOV multiplier); `vfx.update` runs after the viewmodel (muzzle flashes, casings and player tracers are
+  queued in the tick and resolved at the sockets the player sees this frame).
 - Input edges (`pressed`) are per-frame and computed in `beginFrame`, before the ticks. Tick consumers
   sample and latch them in `fixedUpdate` itself (so this frame's ticks see this frame's presses) and
   also in `update` for frames that ran no tick. Never move edge latching into `update` only – that
@@ -86,10 +122,14 @@ rAF → GameLoop.advance(dt)
 Authoritative order: the header of `src/render/postfx/PostFXPipeline.ts`.
 
 ```
-RenderPass(world)
+RenderPass(world)                                 (incl. decals, casings, training targets)
   → N8AO                                          (off: pass absent)
   → EffectPass[MotionBlur?, HeightFog]            (world-space; MB is a convolution → first)
-  → Volumetrics                                   (additive cones/shafts/dust on RENDER.volumetricLayer)
+  → EffectPass[Shockwave]                         (explosion UV distortion; own pass, enabled only
+                                                   while a wave runs)
+  → Volumetrics                                   (RENDER.volumetricLayer: level cones/shafts/dust +
+                                                   VFX particles/tracers + target barriers; always
+                                                   present, enabled while any of them draws)
   → EffectPass[DepthOfField]                      (own pass, enabled only while aiming)
   → RenderPass(viewmodel, clear depth only)
   → EffectPass[CA?, Bloom?, Exposure, ToneMapping (AgX/ACES), LUT3D]
@@ -103,6 +143,9 @@ RenderPass(world)
 - Viewmodel is drawn after world-space effects so it is never fogged/blurred and never clips into walls.
 - Additive volumetrics live on `RENDER.volumetricLayer` (main camera never sees it) and are drawn after
   AO and fog, depth-tested against the world; their shaders apply the fog transmittance themselves.
+  VFX particles/tracers and the targets' energy barriers share that layer (not darkened by AO, drawn
+  after the shockwave so fireballs stay undistorted); `render.setVolumetricContentProbe` tells the
+  pass when they draw, so it costs nothing while the layer is empty.
 - Bloom is "selective" via an HDR threshold (`POSTFX.bloom.luminanceThreshold`, 0.92 on pre-exposure HDR):
   the emissive light panels (intensity 6–9) and bright specular highlights bloom. Deliberate: a
   mask-based emissive-only bloom costs an extra scene render; a test keeps every emissive material
@@ -136,7 +179,7 @@ RenderPass(world)
 | #   | Milestone                                                                   | Status |
 | --- | --------------------------------------------------------------------------- | ------ |
 | 1   | Setup, renderer, post-FX, test room, FPS controller (full movement)         | done   |
-| 2   | Weapons (3), viewmodel, recoil, hit feedback, decals, particles             | –      |
+| 2   | Weapons (3), viewmodel, recoil, hit feedback, decals, particles             | done   |
 | 3   | Enemy AI + navmesh, 3 enemy types, wave spawner, game over → vertical slice | –      |
 | 4   | Economy: points, wall buys, doors, mystery box, perks, power-ups            | –      |
 | 5   | All weapons, attachments, Rift Forge, elemental mods                        | –      |
@@ -174,11 +217,51 @@ RenderPass(world)
   Roof slabs therefore carry colliders; purely visual sky-glow panels neither collide nor cast shadows.
 - **Quality auto-detect** runs once (GPU string heuristics, SwiftShader → low), then a one-time runtime benchmark
   may step down one preset; dynamic resolution keeps the target FPS afterwards.
+- **Hit resolution (M2, CombatWorld):** static level meshes are hit through three-mesh-bvh on the rendered
+  triangles (exact surface, material → surface/penetrable); damageables through analytic sphere/capsule
+  hitboxes behind a bounds-sphere broadphase; dynamic props through Rapier (the collider is authoritative,
+  the mesh is interpolated; shots push them, they get no world-space decals). **Only meshes named
+  `level:<materialId>[:noshadow]` or `panel:<materialId>` (`COMBAT.staticMeshPrefixes`) stop
+  bullets** – LevelKit names its batches that way; geometry built any other way (e.g. a glTF map) must
+  follow the rule, or bullets, decals and line of sight pass through what the player collides with.
+- **Shots resolve against the previous tick's hitboxes** (weapons tick before targets/enemies, see
+  Frame / tick flow) and **start at the rendered camera** (WYSIWYG, incl. landing dip / mantle pitch).
+- **Reused payloads and hits:** hot-path event payloads (`weapon:fired`/`ammoChanged`,
+  `combat:impact`/`tracer`/`damage`/`kill`, shake, pulse), `CombatHit` and `RaycastHit` are shared
+  objects. Handlers copy what they keep and read everything before emitting or raycasting again (a nested
+  raycast rewrites the shared hit).
+- **Weapons are data:** `defs/weapons.ts` + `resolveWeapon` (Rift Forge tier, attachments, element → one
+  effective def) drive fire modes, recoil patterns, spread, ADS, reload markers, VFX and audio ids;
+  WeaponSystem, ViewmodelAnimator, VFX and audio never branch on a weapon id. New viewmodels register a
+  builder in `weapons/viewmodels/index.ts`.
+- **Viewmodel:** own scene + camera (own FOV) drawn after the world effects; procedural models and
+  procedural animation (springs + time-based curves, no keyframe assets); gamepad aim assist only
+  applies while the gamepad is the active device (`controls.aimAssist`).
+- **VFX are pooled up front at max quality capacity** (particle buffers, instanced decal ring, tracers,
+  casings) and quality only changes the used capacity. **Flash lights are a constant pool**
+  (`VFX.lights.count` PointLights at intensity 0, + one in the viewmodel scene): three keys programs on the
+  light count, so lights are never added/removed at runtime. VFX is therefore built **before
+  `render.applyAtmosphere()`**, so the atmosphere warm-up compiles the world for the final light count once.
+- **Shader warm-up with a render target bound:** the world and the viewmodel are only drawn into the post
+  chain's targets, and three keys programs on the output color space (canvas sRGB vs working space), so
+  `renderer.compile` runs with a 1×1 target bound (Game `compileForPostChain`, `ViewmodelRig.warmupWeapons`);
+  `vfx.warmup()` then renders one invisible composer frame with every VFX draw active. The loadout is
+  handed out (`weapons.setLoadout`) only after every weapon-event listener exists.
+- **Weapon audio is procedural** (`audio/weaponSynth.ts`, rendered once per sample rate and cached);
+  real assets registered under the same ids override it. AudioEventBridge maps weapon/combat events to it.
+- **Hit feedback:** hitmarker, damage numbers (toggleable: `gameplay.damageNumbers`/`hitmarkers`), kill
+  confirmation, trauma screen shake (`camera:shake`, scaled by `accessibility.screenShake`) and
+  explosion hit pulses (`fx:hitPulse`, scaled by `reduceFlashing`).
 
 ## Known limitations / next steps
 
 - Only verified on SwiftShader (headless); real-GPU frame times on the High preset still need a pass (M12 budget).
-- Viewmodel is a procedural placeholder device; M2 replaces it with weapons via `ViewmodelRig.setModel()`.
+- Weapons are procedural models; unknown viewmodel ids fall back to the placeholder device. Only hitscan
+  fire is implemented: projectile/launcher kinds are refused (M5), so explosions are reachable only via the
+  dev console `explode`. `WeaponSystem.setWeaponMods` (Rift Forge / attachments / elements) is wired to
+  nothing in gameplay yet (M5).
+- `core/Pool.ts` is still unused (M3 enemies/projectiles are its first candidates).
 - KTX2 path is implemented but untested with real files (`toktx` not available when fetching); textures ship as JPG.
 - Height-fog sun glow is not shadowed (indoors it relies on low `sunScatterStrength`); shafts come from the level.
-- Next: **Milestone 2** – weapon system (3 weapons), viewmodel animations, recoil, hit feedback, decals, particles.
+- Next: **Milestone 3** – enemy AI + navmesh (recast-navigation), 3 enemy types, wave spawner, game over.
+  Enemies tick in `game/fixedTick.ts` after the weapons and register with CombatWorld like the targets.

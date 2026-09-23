@@ -1,8 +1,9 @@
 /**
  * Ejected shell casings: pooled, instanced (one InstancedMesh per casing mesh kind – brass
  * cartridge cases, red shotgun hulls), lit world geometry with cheap CPU physics (CasingSim).
- * Collision: one floor probe at ejection plus a ray along the velocity every
- * VFX.casings.probeInterval frames per casing (staggered), through PhysicsApi.raycast.
+ * Collision: a floor probe at ejection, then every VFX.casings.probeInterval frames per flying
+ * casing (staggered) a down ray for the floor under it (ledges, stairs, ramps) and a ray along its
+ * velocity for walls, through PhysicsApi.raycast.
  * Bounces fast enough call `onClink(position, soundId, impactSpeed)` – wire it to
  * AudioEventBridge.playCasing(soundId, position, impactSpeed).
  */
@@ -226,14 +227,27 @@ export class CasingSystem {
     this.onClink(_clinkPos, def.clinkSound, b.impactSpeed);
   };
 
-  /** Sparse wall probes: each moving casing casts along its velocity every Nth frame. */
+  /**
+   * Sparse probes, every Nth frame per flying casing: down for the floor under it (the floor
+   * found at ejection ends at ledges and stair edges), then along its velocity for walls (a floor
+   * hit there raises the floor again).
+   */
   private probe(dt: number): void {
     const physics = this.physics;
     if (!physics) return;
     const sim = this.sim;
-    const interval = Math.max(1, VFX.casings.probeInterval);
+    const c = VFX.casings;
+    const interval = Math.max(1, c.probeInterval);
     for (let i = 0; i < sim.activeLimit; i++) {
       if (!sim.alive[i] || sim.rest[i]! >= 0 || (this.frame + i) % interval !== 0) continue;
+      _origin.x = sim.px[i]!;
+      _origin.y = sim.py[i]!;
+      _origin.z = sim.pz[i]!;
+      const down = physics.raycast(_origin, _probeDir, c.floorProbe, PROBE_OPTS);
+      // Nothing below: the casing falls (maxFlightTime removes it). Distance 0 means the ray
+      // started inside geometry – keep the known floor rather than popping the casing onto it.
+      if (!down) sim.floorY[i] = Number.NEGATIVE_INFINITY;
+      else if (down.distance > 0) sim.floorY[i] = down.point.y;
       const vx = sim.vx[i]!;
       const vy = sim.vy[i]!;
       const vz = sim.vz[i]!;
@@ -242,9 +256,6 @@ export class CasingSystem {
       _probeDirV.x = vx / speed;
       _probeDirV.y = vy / speed;
       _probeDirV.z = vz / speed;
-      _origin.x = sim.px[i]!;
-      _origin.y = sim.py[i]!;
-      _origin.z = sim.pz[i]!;
       // Cover the frames until the next probe (+ one for safety) plus the casing radius.
       const reach = speed * dt * (interval + 1) + sim.radius[i]! * 2;
       const hit = physics.raycast(_origin, _probeDirV, reach, PROBE_OPTS);

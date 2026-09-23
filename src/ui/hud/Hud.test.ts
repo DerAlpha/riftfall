@@ -63,13 +63,51 @@ describe('Hud', () => {
     expect((root.firstElementChild as HTMLElement).style.getPropertyValue('--hud-scale')).toBe('1.25');
   });
 
-  it('writes the crosshair spread only when it changes noticeably', () => {
+  it('sizes the crosshair gap from the real cone (viewport height, vertical FOV, HUD scale)', () => {
     const xh = root.querySelector('.hud-crosshair') as HTMLElement;
-    hud.setSpread(1);
-    expect(xh.style.getPropertyValue('--xh-spread')).toBe(`${HUD.crosshair.spreadMaxPx.toFixed(1)}px`);
+    const h = window.innerHeight;
+    const vFov = 60;
+    const gap = (): number => Number.parseFloat(xh.style.getPropertyValue('--xh-spread'));
+    const cone = (deg: number, fov = vFov): number =>
+      ((h / 2) * Math.tan((deg * Math.PI) / 180)) / Math.tan((fov * Math.PI) / 360);
+    hud.setSpreadCone(4.5, vFov);
+    expect(gap()).toBeCloseTo(cone(4.5) - HUD.crosshair.gapPx, 1);
+    // A narrower FOV (zoom / FOV setting) widens the cone on screen.
+    hud.setSpreadCone(4.5, vFov * 0.7);
+    expect(gap()).toBeCloseTo(cone(4.5, vFov * 0.7) - HUD.crosshair.gapPx, 1);
+    // The crosshair is scaled by the HUD scale: the gap compensates.
+    settings.update('accessibility', { hudScale: 2 });
+    hud.setSpreadCone(4.5, vFov);
+    expect(gap()).toBeCloseTo(cone(4.5) / 2 - HUD.crosshair.gapPx, 1);
+    // Tiny cones clamp at the base gap, huge ones at the readable maximum; small changes are skipped.
+    hud.setSpreadCone(0, vFov);
+    expect(gap()).toBe(0);
+    hud.setSpreadCone(80, vFov);
+    expect(gap()).toBe(HUD.crosshair.maxSpreadPx);
     xh.style.setProperty('--xh-spread', 'sentinel');
-    hud.setSpread(1 - HUD.crosshair.spreadQuantum / 2);
+    hud.setSpreadCone(79, vFov);
     expect(xh.style.getPropertyValue('--xh-spread')).toBe('sentinel');
+    // The base gap is the def value (the CSS default is only a fallback).
+    expect(xh.style.getPropertyValue('--xh-gap')).toBe(`${HUD.crosshair.gapPx}px`);
+  });
+
+  it('projects the crosshair cone onto the game viewport (HUD layer size, re-measured on resize)', () => {
+    const xh = root.querySelector('.hud-crosshair') as HTMLElement;
+    const gap = (): number => Number.parseFloat(xh.style.getPropertyValue('--xh-spread'));
+    // The HUD layer covers the canvas: its CSS height (not the window, not the drawing buffer) counts.
+    Object.defineProperty(root, 'clientWidth', { configurable: true, value: 2560 });
+    Object.defineProperty(root, 'clientHeight', { configurable: true, value: 1440 });
+    window.dispatchEvent(new Event('resize'));
+    // Default 90° horizontal FOV at 16:9 → 58.7° vertical: the shotgun's 4.5° hip cone is ~101 px at 1440p.
+    const vFov = (2 * Math.atan(Math.tan(Math.PI / 4) * (9 / 16)) * 180) / Math.PI;
+    hud.setSpreadCone(4.5, vFov);
+    const r1440 = (720 * Math.tan((4.5 * Math.PI) / 180)) / Math.tan((vFov * Math.PI) / 360);
+    expect(r1440).toBeCloseTo(100.7, 0);
+    expect(gap()).toBeCloseTo(r1440 - HUD.crosshair.gapPx, 1);
+    Object.defineProperty(root, 'clientHeight', { configurable: true, value: 1080 });
+    window.dispatchEvent(new Event('resize'));
+    hud.setSpreadCone(4.5, vFov);
+    expect(gap()).toBeCloseTo((r1440 * 1080) / 1440 - HUD.crosshair.gapPx, 1);
   });
 
   it('points the damage indicator towards the source relative to the camera yaw', () => {

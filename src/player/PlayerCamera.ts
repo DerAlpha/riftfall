@@ -5,7 +5,8 @@
  * Per frame in update() (after `player.update`):
  * - places `render.camera` at the interpolated eye position plus feel effects
  *   (head bob, strafe roll, slide tilt, mantle pull-up dip, landing dip spring, trauma shake),
- * - drives FOV (settings FOV is HORIZONTAL at 16:9 → converted to vertical) with kicks,
+ * - drives FOV (settings FOV is HORIZONTAL at 16:9 → converted to vertical): the base FOV and
+ *   movement kicks are damped, the ADS zoom follows the (already eased) adsAmount directly,
  * - drives ADS depth of field (ads amount + focus distance from a center ray; the render
  *   system smooths both). The render system itself mirrors the camera rotation onto the
  *   viewmodel camera.
@@ -18,7 +19,14 @@
  * `lookModifier` replaces the default ADS sensitivity scaling (weapon ADS sensitivity, gamepad
  * aim assist) and the default ADS FOV zoom.
  */
-import type { InputApi, LookOut, RaycastOptions, RenderApi, SettingsStore } from '../core/contracts';
+import type {
+  InputApi,
+  LookModifier,
+  LookOut,
+  RaycastOptions,
+  RenderApi,
+  SettingsStore,
+} from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/events';
 import { DEG2RAD, clamp, damp, lerp, noise1D, wrapAngle, type SpringState } from '../core/math';
@@ -50,17 +58,8 @@ const _dir = { x: 0, y: 0, z: 0 };
 const PUNCH = WEAPON_CAMERA.viewPunch;
 const MAX_PUNCH = WEAPON_CAMERA.maxViewPunchDeg * DEG2RAD;
 
-/**
- * External look hook (weapon system). When set it replaces the default ADS handling: it scales
- * and may bend this frame's look delta (weapon ADS sensitivity, gamepad aim assist), and its
- * FOV multiplier replaces CAMERA.fov.adsZoom.
- */
-export interface LookModifier {
-  /** Adjust the look delta in place (radians, InputApi.getLook convention: yaw + = right, pitch + = up). */
-  modifyLook(look: LookOut): void;
-  /** Horizontal FOV multiplier (ADS zoom), 1 = unzoomed. */
-  readonly fovMultiplier: number;
-}
+/** The external look hook contract lives in core/contracts.ts (re-exported for existing imports). */
+export type { LookModifier };
 
 interface RecoilImpulse {
   pitch: number;
@@ -108,12 +107,18 @@ export class PlayerCamera {
   private readonly landSpring: SpringState = { value: 0, velocity: 0 };
   private trauma = 0;
   private time = 0;
-  private fovH: number;
+  /**
+   * Damped part of the horizontal FOV (degrees): base setting + movement kicks. The ADS zoom is
+   * added on top undamped, so it tracks the weapon's ADS in/out time like sensitivity and spread.
+   */
+  private fovKickH: number;
   private lastVerticalFov = -1;
   /** applyLook() already ran this frame (update() must not apply the look a second time). */
   private lookApplied = false;
   private focusDistance: number = POSTFX.depthOfField.defaultFocusDistance;
   private _roll = 0;
+  /** Movement-driven view pitch (landing dip, mantle) of the last update (rad). */
+  private _aimPitchOffset = 0;
   /** Weapon look hook (ADS sensitivity, aim assist, ADS zoom); null = default ADS handling. */
   lookModifier: LookModifier | null = null;
   private readonly recoilImpulses: RecoilImpulse[] = [];
@@ -132,7 +137,7 @@ export class PlayerCamera {
     this.settings = deps.settings;
     this.focusOpts = { groups: FOCUS_GROUPS, excludeCollider: this.player.collider };
     this.render.camera.rotation.order = 'YXZ';
-    this.fovH = this.baseFov();
+    this.fovKickH = this.baseFov();
     for (let i = 0; i < WEAPON_CAMERA.maxRecoilImpulses; i++) {
       this.recoilImpulses.push({ pitch: 0, yaw: 0, duration: 0, elapsed: 0, active: false });
     }
@@ -181,6 +186,14 @@ export class PlayerCamera {
   /** Current visual view-punch pitch (radians, before accessibility scaling). */
   get viewPunchPitch(): number {
     return this.punchPitch.value;
+  }
+  /**
+   * Movement-driven pitch (radians, landing dip + mantle) the camera adds to `player.pitch`. Unlike
+   * punch/shake it lasts long enough to aim with: weapons add it to their shots so bullets land on
+   * the crosshair (the sights follow the camera).
+   */
+  get aimPitchOffset(): number {
+    return this._aimPitchOffset;
   }
 
   /**
@@ -285,7 +298,7 @@ export class PlayerCamera {
     // --- look: normally applied by applyLook() before this frame's ticks ---
     if (!this.lookApplied) this.applyLook();
     this.lookApplied = false;
-    if (!Number.isFinite(this.fovH)) this.fovH = this.baseFov();
+    if (!Number.isFinite(this.fovKickH)) this.fovKickH = this.baseFov();
     this.stepRecoil(dt);
     this.stepPunch(dt);
 
@@ -358,12 +371,8 @@ export class PlayerCamera {
       mantle * CAMERA.mantle.rollDeg +
       shakeRoll +
       this.punchRoll.value * punchScale;
-    const pitch =
-      player.pitch +
-      shakePitch +
-      this.punchPitch.value * punchScale +
-      dip * CAMERA.landing.pitchDegPerMeter * DEG2RAD +
-      mantle * CAMERA.mantle.pitchDeg;
+    this._aimPitchOffset = dip * CAMERA.landing.pitchDegPerMeter * DEG2RAD + mantle * CAMERA.mantle.pitchDeg;
+    const pitch = player.pitch + shakePitch + this.punchPitch.value * punchScale + this._aimPitchOffset;
     cam.rotation.set(pitch, player.yaw + shakeYaw + this.punchYaw.value * punchScale, this._roll);
 
     // --- FOV (horizontal setting → vertical) ---
@@ -371,9 +380,8 @@ export class PlayerCamera {
     if (state === 'dash') kick = CAMERA.fov.dashKick;
     else if (state === 'slide') kick = CAMERA.fov.slideKick;
     else if (player.sprinting && speed > MOVEMENT.ground.runSpeed) kick = CAMERA.fov.sprintKick;
-    const fovTarget = this.baseFov() + kick * motion + this.adsFovOffset(ads);
-    this.fovH = damp(this.fovH, fovTarget, CAMERA.fov.lambda, dt);
-    const vFov = horizontalToVerticalFov(this.fovH, CAMERA.fovReferenceAspect);
+    this.fovKickH = damp(this.fovKickH, this.baseFov() + kick * motion, CAMERA.fov.lambda, dt);
+    const vFov = horizontalToVerticalFov(this.fovKickH + this.adsFovOffset(ads), CAMERA.fovReferenceAspect);
     if (Math.abs(vFov - this.lastVerticalFov) > CAMERA.fov.epsilon) {
       this.render.setFov(vFov);
       this.lastVerticalFov = vFov;
@@ -426,8 +434,9 @@ export class PlayerCamera {
    * when update() does not run). The next update() continues from here without a second zoom.
    */
   snapFov(): void {
-    this.fovH = this.baseFov() + this.adsFovOffset(this.player.adsAmount);
-    const vFov = horizontalToVerticalFov(this.fovH, CAMERA.fovReferenceAspect);
+    this.fovKickH = this.baseFov();
+    const fovH = this.fovKickH + this.adsFovOffset(this.player.adsAmount);
+    const vFov = horizontalToVerticalFov(fovH, CAMERA.fovReferenceAspect);
     this.render.setFov(vFov);
     this.lastVerticalFov = vFov;
   }

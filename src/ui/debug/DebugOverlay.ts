@@ -47,6 +47,31 @@ export interface DebugSnapshot {
     crouched: boolean;
   };
   missingAssets: readonly string[];
+  /** M2 combat / VFX budget counters (rows omitted when absent). */
+  combat?: DebugCombatSnapshot;
+}
+
+export interface DebugCombatSnapshot {
+  /** Combat raycasts (shots, pellets, penetration continuations, LOS) per rendered frame. */
+  raycastsPerFrame: number;
+  targets: number;
+  staticMeshes: number;
+  particles: number;
+  particleCapacity: number;
+  decals: number;
+  decalCapacity: number;
+  flashLights: number;
+  flashLightCapacity: number;
+  casings: number;
+  /** Weapon in hand; null when unarmed. */
+  weapon: {
+    id: string;
+    state: string;
+    spreadDeg: number;
+    mag: number;
+    magSize: number;
+    reserve: number;
+  } | null;
 }
 
 const G = DEBUG_OVERLAY.graph;
@@ -250,6 +275,17 @@ export class DebugOverlay {
       `  Pos ${fmtVec(p.position, 2)}`,
       `  Vel ${fmtVec(p.velocity, 2)}`,
     ];
+    const c = s.combat;
+    if (c) {
+      const w = c.weapon;
+      lines.push(
+        `Kampf ${fmt(c.raycastsPerFrame, 1)} Strahlen/Frame  Ziele ${c.targets}  Statik-Meshes ${c.staticMeshes}`,
+        `VFX Partikel ${fmtInt(c.particles)}/${fmtInt(c.particleCapacity)}  Decals ${c.decals}/${c.decalCapacity}  Blitzlichter ${c.flashLights}/${c.flashLightCapacity}  Hülsen ${c.casings}`,
+        w
+          ? `Waffe ${w.id} (${w.state})  Streuung ${fmt(w.spreadDeg, 2)}°  Magazin ${w.mag}/${w.magSize} (+${w.reserve})`
+          : 'Waffe —',
+      );
+    }
     if (missing.length > 0) {
       const shown = missing.slice(0, DEBUG_OVERLAY.maxMissingAssets).join(', ');
       const more =

@@ -3,8 +3,9 @@
 Sci-Fi-Horror-Wellenshooter für den Browser: Ein interdimensionaler Riss hat eine Forschungsstation überrannt.
 Das Spiel läuft komplett im Browser (WebGL2) als statischer Build, ohne Plugin und ohne Download.
 
-> Stand: **Meilenstein 1** – Renderer, Post-FX-Pipeline, Kalibrierungshalle (Testraum) und FPS-Controller mit vollem
-> Movement. Details, Architektur und Konventionen stehen in [CLAUDE.md](CLAUDE.md).
+> Stand: **Meilenstein 2** – Renderer, Post-FX-Pipeline, Kalibrierungshalle (Testraum), FPS-Controller mit vollem
+> Movement und Waffensystem (Pistole, Sturmgewehr, Schrotflinte) mit Viewmodel, Rückstoß, Trefferfeedback, Decals,
+> Partikeln und Trainingszielen. Details, Architektur und Konventionen stehen in [CLAUDE.md](CLAUDE.md).
 
 ## Schnellstart
 
@@ -23,18 +24,23 @@ npm run preview
 
 ## Steuerung (Standard, frei belegbar im Pausenmenü)
 
-| Aktion                          | Tastatur/Maus    | Gamepad              |
-| ------------------------------- | ---------------- | -------------------- |
-| Bewegen                         | W A S D          | linker Stick         |
-| Umsehen                         | Maus             | rechter Stick        |
-| Springen / Doppelsprung         | Leertaste        | A                    |
-| Ducken / Sliden (beim Sprinten) | Strg / C         | B                    |
-| Sprinten                        | Shift            | linker Stick drücken |
-| Dash                            | Q                | RB                   |
-| Zielen (Tiefenschärfe-Test)     | rechte Maustaste | LT                   |
-| Pause                           | Esc / P          | Start                |
-| Debug-Overlay                   | F3               | –                    |
-| Entwickler-Konsole              | ^                | –                    |
+| Aktion                          | Tastatur/Maus    | Gamepad               |
+| ------------------------------- | ---------------- | --------------------- |
+| Bewegen                         | W A S D          | linker Stick          |
+| Umsehen                         | Maus             | rechter Stick         |
+| Springen / Doppelsprung         | Leertaste        | A                     |
+| Ducken / Sliden (beim Sprinten) | C                | B                     |
+| Sprinten                        | Shift            | linker Stick drücken  |
+| Dash                            | Q                | RB                    |
+| Feuern                          | linke Maustaste  | RT                    |
+| Zielen (über Kimme und Korn)    | rechte Maustaste | LT                    |
+| Nachladen                       | R                | X                     |
+| Nahkampf                        | V                | rechter Stick drücken |
+| Waffe wechseln                  | 1–4 / Mausrad    | Y                     |
+| Waffe inspizieren               | I                | Steuerkreuz rechts    |
+| Pause                           | Esc / P          | Start                 |
+| Debug-Overlay                   | F3               | –                     |
+| Entwickler-Konsole              | ^                | –                     |
 
 Mantling passiert automatisch: gegen eine niedrige Kante springen oder im Sprung nach vorne drücken.
 
@@ -45,6 +51,7 @@ npm run check    # Typecheck + ESLint + Vitest
 npm run smoke    # Headless-Chromium-Smoke-Test (nach npm run build)
 ```
 
-Nützliche Konsolenbefehle (`^`): `help`, `noclip`, `god`, `tp spawn`, `preset ultra`, `hurt 30`, `timescale 0.3`, `stats`.
+Nützliche Konsolenbefehle (`^`): `help`, `noclip`, `god`, `tp spawn`, `preset ultra`, `hurt 30`, `timescale 0.3`, `stats`,
+`give rifle`, `infammo`, `targets`, `explode 4 fire`, `decals`.
 
 Credits und Lizenzen: [CREDITS.md](CREDITS.md).

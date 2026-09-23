@@ -381,6 +381,60 @@ describe('ViewmodelAnimator', () => {
     expect(Math.abs(anim.pose.ry)).toBeLessThan(0.05);
   });
 
+  it('a cancelled inspect end (and a dry trigger pull) blends the inspect out; a completed one does not cut it', () => {
+    anim.snapTo('shotgun');
+    step(0.3);
+    events.emit('weapon:inspect', { weaponId: 'shotgun', duration: 2.6 });
+    step(0.8);
+    expect(Math.abs(anim.pose.ry)).toBeGreaterThan(0.3);
+    events.emit('weapon:inspectEnd', { weaponId: 'shotgun', cancelled: true });
+    step(0.6);
+    expect(Math.abs(anim.pose.ry)).toBeLessThan(0.05);
+
+    events.emit('weapon:inspect', { weaponId: 'shotgun', duration: 2.6 });
+    step(0.8);
+    events.emit('weapon:dryFire', { weaponId: 'shotgun' });
+    step(0.6);
+    expect(Math.abs(anim.pose.ry)).toBeLessThan(0.05);
+
+    events.emit('weapon:inspect', { weaponId: 'shotgun', duration: 2.6 });
+    step(0.8);
+    events.emit('weapon:inspectEnd', { weaponId: 'shotgun', cancelled: false });
+    events.emit('weapon:inspectEnd', { weaponId: 'pistol', cancelled: true });
+    step(DT);
+    expect(Math.abs(anim.pose.ry)).toBeGreaterThan(0.3);
+  });
+
+  it('reduce flashing tones down the shot flash and muzzle light (initial value and live setting)', () => {
+    const settingsChanged = (reduceFlashing: boolean): void => {
+      const settings = {
+        accessibility: { reduceFlashing },
+      } as unknown as GameEvents['settings:changed']['settings'];
+      events.emit('settings:changed', { settings, sections: ['accessibility'] });
+    };
+    anim.snapTo('rifle');
+    step(0.2);
+    settingsChanged(true);
+    events.emit('weapon:fired', fired('rifle', 20));
+    anim.update(DT, 0, 0);
+    expect(anim.muzzleFlash).toBeCloseTo(VIEWMODEL_ANIM.reducedFlashScale, 9);
+    settingsChanged(false);
+    events.emit('weapon:fired', fired('rifle', 19));
+    anim.update(DT, 0, 0);
+    expect(anim.muzzleFlash).toBe(1);
+
+    const reduced = new ViewmodelAnimator({
+      events,
+      showModel: (id) => (id ? getModel(id) : null),
+      reduceFlashing: true,
+    });
+    reduced.snapTo('rifle');
+    events.emit('weapon:fired', fired('rifle', 18));
+    reduced.update(DT, 0, 0);
+    expect(reduced.muzzleFlash).toBeCloseTo(VIEWMODEL_ANIM.reducedFlashScale, 9);
+    reduced.dispose();
+  });
+
   it('ignores events of other weapons and survives unknown weapons', () => {
     anim.snapTo('pistol');
     events.emit('weapon:fired', fired('rifle', 3));

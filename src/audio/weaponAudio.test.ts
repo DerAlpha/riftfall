@@ -5,11 +5,12 @@ import type { GameEvents, HitZone } from '../core/events';
 import { Rng } from '../core/Rng';
 import { AUDIO } from '../defs/audio';
 import { CASINGS } from '../defs/vfx';
-import { WEAPONS, WEAPON_IDS } from '../defs/weapons';
+import { WEAPONS, WEAPON_IDS, type WeaponAudioDef } from '../defs/weapons';
 import type { LoopOptions } from './AudioEngine';
 import {
   AudioEventBridge,
   TokenBucket,
+  extraFireSoundLayers,
   fireLayerGain,
   fireSoundLayers,
   hitSoundId,
@@ -52,8 +53,9 @@ describe('weapon sound ids', () => {
 
   it('resolves every id the weapon defs reference', () => {
     for (const id of WEAPON_IDS) {
-      const a = WEAPONS[id].audio;
-      const ids: string[] = [...a.fire, a.dry, a.equip, a.holster, a.reloadStart, a.melee, a.inspect];
+      const a: WeaponAudioDef = WEAPONS[id].audio;
+      const ids: string[] = [...a.fire, ...(a.extraFire ?? []), a.dry, a.equip, a.holster, a.reloadStart];
+      ids.push(a.melee, a.inspect);
       for (const s of Object.values(a.steps)) if (s) ids.push(s);
       for (const s of ids) expect(resolveSynthId(s), `${id}: ${s}`).not.toBeNull();
     }
@@ -65,8 +67,6 @@ describe('weapon sound ids', () => {
     for (const s of Object.values(W.hitSounds)) expect(resolveSynthId(s), s).not.toBeNull();
     expect(resolveSynthId(W.lowAmmo.id)).not.toBeNull();
     expect(resolveSynthId(W.meleeHitId)).not.toBeNull();
-    for (const layers of Object.values(W.extraFireLayers))
-      for (const s of layers) expect(resolveSynthId(s)).not.toBeNull();
   });
 
   it('keeps aliases pointing at real defs without shadowing them', () => {
@@ -207,6 +207,10 @@ describe('weapon sound mapping', () => {
     expect(fireSoundLayers('railgun')).toBe(f); // cached, no allocation per shot
     expect(fireLayerGain(0)).toBe(W.fireLayerGains[0]);
     expect(fireLayerGain(99)).toBe(W.fireLayerGains[W.fireLayerGains.length - 1]);
+    // Extra layers are weapon data (WeaponAudioDef.extraFire), not keyed by id in the audio defs.
+    expect(extraFireSoundLayers('shotgun')).toBe(WEAPONS.shotgun.audio.extraFire);
+    expect(extraFireSoundLayers('pistol')).toEqual([]);
+    expect(extraFireSoundLayers('railgun')).toBe(extraFireSoundLayers('pistol')); // shared, no allocation
   });
 
   it('prefers the per-weapon id when the engine knows it, else the def id', () => {
@@ -250,6 +254,7 @@ describe('weapon sound mapping', () => {
 
 class FakeAudio implements AudioBridgeTarget {
   readonly plays: { id: string; opts: PlayOptions }[] = [];
+  unlocked = true;
   play(id: string, opts?: PlayOptions): void {
     this.plays.push({ id, opts: { ...opts, position: opts?.position ? { ...opts.position } : undefined } });
   }
@@ -350,7 +355,9 @@ describe('AudioEventBridge – weapons', () => {
     events.emit('weapon:reloadStep', { weaponId: 'pistol', step: 'boltRelease' });
     events.emit('weapon:reloadStep', { weaponId: 'shotgun', step: 'shellIn' });
     events.emit('weapon:dryFire', { weaponId: 'shotgun' });
-    events.emit('weapon:equipStart', { weaponId: 'rifle', slot: 1, duration: 0.5, previous: null });
+    // A switch announcement alone is silent: the rack plays when the weapon comes up.
+    events.emit('weapon:equipStart', { weaponId: 'rifle', slot: 1, duration: 0.8, previous: 'pistol' });
+    events.emit('weapon:raiseStart', { weaponId: 'rifle', slot: 1, duration: 0.5 });
     events.emit('weapon:holsterStart', { weaponId: 'rifle', slot: 1, duration: 0.3, next: 'pistol' });
     events.emit('weapon:inspect', { weaponId: 'rifle', duration: 2 });
     events.emit('weapon:melee', { weaponId: 'rifle', duration: 0.5, hit: false });
@@ -366,6 +373,49 @@ describe('AudioEventBridge – weapons', () => {
       WEAPONS.rifle.audio.melee,
     ]);
     for (const p of audio.plays) expect(p.opts.position).toBeUndefined();
+  });
+
+  it('racks a raise that started while silent (boot loadout, paused) on game:resumed, once', () => {
+    const { events, audio } = setup();
+    const raise = (weaponId: string): void =>
+      events.emit('weapon:raiseStart', { weaponId, slot: 0, duration: 0.5 });
+    const equip = (weaponId: string): string => weaponSoundId(weaponId, 'equip', (id) => audio.has(id));
+    // Boot: the loadout is handed out behind the start menu, before the gesture that unlocks audio.
+    audio.unlocked = false;
+    raise('pistol');
+    events.emit('game:paused', { reason: 'menu' });
+    expect(audio.ids()).toEqual([]);
+    audio.unlocked = true;
+    events.emit('game:resumed', {});
+    expect(audio.ids()).toEqual([equip('pistol')]);
+    expect(audio.plays[0]!.opts.volume).toBe(W.equipGain);
+    events.emit('game:paused', { reason: 'menu' });
+    events.emit('game:resumed', {});
+    expect(audio.ids()).toEqual([equip('pistol')]);
+    // Raised while paused (dev console): only the latest raise racks, when the game runs again.
+    audio.plays.length = 0;
+    events.emit('game:paused', { reason: 'menu' });
+    raise('pistol');
+    raise('shotgun');
+    expect(audio.ids()).toEqual([]);
+    events.emit('game:resumed', {});
+    expect(audio.ids()).toEqual([equip('shotgun')]);
+    // A raise that finished (`?autostart` never pauses) or got cut by a holster racks no more.
+    audio.plays.length = 0;
+    audio.unlocked = false;
+    raise('rifle');
+    events.emit('weapon:equipped', { weaponId: 'rifle', slot: 1 });
+    raise('shotgun');
+    events.emit('weapon:holsterStart', { weaponId: 'shotgun', slot: 2, duration: 0.3, next: 'pistol' });
+    audio.unlocked = true;
+    events.emit('game:resumed', {});
+    expect(audio.ids()).toEqual([WEAPONS.shotgun.audio.holster]);
+    // Audible: the rack plays right away and never again on resume.
+    audio.plays.length = 0;
+    raise('rifle');
+    events.emit('game:paused', { reason: 'menu' });
+    events.emit('game:resumed', {});
+    expect(audio.ids()).toEqual([equip('rifle')]);
   });
 
   it('plays positional impacts per surface, quieter for pellets, rate limited', () => {
@@ -388,7 +438,7 @@ describe('AudioEventBridge – weapons', () => {
     expect(audio.plays[0]!.opts.volume).toBeCloseTo(W.impactGain);
     impact('flesh', 'pellet');
     expect(audio.plays[1]!.opts.volume).toBeCloseTo(W.impactGain * W.impactKindGain.pellet);
-    // Explosions have their own sounds.
+    // Explosion impacts are silent: the blast sounds once through combat:explosion.
     impact('concrete', 'explosion');
     expect(audio.plays.length).toBe(2);
     // A shotgun blast: only the bucket's burst plays.
@@ -402,6 +452,25 @@ describe('AudioEventBridge – weapons', () => {
     impact('flesh', 'melee');
     expect(audio.ids()).toEqual(['impact.flesh', W.meleeHitId]);
     expect(audio.plays[1]!.opts.position).toBeUndefined();
+  });
+
+  it('plays one positional blast per explosion, louder for bigger radii', () => {
+    const { events, audio } = setup();
+    const X = W.explosion;
+    const boom = (radius: number): void =>
+      events.emit('combat:explosion', { position: { x: 4, y: 1, z: -2 }, radius, element: 'fire' });
+    boom(X.referenceRadius);
+    expect(audio.ids()).toEqual([X.id]);
+    expect(resolveSynthId(X.id)).not.toBeNull();
+    expect(audio.plays[0]!.opts.position).toEqual({ x: 4, y: 1, z: -2 });
+    expect(audio.plays[0]!.opts.bus).toBe('sfx');
+    expect(audio.plays[0]!.opts.volume).toBeCloseTo(X.gain);
+    boom(X.referenceRadius * 100);
+    boom(0.01);
+    boom(Number.NaN);
+    expect(audio.plays[1]!.opts.volume).toBeCloseTo(X.gain * X.radiusGain[1]);
+    expect(audio.plays[2]!.opts.volume).toBeCloseTo(X.gain * X.radiusGain[0]);
+    expect(audio.plays[3]!.opts.volume).toBeCloseTo(X.gain);
   });
 
   it('gives the player dry UI-bus hit feedback: tick, ding, kill punch', () => {

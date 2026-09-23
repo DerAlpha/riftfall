@@ -1,18 +1,22 @@
 /**
  * Dev console commands for the VFX (register them next to registerDevCommands):
  *   vfx <preset> [scale]        spawn an effect preset where the crosshair points
- *   explode [radius] [element]  explosion where the crosshair points
+ *   explode [radius] [element]  explosion where the crosshair points (emits combat:explosion, so
+ *                               it runs the same VFX / SFX path as grenades and barrels will)
  *   decals [clear]              decal / particle stats, or clear all effects
  */
 import * as THREE from 'three';
 import type { ConsoleCommand, PhysicsApi } from '../core/contracts';
-import type { DamageElement } from '../core/events';
+import type { EventBus } from '../core/EventBus';
+import type { DamageElement, GameEvents } from '../core/events';
 import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { ELEMENT_TINTS, VFX, VFX_EFFECTS } from '../defs/vfx';
 import type { VfxSystem } from './VfxSystem';
 
 export interface VfxCommandDeps {
-  vfx: Pick<VfxSystem, 'spawn' | 'explosion' | 'clear' | 'stats'>;
+  vfx: Pick<VfxSystem, 'spawn' | 'clear' | 'stats'>;
+  /** `explode` emits combat:explosion (VfxBridge → VFX, AudioEventBridge → sound). */
+  events: Pick<EventBus<GameEvents>, 'emit'>;
   physics: Pick<PhysicsApi, 'raycast'>;
   camera: THREE.Camera;
 }
@@ -66,7 +70,7 @@ export function createVfxCommands(deps: VfxCommandDeps): ConsoleCommand[] {
         const r = num(radius, C.explosionRadius);
         // Lift the blast off the surface so it does not sit inside the wall.
         point.addScaledVector(normal, Math.min(r * C.liftPerRadius, C.maxLift));
-        deps.vfx.explosion(point, r, el);
+        deps.events.emit('combat:explosion', { position: point, radius: r, element: el });
         return `Explosion (${el}, r=${r})`;
       },
       complete: ([, prefix = '']) => elements.filter((e) => e.startsWith(prefix)),

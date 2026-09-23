@@ -132,6 +132,11 @@ export class AudioEngine implements AudioApi {
     return this.graph !== null && this.graph.ctx.state === 'running';
   }
 
+  /** The graph exists (unlock() ran in a user gesture); before that every sound is dropped. */
+  get unlocked(): boolean {
+    return this.graph !== null;
+  }
+
   get stats(): { activeVoices: number; contextState: string } {
     this.statsObj.activeVoices = this.active.length;
     this.statsObj.contextState = this.graph ? this.graph.ctx.state : 'locked';

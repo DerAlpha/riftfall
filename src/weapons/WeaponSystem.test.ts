@@ -1,12 +1,16 @@
+import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
+import type { DamageInfo, DamageResult } from '../core/contracts';
 import { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/events';
+import { RAD2DEG } from '../core/math';
 import { CombatWorld } from '../combat/CombatWorld';
 import { FakeTarget, buildTestLevel } from '../combat/testFakes';
 import { GAMEPAD } from '../defs/input';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { WEAPONS, getWeaponDef, type WeaponDef } from '../defs/weapons';
 import { fakeSettings } from '../player/testHelpers';
+import { coneRadiusPx } from './spread';
 import { FakeCamera, FakePlayer, FakeWeaponInput, fakeRenderCamera } from './testFakes';
 import { WeaponSystem, type WeaponSystemOptions } from './WeaponSystem';
 
@@ -22,12 +26,15 @@ const RECORDED: (keyof GameEvents)[] = [
   'weapon:reloadStep',
   'weapon:reloadEnd',
   'weapon:equipStart',
+  'weapon:raiseStart',
   'weapon:equipped',
   'weapon:holsterStart',
   'weapon:adsChanged',
   'weapon:melee',
   'weapon:inspect',
+  'weapon:inspectEnd',
   'weapon:inventoryChanged',
+  'weapon:ammoChanged',
   'combat:damage',
   'combat:kill',
   'combat:impact',
@@ -515,7 +522,7 @@ describe('WeaponSystem: sprint, ADS, recoil', () => {
     t.until(() => t.of('weapon:fired').length === 10);
     t.input.release('fire');
     t.frame(240);
-    const kicks = t.camera.recoil.filter((r) => r.duration > 0);
+    const kicks = t.camera.kicks;
     expect(kicks).toHaveLength(10);
     expect(kicks.every((k) => k.pitch > 0 && k.duration === WEAPONS.rifle.recoil.kickTime)).toBe(true);
     const total = t.camera.recoil.reduce((s, r) => s + r.pitch, 0);
@@ -536,7 +543,7 @@ describe('WeaponSystem: sprint, ADS, recoil', () => {
     t.weapons.update(DT);
     t.camera.lookDelta.pitch = 0;
     t.frame(240);
-    const recovered = t.camera.recoil.filter((r) => r.duration === 0).reduce((s, r) => s + r.pitch, 0);
+    const recovered = t.camera.recoveries.reduce((s, r) => s + r.pitch, 0);
     expect(Math.abs(recovered)).toBeLessThan(kick * 0.2);
   });
 
@@ -756,5 +763,462 @@ describe('WeaponSystem: aim assist', () => {
     const off = { yaw: 0.01, pitch: 0 };
     t.weapons.modifyLook(off);
     expect(off.yaw).toBe(0.01);
+  });
+});
+
+describe('WeaponSystem: sprint taps, switching and fire cycles', () => {
+  type SprintMode = 'hold' | 'toggle';
+  const tapFromSprint = (id: 'pistol' | 'rifle' | 'shotgun', mode: SprintMode, tapFrames: number) => {
+    const t = setup({ loadout: [id] });
+    t.equip();
+    let toggled = true;
+    // PlayerController.updateSprint stand-in: the player ticks first and honours blocksSprint
+    // (a blocked toggle sprint is switched off; hold/auto sprint resume once unblocked).
+    const sprintFrame = (): void => {
+      const blocked = t.weapons.blocksSprint;
+      if (mode === 'toggle' && blocked) toggled = false;
+      t.player.sprinting = (mode === 'hold' || toggled) && !blocked;
+      t.frame();
+    };
+    for (let i = 0; i < 30; i++) sprintFrame();
+    expect(t.weapons.state).toBe('sprinting');
+    const pressTick = t.tick;
+    t.input.press('fire');
+    for (let i = 0; i < tapFrames; i++) sprintFrame();
+    t.input.release('fire');
+    for (let i = 0; i < 90; i++) sprintFrame();
+    return Object.assign(t, { pressTick });
+  };
+
+  for (const id of ['pistol', 'rifle', 'shotgun'] as const) {
+    it(`a 67 ms tap out of a hold/auto sprint fires exactly once, then the sprint resumes (${id})`, () => {
+      const t = tapFromSprint(id, 'hold', 4);
+      expect(t.of('weapon:fired')).toHaveLength(1);
+      expect(t.player.sprinting).toBe(true);
+    });
+
+    it(`a short tap out of a toggle sprint fires exactly once (${id})`, () => {
+      for (const frames of [1, 4, 7, 10])
+        expect(tapFromSprint(id, 'toggle', frames).of('weapon:fired')).toHaveLength(1);
+    });
+  }
+
+  it('the raise after a sprint still delays the shot by sprintToFireTime', () => {
+    const t = tapFromSprint('shotgun', 'hold', 2);
+    const shot = t.of('weapon:fired')[0]!;
+    const press = t.pressTick;
+    expect((shot.tick - press) * DT).toBeGreaterThanOrEqual(WEAPONS.shotgun.sprintToFireTime - 1e-9);
+    expect((shot.tick - press) * DT).toBeLessThan(WEAPONS.shotgun.sprintToFireTime + 2 * DT);
+  });
+
+  it('wheel flicks (re-raising the same weapon) never beat the pump cycle', () => {
+    const t = setup({ loadout: ['shotgun', 'pistol'], slots: 2 });
+    t.equip();
+    t.weapons.infiniteAmmo = true;
+    t.input.press('fire');
+    for (let i = 0; i < 150; i++) {
+      if (i % 4 === 1) t.input.tap('weaponNext');
+      if (i % 4 === 2) t.input.tap('weaponPrev');
+      t.frame();
+    }
+    t.input.release('fire');
+    const fired = t.of('weapon:fired');
+    expect(fired.length).toBeGreaterThanOrEqual(2);
+    expect(t.weapons.currentWeaponId).toBe('shotgun');
+    const cycle = 60 / WEAPONS.shotgun.rpm;
+    for (let i = 1; i < fired.length; i++) {
+      expect((fired[i]!.tick - fired[i - 1]!.tick) * DT).toBeGreaterThanOrEqual(cycle - 1e-9);
+    }
+  });
+
+  it('fire, then 1 and back to 3 at once: the next blast waits for the pump', () => {
+    const t = setup();
+    t.equip();
+    t.input.tap('weapon3');
+    t.until(() => t.weapons.currentWeaponId === 'shotgun' && t.weapons.state === 'idle');
+    t.input.tap('fire');
+    t.frame();
+    t.input.tap('weapon1');
+    t.frame();
+    t.input.tap('weapon3');
+    t.frame();
+    expect(t.weapons.currentWeaponId).toBe('shotgun');
+    t.input.press('fire');
+    t.frame(120);
+    const fired = t.of('weapon:fired');
+    expect(fired.length).toBeGreaterThanOrEqual(2);
+    expect((fired[1]!.tick - fired[0]!.tick) * DT).toBeGreaterThanOrEqual(60 / WEAPONS.shotgun.rpm - 1e-9);
+  });
+
+  it('switching away and back keeps each weapon`s own fire cycle', () => {
+    // A slow-cycling full-auto weapon (think bolt gun): 2 s per round, quick to switch.
+    const slow: WeaponDef = { ...WEAPONS.rifle, rpm: 30, equipTime: 0.1, holsterTime: 0.1 };
+    const t = setup({
+      loadout: ['rifle', 'pistol'],
+      slots: 2,
+      defs: (id) => (id === 'rifle' ? slow : getWeaponDef(id)),
+    });
+    t.equip();
+    t.input.tap('fire');
+    t.frame();
+    t.input.tap('weapon2');
+    t.until(() => t.weapons.currentWeaponId === 'pistol');
+    t.input.tap('weapon1');
+    t.until(() => t.weapons.currentWeaponId === 'rifle' && t.weapons.state === 'idle');
+    t.input.press('fire');
+    t.frame(180);
+    const fired = t.of('weapon:fired').filter((e) => e.p.weaponId === 'rifle');
+    expect(fired.length).toBeGreaterThanOrEqual(2);
+    expect((fired[1]!.tick - fired[0]!.tick) * DT).toBeGreaterThanOrEqual(60 / slow.rpm - 1e-9);
+    expect((fired[1]!.tick - fired[0]!.tick) * DT).toBeLessThan(60 / slow.rpm + DT + 1e-9);
+  });
+
+  it('re-raising the same weapon keeps its recoil pattern position and bloom', () => {
+    const t = setup({ loadout: ['rifle', 'pistol'], slots: 2 });
+    t.equip();
+    t.input.press('fire');
+    t.until(() => t.of('weapon:fired').length === 5);
+    t.input.release('fire');
+    t.input.tap('weaponNext');
+    t.frame();
+    t.input.tap('weaponPrev');
+    t.frame();
+    expect(t.weapons.currentWeaponId).toBe('rifle');
+    expect(t.weapons.state).toBe('equipping');
+    expect(t.weapons.spreadDegrees).toBeGreaterThan(
+      WEAPONS.rifle.spread.hip + 3 * WEAPONS.rifle.spread.perShotBloom,
+    );
+    t.until(() => t.weapons.state === 'idle');
+    // Pressed while the rifle's cycle still runs (the re-raise did not reset it): buffered.
+    t.input.tap('fire');
+    t.frame(8);
+    expect(t.of('weapon:fired')).toHaveLength(6);
+    expect(t.of('weapon:fired').at(-1)!.p.shotIndex).toBe(5);
+  });
+
+  it('switching after a spray keeps recovering the kick: the aim returns to where it started', () => {
+    const t = setup({ loadout: ['rifle', 'shotgun'], slots: 2 });
+    t.camera.applyRecoil = true;
+    t.equip();
+    const pitch0 = t.player.pitch;
+    const yaw0 = t.player.yaw;
+    t.input.press('fire');
+    t.frame(60);
+    t.input.release('fire');
+    expect((t.player.pitch - pitch0) * RAD2DEG).toBeGreaterThan(3);
+    t.input.tap('weapon2');
+    t.frame(300);
+    expect(t.weapons.currentWeaponId).toBe('shotgun');
+    expect(Math.abs(t.player.pitch - pitch0) * RAD2DEG).toBeLessThan(0.01);
+    expect(Math.abs(t.player.yaw - yaw0) * RAD2DEG).toBeLessThan(0.01);
+  });
+
+  it('recoil recovery is eased over the tick (frames between ticks get their share)', () => {
+    const t = setup({ loadout: ['rifle'] });
+    t.equip();
+    t.input.press('fire');
+    t.until(() => t.of('weapon:fired').length === 5);
+    t.input.release('fire');
+    t.frame(60);
+    const rec = t.camera.recoveries;
+    expect(rec.length).toBeGreaterThan(5);
+    expect(rec.every((r) => r.duration === DT && r.pitch < 0)).toBe(true);
+  });
+
+  it('a shot queued during a shell reload is dropped when a sprint ends the reload', () => {
+    const t = setup({ loadout: ['shotgun'] });
+    t.equip();
+    for (let i = 0; i < 2; i++) {
+      t.input.tap('fire');
+      t.frame(Math.ceil(60 / WEAPONS.shotgun.rpm / DT) + 1);
+    }
+    expect(t.weapons.ammo!.mag).toBe(6);
+    t.input.tap('reload');
+    t.frame(3);
+    t.input.tap('fire');
+    t.frame();
+    expect(t.weapons.state).toBe('reloading');
+    const fired = t.of('weapon:fired').length;
+    t.input.tap('sprint');
+    t.player.sprinting = true;
+    t.frame();
+    expect(t.weapons.state).not.toBe('reloading');
+    t.frame(180);
+    t.player.sprinting = false;
+    t.frame(120);
+    expect(t.of('weapon:fired')).toHaveLength(fired);
+  });
+
+  it('weapon:raiseStart comes when the new weapon comes up, with its ammo in the same tick', () => {
+    const t = setup();
+    t.equip();
+    expect(t.of('weapon:raiseStart')[0]!.p).toMatchObject({ weaponId: 'pistol', slot: 0 });
+    const start = t.tick;
+    t.input.tap('weapon2');
+    t.frame();
+    expect(t.of('weapon:raiseStart')).toHaveLength(1);
+    t.until(() => t.of('weapon:raiseStart').length === 2);
+    const raise = t.of('weapon:raiseStart')[1]!;
+    expect(raise.p).toMatchObject({ weaponId: 'rifle', slot: 1 });
+    expect(raise.p.duration).toBeCloseTo(WEAPONS.rifle.equipTime, 9);
+    expect((raise.tick - start) * DT).toBeCloseTo(WEAPONS.pistol.holsterTime, 1);
+    const ammo = t.of('weapon:ammoChanged').filter((e) => e.p.weaponId === 'rifle');
+    expect(ammo[0]!.tick).toBe(raise.tick);
+  });
+
+  it('the fourth slot has its own key (slot actions cover every inventory slot)', () => {
+    const sidearm: WeaponDef = { ...WEAPONS.pistol, id: 'sidearm' };
+    const t = setup({
+      loadout: ['pistol', 'rifle', 'shotgun', 'sidearm'],
+      slots: 4,
+      defs: (id) => (id === 'sidearm' ? sidearm : getWeaponDef(id)),
+    });
+    t.equip();
+    expect(t.weapons.slotIds).toEqual(['pistol', 'rifle', 'shotgun', 'sidearm']);
+    t.input.tap('weapon4');
+    t.until(() => t.weapons.currentWeaponId === 'sidearm' && t.weapons.state === 'idle');
+    expect(t.weapons.slotIndex).toBe(3);
+  });
+
+  it('refuses weapon kinds that are not implemented (a launcher is never fired as hitscan)', () => {
+    const launcher: WeaponDef = { ...WEAPONS.pistol, kind: 'projectile' };
+    const t = setup({
+      loadout: ['pistol', 'rifle'],
+      slots: 2,
+      defs: (id) => (id === 'pistol' ? launcher : getWeaponDef(id)),
+    });
+    expect(t.weapons.slotIds).toEqual(['rifle', null]);
+    expect(t.weapons.currentWeaponId).toBe('rifle');
+  });
+
+  it('the crosshair radius is the cone projected with the render camera FOV', () => {
+    const t = setup({ loadout: ['shotgun'] });
+    t.equip();
+    const fov = t.render.camera.fov;
+    expect(t.weapons.crosshairRadiusPx(1080)).toBeCloseTo(
+      coneRadiusPx(WEAPONS.shotgun.spread.hip, fov, 1080),
+      9,
+    );
+    t.render.camera.fov = fov * 0.7;
+    expect(t.weapons.crosshairRadiusPx(1080)).toBeGreaterThan(
+      coneRadiusPx(WEAPONS.shotgun.spread.hip, fov, 1080) * 1.4,
+    );
+  });
+});
+
+describe('WeaponSystem: burst fire', () => {
+  const burstDef = (over: Partial<WeaponDef> = {}): WeaponDef => ({
+    ...WEAPONS.rifle,
+    fireMode: 'burst',
+    burst: { count: 3, rpm: 900 },
+    rpm: 300,
+    ...over,
+  });
+  const burstSetup = (def: WeaponDef) =>
+    setup({ loadout: ['rifle'], defs: (id) => (id === 'rifle' ? def : getWeaponDef(id)) });
+
+  it('a tap fires one burst at the burst rate; the next burst waits for rpm', () => {
+    const def = burstDef();
+    const t = burstSetup(def);
+    t.equip();
+    t.input.tap('fire');
+    t.frame(12);
+    t.input.tap('fire'); // before the next burst may start: buffered
+    t.frame(60);
+    const fired = t.of('weapon:fired');
+    expect(fired).toHaveLength(6);
+    for (const i of [1, 2, 4, 5]) {
+      const gap = (fired[i]!.tick - fired[i - 1]!.tick) * DT;
+      expect(gap).toBeGreaterThanOrEqual(60 / def.burst!.rpm - 1e-9);
+      expect(gap).toBeLessThan(60 / def.burst!.rpm + DT + 1e-9);
+    }
+    const pause = (fired[3]!.tick - fired[2]!.tick) * DT;
+    expect(pause).toBeGreaterThanOrEqual(60 / def.rpm - 1e-9);
+    expect(pause).toBeLessThan(60 / def.rpm + DT + 1e-9);
+  });
+
+  it('a sprint interrupts the burst; the rest never fires on its own afterwards', () => {
+    const t = burstSetup(burstDef());
+    t.equip();
+    t.input.tap('fire');
+    t.frame();
+    expect(t.of('weapon:fired')).toHaveLength(1);
+    t.player.sprinting = true;
+    t.frame(60);
+    t.player.sprinting = false;
+    t.frame(60);
+    expect(t.of('weapon:fired')).toHaveLength(1);
+  });
+
+  it('running empty mid-burst ends the burst (no reserve: the next press clicks dry)', () => {
+    const t = burstSetup(burstDef({ magazine: 2, reserve: 0, chambered: false }));
+    t.equip();
+    t.input.tap('fire');
+    t.frame(30);
+    expect(t.of('weapon:fired')).toHaveLength(2);
+    expect(t.of('weapon:dryFire')).toHaveLength(0);
+    t.input.tap('fire');
+    t.frame(30);
+    expect(t.of('weapon:fired')).toHaveLength(2);
+    expect(t.of('weapon:dryFire')).toHaveLength(1);
+  });
+});
+
+describe('WeaponSystem: hit resolution fixes', () => {
+  const preciseDef = (id: string): WeaponDef | undefined => {
+    const d = getWeaponDef(id);
+    return d ? precise(d) : undefined;
+  };
+
+  /** Torso armor halves body/limb damage (the M3 armored-enemy pattern). */
+  class ArmoredTarget extends FakeTarget {
+    applied = 0;
+    override applyDamage(info: DamageInfo): DamageResult {
+      const k = info.zone === 'body' || info.zone === 'limb' ? 0.5 : 1;
+      const res = super.applyDamage({ ...info, amount: info.amount * k });
+      this.applied += res.applied;
+      return res;
+    }
+  }
+
+  it('pellets on different zones are separate damage events: armor applies to exactly its pellets', () => {
+    const t = setup({ loadout: ['shotgun'] });
+    const target = new ArmoredTarget({ x: 0, y: 0, z: -3 }, 1000);
+    // A weak point right on the eye line (only the center pellet fits: ring pellets pass ≥ 8 cm
+    // off its center), in front of a wide armored torso that catches the whole ring.
+    target.hitboxes.length = 0;
+    target.hitboxes.push(
+      { shape: 'sphere', zone: 'weakpoint', a: new Vector3(0, 1.6, -2.45), b: new Vector3(), radius: 0.06 },
+      { shape: 'capsule', zone: 'body', a: new Vector3(0, 1, -3), b: new Vector3(0, 2.2, -3), radius: 0.45 },
+    );
+    t.combat.register(target);
+    t.equip();
+    t.input.tap('fire');
+    t.frame();
+    const S = WEAPONS.shotgun;
+    const dmg = t.of('combat:damage');
+    expect(dmg.map((e) => e.p.zone)).toEqual(['weakpoint', 'body']);
+    const body = (S.pellets - 1) * S.damage.base * 0.5;
+    const weak = S.damage.base * S.damage.weakpointMultiplier;
+    expect(target.applied).toBeCloseTo(weak + body, 6);
+    expect(t.weapons.stats.hits).toBe(1);
+  });
+
+  it('shots follow the camera`s movement pitch (landing dip / mantle): bullets land on the crosshair', () => {
+    const t = setup({ loadout: ['pistol'], defs: preciseDef });
+    t.equip();
+    t.camera.aimPitchOffset = -1.5 / RAD2DEG;
+    t.input.tap('fire');
+    t.frame();
+    const dir = t.of('weapon:fired')[0]!.p.direction;
+    expect(Math.asin(dir.y) * RAD2DEG).toBeCloseTo(-1.5, 6);
+  });
+
+  it('penetration reads the hit before impact handlers run (a handler raycast cannot open concrete)', () => {
+    const t = setup({ loadout: ['rifle'], defs: preciseDef, withLevel: false });
+    t.combat.setLevel(
+      buildTestLevel([
+        { material: 'concrete_wall', center: { x: 0, y: 1.5, z: -6 }, size: { x: 2, y: 3, z: 0.3 } },
+        { material: 'glass', center: { x: 10, y: 1.5, z: -4 }, size: { x: 2, y: 3, z: 0.04 } },
+      ]),
+    );
+    t.combat.register(new FakeTarget({ x: 0, y: 0, z: -9 }));
+    // An M3-style listener that probes the world on every impact (rewrites the shared hit).
+    t.events.on('combat:impact', () => {
+      t.combat.raycast({ x: 10, y: 1.5, z: 0 }, { x: 0, y: 0, z: -1 }, 20);
+    });
+    t.equip();
+    t.input.tap('fire');
+    t.frame();
+    expect(t.of('combat:impact').map((e) => e.p.surface)).toEqual(['concrete']);
+    expect(t.of('combat:damage')).toHaveLength(0);
+  });
+
+  it('melee reach is measured to the body surface, not grown by the target bounds', () => {
+    const range = WEAPONS.rifle.melee.range;
+    const bodyRadius = 0.24;
+    const swing = (surfaceDistance: number): number => {
+      const t = setup({ loadout: ['rifle'] });
+      // A big enemy: its broadphase sphere reaches far past the body.
+      const target = new FakeTarget({ x: 0, y: 0, z: -(surfaceDistance + bodyRadius) }, 500);
+      target.boundsRadius = 2.5;
+      t.combat.register(target);
+      t.equip();
+      t.input.tap('melee');
+      t.frame(40);
+      return t.of('combat:damage').length;
+    };
+    expect(swing(range - 0.1)).toBe(1);
+    expect(swing(range + 0.3)).toBe(0);
+    expect(swing(range + 1.5)).toBe(0);
+  });
+
+  it('melee resolves at hit time: a target stepping into the cone during the windup is hit', () => {
+    const t = setup({ loadout: ['rifle'] });
+    t.equip();
+    t.input.tap('melee');
+    t.frame();
+    expect(t.of('weapon:melee')[0]!.p.hit).toBe(false);
+    const target = new FakeTarget({ x: 0, y: 0, z: -1.2 }, 500);
+    t.combat.register(target);
+    t.frame(Math.ceil(WEAPONS.rifle.melee.hitTime / DT) + 1);
+    expect(t.of('combat:damage')).toHaveLength(1);
+    expect(target.received[0]!.kind).toBe('melee');
+    expect(t.of('combat:impact').at(-1)!.p.kind).toBe('melee');
+  });
+
+  it('a dry trigger pull ends the inspect with weapon:inspectEnd (cancelled); a full inspect reports completed', () => {
+    const def: WeaponDef = { ...WEAPONS.pistol, magazine: 1, reserve: 0, chambered: false };
+    const t = setup({ loadout: ['pistol'], defs: (id) => (id === 'pistol' ? def : getWeaponDef(id)) });
+    t.equip();
+    t.input.tap('fire');
+    t.frame(30);
+    t.input.tap('inspect');
+    t.frame(10);
+    expect(t.weapons.state).toBe('inspecting');
+    t.input.tap('fire');
+    t.frame();
+    expect(t.of('weapon:dryFire')).toHaveLength(1);
+    expect(t.of('weapon:inspectEnd').map((e) => e.p)).toEqual([{ weaponId: 'pistol', cancelled: true }]);
+    t.input.tap('inspect');
+    t.frame();
+    t.until(() => t.weapons.state === 'idle');
+    expect(t.of('weapon:inspectEnd')[1]!.p).toEqual({ weaponId: 'pistol', cancelled: false });
+  });
+});
+
+describe('WeaponSystem: weapon mods (Rift Forge / attachments / element)', () => {
+  it('mods resolve into the def the weapon fires, reloads and reports ammo with', () => {
+    const t = setup({
+      loadout: ['rifle'],
+      defs: (id) => (id === 'rifle' ? precise(WEAPONS.rifle) : getWeaponDef(id)),
+    });
+    const target = new FakeTarget({ x: 0, y: 0, z: -10 }, 1000);
+    t.combat.register(target);
+    t.equip();
+    expect(t.weapons.effectiveDef('shotgun')).toBeNull();
+    expect(t.weapons.setWeaponMods('nope', {})).toBe(false);
+    expect(
+      t.weapons.setWeaponMods('rifle', {
+        mods: [{ magazine: 1.5, reloadTime: 0.8, damage: 2 }],
+        element: 'fire',
+      }),
+    ).toBe(true);
+    expect(t.weapons.effectiveDef('rifle')!.magazine).toBe(48);
+    expect(t.of('weapon:ammoChanged').at(-1)!.p.magSize).toBe(48);
+    t.input.tap('fire');
+    t.frame();
+    const hit = t.of('combat:damage')[0]!.p;
+    expect(hit.element).toBe('fire');
+    expect(hit.amount).toBeCloseTo(WEAPONS.rifle.damage.base * 2 * WEAPONS.rifle.damage.headMultiplier, 6);
+    t.frame(10);
+    t.input.tap('reload');
+    t.frame();
+    const start = t.of('weapon:reloadStart').at(-1)!;
+    expect(start.p.duration).toBeCloseTo(WEAPONS.rifle.reload.tactical * 0.8, 9);
+    t.until(() => t.of('weapon:reloadEnd').length === 1);
+    const magIn = t.of('weapon:reloadStep').find((e) => e.p.step === 'magIn')!;
+    expect((magIn.tick - start.tick) * DT).toBeCloseTo(WEAPONS.rifle.reload.tacticalSteps[1]!.at * 0.8, 1);
+    expect(t.weapons.ammo).toMatchObject({ mag: 49, magSize: 48 });
   });
 });

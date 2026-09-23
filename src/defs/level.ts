@@ -752,6 +752,8 @@ export const TEST_ROOM_LAYOUT = {
     },
     { type: 'dummy', position: [2.2, 0, -24.8], yawDeg: 0 },
     { type: 'armored', position: [-4.5, 0, -24.8], yawDeg: 0 },
+    // In front of the tallest mantle ledge (1.7 m): blood splatters onto its face.
+    { type: 'flesh', position: [9, 0, -24.8], yawDeg: 0 },
     // Arena.
     { type: 'dummy', position: [-3, 0, 2.6], yawDeg: 0 },
     { type: 'dummy', position: [3.2, 0, -2.4], yawDeg: 20 },
@@ -762,6 +764,8 @@ export const TEST_ROOM_LAYOUT = {
       rail: { to: [10.2, 0, 4.5], speed: 1.8, pause: 1 },
     },
     { type: 'armored', position: [0, 0, -9.2], yawDeg: 0 },
+    // In front of the north-west pillar: slime splatters onto it.
+    { type: 'slime', position: [-8, 0, -6.2], yawDeg: 0 },
   ] as readonly TargetPlacementDef[],
   dust: [
     { min: [-13, 0.3, -13], max: [13, 11, 13], share: 0.55 },

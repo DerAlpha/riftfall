@@ -133,6 +133,11 @@ export interface LightFlashDef {
    * flashes (impacts) are also capped per frame (VFX.lights.lowPriorityPerFrame).
    */
   readonly priority: 0 | 1 | 2;
+  /**
+   * Also lights the weapon in the viewmodel scene (VFX.lights.viewmodel; default true). Muzzle
+   * flashes set false: the viewmodel rig has its own muzzle light.
+   */
+  readonly viewmodel?: boolean;
 }
 
 /** First-person flash sprite on the weapon's muzzle socket (viewmodel scene). */
@@ -156,6 +161,8 @@ export interface EffectPreset {
   readonly flash?: MuzzleFlashDef;
   /** camera:shake trauma at the effect, falling off linearly to 0 at `range` m (× effect scale). */
   readonly shake?: { readonly trauma: number; readonly range: number };
+  /** fx:hitPulse (chromatic aberration) strength, falling off like `shake`. */
+  readonly hitPulse?: { readonly strength: number; readonly range: number };
   /** Screen-space shockwave: world radius = explosion radius × radiusScale. */
   readonly shockwave?: { readonly strength: number; readonly radiusScale: number };
   /** Decal found by probing down from the effect (scorch marks): size = scale × sizePerScale. */
@@ -570,6 +577,7 @@ export const VFX_EFFECTS = {
       duration: 0.05,
       offset: MUZZLE_LIGHT_OFFSET,
       priority: 1,
+      viewmodel: false,
     },
     flash: {
       size: 0.085,
@@ -589,6 +597,7 @@ export const VFX_EFFECTS = {
       duration: 0.05,
       offset: MUZZLE_LIGHT_OFFSET,
       priority: 1,
+      viewmodel: false,
     },
     flash: { size: 0.1, length: 0.2, color: [1, 0.74, 0.44], intensity: 16, duration: 0.04, adsScale: 0.55 },
   },
@@ -626,6 +635,7 @@ export const VFX_EFFECTS = {
       duration: 0.07,
       offset: MUZZLE_LIGHT_OFFSET,
       priority: 1,
+      viewmodel: false,
     },
     flash: { size: 0.16, length: 0.3, color: [1, 0.7, 0.4], intensity: 20, duration: 0.05, adsScale: 0.7 },
   },
@@ -801,6 +811,7 @@ export const VFX_EFFECTS = {
       priority: 2,
     },
     shake: { trauma: 1, range: 20 },
+    hitPulse: { strength: 0.6, range: 14 },
     shockwave: { strength: 1, radiusScale: 2.2 },
     groundDecal: { kind: 'scorch', sizePerScale: 2.6, probe: 4.5 },
   },
@@ -1127,7 +1138,13 @@ export const VFX = {
     maxStep: 1 / 30,
     /** Back-to-front sort of lit particles (quantized view depth range, m). */
     sortRange: 256,
-    renderOrder: { alpha: 20, additive: 21 },
+    /**
+     * Nothing on the volumetric layer writes depth, so draw order decides the blend. Lit (alpha)
+     * smoke goes first – below the additive light cones / shafts (10) and dust (11) – so smoke
+     * behind a light shaft cannot dim it; all additive light (cones, dust, sparks, tracers) adds
+     * on top. Trade-off: additive light behind smoke shows undimmed.
+     */
+    renderOrder: { alpha: 5, additive: 21 },
   },
   lights: {
     /**
@@ -1142,6 +1159,14 @@ export const VFX = {
     flickerRate: 26,
     /** reduceFlashing accessibility option scales flash peaks by this. */
     reducedFlashingScale: 0.45,
+    /**
+     * The weapon is drawn in its own scene, which the pooled world lights never reach: one extra
+     * point light there (created up front, constant light count) carries the flash with the most
+     * irradiance at the eye, × `gain`. Flashes farther than `maxDistance` (m) are pulled in along
+     * their direction with the intensity scaled to keep that irradiance; closer than `minDistance`
+     * they count as that distance when picking the strongest.
+     */
+    viewmodel: { gain: 0.5, maxDistance: 1.5, minDistance: 0.25 },
   },
   decals: {
     /** Ring capacity at particle budget 1; never below `minScale` of it (bullet holes are feedback). */
@@ -1158,6 +1183,13 @@ export const VFX = {
     normalScale: 1.2,
     /** Dynamic props do not get decals (they would float when the prop moves): short probe (m). */
     propProbe: 0.08,
+    /**
+     * Big flat quads (scorch marks, blood splats) must not overhang ledges, stairs or wall edges:
+     * four probes along −normal from `lift` m above points on the decal rim (`rimFraction` of its
+     * half edge) must hit within `lift + tolerance` m; else the size is halved (up to
+     * `maxHalvings` times) and the decal skipped when it still does not fit.
+     */
+    surfaceFit: { lift: 0.1, tolerance: 0.1, rimFraction: 0.8, maxHalvings: 2 },
     renderOrder: 1,
   },
   casings: {
@@ -1170,9 +1202,12 @@ export const VFX = {
     fadeTime: 0.35,
     /** Casings still in the air after this long (fell out of the level) are removed. */
     maxFlightTime: 4,
-    /** Each casing raycasts along its velocity every Nth frame (staggered). */
+    /**
+     * Each flying casing probes every Nth frame (staggered): down for the floor under it (it may
+     * have flown past a ledge or down a ramp) and along its velocity for walls.
+     */
     probeInterval: 3,
-    /** Floor probe at ejection (m). */
+    /** Down probe for the floor (m), at ejection and with every probe above. */
     floorProbe: 4,
     /** Below this speed (m/s) on the floor a casing settles (lies flat, stops tumbling). */
     settleSpeed: 0.25,
@@ -1237,8 +1272,8 @@ export const VFX = {
    * closer than that + `margin` (hugging a wall: no flash light behind it, no casing inside it).
    */
   socketProbe: { margin: 0.15, backoff: 0.12 },
-  /** Muzzle events / delayed casing ejections queued per frame (extra ones are dropped). */
-  queue: { shots: 16, casings: 16 },
+  /** Muzzle events / delayed casing ejections / player tracers queued per frame (extra ones are dropped). */
+  queue: { shots: 16, casings: 16, tracers: 32 },
   /** Physics interaction for VFX probes: only static world + props (never the player/enemies). */
   probe: {
     membership: COLLISION_GROUP.DEBRIS,

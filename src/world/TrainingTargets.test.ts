@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { Group, Mesh, Vector3, type Material } from 'three';
+import { Group, Mesh, ShaderMaterial, Vector3, type Material } from 'three';
 import type { CombatWorldApi, DamageInfo, Damageable, Hitbox } from '../core/contracts';
 import { EventBus } from '../core/EventBus';
 import type { GameEvents, HitZone } from '../core/events';
 import { CombatWorld } from '../combat/CombatWorld';
 import { TEST_ROOM_LAYOUT } from '../defs/level';
 import { TARGETS, TARGET_TYPES, type TargetPlacementDef } from '../defs/targets';
+import { RENDER } from '../defs/graphics';
 import { COLLISION_GROUP } from '../defs/physics';
+import { SURFACE_IMPACTS } from '../defs/vfx';
+import { HEIGHT_FOG_PARAMS } from '../render/postfx/fogShared';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { rectContainsPoint } from './kitMath';
 import { testRoomSolidFootprints } from './TestRoom';
@@ -186,12 +189,15 @@ describe('TrainingTargets', () => {
     const ids = new Set(combat.list.map((d) => d.id));
     expect(ids.size).toBe(combat.list.length);
     for (const id of ids) expect(id).toBeGreaterThanOrEqual(TARGET_ID_BASE);
-    // Shared geometry per type: few geometries, many meshes.
+    // Shared geometry per type: body + glow (+ barrier) per type, however many dummies use it.
     const geos = new Set<unknown>();
     targets.root.traverse((o) => {
       if (o instanceof Mesh) geos.add(o.geometry);
     });
-    expect(geos.size).toBeLessThanOrEqual(5);
+    const types = new Set(TEST_ROOM_LAYOUT.targets.map((t) => t.type));
+    let perType = 0;
+    for (const t of types) perType += TARGET_TYPES[t].shield ? 3 : 2;
+    expect(geos.size).toBe(perType);
   });
 
   it('places hitboxes per zone in world space, following position and yaw', () => {
@@ -441,6 +447,73 @@ describe('TrainingTargets', () => {
     } finally {
       physics.dispose();
     }
+  });
+
+  it('draws the barrier on the volumetric layer, fogged in its shader, and reports it as content', () => {
+    const { targets } = make([
+      { type: 'armored', position: [0, 0, 0], yawDeg: 0 },
+      { type: 'dummy', position: [2, 0, 0], yawDeg: 0 },
+    ]);
+    const d = targets.dummies[0]!;
+    const shields: Mesh[] = [];
+    targets.root.traverse((o) => {
+      if (o instanceof Mesh && o.material instanceof ShaderMaterial) shields.push(o);
+    });
+    expect(shields.length).toBe(1);
+    const shield = shields[0]!;
+    // Only the volumetric pass sees it (after AO and height fog); body and glow stay in the world pass.
+    expect(shield.layers.mask).toBe(1 << RENDER.volumetricLayer);
+    const mat = shield.material as ShaderMaterial;
+    expect(mat.uniforms.fogParams).toBe(HEIGHT_FOG_PARAMS);
+    expect(mat.vertexShader).toContain('fogTransmittance');
+    expect(mat.fragmentShader).toContain('vFog');
+    targets.root.traverse((o) => {
+      if (o instanceof Mesh && o !== shield) expect(o.layers.isEnabled(0)).toBe(true);
+    });
+    targets.update(DT, 1);
+    expect(d.shieldDrawn).toBe(true);
+    expect(targets.hasVolumetricContent).toBe(true);
+    // Dead: the barrier collapses and the pass may be skipped again.
+    d.applyDamage(hit(10_000, 'head'));
+    for (let i = 0; i < 60; i++) {
+      targets.fixedUpdate(DT);
+      targets.update(DT, 1);
+    }
+    expect(d.shieldDrawn).toBe(false);
+    expect(targets.hasVolumetricContent).toBe(false);
+    // Plain dummies never draw on that layer.
+    expect(make([{ type: 'dummy', position: [0, 0, 0], yawDeg: 0 }]).targets.hasVolumetricContent).toBe(
+      false,
+    );
+  });
+
+  it('offers flesh and slime targets in the test room, each close enough to a solid for splatter', () => {
+    const solids = testRoomSolidFootprints();
+    for (const surface of ['flesh', 'slime'] as const) {
+      const placements = TEST_ROOM_LAYOUT.targets.filter((t) => TARGET_TYPES[t.type].surface === surface);
+      expect(placements.length, surface).toBeGreaterThan(0);
+      const splatter = SURFACE_IMPACTS[surface].splatter;
+      expect(splatter, surface).toBeDefined();
+      for (const t of placements) {
+        // A frontal shot continues behind the dummy (its local -Z): a solid must be within reach.
+        const yaw = (t.yawDeg * Math.PI) / 180;
+        const dx = -Math.sin(yaw);
+        const dz = -Math.cos(yaw);
+        const reach = splatter!.distance - TARGETS.collider.radius;
+        const x = t.position[0] + dx * reach;
+        const z = t.position[2] + dz * reach;
+        expect(
+          solids.some((s) => rectContainsPoint(s, x, z)),
+          `${surface} at ${t.position[0]}, ${t.position[2]}`,
+        ).toBe(true);
+      }
+    }
+    // The splatter surfaces reach the combat world as the dummy's surface.
+    const { targets } = make([
+      { type: 'flesh', position: [0, 0, 0], yawDeg: 0 },
+      { type: 'slime', position: [2, 0, 0], yawDeg: 0 },
+    ]);
+    expect(targets.dummies.map((d) => d.surface)).toEqual(['flesh', 'slime']);
   });
 
   it('keeps every test-room target (and its rail path) inside the hall and out of solids', () => {

@@ -12,6 +12,7 @@
  * `damage.element` (elemental mods) and `kind` ('projectile' / 'beam' are reserved).
  */
 import type { DamageElement, GameEvents } from '../core/events';
+import type { Action } from './input';
 
 export type WeaponCategory =
   'pistol' | 'smg' | 'rifle' | 'shotgun' | 'lmg' | 'marksman' | 'sniper' | 'launcher' | 'special';
@@ -21,6 +22,9 @@ export type FireMode = 'semi' | 'auto' | 'burst' | 'pump';
 
 /** Only 'hitscan' is implemented in M2; 'projectile' and 'beam' are reserved for M5. */
 export type WeaponKind = 'hitscan' | 'projectile' | 'beam';
+
+/** Kinds the weapon system can fire; defs of any other kind are refused (never fired as hitscan). */
+export const IMPLEMENTED_WEAPON_KINDS: readonly WeaponKind[] = ['hitscan'];
 
 /** Attachment slots (M5). */
 export type AttachmentSlot = 'optic' | 'muzzle' | 'underbarrel' | 'magazine' | 'stock' | 'laser';
@@ -163,7 +167,10 @@ export interface WeaponPenetrationDef {
 
 export interface WeaponMeleeDef {
   readonly damage: number;
-  /** Reach from the eye (m) and half-angle of the cone (deg). */
+  /**
+   * Reach from the eye to the target's body surface (m; whatever the target's size) and
+   * half-angle of the cone (deg).
+   */
   readonly range: number;
   readonly coneDeg: number;
   readonly duration: number;
@@ -201,6 +208,11 @@ export interface WeaponVfxDef {
 export interface WeaponAudioDef {
   /** Layers played together per shot: punch/body, mechanical, tail. */
   readonly fire: readonly string[];
+  /**
+   * Extra per-shot layers with their own detune and gain (AUDIO.weapons.extraLayerGain), e.g. a
+   * pump-cycle sound whose lead-in lines up with the viewmodel's pump stroke.
+   */
+  readonly extraFire?: readonly string[];
   readonly dry: string;
   readonly equip: string;
   readonly holster: string;
@@ -648,6 +660,7 @@ export const WEAPONS = {
     },
     audio: {
       fire: ['weapon.shotgun.fire', 'weapon.shotgun.boom', 'weapon.tail.large'],
+      extraFire: ['weapon.shotgun.pumpCycle'],
       dry: 'weapon.dry',
       equip: 'weapon.shotgun.equip',
       holster: 'weapon.holster',
@@ -711,6 +724,11 @@ export const WEAPON_RULES = {
   maxMoveSpreadFactor: 1.5,
   /** Per-shot camera shake while fully aimed. */
   adsShakeMultiplier: 0.6,
+  /**
+   * Visual view punch while fully aimed (on top of the recoil's adsMultiplier): the punch moves
+   * the sights off the real aim for a moment, so aimed it stays below the ADS cone.
+   */
+  adsViewPunchMultiplier: 0.4,
   /** Pellet pattern: center pellet + rings; jitter (fraction of the cone) keeps it organic. */
   pellets: {
     ringRadius: 0.72,
@@ -732,6 +750,8 @@ export const WEAPON_RULES = {
   inventory: {
     defaultSlots: 2,
     maxSlots: 4,
+    /** Direct slot selection, one action per slot (at least `maxSlots` entries). */
+    slotActions: ['weapon1', 'weapon2', 'weapon3', 'weapon4'] as const satisfies readonly Action[],
   },
   /** Loadouts by map id; `default` for maps without an entry. */
   loadouts: {

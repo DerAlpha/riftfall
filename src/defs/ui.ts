@@ -9,11 +9,14 @@ export const HUD = {
   /** Health fraction below which the health bar turns into a warning state. */
   lowHealthFraction: 0.35,
   crosshair: {
-    /** Gap/radius growth in CSS px at setSpread(1). */
-    spreadMinPx: 0,
-    spreadMaxPx: 24,
-    /** Spread changes below this (0..1) are not written to the DOM. */
-    spreadQuantum: 0.01,
+    /**
+     * Line gap at zero spread (CSS px, before --hud-scale; Hud writes it as `--xh-gap`). The spread
+     * cone is projected to screen px (Hud.setSpreadCone) and grows the gap once it is wider than this.
+     */
+    gapPx: 5,
+    /** setSpreadCone: largest gap growth (CSS px) and the smallest change written to the DOM. */
+    maxSpreadPx: 160,
+    spreadPxQuantum: 0.5,
     defaultColor: '#e8f6ff',
     /** Crosshair fades out between these ADS amounts (0..1); opacity changes below the epsilon are skipped. */
     adsFadeStart: 0.2,

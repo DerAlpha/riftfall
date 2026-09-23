@@ -9,7 +9,8 @@
  *                                                    enabled only while a wave runs)
  *   → Volumetrics                                   (additive cones/shafts/dust + VFX particles/tracers
  *                                                    on their own layer: not darkened by AO, fogged to
- *                                                    their own depth; always present for the VFX)
+ *                                                    their own depth; always present for the VFX, enabled
+ *                                                    while level volumetrics are on or VFX content lives)
  *   → EffectPass[DepthOfField]                      (own pass: its bokeh reads the pass input, so fog
  *                                                    must already be in it; enabled only while aiming)
  *   → RenderPass(viewmodel, clear depth only)       (never fogged/blurred, never clips into walls)
@@ -105,6 +106,11 @@ function readEncodedInput(effect: SMAAEffect | FXAAEffect): void {
 export interface PostFXFrameState {
   /** Real frame delta (s). */
   dt: number;
+  /**
+   * Game time (s) that passed since the last rendered frame: time-scaled, 0 while paused. Drives
+   * effects that belong to the simulation (shockwaves age with their explosion's particles).
+   */
+  simDt: number;
   /** Smoothed 0..1 ADS blend. */
   adsAmount: number;
   /** Smoothed focus distance (m). */
@@ -194,6 +200,10 @@ export class PostFXPipeline {
   private shockwavePass: OwnedEffectPass | null = null;
 
   private structure: string | null = null;
+  /** Level volumetrics (cones/shafts/dust) are on: the volumetric pass always has content. */
+  private volumetrics = false;
+  /** Whether other content (VFX) is live on the volumetric layer; null = unknown (always draw). */
+  private volumetricContent: (() => boolean) | null = null;
   private aoLevel: QualityLevel = 'off';
   private bloomLevel: QualityLevel = 'off';
   private fogSteps = 0;
@@ -275,6 +285,7 @@ export class PostFXPipeline {
 
     this.fogSteps = vol ? vol.fogSteps : 0;
     this.fog.setSteps(this.fogSteps);
+    this.volumetrics = structure.volumetrics;
 
     const tm = TONE_MAPPING[g.toneMapping] ?? ToneMappingMode.AGX;
     if (this.toneMapping.mode !== tm) this.toneMapping.mode = tm;
@@ -319,6 +330,15 @@ export class PostFXPipeline {
     this.shockwave.trigger(position, radius, strength);
   }
 
+  /**
+   * Tells whether anything besides the level volumetrics draws on RENDER.volumetricLayer this
+   * frame (VFX particles/tracers). With level volumetrics off and no such content the volumetric
+   * pass is skipped: it would still cost a full-screen depth prime and a scene traversal.
+   */
+  setVolumetricContentProbe(probe: (() => boolean) | null): void {
+    this.volumetricContent = probe;
+  }
+
   setSize(width: number, height: number): void {
     this.composer.setSize(width, height);
     this.updateDofScale();
@@ -341,8 +361,12 @@ export class PostFXPipeline {
 
   render(s: PostFXFrameState): void {
     if (this.motionBlur) this.motionBlur.setFrameDelta(s.dt);
-    this.shockwave.advance(s.dt);
+    // Game time: the ring freezes with the explosion while paused and follows slow motion;
+    // advance(0) still re-projects it for the current camera.
+    this.shockwave.advance(s.simDt);
     if (this.shockwavePass) this.shockwavePass.enabled = this.shockwave.active;
+    // Safe to toggle per frame: the pass draws into the current buffer (needsSwap = false).
+    this.volumetricPass.enabled = this.volumetrics || (this.volumetricContent?.() ?? true);
 
     if (this.dof && this.dofPass) {
       const active = s.adsAmount > POSTFX.depthOfField.minAmount;
@@ -378,13 +402,16 @@ export class PostFXPipeline {
   warmup(): void {
     const dofWasEnabled = this.dofPass?.enabled ?? false;
     const shockwaveWasEnabled = this.shockwavePass?.enabled ?? false;
+    const volumetricsWasEnabled = this.volumetricPass.enabled;
     if (this.dofPass) this.dofPass.enabled = true;
     if (this.shockwavePass) this.shockwavePass.enabled = true;
+    this.volumetricPass.enabled = true;
     try {
       this.composer.render(0);
     } finally {
       if (this.dofPass) this.dofPass.enabled = dofWasEnabled;
       if (this.shockwavePass) this.shockwavePass.enabled = shockwaveWasEnabled;
+      this.volumetricPass.enabled = volumetricsWasEnabled;
     }
   }
 
@@ -602,7 +629,8 @@ export class PostFXPipeline {
     this.shockwavePass = effectPass('Shockwave', [this.shockwave]);
     this.shockwavePass.enabled = this.shockwave.active;
     // Always present: VFX particles and tracers share the volumetric layer. With volumetrics off
-    // the level hides its cones/shafts/dust, so only the VFX draw here.
+    // the level hides its cones/shafts/dust, so only the VFX draw here and render() enables the
+    // pass only while the content probe reports live VFX.
     add(this.volumetricPass);
 
     if (this.dof) {

@@ -222,6 +222,16 @@ describe('AudioEngine (fake Web Audio)', () => {
     await flush();
     expect(ctx.state).toBe('suspended');
     expect(engine.ready).toBe(false);
+    // Suspended is not locked: sounds can still wake it (the bridge defers only while locked).
+    expect(engine.unlocked).toBe(true);
+  });
+
+  it('is locked until unlock() builds the graph', () => {
+    const engine = new AudioEngine(new EventBus<GameEvents>(), createDefaultSettings().audio);
+    expect(engine.unlocked).toBe(false);
+    void engine.unlock();
+    expect(engine.unlocked).toBe(true);
+    engine.dispose();
   });
 
   it('keeps menus audible while paused and suspends once the UI sound ended', async () => {

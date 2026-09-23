@@ -84,10 +84,15 @@ export interface RecoilCall {
   duration: number;
 }
 
-/** Records recoil; applies it to the fake player's aim at once (so shots see it). */
+/** Recovery steps are eased over one fixed tick; aim kicks over the weapon's (longer) kickTime. */
+const RECOVERY_DURATION_MAX = 1 / 60 + 1e-9;
+
+/** Records recoil; applies it to the fake player's aim at once when `applyRecoil` (so shots see it). */
 export class FakeCamera implements WeaponCamera {
   readonly lookDelta = { yaw: 0, pitch: 0 };
   lookModifier: LookModifier | null = null;
+  /** Landing dip / mantle view pitch (rad) the real camera adds on top of the player's pitch. */
+  aimPitchOffset = 0;
   readonly recoil: RecoilCall[] = [];
   punches = 0;
   applyRecoil = false;
@@ -109,9 +114,17 @@ export class FakeCamera implements WeaponCamera {
     this.pitchLoss = 0;
     return l;
   }
-  /** Total kick (duration > 0) pitch in radians. */
+  /** Aim kicks (eased over kickTime), without the per-tick recovery steps. */
+  get kicks(): RecoilCall[] {
+    return this.recoil.filter((r) => r.duration > RECOVERY_DURATION_MAX);
+  }
+  /** Recovery steps (eased over at most one tick). */
+  get recoveries(): RecoilCall[] {
+    return this.recoil.filter((r) => r.duration <= RECOVERY_DURATION_MAX);
+  }
+  /** Total kick pitch in radians. */
   get kickPitch(): number {
-    return this.recoil.filter((r) => r.duration > 0).reduce((s, r) => s + r.pitch, 0);
+    return this.kicks.reduce((s, r) => s + r.pitch, 0);
   }
 }
 

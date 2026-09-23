@@ -435,6 +435,7 @@ const ACTION_LABELS: Readonly<Record<Action, string>> = {
   weapon1: 'Waffe 1',
   weapon2: 'Waffe 2',
   weapon3: 'Waffe 3',
+  weapon4: 'Waffe 4',
   inspect: 'Waffe inspizieren',
   pause: 'Pause',
   scoreboard: 'Punktestand',
@@ -451,7 +452,10 @@ export const ACTION_GROUPS: readonly { label: string; actions: readonly Action[]
     actions: ['moveForward', 'moveBack', 'moveLeft', 'moveRight', 'jump', 'crouch', 'sprint', 'dash'],
   },
   { label: 'Kampf', actions: ['fire', 'ads', 'reload', 'melee', 'grenade', 'ability'] },
-  { label: 'Waffen', actions: ['weaponNext', 'weaponPrev', 'weapon1', 'weapon2', 'weapon3', 'inspect'] },
+  {
+    label: 'Waffen',
+    actions: ['weaponNext', 'weaponPrev', 'weapon1', 'weapon2', 'weapon3', 'weapon4', 'inspect'],
+  },
   { label: 'Sonstiges', actions: ['interact', 'scoreboard', 'pause'] },
 ];
 

@@ -22,7 +22,10 @@ export const COMBAT = {
   penetrationStep: 0.03,
   /** Hard cap of surfaces/bodies one bullet passes (guards degenerate geometry). */
   maxPenetrations: 4,
-  /** Aggregated pellet hits report the highest-priority zone that was hit (first = highest). */
+  /**
+   * Zone order (first = highest): a shot's damage events on one target (one per zone hit) are sent
+   * best zone first, so hit markers and hit sounds report the best zone.
+   */
   zonePriority: ['weakpoint', 'head', 'body', 'limb', 'shield'] as const satisfies readonly HitZone[],
   /** Name prefixes of static level meshes that stop bullets (`level:<materialId>[:noshadow]`). */
   staticMeshPrefixes: ['level:', 'panel:'] as const,

@@ -236,6 +236,30 @@ export const TARGET_TYPES = {
     accentColor: [0.12, 0.55, 0.85],
     glowColor: [0.25, 0.75, 1],
   },
+  // Organic stand-ins for the M3 enemies: flesh/slime hits play their splatter (blood / slime
+  // particles, splatter decals on the surface behind the dummy) – place them near a wall.
+  flesh: {
+    name: 'Bio-Puppe',
+    health: 150,
+    surface: 'flesh',
+    zoneMultipliers: {},
+    healthRegenDelay: 4,
+    shield: null,
+    bodyColor: [0.3, 0.07, 0.06],
+    accentColor: [0.55, 0.12, 0.08],
+    glowColor: [1, 0.18, 0.1],
+  },
+  slime: {
+    name: 'Schleim-Puppe',
+    health: 150,
+    surface: 'slime',
+    zoneMultipliers: {},
+    healthRegenDelay: 4,
+    shield: null,
+    bodyColor: [0.08, 0.16, 0.06],
+    accentColor: [0.25, 0.7, 0.1],
+    glowColor: [0.35, 1, 0.25],
+  },
 } as const satisfies Record<string, TargetTypeDef>;
 
 export type TargetTypeId = keyof typeof TARGET_TYPES;

@@ -58,6 +58,8 @@ export interface ViewmodelRigDeps {
   events: EventBus<GameEvents>;
   /** ADS amount source (the weapon system); defaults to the player's input-driven ADS. */
   ads?: { readonly adsAmount: number };
+  /** Initial accessibility "reduce flashing" (the animator follows settings:changed after that). */
+  reduceFlashing?: boolean;
 }
 
 export type ViewmodelSocket = 'muzzle' | 'ejectPort' | 'sight';
@@ -241,6 +243,7 @@ export class ViewmodelRig {
     this.animator = new ViewmodelAnimator({
       events: deps.events,
       showModel: (id) => this.displayWeapon(id),
+      reduceFlashing: deps.reduceFlashing ?? false,
     });
 
     this.unsubscribers.push(

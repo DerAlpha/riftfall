@@ -4,6 +4,7 @@ import {
   addBloom,
   aimBasis,
   coneDirection,
+  coneRadiusPx,
   crosshairSpread,
   diskSample,
   pelletOffset,
@@ -77,6 +78,22 @@ describe('spread', () => {
     expect(crosshairSpread(4, 8)).toBe(0.5);
     expect(crosshairSpread(40, 8)).toBe(1);
     expect(crosshairSpread(4, 0)).toBe(0);
+  });
+
+  it('cone radius on screen follows FOV and resolution (1080p, 90° horizontal ≈ 58.7° vertical)', () => {
+    const vFov = (2 * Math.atan(Math.tan(Math.PI / 4) / (16 / 9)) * 180) / Math.PI;
+    // 540 px per unit of tan(half vFov) = 960 px per unit of tan at this FOV.
+    expect(coneRadiusPx(WEAPONS.shotgun.spread.hip, vFov, 1080)).toBeCloseTo(
+      960 * Math.tan(4.5 * (Math.PI / 180)),
+      6,
+    );
+    expect(coneRadiusPx(1, vFov, 2160)).toBeCloseTo(2 * coneRadiusPx(1, vFov, 1080), 9);
+    // A narrower FOV (zoom) magnifies the cone.
+    expect(coneRadiusPx(1, vFov * 0.7, 1080)).toBeGreaterThan(coneRadiusPx(1, vFov, 1080) * 1.4);
+    expect(coneRadiusPx(0, vFov, 1080)).toBe(0);
+    expect(coneRadiusPx(Number.NaN, vFov, 1080)).toBe(0);
+    expect(coneRadiusPx(1, Number.NaN, 1080)).toBe(0);
+    expect(coneRadiusPx(1, vFov, 0)).toBe(0);
   });
 
   it('disk samples stay in the unit disk', () => {

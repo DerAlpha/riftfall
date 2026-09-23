@@ -12,6 +12,9 @@
  * visuals and drives uniforms only (no recompiles, no allocations).
  *
  * Draw calls: 2 per dummy (body + glow) + 1 per shield. Geometry is shared per target type.
+ * The additive barrier lives on RENDER.volumetricLayer: the post chain draws it after AO and height
+ * fog (VolumetricPass), so neither darkens it by the surface behind it; it fogs itself. Its pass
+ * runs while `hasVolumetricContent` reports a visible barrier.
  */
 import {
   BufferAttribute,
@@ -49,6 +52,7 @@ import type { EventBus } from '../core/EventBus';
 import type { FleshSurface, GameEvents, HitZone } from '../core/events';
 import { createLogger } from '../core/log';
 import { DEG2RAD, clamp, clamp01, lerp, smoothstep } from '../core/math';
+import { RENDER } from '../defs/graphics';
 import { COLLISION_FILTER, COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { TEST_ROOM_LAYOUT } from '../defs/level';
 import {
@@ -68,6 +72,7 @@ import {
   setDissolveProgress,
   type DissolveUniforms,
 } from '../render/materials/dissolve';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_PARAMS } from '../render/postfx/fogShared';
 
 const log = createLogger('Targets');
 
@@ -382,14 +387,18 @@ export function buildTargetGeometry(type: TargetTypeDef): TypeGeometry {
 // ---------------------------------------------------------------------------
 
 const SHIELD_VERTEX = /* glsl */ `
+${HEIGHT_FOG_GLSL}
 varying vec2 vUv;
 varying vec3 vNormalW;
 varying vec3 vViewW;
+varying float vFog;
 void main() {
 	vUv = uv;
 	vec4 wp = modelMatrix * vec4( position, 1.0 );
 	vNormalW = normalize( mat3( modelMatrix ) * normal );
 	vViewW = cameraPosition - wp.xyz;
+	// Drawn after the height-fog pass (volumetric layer): fog to its own position.
+	vFog = fogTransmittance( cameraPosition, wp.xyz );
 	gl_Position = projectionMatrix * viewMatrix * wp;
 }
 `;
@@ -407,6 +416,7 @@ uniform float uAspect;
 varying vec2 vUv;
 varying vec3 vNormalW;
 varying vec3 vViewW;
+varying float vFog;
 
 float hexEdge( vec2 p ) {
 	p.x *= 1.1547;
@@ -426,7 +436,7 @@ void main() {
 	float frame = 1.0 - smoothstep( 0.0, 0.02, min( min( vUv.x, 1.0 - vUv.x ), min( vUv.y, 1.0 - vUv.y ) ) );
 	// Mostly see-through: a faint fill, the grid shimmering along a scanline, bright rims and frame.
 	float i = ( uFill + uRim * fres + uGrid * grid * scan + uHit * ( 0.2 + grid ) ) * border + uRim * 0.7 * frame;
-	gl_FragColor = vec4( uColor * i * uVisible, 1.0 );
+	gl_FragColor = vec4( uColor * i * uVisible * vFog, 1.0 );
 }
 `;
 
@@ -445,6 +455,8 @@ function createShieldMaterial(def: TargetShieldDef): ShaderMaterial {
       uTime: { value: 0 },
       uGridScale: { value: def.gridScale },
       uAspect: { value: arcLen / Math.max(1e-3, height) },
+      // Shared by reference: HeightFogEffect.setFog updates it.
+      fogParams: HEIGHT_FOG_PARAMS,
     },
     vertexShader: SHIELD_VERTEX,
     fragmentShader: SHIELD_FRAGMENT,
@@ -453,6 +465,7 @@ function createShieldMaterial(def: TargetShieldDef): ShaderMaterial {
     blending: AdditiveBlending,
     side: DoubleSide,
     toneMapped: false,
+    fog: false,
   });
 }
 
@@ -697,6 +710,8 @@ export class TrainingDummy implements Damageable {
       this.shieldMaterial = createShieldMaterial(sh);
       this.shieldMesh = new Mesh(geometry.shield, this.shieldMaterial);
       this.shieldMesh.renderOrder = 1;
+      // Additive HDR: drawn by the volumetric pass after AO and fog (see the header).
+      this.shieldMesh.layers.set(RENDER.volumetricLayer);
       this.root.add(this.shieldMesh);
     } else {
       this.shieldMaterial = null;
@@ -724,6 +739,11 @@ export class TrainingDummy implements Damageable {
 
   get maxHealth(): number {
     return this.type.health;
+  }
+
+  /** The barrier panel draws this frame (up, raising or still collapsing). */
+  get shieldDrawn(): boolean {
+    return this.shieldMesh !== null && this.shieldMesh.visible && this.root.visible;
   }
 
   /** Barrier up and the dummy alive (the shield target is hittable). */
@@ -1110,6 +1130,16 @@ export class TrainingTargets {
     if (this.disposed) return;
     const d = Number.isFinite(dt) && dt > 0 ? dt : 0;
     for (let i = 0; i < this.dummies.length; i++) this.dummies[i]!.update(d, alpha);
+  }
+
+  /**
+   * True while a barrier panel draws on RENDER.volumetricLayer: with level volumetrics off the
+   * post chain runs that layer's pass only while this (or live VFX) reports content.
+   */
+  get hasVolumetricContent(): boolean {
+    if (this.disposed) return false;
+    for (let i = 0; i < this.dummies.length; i++) if (this.dummies[i]!.shieldDrawn) return true;
+    return false;
   }
 
   /** Every dummy back to full health and alive (dev console). */

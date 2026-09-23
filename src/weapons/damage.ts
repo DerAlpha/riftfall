@@ -1,6 +1,7 @@
 /**
  * Pure damage math: zone multipliers, distance falloff, penetration keep and per-shot hit
- * aggregation (pellets hitting one target become one damage event: one hit marker, one number).
+ * aggregation (pellets hitting one zone of one target become one damage event; the HUD merges a
+ * target's events into one number).
  */
 import type { HitZone } from '../core/events';
 import { falloffMultiplier } from '../combat/hitMath';
@@ -46,8 +47,12 @@ export function zoneRank(zone: HitZone): number {
 }
 
 /**
- * Collects the hits of one shot per target. Arrays keep their capacity between shots, so after
- * warm-up adding hits does not allocate. The reported point is the first hit on the best zone.
+ * Collects the hits of one shot per (target, zone). Targets apply their own zone multipliers
+ * (armor, weak spots) per damage event, so pellets that hit different zones of one target must
+ * stay separate groups: one summed event would apply the best zone's multiplier to every pellet.
+ * Groups of one target are contiguous, best zone first (hit feedback reads the first event;
+ * the HUD merges a target's numbers). Arrays keep their capacity between shots, so after warm-up
+ * adding hits does not allocate. The reported point is the first hit in the group.
  */
 export class HitAccumulator<T> {
   readonly targets: T[] = [];
@@ -69,25 +74,42 @@ export class HitAccumulator<T> {
   }
 
   add(target: T, amount: number, zone: HitZone, x: number, y: number, z: number): void {
+    const rank = zoneRank(zone);
+    let at = this.n;
+    let seen = false;
     for (let i = 0; i < this.n; i++) {
-      if (this.targets[i] !== target) continue;
-      this.amounts[i]! += amount;
-      this.hits[i]! += 1;
-      if (zoneRank(zone) > zoneRank(this.zones[i]!)) {
-        this.zones[i] = zone;
-        this.px[i] = x;
-        this.py[i] = y;
-        this.pz[i] = z;
+      if (this.targets[i] !== target) {
+        if (!seen) continue;
+        at = i;
+        break;
       }
-      return;
+      seen = true;
+      if (this.zones[i] === zone) {
+        this.amounts[i]! += amount;
+        this.hits[i]! += 1;
+        return;
+      }
+      if (zoneRank(this.zones[i]!) < rank) {
+        at = i;
+        break;
+      }
     }
-    const i = this.n++;
-    this.targets[i] = target;
-    this.amounts[i] = amount;
-    this.zones[i] = zone;
-    this.hits[i] = 1;
-    this.px[i] = x;
-    this.py[i] = y;
-    this.pz[i] = z;
+    for (let i = this.n; i > at; i--) {
+      this.targets[i] = this.targets[i - 1]!;
+      this.amounts[i] = this.amounts[i - 1]!;
+      this.zones[i] = this.zones[i - 1]!;
+      this.hits[i] = this.hits[i - 1]!;
+      this.px[i] = this.px[i - 1]!;
+      this.py[i] = this.py[i - 1]!;
+      this.pz[i] = this.pz[i - 1]!;
+    }
+    this.n++;
+    this.targets[at] = target;
+    this.amounts[at] = amount;
+    this.zones[at] = zone;
+    this.hits[at] = 1;
+    this.px[at] = x;
+    this.py[at] = y;
+    this.pz[at] = z;
   }
 }

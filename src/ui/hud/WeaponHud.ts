@@ -134,7 +134,7 @@ export class WeaponHud {
     this.weaponEl.hidden = slots.every((s) => s === null);
   }
 
-  /** Weapon being raised (weapon:equipStart / weapon:equipped). */
+  /** Weapon being raised (weapon:raiseStart / weapon:equipped). */
   setWeapon(weaponId: string | null, slot: number): void {
     this.setCurrentSlot(slot);
     if (weaponId === this.weaponId) return;

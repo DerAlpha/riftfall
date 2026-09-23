@@ -10,9 +10,10 @@
  *   toned down by accessibility.reduceFlashing,
  * - `weapon:ammoChanged` (mag / reserve / magSize, low-ammo + empty states, NACHLADEN / KEINE
  *   MUNITION prompt), `weapon:reloadStart` / `weapon:reloadEnd` (prompt hidden while reloading),
- *   `weapon:dryFire` (counter flash), `weapon:inventoryChanged` / `weapon:equipStart` /
- *   `weapon:equipped` (weapon name + slot chips).
- * Game.ts feeds per frame: setSpread(weapons.spread), setAds(weapons.adsAmount), update(dt, yaw);
+ *   `weapon:dryFire` (counter flash), `weapon:inventoryChanged` / `weapon:raiseStart` /
+ *   `weapon:equipped` (weapon name + slot chips, switched when the new weapon comes up).
+ * Game.ts feeds per frame: setSpreadCone(weapons.spreadDegrees, render.camera.fov),
+ * setAds(weapons.adsAmount), update(dt, yaw);
  * once: setCamera(render.camera) – damage numbers are projected with it.
  */
 import type { Camera } from 'three';
@@ -23,6 +24,7 @@ import { DEG2RAD, RAD2DEG, clamp01, lerp, smoothstep, wrapAngle } from '../../co
 import { PLAYER } from '../../defs/player';
 import { HUD } from '../../defs/ui';
 import type { Settings } from '../../save/settingsSchema';
+import { coneRadiusPx } from '../../weapons/spread';
 import { CombatHud } from './CombatHud';
 import { WeaponHud } from './WeaponHud';
 import './hud-combat.css';
@@ -86,11 +88,14 @@ export class Hud {
   private readonly indicators: DamageIndicator[] = [];
 
   // cached shown values
-  private spread = -1;
+  /** Last written --xh-spread (CSS px) from setSpreadCone; -1 = force the next write. */
+  private shownSpreadPx = -1;
+  private hudScale = 1;
   private ads = 0;
   private shownCrosshairOpacity = 1;
   private viewportW = 0;
   private viewportH = 0;
+  private readonly root: HTMLElement;
   private readonly onResize = (): void => this.measureViewport();
   private health = -1;
   private maxHealth = -1;
@@ -118,11 +123,14 @@ export class Hud {
   private readonly unsubs: (() => void)[] = [];
 
   constructor(root: HTMLElement, events: EventBus<GameEvents>, settings: SettingsStore) {
+    this.root = root;
     this.el = h('div', 'hud');
     this.el.setAttribute('aria-hidden', 'true');
 
     // --- crosshair ---
     this.crosshair = h('div', 'hud-crosshair', this.el);
+    // The base gap comes from the def (setSpreadCone subtracts it from the projected cone).
+    this.crosshair.style.setProperty('--xh-gap', `${HUD.crosshair.gapPx}px`);
     h('span', 'xh-dot', this.crosshair);
     for (const side of ['t', 'r', 'b', 'l']) h('span', `xh-line xh-line--${side}`, this.crosshair);
     h('span', 'xh-ring', this.crosshair);
@@ -206,7 +214,7 @@ export class Hud {
     root.appendChild(this.el);
 
     this.applySettings(settings.current);
-    this.setSpread(0);
+    this.writeSpreadPx(0);
     // Start values until the first player:healthChanged arrives (PlayerHealth.announce()).
     const ph = PLAYER.health;
     this.setHealth(ph.startHealth, ph.maxHealth, ph.startArmor, ph.maxArmor);
@@ -236,7 +244,7 @@ export class Hud {
       }),
       events.on('weapon:ammoChanged', (e) => this.weapon.setAmmo(e.mag, e.reserve, e.magSize)),
       events.on('weapon:inventoryChanged', (e) => this.weapon.setInventory(e.slots, e.current)),
-      events.on('weapon:equipStart', (e) => this.weapon.setWeapon(e.weaponId, e.slot)),
+      events.on('weapon:raiseStart', (e) => this.weapon.setWeapon(e.weaponId, e.slot)),
       events.on('weapon:equipped', (e) => this.weapon.setWeapon(e.weaponId, e.slot)),
       events.on('weapon:reloadStart', () => this.weapon.setReloading(true)),
       events.on('weapon:reloadEnd', () => this.weapon.setReloading(false)),
@@ -273,13 +281,21 @@ export class Hud {
     return this.ads;
   }
 
-  /** Crosshair spread 0..1 (weapon bloom / movement). */
-  setSpread(spread: number): void {
-    const s = clamp01(Number.isFinite(spread) ? spread : 0);
-    if (Math.abs(s - this.spread) < HUD.crosshair.spreadQuantum && this.spread >= 0) return;
-    this.spread = s;
-    const px = lerp(HUD.crosshair.spreadMinPx, HUD.crosshair.spreadMaxPx, s);
-    this.crosshair.style.setProperty('--xh-spread', `${px.toFixed(1)}px`);
+  /**
+   * Crosshair gap from the real cone: half-angle `spreadDeg` (weapons.spreadDegrees) projected
+   * with the world camera's vertical FOV (`render.camera.fov`, ADS zoom included) onto the game
+   * viewport (CSS px), so the lines sit on the pellet/bullet cone at any FOV, zoom, resolution and
+   * HUD scale. Cones inside the base gap (HUD.crosshair.gapPx) keep it for readability; the growth
+   * is clamped to HUD.crosshair.maxSpreadPx.
+   */
+  setSpreadCone(spreadDeg: number, verticalFovDeg: number): void {
+    const C = HUD.crosshair;
+    const radius = coneRadiusPx(spreadDeg, verticalFovDeg, this.viewportH);
+    // The crosshair is scaled by --hud-scale and its lines start at the fixed gap.
+    const raw = radius / this.hudScale - C.gapPx;
+    const px = Math.min(C.maxSpreadPx, Math.max(0, Number.isFinite(raw) ? raw : 0));
+    if (this.shownSpreadPx >= 0 && Math.abs(px - this.shownSpreadPx) < C.spreadPxQuantum) return;
+    this.writeSpreadPx(px);
   }
 
   /** Dash charges; `max` 0 hides the widget (dash locked). `progress` 0..1 of the next charge. */
@@ -379,6 +395,11 @@ export class Hud {
   // Internals
   // -------------------------------------------------------------------------
 
+  private writeSpreadPx(px: number): void {
+    this.shownSpreadPx = px;
+    this.crosshair.style.setProperty('--xh-spread', `${px.toFixed(1)}px`);
+  }
+
   private setPlaceholderText(el: HTMLElement, text: string): void {
     if (el.textContent !== text) el.textContent = text;
   }
@@ -393,6 +414,8 @@ export class Hud {
     const a = s.accessibility;
     const scale = Number.isFinite(a.hudScale) && a.hudScale > 0 ? a.hudScale : 1;
     this.el.style.setProperty('--hud-scale', String(scale));
+    this.hudScale = scale;
+    this.shownSpreadPx = -1;
     this.reduceFlashing = a.reduceFlashing;
     this.el.classList.toggle('hud--reduce-flashing', a.reduceFlashing);
     this.combat.configure({
@@ -411,11 +434,17 @@ export class Hud {
     }
   }
 
-  /** Viewport in CSS px (the HUD layer covers the window); cached – no layout reads per frame. */
+  /**
+   * Game viewport in CSS px: the HUD layer covers the canvas box (both fill #app), measured like
+   * RenderSystem.measure (window fallback before layout). Cached – no layout reads per frame.
+   */
   private measureViewport(): void {
     if (typeof window === 'undefined') return;
-    this.viewportW = window.innerWidth;
-    this.viewportH = window.innerHeight;
+    const w = this.root.clientWidth;
+    const h = this.root.clientHeight;
+    const laidOut = w >= 2 && h >= 2;
+    this.viewportW = laidOut ? w : window.innerWidth;
+    this.viewportH = laidOut ? h : window.innerHeight;
   }
 
   private resetFps(): void {

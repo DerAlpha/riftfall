@@ -13,17 +13,17 @@ import type { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/events';
 import { getWeaponDef } from '../defs/weapons';
 import { IMPACT_USES_WEAPON_PROFILE, VFX } from '../defs/vfx';
-import type { VfxSystem } from './VfxSystem';
+import type { VfxWeaponApi } from '../core/contracts';
 
 const UP = { x: 0, y: 1, z: 0 };
 const _shotDir = { x: 0, y: 0, z: 0 };
 
-/** The part of VfxSystem the bridge drives (tests pass a recorder). */
+/** The part of the VFX contract the bridge drives (VfxSystem; tests pass a recorder). */
 export type VfxBridgeTarget = Pick<
-  VfxSystem,
+  VfxWeaponApi,
   | 'muzzle'
   | 'impact'
-  | 'tracer'
+  | 'muzzleTracer'
   | 'explosion'
   | 'spawn'
   | 'applyGraphics'
@@ -65,9 +65,10 @@ export class VfxBridge {
         const profile = getWeaponDef(e.weaponId)?.vfx.impact ?? null;
         vfx.impact(e.surface, profile, e.kind, e.point, e.normal, e.decal, this.shotDirection(e));
       }),
+      // combat:tracer comes from the player's weapon: its start follows the displayed muzzle.
       events.on('combat:tracer', (e) => {
         const color = getWeaponDef(e.weaponId)?.tracer.color;
-        vfx.tracer(e.from, e.to, color ?? VFX.tracers.defaultColor);
+        vfx.muzzleTracer(e.to, color ?? VFX.tracers.defaultColor, e.from);
       }),
       events.on('combat:explosion', (e) => vfx.explosion(e.position, e.radius, e.element)),
       events.on('player:land', (e) => {

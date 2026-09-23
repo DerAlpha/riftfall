@@ -18,7 +18,15 @@
  * VFX draw call active (invisible) so no program compiles at the first shot.
  */
 import * as THREE from 'three';
-import type { PhysicsApi, RaycastOptions, RenderApi, SettingsStore, VfxApi } from '../core/contracts';
+import type {
+  PhysicsApi,
+  RaycastOptions,
+  RenderApi,
+  SettingsStore,
+  VfxSocket,
+  VfxSocketSource,
+  VfxWeaponApi,
+} from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
 import type {
   DamageElement,
@@ -32,6 +40,7 @@ import { createLogger } from '../core/log';
 import { QUALITY_LEVELS } from '../defs/graphics';
 import { interactionGroups } from '../defs/physics';
 import {
+  DECAL_KINDS,
   ELEMENT_TINTS,
   EXPLOSION_PRESET,
   IMPACT_PROFILE_BY_KIND,
@@ -44,6 +53,7 @@ import {
   getCasingDef,
   getEffectPreset,
   getImpactProfile,
+  type DecalKind,
   type EffectPreset,
   type ImpactProfileDef,
   type Rgb,
@@ -66,17 +76,8 @@ import { TracerSystem } from './TracerSystem';
 
 const log = createLogger('vfx');
 
-export type VfxSocket = 'muzzle' | 'ejectPort';
-
-/** Viewmodel socket access (ViewmodelRig satisfies it). */
-export interface VfxSocketSource {
-  /** Viewmodel-space anchor that follows the shown weapon's socket (muzzle flash parent). */
-  getSocketObject(socket: VfxSocket): THREE.Object3D;
-  /** World point that projects where the socket appears on screen. */
-  getSocketWorldPosition(socket: VfxSocket, out: THREE.Vector3): THREE.Vector3;
-  /** World direction of the socket's local −Z (barrel axis / ejection direction). */
-  getSocketWorldDirection?(socket: VfxSocket, out: THREE.Vector3): THREE.Vector3;
-}
+/** Viewmodel socket contracts live in core/contracts.ts (re-exported for existing imports). */
+export type { VfxSocket, VfxSocketSource };
 
 export interface VfxDeps {
   render: RenderApi;
@@ -129,6 +130,18 @@ interface PendingShot {
   dz: number;
 }
 
+/** Queued player tracer: starts at the muzzle socket as shown this frame (resolved in update()). */
+interface PendingTracer {
+  /** Fire-time muzzle (used without sockets). */
+  fx: number;
+  fy: number;
+  fz: number;
+  tx: number;
+  ty: number;
+  tz: number;
+  color: number;
+}
+
 interface PendingCasing {
   id: string;
   delay: number;
@@ -140,6 +153,8 @@ const PROBE_OPTS: RaycastOptions = { groups: PROBE_GROUPS };
 
 const UP: Vec3Like = { x: 0, y: 1, z: 0 };
 const DOWN: Vec3Like = { x: 0, y: -1, z: 0 };
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _dir = new THREE.Vector3();
@@ -156,8 +171,12 @@ const _hitNormal = new THREE.Vector3();
 const _eye = new THREE.Vector3();
 const _ray = new THREE.Vector3();
 const _reflect = { x: 0, y: 1, z: 0 };
+const _tracerTo = { x: 0, y: 0, z: 0 };
+const _t1 = new THREE.Vector3();
+const _t2 = new THREE.Vector3();
+const _into = new THREE.Vector3();
 
-export class VfxSystem implements VfxApi {
+export class VfxSystem implements VfxWeaponApi {
   readonly particles: ParticleSystem;
   readonly decals: DecalSystem;
   readonly tracers: TracerSystem;
@@ -177,12 +196,15 @@ export class VfxSystem implements VfxApi {
   private readonly ctx = createEmitContext();
   private readonly _stats = { particles: 0, decals: 0, lights: 0 };
   private readonly shakePayload = { trauma: 0 };
+  private readonly pulsePayload = { strength: 0 };
   private readonly unknown = new Set<string>();
 
   private readonly pendingShots: PendingShot[] = [];
   private pendingShotCount = 0;
   private readonly pendingCasings: PendingCasing[] = [];
   private pendingCasingCount = 0;
+  private readonly pendingTracers: PendingTracer[] = [];
+  private pendingTracerCount = 0;
 
   /** Smoothed camera velocity (casings inherit it). */
   private readonly camVel = new THREE.Vector3();
@@ -193,6 +215,7 @@ export class VfxSystem implements VfxApi {
   private flashScale = 1;
   /** accessibility.screenShake: also scales the explosion shockwave distortion. */
   private shockwaveScale = 1;
+  private warming = false;
   private disposed = false;
 
   /** Preferred at boot: generates the atlases without blocking the loading screen, then constructs. */
@@ -229,7 +252,8 @@ export class VfxSystem implements VfxApi {
       this.rand,
       deps.onClink ?? null,
     );
-    this.lights = new LightPool(this.render.scene, this.rand);
+    // Also one light in the viewmodel scene (before the ViewmodelRig compiles its materials).
+    this.lights = new LightPool(this.render.scene, this.rand, this.render.viewmodelScene);
     this.muzzleFlash = new MuzzleFlash(this.spriteAtlas, this.rand);
 
     const scene = this.render.scene;
@@ -251,6 +275,9 @@ export class VfxSystem implements VfxApi {
       });
     }
     for (let i = 0; i < VFX.queue.casings; i++) this.pendingCasings.push({ id: '', delay: 0 });
+    for (let i = 0; i < VFX.queue.tracers; i++) {
+      this.pendingTracers.push({ fx: 0, fy: 0, fz: 0, tx: 0, ty: 0, tz: 0, color: 0 });
+    }
 
     this.applyGraphics(g);
     this.applyAccessibility(deps.settings.current.accessibility);
@@ -269,6 +296,27 @@ export class VfxSystem implements VfxApi {
 
   tracer(from: Vec3Like, to: Vec3Like, color: number = VFX.tracers.defaultColor): void {
     this.tracers.spawn(from, to, color);
+  }
+
+  /**
+   * A player tracer to `to`. Shots are traced in the fixed tick, before this frame's camera and
+   * viewmodel moved: like the muzzle flash, the start is resolved in update() at the muzzle
+   * socket as displayed (`from`, the fire-time muzzle, is the fallback without sockets).
+   */
+  muzzleTracer(to: Vec3Like, color: number, from: Vec3Like): void {
+    if (!this.sockets) {
+      this.tracers.spawn(from, to, color);
+      return;
+    }
+    if (this.pendingTracerCount >= VFX.queue.tracers) return;
+    const t = this.pendingTracers[this.pendingTracerCount++]!;
+    t.fx = from.x;
+    t.fy = from.y;
+    t.fz = from.z;
+    t.tx = to.x;
+    t.ty = to.y;
+    t.tz = to.z;
+    t.color = color;
   }
 
   explosion(position: Vec3Like, radius: number, element: DamageElement = 'physical'): void {
@@ -302,6 +350,14 @@ export class VfxSystem implements VfxApi {
     return s;
   }
 
+  /**
+   * True while VFX draws something on RENDER.volumetricLayer (live particles or tracers, or the
+   * warm-up frame): the post chain skips that layer's pass otherwise when level volumetrics are off.
+   */
+  get hasVolumetricContent(): boolean {
+    return this.warming || this.particles.count > 0 || this.tracers.count > 0;
+  }
+
   update(dt: number): void {
     if (this.disposed) return;
     const step = Math.max(0, Number.isFinite(dt) ? dt : 0);
@@ -311,14 +367,19 @@ export class VfxSystem implements VfxApi {
     // Age existing flashes first so flashes started this frame render at full strength.
     this.lights.update(step);
     this.muzzleFlash.update(step, this.render.viewmodelCamera);
-    this.flushShots();
+    // Age the delayed casings before this frame's shots queue theirs: a delayed casing leaves the
+    // port at least ejectDelay after its shot – never in the frame of its full-peak muzzle light.
     this.flushCasings(step);
+    this.flushShots();
+    this.flushTracers();
     this.lights.endFrame();
     this.lights.writeUniforms(
       this.particles.flashPos,
       this.particles.flashColor,
       VFX.particles.flashLightScale,
     );
+    this.render.camera.getWorldPosition(_eye);
+    this.lights.updateViewmodel(_eye);
 
     this.particles.update(step, this.render.camera);
     this.tracers.update(step);
@@ -335,11 +396,13 @@ export class VfxSystem implements VfxApi {
     if (this.disposed) return;
     const parts = [this.particles, this.tracers, this.decals, this.casings, this.muzzleFlash];
     for (const p of parts) p.setWarmup(true);
+    this.warming = true;
     try {
       this.render.render(0);
     } catch (err) {
       log.warn('VFX warm-up render failed', err);
     } finally {
+      this.warming = false;
       for (const p of parts) p.setWarmup(false);
     }
   }
@@ -424,14 +487,7 @@ export class VfxSystem implements VfxApi {
         if (hit && hit.data?.kind !== 'prop') {
           _hitPoint.copy(hit.point);
           _hitNormal.copy(hit.normal);
-          this.decals.add(
-            splatter.decal,
-            _hitPoint,
-            _hitNormal,
-            lerpRange(splatter.size, this.rand()),
-            this.rand() * Math.PI * 2,
-            this.rand(),
-          );
+          this.addFittedDecal(splatter.decal, lerpRange(splatter.size, this.rand()));
         }
       }
     }
@@ -479,6 +535,7 @@ export class VfxSystem implements VfxApi {
     this.muzzleFlash.hide();
     this.pendingShotCount = 0;
     this.pendingCasingCount = 0;
+    this.pendingTracerCount = 0;
   }
 
   // -------------------------------------------------------------------------
@@ -535,9 +592,12 @@ export class VfxSystem implements VfxApi {
       const hit = this.physics.raycast(_probe, DOWN, reach, PROBE_OPTS);
       if (hit) {
         ctx.floorY = hit.point.y;
-        groundHit = true;
-        _hitPoint.copy(hit.point);
-        _hitNormal.copy(hit.normal);
+        // Props move (shots push them): a scorch on one would be left floating in the air.
+        if (hit.data?.kind !== 'prop') {
+          groundHit = true;
+          _hitPoint.copy(hit.point);
+          _hitNormal.copy(hit.normal);
+        }
       }
     }
     if (preset.emitters.length > 0) this.particles.emit(preset, ctx);
@@ -551,28 +611,73 @@ export class VfxSystem implements VfxApi {
       }
       this.lights.flash(preset.light, position, _n, scale, color);
     }
-    if (preset.shake && this.events)
-      this.emitShake(position, preset.shake.trauma, preset.shake.range * scale);
+    const events = this.events;
+    if (preset.shake && events) {
+      const k = this.proximity(position, preset.shake.range * scale);
+      if (k > 0) {
+        this.shakePayload.trauma = preset.shake.trauma * k;
+        events.emit('camera:shake', this.shakePayload);
+      }
+    }
+    if (preset.hitPulse && events) {
+      const k = this.proximity(position, preset.hitPulse.range * scale);
+      if (k > 0) {
+        this.pulsePayload.strength = preset.hitPulse.strength * k;
+        events.emit('fx:hitPulse', this.pulsePayload);
+      }
+    }
     if (ground && groundHit && position.y - _hitPoint.y <= ground.probe * scale) {
-      this.decals.add(
-        ground.kind,
-        _hitPoint,
-        _hitNormal,
-        scale * ground.sizePerScale,
-        this.rand() * Math.PI * 2,
-        this.rand(),
-      );
+      this.addFittedDecal(ground.kind, scale * ground.sizePerScale);
     }
   }
 
-  private emitShake(position: Vec3Like, trauma: number, range: number): void {
-    if (!(range > 0)) return;
+  /** Linear falloff from 1 at the camera to 0 at `range` m (0 beyond or for a bad range). */
+  private proximity(position: Vec3Like, range: number): number {
+    if (!(range > 0)) return 0;
     this.render.camera.getWorldPosition(_cam);
     const d = Math.hypot(position.x - _cam.x, position.y - _cam.y, position.z - _cam.z);
-    const k = 1 - d / range;
-    if (k <= 0) return;
-    this.shakePayload.trauma = trauma * k;
-    this.events!.emit('camera:shake', this.shakePayload);
+    return Math.max(0, 1 - d / range);
+  }
+
+  /**
+   * Add a large flat decal at _hitPoint / _hitNormal, shrunk until its rim lies on the surface
+   * (VFX.decals.surfaceFit) – an unclipped quad would overhang ledges, stairs and wall edges.
+   * Skipped when even the smallest size does not fit.
+   */
+  private addFittedDecal(kind: DecalKind, size: number): void {
+    const sizeRand = this.rand();
+    const fit = this.fitDecalSize(kind, size, sizeRand);
+    if (fit > 0) this.decals.add(kind, _hitPoint, _hitNormal, fit, this.rand() * Math.PI * 2, sizeRand);
+  }
+
+  private fitDecalSize(kind: DecalKind, size: number, sizeRand: number): number {
+    const physics = this.physics;
+    if (!physics) return size;
+    const cfg = VFX.decals.surfaceFit;
+    // Tangent basis of the surface; probes run back into it along −normal.
+    _t1.crossVectors(Math.abs(_hitNormal.y) < 0.9 ? Y_AXIS : X_AXIS, _hitNormal);
+    if (_t1.lengthSq() < 1e-8) return size;
+    _t1.normalize();
+    _t2.crossVectors(_hitNormal, _t1);
+    _into.copy(_hitNormal).negate();
+    const edge = lerpRange(DECAL_KINDS[kind].size, sizeRand);
+    let s = size;
+    for (let i = 0; i <= cfg.maxHalvings; i++, s *= 0.5) {
+      const r = edge * s * 0.5 * cfg.rimFraction;
+      let fits = true;
+      for (let c = 0; c < 4 && fits; c++) {
+        const a = c === 0 ? r : c === 1 ? -r : 0;
+        const b = c === 2 ? r : c === 3 ? -r : 0;
+        _probe
+          .copy(_hitPoint)
+          .addScaledVector(_t1, a)
+          .addScaledVector(_t2, b)
+          .addScaledVector(_hitNormal, cfg.lift);
+        fits = physics.raycast(_probe, _into, cfg.lift + cfg.tolerance, PROBE_OPTS) !== null;
+      }
+      if (fits) return s;
+    }
+    return 0;
   }
 
   private resolveProfile(profile: string | null, kind: ImpactKind): ImpactProfileDef | undefined {
@@ -625,6 +730,22 @@ export class VfxSystem implements VfxApi {
         else if (def.ejectDelay > 0) this.queueCasing(s.casing, def.ejectDelay);
         else this.ejectCasing(s.casing);
       }
+    }
+  }
+
+  private flushTracers(): void {
+    const n = this.pendingTracerCount;
+    this.pendingTracerCount = 0;
+    for (let i = 0; i < n; i++) {
+      const t = this.pendingTracers[i]!;
+      if (this.sockets) this.sockets.getSocketWorldPosition('muzzle', _v);
+      else _v.set(t.fx, t.fy, t.fz);
+      if (!finite(_v)) _v.set(t.fx, t.fy, t.fz);
+      this.keepInFront(_v, 0, null);
+      _tracerTo.x = t.tx;
+      _tracerTo.y = t.ty;
+      _tracerTo.z = t.tz;
+      this.tracers.spawn(_v, _tracerTo, t.color);
     }
   }
 

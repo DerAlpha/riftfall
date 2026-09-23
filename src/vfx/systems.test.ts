@@ -4,16 +4,19 @@ import { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/events';
 import { RENDER } from '../defs/graphics';
 import { ENGINE } from '../defs/engine';
+import { TEST_ROOM_LAYOUT } from '../defs/level';
 import { POSTFX } from '../defs/postfx';
-import { SPRITES, VFX, VFX_EFFECTS, decalCapacity } from '../defs/vfx';
+import { CASINGS, DECAL_KINDS, SPRITES, VFX, VFX_EFFECTS, decalCapacity, getCasingDef } from '../defs/vfx';
 import { getWeaponDef } from '../defs/weapons';
+import { DustParticles } from '../render/vfx/DustParticles';
+import { VolumetricCone } from '../render/vfx/VolumetricCone';
 import { SettingsStore } from '../save/SettingsStore';
 import { createDefaultSettings } from '../save/settingsSchema';
 import { CasingSystem } from './CasingSystem';
 import { DecalSystem } from './DecalSystem';
 import { createDecalAtlas } from './decalAtlas';
 import { createEmitContext } from './emit';
-import { LightPool } from './LightPool';
+import { LightPool, cutoffWindow } from './LightPool';
 import { MuzzleFlash } from './MuzzleFlash';
 import { ParticleSystem } from './ParticleSystem';
 import { ShockwaveEffect } from './ShockwaveEffect';
@@ -47,6 +50,35 @@ describe('ParticleSystem (GPU side)', () => {
       expect(mat.vertexShader).toContain('vec2 perp = vec2(axis.y, -axis.x)');
       expect(mat.uniforms.uMinPx!.value).toBeGreaterThan(0);
     }
+    ps.dispose();
+  });
+
+  it('composites lit smoke before all additive light on the volumetric layer', () => {
+    const ps = new ParticleSystem(atlas, seeded(1));
+    const byName = (name: string): THREE.Object3D => ps.object.getObjectByName(name)!;
+    const lit = byName('VfxParticlesLit');
+    const additive = byName('VfxParticlesAdditive');
+    const time = { value: 0 };
+    const cone = new VolumetricCone({
+      apex: { x: 0, y: 5, z: 0 },
+      direction: { x: 0, y: -1, z: 0 },
+      angle: 0.4,
+      length: 4,
+      color: new THREE.Color(1, 1, 1),
+      intensity: 0.3,
+      floorY: 0,
+      time,
+    });
+    const dust = new DustParticles({ regions: TEST_ROOM_LAYOUT.dust, maxCount: 8, time });
+    const tracers = new TracerSystem();
+    // Smoke drawn after the cones would dim a light shaft even when it is far behind it.
+    for (const o of [cone.mesh, dust.points, additive, tracers.mesh]) {
+      expect(lit.renderOrder, o.name).toBeLessThan(o.renderOrder);
+    }
+    expect(additive.renderOrder).toBeGreaterThan(Math.max(cone.mesh.renderOrder, dust.points.renderOrder));
+    cone.dispose();
+    dust.dispose();
+    tracers.dispose();
     ps.dispose();
   });
 
@@ -269,6 +301,28 @@ describe('CasingSystem', () => {
     expect(brass!.count).toBe(0);
     cs.dispose();
   });
+
+  it('re-probes the floor while flying: casings drop off ledges instead of resting in mid-air', () => {
+    const physics = new FakePhysics();
+    // Mezzanine floor at 3.5 m ending at x = 0.3, the arena floor (y = 0) below it.
+    physics.planes.push({
+      normal: new THREE.Vector3(0, 1, 0),
+      d: 3.5,
+      data: { kind: 'world', surface: 'metal' },
+      contains: (p) => p.x < 0.3,
+    });
+    const cs = new CasingSystem(4, fakeRender(), physics.asApi(), seeded(3));
+    const zero = { x: 0, y: 0, z: 0 };
+    const fwd = { x: 0, y: 0, z: -1 };
+    expect(cs.eject('casing.rifle', { x: 0, y: 4.95, z: 0 }, { x: 1, y: 0, z: 0 }, fwd, zero)).toBe(true);
+    expect(cs.sim.floorY[0]).toBeCloseTo(3.5, 5);
+    for (let i = 0; i < 180; i++) cs.update(1 / 60);
+    expect(cs.count).toBe(1);
+    expect(cs.sim.px[0]).toBeGreaterThan(0.3);
+    expect(cs.sim.rest[0]).toBeGreaterThanOrEqual(0);
+    expect(cs.sim.py[0]).toBeCloseTo(CASINGS['casing.rifle'].radius, 3);
+    cs.dispose();
+  });
 });
 
 describe('ShockwaveEffect', () => {
@@ -340,6 +394,10 @@ describe('VfxSystem', () => {
       if ((o as THREE.Light).isLight) lights++;
     });
     expect(lights).toBe(VFX.lights.count);
+    // One flash light in the viewmodel scene too (explosions light the weapon).
+    const vmLights = (): number =>
+      render.viewmodelScene.children.filter((o) => (o as THREE.Light).isLight).length;
+    expect(vmLights()).toBe(1);
     expect(vfx.muzzleFlash.root.parent).toBe(sockets.anchors.muzzle);
     expect(vfx.stats).toEqual({ particles: 0, decals: 0, lights: 0 });
     vfx.dispose();
@@ -348,6 +406,7 @@ describe('VfxSystem', () => {
       if ((o as THREE.Light).isLight) after++;
     });
     expect(after).toBe(0);
+    expect(vmLights()).toBe(0);
   });
 
   it('impacts spawn the surface effect, a decal (not on props) and a light', () => {
@@ -408,7 +467,9 @@ describe('VfxSystem', () => {
     // Socket position (not the fire-time muzzle), the light a little ahead along the aim.
     const ahead = VFX_EFFECTS['muzzle.rifle'].light.offset;
     expect(light.position.z).toBeCloseTo(-0.6 - ahead, 5);
-    // Brass leaves the port on the bolt stroke, a frame after the flash.
+    // Brass leaves the port on the bolt stroke, at least ejectDelay (18 ms) after the flash.
+    expect(vfx.casings.count).toBe(0);
+    vfx.update(1 / 60);
     expect(vfx.casings.count).toBe(0);
     vfx.update(1 / 60);
     expect(vfx.casings.count).toBe(1);
@@ -430,8 +491,46 @@ describe('VfxSystem', () => {
     vfx.dispose();
   });
 
-  it('explosions: particles, light, distance-scaled shake, shockwave and a scorch mark', () => {
-    const { vfx, shocks, shakes } = setup();
+  it('never ejects a delayed casing in the frame of its full-peak muzzle light, at any frame rate', () => {
+    const { vfx } = setup();
+    const pistol = getWeaponDef('pistol')!;
+    const delay = getCasingDef(pistol.vfx.casing!)!.ejectDelay;
+    const fire = (): void =>
+      vfx.muzzle(
+        pistol.vfx.muzzle,
+        pistol.vfx.muzzleLightColor,
+        pistol.vfx.casing,
+        false,
+        { x: 0, y: 1.5, z: -1 },
+        { x: 0, y: 0, z: -1 },
+      );
+    // Frames longer than the delay (30 / 20 fps): the brass appears one frame after the flash.
+    for (const dt of [1 / 30, 1 / 20]) {
+      expect(dt).toBeGreaterThan(delay);
+      vfx.clear();
+      fire();
+      vfx.update(dt);
+      expect(vfx.muzzleFlash.visible).toBe(true);
+      expect(vfx.casings.count).toBe(0);
+      vfx.update(dt);
+      expect(vfx.casings.count).toBe(1);
+    }
+    // 144 Hz: on the first frame at least `delay` after the shot's frame.
+    vfx.clear();
+    fire();
+    let frames = 0;
+    while (vfx.casings.count === 0 && frames < 30) {
+      vfx.update(1 / 144);
+      frames++;
+    }
+    expect(frames).toBe(1 + Math.ceil(delay * 144));
+    vfx.dispose();
+  });
+
+  it('explosions: particles, light, distance-scaled shake + hit pulse, shockwave and a scorch mark', () => {
+    const { vfx, events, shocks, shakes } = setup();
+    const pulses: number[] = [];
+    events.on('fx:hitPulse', ({ strength }) => pulses.push(strength));
     vfx.explosion({ x: 0, y: 0.5, z: -6 }, 4, 'fire');
     expect(vfx.stats.particles).toBeGreaterThan(50);
     expect(vfx.stats.decals).toBe(1);
@@ -440,6 +539,9 @@ describe('VfxSystem', () => {
     expect(shakes).toHaveLength(1);
     expect(shakes[0]).toBeGreaterThan(0);
     expect(shakes[0]).toBeLessThan(1);
+    expect(pulses).toHaveLength(1);
+    expect(pulses[0]).toBeGreaterThan(0);
+    expect(pulses[0]).toBeLessThan(VFX_EFFECTS['explosion.frag'].hitPulse.strength);
     // Elemental explosions tint their light.
     const ice = vfx.lights.lights.find((l) => l.intensity > 0)!;
     expect(ice.color.b).toBeLessThan(ice.color.r); // fire: warm
@@ -449,10 +551,88 @@ describe('VfxSystem', () => {
     expect(cold.color.b).toBeGreaterThan(cold.color.r);
     vfx.explosion({ x: 0, y: 0.5, z: -500 }, 4);
     expect(shakes).toHaveLength(2); // the far one is too far away to shake
+    expect(pulses).toHaveLength(2);
     vfx.explosion({ x: Number.NaN, y: 0, z: 0 }, 4);
     vfx.explosion({ x: 0, y: 0, z: 0 }, 0);
     expect(shocks).toHaveLength(3);
     vfx.dispose();
+  });
+
+  it('keeps scorch marks off dynamic props and shrinks them to fit ledges', () => {
+    const { vfx, physics } = setup();
+    const up = new THREE.Vector3(0, 1, 0);
+    // A crate top at 0.5 m: debris still bounces on it, but a scorch would float once it moves.
+    physics.planes.push({
+      normal: up,
+      d: 0.5,
+      data: { kind: 'prop', surface: 'metal' },
+      contains: (p) => Math.abs(p.x - 5) < 0.5 && Math.abs(p.z + 6) < 0.5,
+    });
+    vfx.explosion({ x: 5, y: 1.2, z: -6 }, 4);
+    expect(vfx.stats.particles).toBeGreaterThan(0);
+    expect(vfx.stats.decals).toBe(0);
+    // Mezzanine at 3.5 m ending at x = 0: near the edge the scorch shrinks, right at it there is none.
+    physics.planes.push({
+      normal: up,
+      d: 3.5,
+      data: { kind: 'world', surface: 'concrete' },
+      contains: (p) => p.x < 0,
+    });
+    vfx.explosion({ x: -0.7, y: 4, z: -6 }, 4);
+    expect(vfx.stats.decals).toBe(1);
+    const m = new THREE.Matrix4();
+    vfx.decals.mesh.getMatrixAt(0, m);
+    const pos = new THREE.Vector3();
+    const scale = new THREE.Vector3();
+    m.decompose(pos, new THREE.Quaternion(), scale);
+    expect(pos.y).toBeCloseTo(3.5, 2);
+    const full = VFX_EFFECTS['explosion.frag'].groundDecal.sizePerScale * DECAL_KINDS.scorch.size[0];
+    expect(scale.x).toBeGreaterThan(0);
+    expect(scale.x).toBeLessThan(full);
+    vfx.explosion({ x: -0.05, y: 4, z: -6 }, 4);
+    expect(vfx.stats.decals).toBe(1);
+    // On open floor the full size fits.
+    vfx.explosion({ x: -8, y: 4, z: -6 }, 4);
+    expect(vfx.stats.decals).toBe(2);
+    vfx.decals.mesh.getMatrixAt(1, m);
+    m.decompose(pos, new THREE.Quaternion(), scale);
+    expect(scale.x).toBeGreaterThanOrEqual(full);
+    vfx.dispose();
+  });
+
+  it('lights the viewmodel with nearby flashes, but not with its own muzzle light', () => {
+    const { vfx, render } = setup();
+    const vl = vfx.lights.viewmodelLight!;
+    expect(vl.parent).toBe(render.viewmodelScene);
+    const rifle = getWeaponDef('rifle')!;
+    vfx.muzzle(
+      rifle.vfx.muzzle,
+      rifle.vfx.muzzleLightColor,
+      null,
+      false,
+      { x: 0, y: 1.5, z: -1 },
+      { x: 0, y: 0, z: -1 },
+    );
+    vfx.update(1 / 60);
+    expect(vfx.stats.lights).toBe(1);
+    expect(vl.intensity).toBe(0);
+    // 2 m in front of the eye (0, 1.6, 0): pulled in to maxDistance, same irradiance at the eye.
+    vfx.explosion({ x: 0, y: 1.6, z: -2 }, 4);
+    vfx.update(1 / 60);
+    const world = vfx.lights.lights.reduce((a, b) => (b.intensity > a.intensity ? b : a));
+    const d = world.position.distanceTo(new THREE.Vector3(0, 1.6, 0));
+    const cfg = VFX.lights.viewmodel;
+    expect(d).toBeGreaterThan(cfg.maxDistance);
+    expect(vl.position.length()).toBeCloseTo(cfg.maxDistance, 5);
+    expect(vl.position.z).toBeLessThan(0);
+    expect(vl.color.equals(world.color)).toBe(true);
+    const irradiance = (world.intensity * cutoffWindow(d, world.distance)) / d ** 2;
+    expect(vl.intensity / cfg.maxDistance ** 2).toBeCloseTo(irradiance * cfg.gain, 4);
+    // Dark again once the flash is over.
+    for (let i = 0; i < 60; i++) vfx.update(1 / 60);
+    expect(vl.intensity).toBe(0);
+    vfx.dispose();
+    expect(vl.parent).toBeNull();
   });
 
   it('follows the quality settings and clears', () => {
@@ -511,6 +691,29 @@ describe('VfxSystem', () => {
     });
     expect(vfx.muzzleFlash.visible).toBe(false);
     expect(vfx.stats).toEqual({ particles: 0, decals: 0, lights: 0 });
+    vfx.dispose();
+  });
+
+  it('reports volumetric-layer content only while particles/tracers live or the warm-up renders', () => {
+    const { vfx, render } = setup();
+    expect(vfx.hasVolumetricContent).toBe(false);
+    let duringWarmup = false;
+    render.onRender = () => {
+      duringWarmup = vfx.hasVolumetricContent;
+    };
+    vfx.warmup();
+    expect(duringWarmup).toBe(true);
+    expect(vfx.hasVolumetricContent).toBe(false);
+
+    vfx.spawn('impact.metal', { x: 0, y: 1, z: -3 }, { x: 0, y: 0, z: 1 });
+    expect(vfx.hasVolumetricContent).toBe(true);
+    for (let i = 0; i < 20 && vfx.hasVolumetricContent; i++) vfx.update(0.5);
+    expect(vfx.hasVolumetricContent).toBe(false);
+
+    vfx.tracer({ x: 0, y: 1, z: 0 }, { x: 0, y: 1, z: -20 });
+    expect(vfx.hasVolumetricContent).toBe(true);
+    for (let i = 0; i < 20 && vfx.hasVolumetricContent; i++) vfx.update(0.5);
+    expect(vfx.hasVolumetricContent).toBe(false);
     vfx.dispose();
   });
 
@@ -637,7 +840,7 @@ describe('VfxBridge', () => {
     const target: VfxBridgeTarget = {
       muzzle: (preset, color, casing) => calls.push(`muzzle ${preset} ${color} ${casing}`),
       impact: (surface, profile, kind) => calls.push(`impact ${surface} ${profile} ${kind}`),
-      tracer: (_f, _t, color) => calls.push(`tracer ${color}`),
+      muzzleTracer: (_t, color) => calls.push(`tracer ${color}`),
       explosion: (_p, r, el) => calls.push(`explosion ${r} ${el}`),
       spawn: (id, _p, _n, scale) => calls.push(`spawn ${id} ${scale}`),
       applyGraphics: (g) => calls.push(`graphics ${g.particles}`),
@@ -711,7 +914,7 @@ describe('VfxBridge', () => {
     const target: VfxBridgeTarget = {
       muzzle: noop,
       impact: (_s, _p, _k, _pt, _n, _d, direction) => dirs.push(direction ? { ...direction } : null),
-      tracer: noop,
+      muzzleTracer: noop,
       explosion: noop,
       spawn: noop,
       applyGraphics: noop,
@@ -760,13 +963,18 @@ describe('vfx dev commands', () => {
     cam.updateMatrixWorld();
     const physics = new FakePhysics();
     const spawned: string[] = [];
+    const events = new EventBus<GameEvents>();
+    // Explosions go through the event bus (VfxBridge → VFX, AudioEventBridge → sound).
+    events.on('combat:explosion', ({ position, radius, element }) =>
+      spawned.push(`boom ${radius} ${element} ${position.y > 0}`),
+    );
     const cmds = createVfxCommands({
       vfx: {
         spawn: (id, p) => spawned.push(`${id}@${p.y.toFixed(2)}`),
-        explosion: (p, r, el) => spawned.push(`boom ${r} ${el} ${p.y > 0}`),
         clear: () => spawned.push('clear'),
         stats: { particles: 1, decals: 2, lights: 3 },
       },
+      events,
       physics: physics.asApi(),
       camera: cam,
     });

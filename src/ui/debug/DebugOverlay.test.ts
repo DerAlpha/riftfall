@@ -92,6 +92,41 @@ describe('DebugOverlay', () => {
     expect(text).toContain('Pos 1.00 2.00 3.00');
   });
 
+  it('shows the M2 combat / VFX counters when the snapshot has them', () => {
+    overlay.setVisible(true);
+    overlay.update(1 / 60, snapshot);
+    const text = (): string => root.querySelector('.debug-overlay__text')!.textContent!;
+    expect(text()).not.toContain('Strahlen/Frame');
+
+    const s: DebugSnapshot = {
+      ...snapshot(),
+      combat: {
+        raycastsPerFrame: 2.5,
+        targets: 9,
+        staticMeshes: 120,
+        particles: 1500,
+        particleCapacity: 6000,
+        decals: 40,
+        decalCapacity: 256,
+        flashLights: 1,
+        flashLightCapacity: 3,
+        casings: 12,
+        weapon: { id: 'rifle', state: 'firing', spreadDeg: 1.234, mag: 17, magSize: 30, reserve: 90 },
+      },
+    };
+    overlay.setVisible(false);
+    overlay.setVisible(true);
+    overlay.update(1 / 60, () => s);
+    expect(text()).toContain('Kampf 2.5 Strahlen/Frame  Ziele 9  Statik-Meshes 120');
+    expect(text()).toContain('Partikel 1500/6000  Decals 40/256  Blitzlichter 1/3  Hülsen 12');
+    expect(text()).toContain('Waffe rifle (firing)  Streuung 1.23°  Magazin 17/30 (+90)');
+
+    overlay.setVisible(false);
+    overlay.setVisible(true);
+    overlay.update(1 / 60, () => ({ ...s, combat: { ...s.combat!, weapon: null } }));
+    expect(text()).toContain('Waffe —');
+  });
+
   it('survives a throwing snapshot provider', () => {
     overlay.setVisible(true);
     expect(() =>

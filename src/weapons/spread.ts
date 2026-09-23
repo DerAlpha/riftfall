@@ -63,6 +63,18 @@ export function crosshairSpread(spreadDegrees: number, maxDeg: number): number {
   return maxDeg > 0 ? clamp01(spreadDegrees / maxDeg) : 0;
 }
 
+/**
+ * On-screen radius (px) of a cone with half-angle `spreadDegrees` around the view axis, for a
+ * perspective camera with vertical FOV `verticalFovDeg` drawn `viewportHeight` px tall. Follows
+ * FOV (settings, ADS zoom) and resolution, so a crosshair sized by it shows the real cone.
+ */
+export function coneRadiusPx(spreadDegrees: number, verticalFovDeg: number, viewportHeight: number): number {
+  const half = (clamp(verticalFovDeg, 1, 179) * Math.PI) / 360;
+  const cone = (clamp(Number.isFinite(spreadDegrees) ? spreadDegrees : 0, 0, 89) * Math.PI) / 180;
+  if (!(viewportHeight > 0) || !Number.isFinite(half)) return 0;
+  return ((viewportHeight / 2) * Math.tan(cone)) / Math.tan(half);
+}
+
 export interface Vec2 {
   x: number;
   y: number;

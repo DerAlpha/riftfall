@@ -24,8 +24,10 @@ export interface ViewmodelFxState {
   time: number;
   /** 0..1 barrel heat. */
   heat: number;
-  /** 0..1 flash right after a shot (decays). */
+  /** 0..1 flash right after a shot (decays; already scaled down for reduce-flashing). */
   flash: number;
+  /** 0..1 depth scale of the heat shimmer (0 with reduce-flashing); default 1. */
+  flicker?: number;
 }
 
 export type ReadoutSpec = { kind: 'leds'; count: number } | { kind: 'segments' } | { kind: 'none' };
@@ -147,7 +149,7 @@ export class ProceduralWeaponModel implements WeaponViewmodelModel {
     const g = this.def.glow;
     const pulse = 1 + A.accentPulse.depth * Math.sin(fx.time * A.accentPulse.rate);
     this.glow.accent.emissiveIntensity = g.accent * pulse + fx.flash * A.accentPulse.fireFlash;
-    const flicker = 1 + A.heatFlicker.depth * Math.sin(fx.time * A.heatFlicker.rate);
+    const flicker = 1 + A.heatFlicker.depth * (fx.flicker ?? 1) * Math.sin(fx.time * A.heatFlicker.rate);
     // Squared: vents stay dark for a few shots, then ramp up hard during sustained fire.
     this.glow.heat.emissiveIntensity = g.heat * fx.heat * fx.heat * flicker;
     const blink = this.lastMag === 0 && Math.sin(fx.time * A.emptyBlinkRate) < 0 ? A.emptyBlinkLow : 1;

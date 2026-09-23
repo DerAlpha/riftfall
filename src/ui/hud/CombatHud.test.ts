@@ -192,10 +192,27 @@ describe('Hud – combat feedback', () => {
 
   it('shows the weapon name and highlights the current slot', () => {
     events.emit('weapon:inventoryChanged', { slots: ['pistol', 'rifle', null], current: 0 });
-    events.emit('weapon:equipStart', { weaponId: 'rifle', slot: 1, duration: 0.5, previous: 'pistol' });
+    events.emit('weapon:raiseStart', { weaponId: 'pistol', slot: 0, duration: 0.3 });
+    events.emit('weapon:ammoChanged', { weaponId: 'pistol', mag: 0, reserve: 84, magSize: 12 });
     const name = root.querySelector('.hud-weapon__name')!;
-    expect(name.textContent).toContain('KR-7');
+    const mag = root.querySelector('.hud-ammo__mag')!;
     const slots = [...root.querySelectorAll('.hud-slot')] as HTMLElement[];
+    expect(name.textContent).toContain('VX-9');
+    // A switch is announced at the start of the holster: name, slot chip, ammo and prompt all stay
+    // with the weapon in hand ...
+    events.emit('weapon:holsterStart', { weaponId: 'pistol', slot: 0, duration: 0.25, next: 'rifle' });
+    events.emit('weapon:equipStart', { weaponId: 'rifle', slot: 1, duration: 0.8, previous: 'pistol' });
+    expect(name.textContent).toContain('VX-9');
+    expect(slots[0]!.classList.contains('is-current')).toBe(true);
+    expect(mag.textContent).toBe('0');
+    expect(root.querySelector('.hud-prompt')!.textContent).toBe(HUD.ammo.prompts.reload);
+    // ... and switch together when the rifle comes up (WeaponSystem.equipSlot's event order).
+    events.emit('weapon:raiseStart', { weaponId: 'rifle', slot: 1, duration: 0.5 });
+    events.emit('weapon:inventoryChanged', { slots: ['pistol', 'rifle', null], current: 1 });
+    events.emit('weapon:ammoChanged', { weaponId: 'rifle', mag: 30, reserve: 120, magSize: 30 });
+    expect(name.textContent).toContain('KR-7');
+    expect(mag.textContent).toBe('30');
+    expect((root.querySelector('.hud-prompt') as HTMLElement).hidden).toBe(true);
     expect(slots.length).toBe(3);
     expect(slots[1]!.classList.contains('is-current')).toBe(true);
     expect(slots[0]!.classList.contains('is-current')).toBe(false);

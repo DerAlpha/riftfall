@@ -356,6 +356,7 @@ kbd {
 /* --- crosshair --- */
 .hud-crosshair {
   --xh-color: #e8f6ff;
+  /* --xh-spread: projected spread cone beyond the gap; --xh-gap: HUD.crosshair.gapPx (both set by Hud). */
   --xh-spread: 0px;
   --xh-gap: 5px;
   --xh-len: 8px;
@@ -419,7 +420,8 @@ kbd {
 }
 
 .xh-ring {
-  --ring: calc(18px + var(--xh-spread) * 2);
+  /* Follows the cone once it is wider than the minimum ring (same radius as the line gap). */
+  --ring: max(18px, (var(--xh-gap) + var(--xh-spread)) * 2);
   width: var(--ring);
   height: var(--ring);
   left: calc(var(--ring) / -2);

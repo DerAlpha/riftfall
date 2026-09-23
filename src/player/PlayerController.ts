@@ -23,7 +23,7 @@
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three';
-import type { InputApi, PlayerApi, RaycastOptions, SettingsStore } from '../core/contracts';
+import type { AdsProvider, InputApi, PlayerApi, RaycastOptions, SettingsStore } from '../core/contracts';
 import type { Action } from '../defs/input';
 import type { EventBus } from '../core/EventBus';
 import type { GameEvents, MovementState, SurfaceType, Vec3Like } from '../core/events';
@@ -138,18 +138,8 @@ export interface PlayerControllerOptions {
   unlocks?: PlayerUnlocks;
 }
 
-/**
- * External aim-down-sights source (the weapon system). While set, it replaces the raw `ads`
- * input: its adsAmount is the player's, its move speed multiplier replaces
- * MOVEMENT.ground.adsSpeedMultiplier, and `blocksSprint` stops sprinting (firing, reloading).
- */
-export interface AdsProvider {
-  /** 0..1 blend this frame. */
-  readonly adsAmount: number;
-  /** Ground speed multiplier at full ADS. */
-  readonly adsMoveSpeedMultiplier: number;
-  readonly blocksSprint: boolean;
-}
+/** The external ADS source contract lives in core/contracts.ts (re-exported for existing imports). */
+export type { AdsProvider };
 
 export class PlayerController implements PlayerApi {
   /** Feet position at the latest fixed tick. */

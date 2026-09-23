@@ -47,20 +47,30 @@ describe('damage', () => {
 });
 
 describe('HitAccumulator', () => {
-  it('aggregates pellets per target with the best zone and its first point', () => {
+  it('aggregates pellets per target and zone: groups of a target contiguous, best zone first', () => {
     const acc = new HitAccumulator<string>();
     acc.add('a', 10, 'body', 1, 0, 0);
     acc.add('b', 5, 'limb', 2, 0, 0);
     acc.add('a', 10, 'limb', 3, 0, 0);
     acc.add('a', 15, 'head', 4, 0, 0);
     acc.add('a', 15, 'head', 5, 0, 0);
-    expect(acc.count).toBe(2);
-    expect(acc.targets[0]).toBe('a');
-    expect(acc.amounts[0]).toBe(50);
-    expect(acc.hits[0]).toBe(4);
-    expect(acc.zones[0]).toBe('head');
-    expect(acc.px[0]).toBe(4);
-    expect(acc.amounts[1]).toBe(5);
+    acc.add('b', 7, 'weakpoint', 6, 0, 0);
+    acc.add('a', 10, 'body', 7, 0, 0);
+    expect(acc.count).toBe(5);
+    const rows = Array.from({ length: acc.count }, (_, i) => [
+      acc.targets[i],
+      acc.zones[i],
+      acc.amounts[i],
+      acc.hits[i],
+      acc.px[i],
+    ]);
+    expect(rows).toEqual([
+      ['a', 'head', 30, 2, 4],
+      ['a', 'body', 20, 2, 1],
+      ['a', 'limb', 10, 1, 3],
+      ['b', 'weakpoint', 7, 1, 6],
+      ['b', 'limb', 5, 1, 2],
+    ]);
     acc.reset();
     expect(acc.count).toBe(0);
     acc.add('c', 1, 'body', 0, 0, 0);

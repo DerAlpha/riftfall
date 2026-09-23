@@ -2,11 +2,12 @@
  * Integration of the M2 hooks added to PlayerCamera (recoil, view punch, look modifier) and
  * PlayerController (ADS provider) with the weapon system.
  */
+import { Vector3 } from 'three';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { EventBus } from '../core/EventBus';
-import type { GameEvents } from '../core/events';
+import type { GameEvents, Vec3Like } from '../core/events';
 import type { LookOut, SettingsStore } from '../core/contracts';
-import { DEG2RAD } from '../core/math';
+import { DEG2RAD, RAD2DEG } from '../core/math';
 import { CAMERA } from '../defs/camera';
 import { MOVEMENT } from '../defs/movement';
 import { WEAPONS } from '../defs/weapons';
@@ -232,5 +233,80 @@ describe('PlayerCamera / PlayerController weapon hooks', () => {
     weapons.dispose();
     expect(player.adsProvider).toBeNull();
     expect(camera.lookModifier).toBeNull();
+  });
+  const makeWeapons = (loadout: string[]): WeaponSystem =>
+    new WeaponSystem(
+      {
+        events,
+        input,
+        settings,
+        player,
+        camera,
+        render: render.api,
+        combat: new CombatWorld({ events, physics }),
+        getMuzzleWorld: (o) => o.copy(render.camera.position),
+      },
+      { loadout, slots: 2 },
+    );
+
+  it('end to end: a short tap out of a held sprint fires once with every weapon, then the sprint resumes', () => {
+    for (const id of ['pistol', 'rifle', 'shotgun'] as const) {
+      const weapons = makeWeapons([id]);
+      const shots: number[] = [];
+      const off = events.on('weapon:fired', (e) => shots.push(e.shotIndex));
+      const frameW = (n: number): void => {
+        for (let i = 0; i < n; i++) {
+          frame(1, () => weapons.fixedUpdate(DT));
+          weapons.update(DT);
+        }
+      };
+      frameW(Math.ceil(WEAPONS[id].equipTime / DT) + 2);
+      input.move.y = 1;
+      input.press('sprint');
+      frameW(40);
+      expect(player.sprinting).toBe(true);
+      expect(weapons.state).toBe('sprinting');
+      input.press('fire');
+      frameW(4);
+      input.release('fire');
+      frameW(60);
+      expect(shots, id).toHaveLength(1);
+      expect(player.sprinting, id).toBe(true);
+      input.release('sprint');
+      input.move.y = 0;
+      frameW(60);
+      off();
+      weapons.dispose();
+    }
+  });
+
+  it('end to end: after a landing the shot goes where the camera (crosshair, sights) points', () => {
+    const weapons = makeWeapons(['pistol']);
+    const dirs: Vec3Like[] = [];
+    events.on('weapon:fired', (e) => dirs.push({ ...e.direction }));
+    const frameW = (n: number): void => {
+      for (let i = 0; i < n; i++) {
+        frame(1, () => weapons.fixedUpdate(DT));
+        weapons.update(DT);
+      }
+    };
+    frameW(Math.ceil(WEAPONS.pistol.equipTime / DT) + 2);
+    events.emit('player:land', {
+      impactSpeed: 8.8,
+      heavy: false,
+      position: { x: 0, y: 0, z: 0 },
+      surface: 'concrete',
+    });
+    frameW(4);
+    expect(Math.abs(camera.aimPitchOffset) * RAD2DEG).toBeGreaterThan(0.5);
+    // Camera forward as rendered this frame = the crosshair.
+    const fwd = render.camera.getWorldDirection(new Vector3());
+    input.tap('fire');
+    frameW(1);
+    expect(dirs).toHaveLength(1);
+    const d = dirs[0]!;
+    const cos = Math.min(1, fwd.x * d.x + fwd.y * d.y + fwd.z * d.z);
+    expect(Math.acos(cos) * RAD2DEG).toBeLessThan(0.01);
+    weapons.dispose();
   });
 });

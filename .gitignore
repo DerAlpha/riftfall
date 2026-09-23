@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+.vite/
+# Downloaded/converted CC0 assets are fetched by `npm run assets` (see scripts/fetch-assets.mjs)
+public/assets/hdri/
+public/assets/textures/
+public/assets/models/
+public/assets/audio/
+.asset-cache/
+test-results/
+smoke-output/

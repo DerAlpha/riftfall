@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   accelerate,
+  addUniqueNormal,
   advanceGait,
   airAccelerate,
   applyFriction,
@@ -17,6 +18,7 @@ import {
   ledgeHeightOk,
   mantleCurve,
   mantleDuration,
+  pairSupportNormal,
   rechargeDash,
   slopeAcceleration,
   slopeAngle,
@@ -425,5 +427,50 @@ describe('clipVelocity', () => {
     const up = { x: 0, y: 4, z: 0 };
     clipVelocity(up, { x: 0, y: -1, z: 0 });
     expect(up.y).toBe(0);
+  });
+});
+
+describe('two-contact support (V crevices)', () => {
+  const walkableCos = Math.cos(MOVEMENT.ground.maxSlopeDeg * (Math.PI / 180));
+  const slope = (deg: number, dirZ: number) => {
+    const a = (deg * Math.PI) / 180;
+    return { x: 0, y: Math.cos(a), z: Math.sin(a) * dirZ };
+  };
+  const support = (...normals: { x: number; y: number; z: number }[]) => {
+    const buf = new Float64Array(8 * 3);
+    let n = 0;
+    for (const nrm of normals) n = addUniqueNormal(buf, n, nrm, 0.999);
+    const out = { x: 0, y: 0, z: 0 };
+    return { y: pairSupportNormal(buf, n, out), out, n };
+  };
+
+  it('stores each surface once and never overflows the buffer', () => {
+    const buf = new Float64Array(2 * 3);
+    let n = addUniqueNormal(buf, 0, slope(60, 1), 0.999);
+    n = addUniqueNormal(buf, n, slope(60, 1), 0.999);
+    expect(n).toBe(1);
+    n = addUniqueNormal(buf, n, slope(60, -1), 0.999);
+    n = addUniqueNormal(buf, n, { x: 1, y: 0, z: 0 }, 0.999);
+    expect(n).toBe(2);
+  });
+
+  it('a symmetric V of too-steep slopes supports like flat ground', () => {
+    const r = support(slope(60, 1), slope(60, 1), slope(60, -1), slope(60, -1), slope(60, 1));
+    expect(r.n).toBe(2);
+    expect(r.y).toBeCloseTo(1, 9);
+    expect(r.out.z).toBeCloseTo(0, 9);
+  });
+
+  it('a steep slope running into a wall supports, one beside a side wall or away from a wall does not', () => {
+    // Slope normal leans towards +z: downhill is +z, into a wall facing -z.
+    expect(support(slope(60, 1), { x: 0, y: 0, z: -1 }).y).toBeGreaterThanOrEqual(walkableCos);
+    expect(support(slope(60, 1), { x: 1, y: 0, z: 0 }).y).toBeLessThan(walkableCos);
+    expect(support(slope(60, 1), { x: 0, y: 0, z: 1 }).y).toBeLessThan(walkableCos);
+  });
+
+  it('needs two different surfaces', () => {
+    expect(support(slope(60, 1)).y).toBe(-2);
+    expect(support(slope(60, 1), slope(60, 1)).y).toBe(-2);
+    expect(support().y).toBe(-2);
   });
 });

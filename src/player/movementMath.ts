@@ -374,3 +374,44 @@ export function clipVelocity(v: Vec3, n: Vec3): void {
   v.y -= n.y * d;
   v.z -= n.z * d;
 }
+
+/**
+ * Store the unit contact normal `n` in `buf` (xyz triples, `count` in use) unless an almost
+ * identical one is already there (dot ≥ `sameDot`) or `buf` is full. Returns the new count.
+ */
+export function addUniqueNormal(buf: Float64Array, count: number, n: Vec3, sameDot: number): number {
+  const used = count * 3;
+  for (let i = 0; i < used; i += 3) {
+    if (buf[i] * n.x + buf[i + 1] * n.y + buf[i + 2] * n.z >= sameDot) return count;
+  }
+  if (used + 3 > buf.length) return count;
+  buf[used] = n.x;
+  buf[used + 1] = n.y;
+  buf[used + 2] = n.z;
+  return count + 1;
+}
+
+/**
+ * Support from two contacts at once (V crevice, steep slope running into a wall), each of them
+ * too steep to stand on: the most upward mean normal of any two stored normals. A capsule held
+ * by both rests on it like on ground of that slope; a slope beside a side wall, or falling away
+ * from a wall, still yields a steep normal. Writes the unit normal to `out`; returns its y
+ * (−2 when fewer than two usable normals).
+ */
+export function pairSupportNormal(buf: Float64Array, count: number, out: Vec3): number {
+  let best = -2;
+  for (let i = 0; i < count * 3; i += 3) {
+    for (let j = i + 3; j < count * 3; j += 3) {
+      const x = buf[i] + buf[j];
+      const y = buf[i + 1] + buf[j + 1];
+      const z = buf[i + 2] + buf[j + 2];
+      const len = Math.hypot(x, y, z);
+      if (len < EPS || y / len <= best) continue;
+      best = y / len;
+      out.x = x / len;
+      out.y = best;
+      out.z = z / len;
+    }
+  }
+  return best;
+}

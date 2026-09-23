@@ -4,10 +4,18 @@ import { EventBus } from '../../core/EventBus';
 import type { GameEvents } from '../../core/events';
 import { createLogger } from '../../core/log';
 import { DEV_CONSOLE } from '../../defs/ui';
-import { DevConsole } from './DevConsole';
+import { DevConsole, stripToggleResidue } from './DevConsole';
 
 function lines(root: HTMLElement): string[] {
   return [...root.querySelectorAll('.dev-console__line')].map((l) => l.textContent ?? '');
+}
+
+/** Simulates committed typing: the browser inserts `data` at the caret, then fires `input`. */
+function typeInto(input: HTMLInputElement, data: string, isComposing = false): void {
+  const pos = input.selectionStart ?? input.value.length;
+  input.value = input.value.slice(0, pos) + data + input.value.slice(pos);
+  input.setSelectionRange(pos + data.length, pos + data.length);
+  input.dispatchEvent(new InputEvent('input', { data, isComposing, inputType: 'insertText', bubbles: true }));
 }
 
 function pressKey(target: EventTarget, init: KeyboardEventInit): KeyboardEvent {
@@ -160,5 +168,66 @@ describe('DevConsole', () => {
     logger.warn('Asset fehlt: foo');
     expect(lines(root).length).toBe(before);
     expect(lines(root).at(-1)).toBe('[TestTag] Asset fehlt: foo  (×3)');
+  });
+
+  it('strips the pending dead-key "^" from the first typed text, however late it arrives (Windows)', () => {
+    pressKey(window, { code: 'Backquote', key: 'Dead' });
+    expect(dc.open).toBe(true);
+    // Seconds later the OS delivers the pending "^" together with the first real key.
+    typeInto(input, '^h');
+    expect(input.value).toBe('h');
+    typeInto(input, 'elp');
+    expect(input.value).toBe('help');
+    // One-shot: later carets are the user's own.
+    typeInto(input, '^');
+    expect(input.value).toBe('help^');
+    pressKey(input, { key: 'Escape', code: 'Escape' });
+
+    // A vowel composes with the dead key ("û"), also behind an unsent draft.
+    input.value = 'echo ';
+    pressKey(window, { code: 'Backquote', key: 'Dead' });
+    input.setSelectionRange(input.value.length, input.value.length);
+    typeInto(input, 'û');
+    expect(input.value).toBe('echo u');
+    pressKey(input, { key: 'Escape', code: 'Escape' });
+
+    // IME platforms: the composed text is cleaned when committed, never mid-composition.
+    input.value = '';
+    pressKey(window, { code: 'Backquote', key: 'Dead' });
+    typeInto(input, '^', true);
+    expect(input.value).toBe('^');
+    input.value = 'ê';
+    input.setSelectionRange(1, 1);
+    input.dispatchEvent(new CompositionEvent('compositionend', { data: 'ê' }));
+    expect(input.value).toBe('e');
+  });
+
+  it('cleans toggle residue from committed text', () => {
+    expect(stripToggleResidue('^h')).toBe('h');
+    expect(stripToggleResidue('`t')).toBe('t');
+    expect(stripToggleResidue('^')).toBe('');
+    expect(stripToggleResidue('û')).toBe('u');
+    expect(stripToggleResidue('è')).toBe('e');
+    expect(stripToggleResidue('ñ')).toBe('n');
+    expect(stripToggleResidue('help')).toBe('help');
+    expect(stripToggleResidue('ü')).toBe('ü'); // umlauts are no dead-key residue
+  });
+
+  it('pages the output with PageUp/PageDown and jumps with Ctrl+Home/End (pointer-locked play)', () => {
+    const output = root.querySelector('.dev-console__output') as HTMLElement;
+    Object.defineProperty(output, 'clientHeight', { configurable: true, value: 100 });
+    Object.defineProperty(output, 'scrollHeight', { configurable: true, value: 1000 });
+    dc.toggle(true);
+    output.scrollTop = 500;
+    expect(pressKey(input, { key: 'PageUp' }).defaultPrevented).toBe(true);
+    expect(output.scrollTop).toBeCloseTo(500 - 100 * DEV_CONSOLE.pageScrollFraction, 5);
+    pressKey(input, { key: 'PageDown' });
+    expect(output.scrollTop).toBeCloseTo(500, 5);
+    pressKey(input, { key: 'Home', ctrlKey: true });
+    expect(output.scrollTop).toBe(0);
+    pressKey(input, { key: 'End', ctrlKey: true });
+    expect(output.scrollTop).toBe(1000);
+    // Plain Home/End stay text-cursor keys.
+    expect(pressKey(input, { key: 'Home' }).defaultPrevented).toBe(false);
   });
 });

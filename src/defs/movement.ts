@@ -87,6 +87,16 @@ export const MOVEMENT = {
     coyoteTime: 0.12,
     /** Jump presses slightly before landing are buffered for this long. */
     bufferTime: 0.13,
+    /**
+     * A press while falling keeps waiting for the ground jump (instead of spending the double
+     * jump) when walkable ground is less than this many seconds of fall away. ≤ bufferTime.
+     */
+    landPredictTime: 0.05,
+    /**
+     * Releasing jump only cuts the jump (air.jumpCutGravityMultiplier) after this long since
+     * take-off: short taps give the same minimum hop whether pressed on the ground or buffered.
+     */
+    minCutTime: 0.1,
     /** Horizontal boost applied on double jump towards input direction (m/s). */
     doubleJumpDirectionalBoost: 2.2,
     /** Minimum time between ground jumps (prevents double-trigger on slopes). */
@@ -95,7 +105,11 @@ export const MOVEMENT = {
   slide: {
     /** Horizontal speed required to start a slide (reachable by sprinting or dashing). */
     minStartSpeed: 7.2,
-    /** Instant speed boost on slide start (m/s), not applied if slid again within `boostCooldown`. */
+    /**
+     * Instant speed boost on slide start (m/s). It never lifts the speed above
+     * ground.sprintSpeed + startBoost (chained slide-hops can't stack boosts), and is not applied
+     * within `boostCooldown` after the previous slide ended.
+     */
     startBoost: 3.2,
     boostCooldown: 1.0,
     /**
@@ -149,6 +163,11 @@ export const MOVEMENT = {
      * This catches thin walls and railings (vaulting) that a fixed-distance top probe overshoots.
      */
     faceProbeLow: 0.2,
+    /**
+     * Face probe height as a fraction of the ledge height: the face-first probe is capped at this
+     * fraction of the minimum ledge height, the fallback probe (after a top hit) never runs lower.
+     */
+    faceProbeHeightFraction: 0.5,
     ledgeInset: 0.06,
     /**
      * Auto-mantle (airborne, no jump press) only while rising slower than this (m/s): a jump

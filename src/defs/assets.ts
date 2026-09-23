@@ -101,6 +101,12 @@ export const ASSETS = {
     fallbackDecodeSampleRate: 48000,
     /** KTX2 transcoder worker count. */
     ktx2Workers: 2,
+    /**
+     * A request that reports no progress for this long fails and its fallback is used (a stalled
+     * connection must not hold the loading screen). Requests without progress events (images,
+     * index, audio) get this as total time.
+     */
+    requestTimeoutMs: 15_000,
   },
   placeholder: {
     /** Missing texture: magenta/black checker (loud on purpose). */

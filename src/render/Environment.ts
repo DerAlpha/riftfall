@@ -35,17 +35,40 @@ void main() {
 }
 `;
 
+interface ApplyArgs {
+  def: EnvironmentDef;
+  hdri: THREE.Texture | null;
+  scenes: readonly THREE.Scene[];
+  backgroundScene: THREE.Scene;
+}
+
 export class EnvironmentManager {
   private target: THREE.WebGLRenderTarget | null = null;
   private readonly backgroundColor = new THREE.Color();
+  /** Last apply() call, rebuilt after a WebGL context restore. */
+  private last: ApplyArgs | null = null;
+  private warnedNoHalfFloat = false;
   /** True if the current environment came from the procedural fallback. */
   procedural = false;
 
   constructor(private readonly renderer: THREE.WebGLRenderer) {}
 
-  /** The current PMREM texture (null before the first apply). */
+  /** The current PMREM texture (null before the first apply, or when IBL is unavailable). */
   get texture(): THREE.Texture | null {
     return this.target?.texture ?? null;
+  }
+
+  /**
+   * Rebuild the environment after a WebGL context restore. The PMREM result is a render-target
+   * texture, which three never re-uploads: on the new context it would sample black. The stale
+   * target is dropped even if regeneration fails (disposing it only logs GL warnings).
+   */
+  restore(): void {
+    const a = this.last;
+    if (!a) return;
+    this.target?.dispose();
+    this.target = null;
+    this.apply(a.def, a.hdri, a.scenes, a.backgroundScene);
   }
 
   /**
@@ -58,10 +81,17 @@ export class EnvironmentManager {
     scenes: readonly THREE.Scene[],
     backgroundScene: THREE.Scene,
   ): void {
-    const next = this.generate(def, hdri);
-    if (next) {
+    this.last = { def, hdri, scenes, backgroundScene };
+    if (this.halfFloatRenderable()) {
+      const next = this.generate(def, hdri);
+      if (next) {
+        this.target?.dispose();
+        this.target = next;
+      }
+    } else {
       this.target?.dispose();
-      this.target = next;
+      this.target = null;
+      this.procedural = false;
     }
     const envTex = this.target?.texture ?? null;
     const rotY = def.rotationDeg * DEG2RAD;
@@ -81,6 +111,21 @@ export class EnvironmentManager {
       this.backgroundColor.setRGB(def.backgroundColor[0], def.backgroundColor[1], def.backgroundColor[2]);
       backgroundScene.background = this.backgroundColor;
     }
+  }
+
+  /**
+   * PMREMGenerator always renders into HalfFloat targets. Without a color-renderable half-float
+   * format its framebuffers are incomplete – no exception, just a black environment – so IBL is
+   * skipped instead (the caller compensates with the hemisphere light).
+   */
+  private halfFloatRenderable(): boolean {
+    const ext = this.renderer.extensions;
+    if (ext.has('EXT_color_buffer_float') || ext.has('EXT_color_buffer_half_float')) return true;
+    if (!this.warnedNoHalfFloat) {
+      log.warn('Half-float render targets unsupported – image-based lighting disabled');
+      this.warnedNoHalfFloat = true;
+    }
+    return false;
   }
 
   private generate(def: EnvironmentDef, hdri: THREE.Texture | null): THREE.WebGLRenderTarget | null {
@@ -157,5 +202,6 @@ export class EnvironmentManager {
   dispose(): void {
     this.target?.dispose();
     this.target = null;
+    this.last = null;
   }
 }

@@ -1,6 +1,11 @@
 /** Post-processing tuning (values independent of quality level). */
 export const POSTFX = {
-  /** HDR luminance threshold for bloom – only emissive surfaces / bright highlights exceed it. */
+  /**
+   * Threshold bloom on the pre-exposure linear HDR buffer (design decision, see CLAUDE.md): emissive
+   * materials (luminance · intensity ≥ threshold + smoothing, enforced by a test) and the dense cores
+   * of the volumetric beams bloom; diffuse-lit surfaces stay below it, hot specular glints on metal
+   * may bloom too. A mask-based selective bloom would cost an extra scene render per frame.
+   */
   bloom: {
     intensity: 1.15,
     luminanceThreshold: 0.92,
@@ -14,6 +19,8 @@ export const POSTFX = {
     hitOffset: 0.0065,
     /** Hit pulse decay rate (1/s, exponential). */
     pulseDecay: 3.2,
+    /** Damage (health + armor removed) that produces a full hit pulse; less scales linearly. */
+    damageForFullPulse: 40,
     radialModulation: true,
     modulationOffset: 0.18,
   },
@@ -54,7 +61,9 @@ export const POSTFX = {
     defaultFocusDistance: 12,
     /** Distance around the focus plane (m) over which blur ramps up to full. */
     focusRange: 7,
+    /** Bokeh radius in pixels at referenceHeight; scaled with the drawing-buffer height so the blur covers the same screen fraction at any resolution / DPR / dynamic-resolution scale. */
     bokehScale: 2.2,
+    referenceHeight: 1080,
     resolutionScale: 0.5,
     /** How quickly ADS blends DoF in/out (1/s). */
     blendLambda: 10,

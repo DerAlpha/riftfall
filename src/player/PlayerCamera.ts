@@ -1,6 +1,8 @@
 /**
- * First-person camera rig. Per frame (after `player.update`):
- * - applies mouse/gamepad look (ADS-scaled) and writes `player.yaw/pitch`,
+ * First-person camera rig.
+ * - applyLook() (per frame, BEFORE the fixed ticks): applies mouse/gamepad look (ADS-scaled) and
+ *   writes `player.yaw/pitch`, so the ticks move along the yaw the camera shows this frame.
+ * Per frame in update() (after `player.update`):
  * - places `render.camera` at the interpolated eye position plus feel effects
  *   (head bob, strafe roll, slide tilt, mantle pull-up dip, landing dip spring, trauma shake),
  * - drives FOV (settings FOV is HORIZONTAL at 16:9 → converted to vertical) with kicks,
@@ -67,6 +69,8 @@ export class PlayerCamera {
   private time = 0;
   private fovH: number;
   private lastVerticalFov = -1;
+  /** applyLook() already ran this frame (update() must not apply the look a second time). */
+  private lookApplied = false;
   private focusDistance: number = POSTFX.depthOfField.defaultFocusDistance;
   private _roll = 0;
 
@@ -81,7 +85,11 @@ export class PlayerCamera {
     this.unsubscribers.push(
       deps.events.on('player:land', (e) => {
         const dip = Math.min(e.impactSpeed * CAMERA.landing.dipPerSpeed, CAMERA.landing.maxDip);
-        this.landSpring.velocity -= springImpulseForPeak(dip, CAMERA.landing.stiffness);
+        this.landSpring.velocity -= springImpulseForPeak(
+          dip,
+          CAMERA.landing.stiffness,
+          CAMERA.landing.damping,
+        );
       }),
       deps.events.on('camera:shake', (e) => {
         this.trauma = addTrauma(this.trauma, e.trauma);
@@ -96,6 +104,10 @@ export class PlayerCamera {
   /** Smoothed bob intensity (0 = still, ~1 = running, higher when sprinting), before accessibility scaling. */
   get bobIntensity(): number {
     return this._bobIntensity;
+  }
+  /** Accessibility "camera motion" scale (0..1) for bob/roll/tilt/kicks; the viewmodel uses it too. */
+  get cameraMotion(): number {
+    return this.settings.current.accessibility.cameraMotion;
   }
   /** Current landing dip in meters (negative = down), accessibility-scaled. */
   get landingOffset(): number {
@@ -121,19 +133,10 @@ export class PlayerCamera {
     const motion = settings.accessibility.cameraMotion;
     const ads = player.adsAmount;
 
-    // --- look (per frame for zero input lag) ---
-    // Yaw/pitch accumulate: one NaN (e.g. from a console command) would never recover.
-    if (!Number.isFinite(player.yaw)) player.yaw = 0;
-    if (!Number.isFinite(player.pitch)) player.pitch = 0;
+    // --- look: normally applied by applyLook() before this frame's ticks ---
+    if (!this.lookApplied) this.applyLook();
+    this.lookApplied = false;
     if (!Number.isFinite(this.fovH)) this.fovH = this.baseFov();
-    this.input.getLook(_look);
-    const sens = lerp(1, settings.controls.adsSensitivityMultiplier, ads);
-    const prevPitch = player.pitch;
-    const dYaw = -_look.yaw * sens;
-    player.yaw = wrapAngle(player.yaw + dYaw);
-    player.pitch = clamp(player.pitch + _look.pitch * sens, -PITCH_LIMIT, PITCH_LIMIT);
-    this.lookDelta.yaw = dYaw;
-    this.lookDelta.pitch = player.pitch - prevPitch;
 
     // --- head bob (driven by the controller's gait phase) ---
     const state = player.state;
@@ -231,6 +234,38 @@ export class PlayerCamera {
       this.focusDistance = hit ? hit.distance : CAMERA.focus.maxDistance;
       this.render.setFocusDistance(this.focusDistance);
     }
+  }
+
+  /**
+   * Apply this frame's mouse/gamepad look (ADS-scaled) to `player.yaw/pitch`. Call once per frame
+   * right after `input.beginFrame` and before the fixed ticks, so wish/dash/mantle directions use
+   * the yaw the camera shows this frame. update() applies it itself when this was not called.
+   */
+  applyLook(): void {
+    const player = this.player;
+    // Yaw/pitch accumulate: one NaN (e.g. from a console command) would never recover.
+    if (!Number.isFinite(player.yaw)) player.yaw = 0;
+    if (!Number.isFinite(player.pitch)) player.pitch = 0;
+    this.input.getLook(_look);
+    const sens = lerp(1, this.settings.current.controls.adsSensitivityMultiplier, player.adsAmount);
+    const prevPitch = player.pitch;
+    const dYaw = -_look.yaw * sens;
+    player.yaw = wrapAngle(player.yaw + dYaw);
+    player.pitch = clamp(player.pitch + _look.pitch * sens, -PITCH_LIMIT, PITCH_LIMIT);
+    this.lookDelta.yaw = dYaw;
+    this.lookDelta.pitch = player.pitch - prevPitch;
+    this.lookApplied = true;
+  }
+
+  /**
+   * Jump to the FOV setting without damping or movement kicks (settings preview while paused,
+   * when update() does not run). The next update() continues from here without a second zoom.
+   */
+  snapFov(): void {
+    this.fovH = this.baseFov() + CAMERA.fov.adsZoom * this.player.adsAmount;
+    const vFov = horizontalToVerticalFov(this.fovH, CAMERA.fovReferenceAspect);
+    this.render.setFov(vFov);
+    this.lastVerticalFov = vFov;
   }
 
   private baseFov(): number {

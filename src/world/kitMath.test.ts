@@ -10,6 +10,7 @@ import {
   pipeWrapRepeats,
   rectArea,
   rectsOverlap,
+  reducedFlickerFactor,
   staggeredSlot,
   stairsLayout,
   subtractIntervals,
@@ -139,6 +140,47 @@ describe('flickerFactor', () => {
     expect(max).toBeGreaterThan(0.9);
     expect(min).toBeLessThan(0.2);
     expect(flickerFactor(12.34, 5, FLICKER, noise1D)).toBe(flickerFactor(12.34, 5, FLICKER, noise1D));
+  });
+
+  /** Largest intensity swing within any 1/3 s window (≥ 3 swings/s above ~10% count as flashing). */
+  function maxWindowSwing(f: (t: number) => number, seconds: number): number {
+    const hz = 60;
+    const window = hz / 3;
+    const samples: number[] = [];
+    for (let i = 0; i <= seconds * hz; i++) samples.push(f(i / hz));
+    let worst = 0;
+    for (let i = 0; i + window < samples.length; i++) {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let j = i; j <= i + window; j++) {
+        lo = Math.min(lo, samples[j]!);
+        hi = Math.max(hi, samples[j]!);
+      }
+      worst = Math.max(worst, hi - lo);
+    }
+    return worst;
+  }
+
+  it('reduce-flashing variant only dims slowly and shallowly (no strobing)', () => {
+    const r = FLICKER.reduced;
+    for (const seed of [1, 2, 101, 102]) {
+      let min = 1;
+      let max = 0;
+      for (let t = 0; t < 60; t += 1 / 60) {
+        const k = reducedFlickerFactor(t, seed, r, noise1D);
+        min = Math.min(min, k);
+        max = Math.max(max, k);
+      }
+      expect(min).toBeGreaterThanOrEqual(1 - r.depth - 1e-9);
+      expect(max).toBeLessThanOrEqual(1);
+      // Still a visibly "faulty" light, just a calm one.
+      expect(max - min).toBeGreaterThan(r.depth * 0.3);
+      expect(maxWindowSwing((t) => reducedFlickerFactor(t, seed, r, noise1D), 60)).toBeLessThan(0.1);
+      // The regular flicker does strobe (guards the metric above).
+      expect(maxWindowSwing((t) => flickerFactor(t, seed, FLICKER, noise1D), 60)).toBeGreaterThan(0.5);
+    }
+    expect(reducedFlickerFactor(12.34, 5, r, noise1D)).toBe(reducedFlickerFactor(12.34, 5, r, noise1D));
+    expect(reducedFlickerFactor(3, 1, { rate: 1, depth: 0 }, noise1D)).toBe(1);
   });
 });
 

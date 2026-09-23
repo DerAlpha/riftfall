@@ -78,11 +78,14 @@ export const DEFAULT_BINDINGS: BindingMap = {
   moveLeft: [key('KeyA'), key('ArrowLeft')],
   moveRight: [key('KeyD'), key('ArrowRight')],
   jump: [key('Space'), pad(PAD.A)],
-  crouch: [key('ControlLeft'), key('KeyC'), pad(PAD.B)],
+  // Not on Ctrl by default: Ctrl+Tab / Ctrl+W (scoreboard on Tab, W to move) are reserved browser
+  // shortcuts that switch or close the tab. Players can add Ctrl as the secondary key themselves.
+  crouch: [key('KeyC'), pad(PAD.B)],
   sprint: [key('ShiftLeft'), pad(PAD.LS)],
   dash: [key('KeyQ'), pad(PAD.RB)],
   fire: [mouse(0), pad(PAD.RT)],
   ads: [mouse(2), pad(PAD.LT)],
+  // Pad X is deliberately shared: reload, and interact where an interaction is offered (M4).
   reload: [key('KeyR'), pad(PAD.X)],
   interact: [key('KeyF'), pad(PAD.X)],
   melee: [key('KeyV'), pad(PAD.RS)],
@@ -108,6 +111,11 @@ export const GAMEPAD = {
   lookCurveExponent: 2.2,
   /** Axis indices of the standard mapping. */
   axes: { leftX: 0, leftY: 1, rightX: 2, rightY: 3 },
+  /**
+   * Pads without the standard mapping: an axis that rests beyond this magnitude when the pad is
+   * first polled is an analog trigger (resting at -1), not a stick axis, and is never read as one.
+   */
+  nonStandardTriggerRest: 0.5,
   /** Standard-mapping buttons that are analog triggers (use `triggerThreshold`). */
   triggerButtons: [6, 7],
   /** padAxis bindings count as held above this deflection (after the deadzone). */
@@ -166,8 +174,16 @@ export const INPUT = {
   maxBindingsPerFamily: 2,
   /** Tracked mouse buttons (0 left, 1 middle, 2 right, 3 back, 4 forward). */
   maxMouseButtons: 5,
+  /** Back/forward mouse buttons: the browser navigates the page on them unless cancelled. */
+  navigationMouseButtons: [3, 4],
   /** Pixel-mode wheel deltas (trackpads) are accumulated; one wheel step per this many pixels. */
   wheelPixelsPerStep: 40,
+  /**
+   * Windows emulates AltGr as a synthetic ControlLeft keydown immediately followed by AltRight
+   * ("AltGraph"). A ControlLeft keydown followed by AltRight within this window (ms) is that phantom
+   * Ctrl: it is dropped in gameplay, and a rebinding capture waits this long before taking Ctrl.
+   */
+  altGrPairMs: 40,
   /**
    * Codes whose browser default is suppressed while gameplay owns the keyboard (page scrolling,
    * focus traversal, Firefox quick find, menu bar on Alt). Bound codes are always suppressed too.
@@ -194,18 +210,24 @@ export const INPUT = {
   ],
   /**
    * While one of these is held during gameplay, closing the tab asks for confirmation
-   * (beforeunload). Mitigates Ctrl+W while crouching with Ctrl – that shortcut cannot be prevented.
+   * (beforeunload). Mitigates Ctrl+W for players who crouch on Ctrl – that shortcut cannot be
+   * prevented. Ctrl+Tab / Ctrl+Shift+Tab (switch tab) cannot be prevented or guarded at all; the
+   * game pauses on the visibility change.
    */
   unloadGuardCodes: ['ControlLeft', 'ControlRight', 'MetaLeft', 'MetaRight'],
 } as const;
 
 /**
- * Console toggle. FIXED_KEYS.console (Backquote) always toggles; the fallback codes toggle only when
- * they produce one of `keys` (Mac ISO layouts report the "^" key left of "1" as IntlBackslash).
+ * Console toggle. FIXED_KEYS.console (Backquote) toggles unless it prints one of `notOnBackquote`;
+ * the fallback codes toggle only when they produce one of `keys`. Mac ISO layouts swap the two
+ * codes: the "^" key left of "1" reports IntlBackslash and the "<" key next to left Shift reports
+ * Backquote – that "<" key is an ordinary, bindable key.
  */
 export const CONSOLE_KEY = {
   fallbackCodes: ['IntlBackslash'],
   keys: ['^', '`', '°', '~', 'Dead'],
   /** Keys accepted when the browser reports no usable code at all. */
   unidentifiedKeys: ['^', '`'],
+  /** Characters of the Mac ISO "<" key, which reports the Backquote code. */
+  notOnBackquote: ['<', '>'],
 } as const;

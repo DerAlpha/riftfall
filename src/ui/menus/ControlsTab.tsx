@@ -7,6 +7,7 @@ import {
   bindingFamily,
   bindingLabel,
   cloneBindingMap,
+  familyBindings,
   getSlotBinding,
   sanitizeBindings,
   setBinding,
@@ -15,7 +16,7 @@ import {
 } from '../../input/bindings';
 import type { ControlSettings } from '../../save/settingsSchema';
 import { useKeyboardLayout, useSettings, type MenuDeps } from './context';
-import { ActionRow, fixed, pct, Section, Slider, Toggle } from './widgets';
+import { ActionRow, fixed, fromMilestone, pct, Section, Slider, Toggle } from './widgets';
 
 const SLOTS: readonly { slot: BindingSlot; label: string }[] = [
   { slot: { family: 'kbm', index: 0 }, label: 'Primär' },
@@ -80,7 +81,14 @@ function KeybindingList({ deps, layout }: { deps: MenuDeps; layout: KeyboardLayo
     }
   };
 
-  const capture = async (action: Action, slot: BindingSlot): Promise<void> => {
+  const capture = async (action: Action, clicked: BindingSlot): Promise<void> => {
+    // Bindings are stored compactly per family (no gaps): a secondary slot next to an empty primary
+    // would be stored as the primary. Capture into the slot the binding will actually occupy.
+    const stored = familyBindings(
+      sanitizeBindings(deps.settings.current.controls.bindings)[action],
+      clicked.family,
+    ).length;
+    const slot = clicked.index > stored ? { ...clicked, index: stored } : clicked;
     const id = ++captureSeq;
     captureId.current = id;
     setCapturing({ action, slot });
@@ -248,7 +256,8 @@ export function ControlsTab({ deps }: { deps: MenuDeps }) {
         />
         <Toggle
           label="Zielhilfe"
-          hint="Nur mit Gamepad"
+          hint={`Nur mit Gamepad · ${fromMilestone(MENU.plannedMilestone.aimAssist)}`}
+          disabled
           value={c.aimAssist}
           onChange={(v) => set({ aimAssist: v })}
         />

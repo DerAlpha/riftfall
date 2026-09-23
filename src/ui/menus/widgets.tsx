@@ -12,19 +12,24 @@ export function Section({ title, children }: { title: string; children: Componen
   );
 }
 
+/** Hint for a setting whose system arrives in a later milestone (the control is disabled until then). */
+export const fromMilestone = (milestone: number): string => `Verfügbar ab Meilenstein ${milestone}`;
+
 function Row({
   label,
   labelFor,
   hint,
+  disabled = false,
   children,
 }: {
   label: string;
   labelFor?: string;
   hint?: string;
+  disabled?: boolean;
   children: ComponentChildren;
 }) {
   return (
-    <div class="menu-row">
+    <div class={`menu-row${disabled ? ' menu-row--disabled' : ''}`}>
       <div class="menu-row__label">
         {labelFor ? <label for={labelFor}>{label}</label> : <span>{label}</span>}
         {hint ? <span class="menu-row__hint">{hint}</span> : null}
@@ -81,6 +86,7 @@ export function Toggle({
   hint,
   onLabel = 'AN',
   offLabel = 'AUS',
+  disabled = false,
   onChange,
 }: {
   label: string;
@@ -88,15 +94,18 @@ export function Toggle({
   hint?: string;
   onLabel?: string;
   offLabel?: string;
+  /** Shown but not changeable (no system reads the setting yet). */
+  disabled?: boolean;
   onChange: (v: boolean) => void;
 }) {
   const id = useId();
   return (
-    <Row label={label} labelFor={id} hint={hint}>
+    <Row label={label} labelFor={id} hint={hint} disabled={disabled}>
       <button
         id={id}
         type="button"
         role="switch"
+        disabled={disabled}
         aria-checked={value}
         class={`menu-toggle${value ? ' is-on' : ''}`}
         onClick={() => onChange(!value)}
@@ -118,22 +127,26 @@ export function Segmented<T extends string | number>({
   value,
   options,
   hint,
+  disabled = false,
   onChange,
 }: {
   label: string;
   value: T;
   options: readonly Option<T>[];
   hint?: string;
+  /** Shown but not changeable (no system reads the setting yet). */
+  disabled?: boolean;
   onChange: (v: T) => void;
 }) {
   return (
-    <Row label={label} hint={hint}>
-      <div class="menu-segmented" role="radiogroup" aria-label={label}>
+    <Row label={label} hint={hint} disabled={disabled}>
+      <div class="menu-segmented" role="radiogroup" aria-label={label} aria-disabled={disabled}>
         {options.map((o) => (
           <button
             key={String(o.value)}
             type="button"
             role="radio"
+            disabled={disabled}
             aria-checked={o.value === value}
             class={`menu-segmented__opt${o.value === value ? ' is-active' : ''}`}
             onClick={() => onChange(o.value)}

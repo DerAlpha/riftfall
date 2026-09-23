@@ -1,10 +1,43 @@
 import type { ComponentType } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import type { PointerLockProblem } from '../../input/InputSystem';
 import { AccessibilityTab } from './AccessibilityTab';
 import { AudioTab } from './AudioTab';
-import type { MenuDeps, MenuMemory, SettingsTab } from './context';
+import {
+  usePointerLockProblem,
+  type MenuDeps,
+  type MenuInfo,
+  type MenuMemory,
+  type SettingsTab,
+} from './context';
 import { ControlsTab } from './ControlsTab';
 import { GraphicsTab } from './GraphicsTab';
+
+const SAVE_LABELS: Readonly<Record<MenuInfo['saveBackend'], string>> = {
+  indexeddb: 'Browser-Datenbank',
+  localStorage: 'Lokaler Speicher',
+  memory: 'Nur diese Sitzung',
+};
+
+const LOCK_HINTS: Readonly<Record<PointerLockProblem, string>> = {
+  unsupported:
+    'Dieser Browser unterstützt keine Mauszeiger-Sperre (Pointer Lock). Das Spiel läuft ohne – Umsehen mit der Maus oder dem Gamepad.',
+  denied:
+    'Mauszeiger konnte nicht gesperrt werden – der Browser oder die Einbettung erlaubt keinen Pointer Lock.',
+};
+
+/**
+ * Focus sits in a text field outside the menu – the dev console, when a tab switch opened the menu
+ * under it. Opening the menu must not steal it (typing and Enter would hit "Fortsetzen").
+ */
+function textFieldFocusedOutside(menu: HTMLElement | null): boolean {
+  const a = document.activeElement;
+  const textField =
+    a instanceof HTMLTextAreaElement ||
+    (a instanceof HTMLInputElement && a.type === 'text') ||
+    (a instanceof HTMLElement && a.isContentEditable);
+  return textField && !(menu?.contains(a) ?? false);
+}
 
 const TABS: readonly { id: SettingsTab; label: string; component: ComponentType<{ deps: MenuDeps }> }[] = [
   { id: 'graphics', label: 'Grafik', component: GraphicsTab },
@@ -86,12 +119,28 @@ function SettingsView({ deps, memory, onBack }: { deps: MenuDeps; memory: MenuMe
 
 export function PauseMenu({ deps, memory }: { deps: MenuDeps; memory: MenuMemory }) {
   const [view, setView] = useState<'main' | 'settings'>('main');
+  const rootRef = useRef<HTMLDivElement>(null);
   const resumeRef = useRef<HTMLButtonElement>(null);
   const info = deps.getInfo();
+  const lockProblem = usePointerLockProblem(deps);
 
   useEffect(() => {
-    if (view === 'main') resumeRef.current?.focus({ preventScroll: true });
+    if (view === 'main' && !textFieldFocusedOutside(rootRef.current)) {
+      resumeRef.current?.focus({ preventScroll: true });
+    }
   }, [view]);
+
+  useEffect(
+    () =>
+      deps.events.on('ui:console', ({ open }) => {
+        // The console closed over the menu and left focus nowhere: keyboard/pad users land on "Fortsetzen".
+        const a = document.activeElement;
+        if (!open && view === 'main' && (a === null || a === document.body)) {
+          resumeRef.current?.focus({ preventScroll: true });
+        }
+      }),
+    [deps.events, view],
+  );
 
   useEffect(() => {
     // Escape inside settings goes back (pointer lock is already released while the menu is open).
@@ -107,7 +156,7 @@ export function PauseMenu({ deps, memory }: { deps: MenuDeps; memory: MenuMemory
   }, [view]);
 
   return (
-    <div class="pause">
+    <div class="pause" ref={rootRef}>
       <div class="pause__backdrop" aria-hidden="true" />
       {view === 'main' ? (
         <div class="menu-panel menu-panel--pause" role="dialog" aria-label="Pausenmenü">
@@ -118,18 +167,34 @@ export function PauseMenu({ deps, memory }: { deps: MenuDeps; memory: MenuMemory
               ref={resumeRef}
               type="button"
               class="menu-btn menu-btn--primary"
-              onClick={() => deps.onResume()}
+              // Without the API a lock request can only fail again: resume lock-less right away.
+              onClick={() => deps.onResume(lockProblem === 'unsupported' ? { lockless: true } : undefined)}
             >
               Fortsetzen
             </button>
+            {lockProblem === 'denied' ? (
+              <button type="button" class="menu-btn" onClick={() => deps.onResume({ lockless: true })}>
+                Ohne Mauszeiger-Sperre fortsetzen
+              </button>
+            ) : null}
             <button type="button" class="menu-btn" onClick={() => setView('settings')}>
               Einstellungen
             </button>
           </nav>
+          {lockProblem ? (
+            <p class="pause__warn" role="alert">
+              {LOCK_HINTS[lockProblem]}
+            </p>
+          ) : null}
+          {info.saveBackend === 'memory' ? (
+            <p class="pause__warn">
+              Speichern nicht möglich – Einstellungen und Tastenbelegung gehen beim Neuladen verloren.
+            </p>
+          ) : null}
           <div class="pause__info">
             <span>v{info.version}</span>
             <span>{info.gpuName}</span>
-            <span>Speicher: {info.saveBackend}</span>
+            <span>Speicher: {SAVE_LABELS[info.saveBackend] ?? info.saveBackend}</span>
           </div>
         </div>
       ) : (

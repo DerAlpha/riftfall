@@ -289,6 +289,16 @@ export const FLICKER = {
   /** Occasional dead period: every `burstPeriod` s the light dies for `burstLength` s. */
   burstPeriod: 7.3,
   burstLength: 0.35,
+  /**
+   * Accessibility "reduce flashing": no dropouts, hum or blackouts – faulty lights only dim slowly
+   * and shallowly (smooth noise), far below photosensitive flash thresholds.
+   */
+  reduced: {
+    /** Noise frequency of the dimming (1/s). */
+    rate: 0.4,
+    /** Deepest dim as a fraction of full intensity (factor stays in [1 - depth, 1]). */
+    depth: 0.25,
+  },
 } as const;
 
 export const TEST_ROOM_LAYOUT = {

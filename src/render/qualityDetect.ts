@@ -1,10 +1,10 @@
 /**
  * Hardware → graphics preset heuristics (pure; the browser probing lives in QualityManager).
  */
-import { AUTO_DETECT } from '../defs/graphics';
+import { AUTO_DETECT, PRESET_ORDER } from '../defs/graphics';
 import type { QualityPreset } from '../save/settingsSchema';
 
-export const PRESET_ORDER: readonly QualityPreset[] = ['low', 'medium', 'high', 'ultra'];
+export { PRESET_ORDER };
 
 export interface HardwareInfo {
   /** Unmasked GPU renderer string (any case); empty if unknown. */

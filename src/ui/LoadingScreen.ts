@@ -59,6 +59,14 @@ export class LoadingScreen {
     this.tipTimer = window.setInterval(() => this.nextTip(), LOADING.tipIntervalMs);
   }
 
+  /**
+   * accessibility.reduceFlashing: stops the stepped logo glitch (like the start screen's calm mode).
+   * Called once the save is loaded; the pre-save part of the boot only has OS reduced motion.
+   */
+  setReducedFlashing(reduce: boolean): void {
+    this.el.classList.toggle('loading--calm', reduce);
+  }
+
   /** `fraction` 0..1; `label` is shown as the current step (German). */
   setProgress(fraction: number, label: string): void {
     const f = clamp01(Number.isFinite(fraction) ? fraction : 0);

@@ -7,7 +7,9 @@
  * The buffer is allocated once for the maximum count; quality changes only move the draw range.
  */
 import * as THREE from 'three';
+import { RENDER } from '../../defs/graphics';
 import { DUST, type DustRegionDef } from '../../defs/level';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_PARAMS } from '../postfx/fogShared';
 import type { BoxVolume, ConeVolume, TimeUniform } from './VolumetricCone';
 
 const VERTEX = /* glsl */ `
@@ -39,6 +41,7 @@ uniform mat3 uBoxInv[MAX_BOXES];
 uniform vec3 uBoxColor[MAX_BOXES];
 varying vec3 vColor;
 varying float vAlpha;
+${HEIGHT_FOG_GLSL}
 void main() {
   float t = uTime * (0.6 + 0.8 * aRand.w);
   float ph = aRand.x * 6.2831853;
@@ -76,7 +79,7 @@ void main() {
   float coverage = clamp(px / uMinPx, 0.0, 1.0);
   float twinkle = 0.6 + 0.4 * sin(uTime * uTwinkle * (0.5 + aRand.z) + aRand.x * 40.0);
   float fade = 1.0 - smoothstep(uFadeDist * 0.6, uFadeDist, dist);
-  vColor = light * twinkle;
+  vColor = light * twinkle * fogTransmittance(cameraPosition, (modelMatrix * vec4(wp, 1.0)).xyz);
   vAlpha = coverage * coverage * fade;
   gl_PointSize = clamp(px, uMinPx, uMaxPx);
   gl_Position = projectionMatrix * mv;
@@ -281,6 +284,7 @@ export class DustParticles {
         uBoxOrigin: { value: boxOrigin },
         uBoxInv: { value: boxInv },
         uBoxColor: { value: boxColor },
+        fogParams: HEIGHT_FOG_PARAMS,
       },
       transparent: true,
       depthWrite: false,
@@ -295,7 +299,8 @@ export class DustParticles {
     // Particles wrap inside their regions; the static bounds are fine but culling buys nothing.
     points.frustumCulled = false;
     points.renderOrder = 11;
-    points.userData.cannotReceiveAO = true;
+    // Drawn by the post chain after AO and fog (RENDER.volumetricLayer), fogged in the shader.
+    points.layers.set(RENDER.volumetricLayer);
     points.matrixAutoUpdate = false;
     points.onBeforeRender = (renderer) => {
       renderer.getCurrentViewport(_vp);

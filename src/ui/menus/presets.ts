@@ -1,8 +1,8 @@
 /** Pure helpers for the graphics settings tab (unit-tested). */
-import { GRAPHICS_PRESETS, type PresetValues } from '../../defs/graphics';
+import { GRAPHICS_PRESETS, PRESET_ORDER, type PresetValues } from '../../defs/graphics';
 import type { GraphicsSettings, QualityPreset } from '../../save/settingsSchema';
 
-export const PRESET_ORDER: readonly QualityPreset[] = ['low', 'medium', 'high', 'ultra'];
+export { PRESET_ORDER };
 
 /** Graphics fields that belong to a preset (all others – fps limit, tone mapping, … – are user-only). */
 export const PRESET_KEYS: ReadonlySet<string> = new Set(Object.keys(GRAPHICS_PRESETS.high));

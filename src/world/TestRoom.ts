@@ -36,6 +36,7 @@ import {
 import { LevelKit, WallFrame, facingBasis, type LightHandle } from './LevelKit';
 import {
   flickerFactor,
+  reducedFlickerFactor,
   runForSlope,
   stairsLayout,
   subtractIntervals,
@@ -127,6 +128,8 @@ class TestRoomInstance implements LevelInstance {
   readonly spawn: { position: THREE.Vector3; yaw: number };
   private readonly unsubscribe: (() => void)[] = [];
   private volumetricsLevel: QualityLevel | null = null;
+  /** Accessibility "reduce flashing": faulty lights only dim gently instead of strobing. */
+  private reduceFlashing: boolean;
   private disposed = false;
   /** Reused by the stats getter (the debug overlay polls it every frame). */
   private readonly statsOut = { meshes: 0, lights: 0, colliders: 0, dynamicBodies: 0 };
@@ -148,6 +151,7 @@ class TestRoomInstance implements LevelInstance {
     this.boxVolumes = shafts ? shafts.volumes : [];
     const sp = L.spawn.position;
     this.spawn = { position: new THREE.Vector3(sp[0], sp[1], sp[2]), yaw: L.spawn.yawDeg * DEG2RAD };
+    this.reduceFlashing = ctx.settings.current.accessibility.reduceFlashing;
     const g = ctx.settings.current.graphics;
     kit.applyShadowQuality(g.shadows);
     this.applyVolumetrics(g.volumetrics);
@@ -157,6 +161,7 @@ class TestRoomInstance implements LevelInstance {
     const materials = ctx.materials as GraphicsSettingsSink;
     this.unsubscribe.push(
       ctx.events.on('settings:changed', ({ settings, sections }) => {
+        if (sections.includes('accessibility')) this.reduceFlashing = settings.accessibility.reduceFlashing;
         if (!sections.includes('graphics')) return;
         if (settings.graphics.shadows !== kit.shadowQuality)
           kit.applyShadowQuality(settings.graphics.shadows);
@@ -184,7 +189,9 @@ class TestRoomInstance implements LevelInstance {
     if (this.flickering.length > 0) {
       for (let i = 0; i < this.flickering.length; i++) {
         const f = this.flickering[i]!;
-        const k = flickerFactor(time, f.seed, FLICKER, noise1D);
+        const k = this.reduceFlashing
+          ? reducedFlickerFactor(time, f.seed, FLICKER.reduced, noise1D)
+          : flickerFactor(time, f.seed, FLICKER, noise1D);
         f.handle.light.intensity = f.handle.baseIntensity * k;
         const panel = f.handle.panel;
         if (panel)

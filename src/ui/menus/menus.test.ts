@@ -7,6 +7,7 @@ import type { GameEvents } from '../../core/events';
 import { GRAPHICS_PRESETS } from '../../defs/graphics';
 import type { Binding } from '../../defs/input';
 import { createDefaultSettings, type Settings, type SettingsSection } from '../../save/settingsSchema';
+import type { PlayOptions } from './context';
 import { mountMenus, type MenuController } from './index';
 
 function makeSettings(events: EventBus<GameEvents>): SettingsStore {
@@ -70,8 +71,8 @@ describe('menus', () => {
   let events: EventBus<GameEvents>;
   let settings: SettingsStore;
   let input: ReturnType<typeof fakeInput>;
-  let onStart: ReturnType<typeof vi.fn<() => void>>;
-  let onResume: ReturnType<typeof vi.fn<() => void>>;
+  let onStart: ReturnType<typeof vi.fn<(o?: PlayOptions) => void>>;
+  let onResume: ReturnType<typeof vi.fn<(o?: PlayOptions) => void>>;
   let menus: MenuController;
   let menuEvents: string[];
 
@@ -81,8 +82,8 @@ describe('menus', () => {
     events = new EventBus<GameEvents>();
     settings = makeSettings(events);
     input = fakeInput();
-    onStart = vi.fn<() => void>();
-    onResume = vi.fn<() => void>();
+    onStart = vi.fn<(o?: PlayOptions) => void>();
+    onResume = vi.fn<(o?: PlayOptions) => void>();
     menuEvents = [];
     events.on('ui:menu', ({ open, menu }) => menuEvents.push(`${menu}:${open ? 'open' : 'close'}`));
     menus = mountMenus(root, {
@@ -219,7 +220,119 @@ describe('menus', () => {
     act(() => events.emit('input:deviceChanged', { device: 'gamepad' }));
     await flush();
     const rows = [...root.querySelectorAll('.start__sheetrow')];
-    const jump = rows.find((r) => r.textContent?.startsWith('Springen'))!;
-    expect(jump.querySelector('.start__keys')!.textContent).toBe('Pad A');
+    const keysOf = (label: string): string | null | undefined =>
+      rows.find((r) => r.textContent?.startsWith(label))?.querySelector('.start__keys')?.textContent;
+    expect(keysOf('Springen')).toBe('Pad A');
+    // The sticks are hard-wired, not bindings: never "—".
+    expect(keysOf('Bewegen')).toBe('L-Stick');
+    expect(keysOf('Umsehen')).toBe('R-Stick');
+    expect(root.querySelector('.start__cta')!.textContent).toBe('A DRÜCKEN ZUM STARTEN');
+  });
+
+  const rowOf = (label: string): HTMLElement =>
+    [...root.querySelectorAll<HTMLElement>('.menu-row')].find((r) => r.textContent?.startsWith(label))!;
+
+  it('shows settings without a system yet as disabled, naming the milestone', async () => {
+    act(() => menus.showPause());
+    act(() => button(root, 'Einstellungen').click());
+    act(() => button(root, 'Barrierefreiheit').click());
+    await flush();
+    for (const label of ['Untertitel', 'Treffermarker', 'Schadenszahlen']) {
+      const row = rowOf(label);
+      expect(row.classList.contains('menu-row--disabled')).toBe(true);
+      expect(row.querySelector('button')!.disabled).toBe(true);
+      expect(row.textContent).toContain('ab Meilenstein');
+    }
+    const subtitles = settings.current.accessibility.subtitles;
+    act(() => rowOf('Untertitel').querySelector('button')!.click());
+    expect(settings.current.accessibility.subtitles).toBe(subtitles);
+    expect(rowOf('Blitzeffekte').classList.contains('menu-row--disabled')).toBe(false);
+
+    act(() => button(root, 'Grafik').click());
+    await flush();
+    const particles = [...rowOf('Partikel').querySelectorAll('button')];
+    expect(particles.length).toBeGreaterThan(0);
+    expect(particles.every((b) => b.disabled)).toBe(true);
+    expect(rowOf('Schatten').classList.contains('menu-row--disabled')).toBe(false);
+
+    act(() => button(root, 'Steuerung').click());
+    await flush();
+    expect(rowOf('Zielhilfe').classList.contains('menu-row--disabled')).toBe(true);
+  });
+
+  it('names the save backend in German and warns when nothing is saved', () => {
+    act(() => menus.showPause());
+    expect(root.querySelector('.pause__info')!.textContent).toContain('Speicher: Nur diese Sitzung');
+    expect(root.textContent).toContain('Speichern nicht möglich');
+  });
+
+  it('explains a refused pointer lock and offers lock-less play', async () => {
+    act(() => menus.showPause());
+    expect(root.textContent).not.toContain('Mauszeiger');
+    // The input system records the problem, then reports the failed lock.
+    (input as { pointerLockProblem?: string | null }).pointerLockProblem = 'denied';
+    act(() => events.emit('input:pointerLock', { locked: false }));
+    await flush();
+    expect(root.textContent).toContain('Mauszeiger konnte nicht gesperrt werden');
+    act(() => button(root, 'Fortsetzen').click());
+    expect(onResume).toHaveBeenLastCalledWith(undefined); // tries the lock again
+    act(() => button(root, 'Ohne Mauszeiger-Sperre fortsetzen').click());
+    expect(onResume).toHaveBeenLastCalledWith({ lockless: true });
+  });
+
+  it('starts and resumes lock-less right away when the Pointer Lock API is missing', () => {
+    (input as { pointerLockSupported?: boolean }).pointerLockSupported = false;
+    act(() => menus.showStart());
+    expect(root.textContent).toContain('Mauszeiger-Sperre wird von diesem Browser nicht unterstützt');
+    act(() => button(root, 'KLICKEN ZUM STARTEN').click());
+    expect(onStart).toHaveBeenLastCalledWith({ lockless: true });
+    act(() => menus.showPause());
+    expect(root.textContent).toContain('unterstützt keine Mauszeiger-Sperre');
+    act(() => button(root, 'Fortsetzen').click());
+    expect(onResume).toHaveBeenLastCalledWith({ lockless: true });
+  });
+
+  it('focuses "Fortsetzen" but never steals focus from the open dev console', () => {
+    act(() => menus.showPause());
+    expect(document.activeElement).toBe(button(root, 'Fortsetzen'));
+    act(() => menus.hide());
+
+    const consoleInput = document.createElement('input');
+    consoleInput.type = 'text';
+    document.body.appendChild(consoleInput);
+    consoleInput.focus();
+    act(() => menus.showPause()); // tab switch with the console open
+    expect(document.activeElement).toBe(consoleInput);
+    // The console closes and leaves focus nowhere: the menu takes it.
+    consoleInput.blur();
+    act(() => events.emit('ui:console', { open: false }));
+    expect(document.activeElement).toBe(button(root, 'Fortsetzen'));
+    consoleInput.remove();
+  });
+
+  it('captures a secondary slot next to an empty primary into the primary column', async () => {
+    const bindings = structuredClone(settings.current.controls.bindings);
+    bindings.inspect = [{ device: 'pad', button: 15 }];
+    settings.update('controls', { bindings });
+    act(() => menus.showPause());
+    act(() => button(root, 'Einstellungen').click());
+    act(() => button(root, 'Steuerung').click());
+    await flush();
+    const slots = (): HTMLElement[] => {
+      const row = [...root.querySelectorAll('.keybinds__row')].find(
+        (r) => r.querySelector('.keybinds__action')?.textContent === 'Waffe inspizieren',
+      )!;
+      return [...row.querySelectorAll<HTMLElement>('.keybinds__slot')];
+    };
+    act(() => slots()[1]!.click()); // "Sekundär"
+    await flush();
+    expect(slots()[0]!.classList.contains('is-capturing')).toBe(true);
+    expect(slots()[1]!.classList.contains('is-capturing')).toBe(false);
+    await act(async () => {
+      input.resolveCapture({ device: 'key', code: 'KeyK' });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(slots()[0]!.textContent).toBe('K');
+    expect(slots()[1]!.textContent).toBe('—');
   });
 });

@@ -8,7 +8,8 @@ import type { QualityPreset } from '../save/settingsSchema';
 
 export type Vec3Like = { x: number; y: number; z: number };
 
-export type PauseReason = 'pointerlock' | 'visibility' | 'menu' | 'console' | 'loading';
+/** Why the simulation is paused (several can hold at once; the game runs when none is left). */
+export type PauseReason = 'pointerlock' | 'visibility' | 'menu';
 
 export type MovementState = 'ground' | 'air' | 'slide' | 'dash' | 'mantle' | 'noclip';
 
@@ -56,6 +57,7 @@ export interface GameEvents {
 
   // --- camera / fx ---
   'camera:shake': { trauma: number };
+  /** Hit pulse from sources other than player damage (M2 weapons: hit markers, explosions). */
   'fx:hitPulse': { strength: number };
 
   // --- ui ---

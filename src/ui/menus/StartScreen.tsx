@@ -8,10 +8,13 @@ interface CheatRow {
   actions?: readonly Action[];
   /** Fixed text instead of bindings. */
   text?: string;
+  /** Gamepad mode: fixed text instead (the sticks are hard-wired, not bindings). */
+  padText?: string;
 }
 
 const CHEAT_SHEET: readonly CheatRow[] = [
-  { label: 'Bewegen', actions: ['moveForward', 'moveLeft', 'moveBack', 'moveRight'] },
+  { label: 'Bewegen', actions: ['moveForward', 'moveLeft', 'moveBack', 'moveRight'], padText: 'L-Stick' },
+  { label: 'Umsehen', text: 'Maus', padText: 'R-Stick' },
   { label: 'Springen / Doppelsprung', actions: ['jump'] },
   { label: 'Sprinten', actions: ['sprint'] },
   { label: 'Ducken / Rutschen', actions: ['crouch'] },
@@ -52,16 +55,16 @@ export function StartScreen({ deps }: { deps: MenuDeps }) {
   const cta = useRef<HTMLButtonElement>(null);
   const info = deps.getInfo();
   const pad = useInputDevice(deps) === 'gamepad';
+  // Without the Pointer Lock API a lock request can only fail: start lock-less right away.
+  const noLockApi = deps.input.pointerLockSupported === false;
+  const start = (): void => deps.onStart(noLockApi ? { lockless: true } : undefined);
 
   useEffect(() => {
     cta.current?.focus({ preventScroll: true });
   }, []);
 
   return (
-    <div
-      class={`start${s.accessibility.reduceFlashing ? ' start--calm' : ''}`}
-      onClick={() => deps.onStart()}
-    >
+    <div class={`start${s.accessibility.reduceFlashing ? ' start--calm' : ''}`} onClick={start}>
       <div class="start__scan" aria-hidden="true" />
       <div class="start__inner">
         <h1 class="rf-title" data-text="RIFTFALL">
@@ -74,17 +77,22 @@ export function StartScreen({ deps }: { deps: MenuDeps }) {
           class="start__cta"
           onClick={(e) => {
             e.stopPropagation();
-            deps.onStart();
+            start();
           }}
         >
-          KLICKEN ZUM STARTEN
+          {pad ? 'A DRÜCKEN ZUM STARTEN' : 'KLICKEN ZUM STARTEN'}
         </button>
+        {noLockApi ? (
+          <div class="start__note">Mauszeiger-Sperre wird von diesem Browser nicht unterstützt.</div>
+        ) : null}
         <div class="start__sheet" aria-label="Steuerung">
           {CHEAT_SHEET.map((row) => (
             <div class="start__sheetrow" key={row.label}>
               <span class="start__sheetlabel">{row.label}</span>
               <span class="start__keys">
-                {row.text ?? keysFor(map, row.actions ?? [], pad ? 'pad' : 'kbm', layout)}
+                {pad && row.padText
+                  ? row.padText
+                  : (row.text ?? keysFor(map, row.actions ?? [], pad ? 'pad' : 'kbm', layout))}
               </span>
             </div>
           ))}

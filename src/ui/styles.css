@@ -91,11 +91,12 @@ body {
 #hud {
   z-index: 10;
 }
+/* Below the menus: the F3 panel (top left) would otherwise cover the settings header and tabs. */
+#debug {
+  z-index: 15;
+}
 #ui {
   z-index: 20;
-}
-#debug {
-  z-index: 30;
 }
 #console {
   z-index: 40;
@@ -296,6 +297,9 @@ kbd {
   --hud-accent: var(--rf-cyan);
   --hud-warn: var(--rf-orange);
   --hud-damage: #ff3b30;
+  /* Hit vignette edge / inner ring (r, g, b) – remapped by the colour vision modes. */
+  --hud-hit-rgb: 210, 16, 16;
+  --hud-hit-dark-rgb: 150, 0, 0;
   position: absolute;
   inset: 0;
   color: var(--rf-text);
@@ -484,8 +488,8 @@ kbd {
   background: radial-gradient(
     ellipse at center,
     transparent 48%,
-    rgba(150, 0, 0, 0.28) 74%,
-    rgba(210, 16, 16, 0.72) 100%
+    rgba(var(--hud-hit-dark-rgb), 0.28) 74%,
+    rgba(var(--hud-hit-rgb), 0.72) 100%
   );
   will-change: opacity;
 }
@@ -705,11 +709,15 @@ kbd {
 .cb-deuteranopia {
   --hud-damage: #ffb000;
   --rf-danger: #ffb000;
+  --hud-hit-rgb: 255, 176, 0;
+  --hud-hit-dark-rgb: 170, 110, 0;
 }
 .cb-tritanopia {
   --hud-warn: #ff2d6f;
   --hud-damage: #ff2d6f;
   --rf-danger: #ff2d6f;
+  --hud-hit-rgb: 255, 45, 111;
+  --hud-hit-dark-rgb: 170, 20, 70;
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -742,10 +750,10 @@ kbd {
 .debug-overlay__text {
   margin: 8px 0 0;
   font: inherit;
-  white-space: pre;
+  /* Long lines (GPU string, missing assets) wrap instead of being cut off. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -929,6 +937,11 @@ kbd {
   opacity: 0.85;
   text-shadow: none;
   animation: rf-glitch-b 2.9s infinite steps(1);
+}
+/* accessibility.reduceFlashing (LoadingScreen.setReducedFlashing), like .start--calm. */
+.loading--calm .loading__logo::before,
+.loading--calm .loading__logo::after {
+  animation: none;
 }
 .loading__sub {
   font-size: 11px;
@@ -1288,6 +1301,13 @@ kbd {
   animation: none;
 }
 
+.start__note {
+  margin-top: 10px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--rf-orange);
+}
+
 /* ------------------------------------------------------------------------------------------ */
 /* Pause menu + settings                                                                       */
 /* ------------------------------------------------------------------------------------------ */
@@ -1341,6 +1361,15 @@ kbd {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.pause__warn {
+  margin: 18px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--rf-orange);
+  background: rgba(255, 138, 31, 0.08);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--rf-text);
 }
 
 .menu-panel--settings {
@@ -1467,6 +1496,13 @@ kbd {
 .menu-row__hint {
   font-size: 11px;
   color: var(--rf-text-dim);
+}
+/* Setting without a system yet (hint names the milestone): visible, not changeable. */
+.menu-row--disabled .menu-row__control {
+  opacity: 0.4;
+}
+.menu-row--disabled button:disabled {
+  cursor: not-allowed;
 }
 .menu-row__control {
   display: flex;
@@ -1828,6 +1864,14 @@ kbd {
   }
   .menu-hint {
     display: none;
+  }
+}
+
+/* Narrower screens: at a large HUD scale the centred readout would reach into the bottom-left
+   vitals (360px × --hud-scale) – lift it above the vitals rows (~46px + margin, scaled). */
+@media (max-width: 1400px) {
+  .hud-movement {
+    bottom: calc(var(--rf-safe-b) + 56px * var(--hud-scale));
   }
 }
 

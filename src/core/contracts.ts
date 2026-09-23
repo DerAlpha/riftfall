@@ -1,8 +1,11 @@
 /**
- * Public contracts between systems. Concrete classes `implements` these interfaces,
- * the composition root (src/game/Game.ts) only depends on them. Keeping contracts in
- * one file makes the architecture reviewable at a glance and lets systems be
- * developed/tested in isolation.
+ * Public contracts between systems. Concrete classes `implements` these interfaces and
+ * cross-system consumers depend on them where possible. The composition root
+ * (src/game/Game.ts) wires the concrete classes and may use members beyond these contracts
+ * (e.g. RenderSystem.sunDirection, SettingsStore.flush); some player-side rigs (PlayerCamera,
+ * ViewmodelRig) still take the concrete PlayerController for its gait/velocity internals.
+ * Keeping contracts in one file makes the architecture reviewable at a glance and lets
+ * systems be developed/tested in isolation.
  */
 import type * as THREE from 'three';
 import type RAPIER from '@dimforge/rapier3d-compat';
@@ -160,6 +163,10 @@ export interface PhysicsApi {
   removeCollider(collider: RAPIER.Collider): void;
   /** Interpolate registered dynamic body visuals between the last two fixed steps. */
   syncVisuals(alpha: number): void;
+  /**
+   * Closest hit along a ray. The returned hit (including its `point`/`normal` vectors) is SHARED
+   * and only valid until the next `raycast()` call – copy what you need to keep.
+   */
   raycast(
     origin: Vec3Like,
     direction: Vec3Like,
@@ -196,7 +203,10 @@ export interface QualityApi {
   readonly gpuName: string;
   /** Heuristic preset from GPU string / hardware. */
   detectPreset(): QualityPreset;
-  /** Called every frame with the unscaled frame time (s) to drive dynamic resolution + benchmark. */
+  /**
+   * Called once per simulated (unpaused) frame with the unscaled frame time (s) to drive dynamic
+   * resolution + benchmark. Menu frames are not fed in: they measure the menu, not the game.
+   */
   onFrame(realDt: number): void;
   /** Resolves with a recommended preset after the first-run benchmark (or null if no change). */
   runBenchmark(current: QualityPreset): Promise<QualityPreset | null>;

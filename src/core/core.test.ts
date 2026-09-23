@@ -52,6 +52,29 @@ describe('EventBus', () => {
     bus.emit('a', { n: 0 });
     expect(calls).toEqual(['first', 'second', 'second']);
   });
+  it('handlers subscribed during emit wait for the next emit (single and multiple listeners)', () => {
+    for (const listeners of [1, 2]) {
+      const bus = new EventBus<Ev>();
+      const late = vi.fn();
+      bus.on('a', () => bus.on('a', late));
+      if (listeners === 2) bus.on('a', () => {});
+      bus.emit('a', { n: 0 });
+      expect(late).not.toHaveBeenCalled();
+      bus.emit('a', { n: 1 });
+      expect(late).toHaveBeenCalledTimes(1);
+    }
+  });
+  it('a handler that keeps re-subscribing does not loop within one emit', () => {
+    const bus = new EventBus<Ev>();
+    let calls = 0;
+    const handler = (): void => {
+      calls++;
+      bus.on('b', handler);
+    };
+    bus.on('b', handler);
+    bus.emit('b', {});
+    expect(calls).toBe(1);
+  });
 });
 
 describe('GameLoop', () => {

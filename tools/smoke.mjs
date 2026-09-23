@@ -109,7 +109,9 @@ try {
   await snap('02-walk');
   await hold(['ShiftLeft', 'KeyW'], 1200);
   await page.keyboard.press('Space');
-  await sleep(250);
+  // Second press only once airborne (frame times vary wildly under SwiftShader).
+  await page.waitForFunction(() => window.__RIFTFALL__.snapshot().state === 'air', null, { timeout: 5000 });
+  await sleep(150);
   await page.keyboard.press('Space');
   await sleep(600);
   await snap('03-sprint-doublejump');
@@ -119,11 +121,11 @@ try {
   await page.keyboard.down('ShiftLeft');
   await page.keyboard.down('KeyW');
   await sleep(1200);
-  await page.keyboard.down('ControlLeft');
+  await page.keyboard.down('KeyC');
   await sleep(500);
   const slide = await page.evaluate(() => window.__RIFTFALL__.snapshot());
   report.steps.push({ name: 'slide-probe', ...slide });
-  await page.keyboard.up('ControlLeft');
+  await page.keyboard.up('KeyC');
   await page.keyboard.up('KeyW');
   await page.keyboard.up('ShiftLeft');
   await page.keyboard.press('KeyQ');
@@ -162,6 +164,7 @@ try {
     report.pageErrors.length === 0 &&
     moved > 2 &&
     report.events.jump > 0 &&
+    report.events.doubleJump > 0 &&
     report.slideDetected &&
     report.events.dash > 0;
 } catch (err) {

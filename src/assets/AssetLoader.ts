@@ -10,6 +10,8 @@
  *   files are written bottom-up by the fetch script (compressed textures cannot be flipped on
  *   upload), so UVs and normal-map orientation are identical for both formats.
  * - Heavy loaders (KTX2 transcoder workers, Draco, glTF) are created on first use only.
+ * - Every request runs under ASSETS.loader.requestTimeoutMs (reset by progress): a stalled one
+ *   fails like an error (fetches and the HDRI are aborted; results that still arrive are disposed).
  */
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
@@ -38,6 +40,88 @@ import {
 const log = createLogger('Assets');
 
 type ProgressFn = (loaded: number, total: number, label: string) => void;
+
+class AssetTimeoutError extends Error {
+  constructor(what: string, ms: number) {
+    super(`"${what}" made no progress for ${ms} ms`);
+    this.name = 'TimeoutError';
+  }
+}
+
+function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+/**
+ * Runs `start` under a stall deadline: rejects once no progress was reported for `ms` (requests
+ * without progress events get `ms` in total) and calls `abort`. A result that still arrives after
+ * the deadline goes to `dispose` – nobody else owns it.
+ */
+export function withStallTimeout<T>(
+  what: string,
+  ms: number,
+  start: (onProgress: () => void) => Promise<T>,
+  dispose?: (late: T) => void,
+  abort?: () => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let expired = false;
+    const expire = (): void => {
+      expired = true;
+      reject(new AssetTimeoutError(what, ms));
+      try {
+        abort?.();
+      } catch (err) {
+        log.warn(`Aborting "${what}" failed`, err);
+      }
+    };
+    let timer = setTimeout(expire, ms);
+    const onProgress = (): void => {
+      if (expired) return;
+      clearTimeout(timer);
+      timer = setTimeout(expire, ms);
+    };
+    let request: Promise<T>;
+    try {
+      request = start(onProgress);
+    } catch (err) {
+      clearTimeout(timer);
+      reject(toError(err));
+      return;
+    }
+    request.then(
+      (value) => {
+        if (expired) {
+          dispose?.(value);
+          return;
+        }
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        if (expired) return;
+        clearTimeout(timer);
+        reject(toError(err));
+      },
+    );
+  });
+}
+
+/** fetch + body read under one deadline; expiry aborts the transfer. */
+function fetchWithTimeout<T>(
+  url: string,
+  init: RequestInit,
+  read: (res: Response) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  return withStallTimeout(
+    url,
+    ASSETS.loader.requestTimeoutMs,
+    async () => read(await fetch(url, { ...init, signal: controller.signal })),
+    undefined,
+    () => controller.abort(),
+  );
+}
 
 function normalizeBase(base: string): string {
   if (base === '') return './';
@@ -102,7 +186,6 @@ export class AssetLoader implements AssetsApi {
   private index: AvailableIndex | null = null;
 
   private readonly textureLoader = new THREE.TextureLoader();
-  private hdrLoader: HDRLoader | null = null;
   private ktx2Loader: KTX2Loader | null = null;
   private ktx2Failed = false;
   private dracoLoader: DRACOLoader | null = null;
@@ -162,8 +245,16 @@ export class AssetLoader implements AssetsApi {
       const file = asset?.files.hdr;
       if (!file) return null;
       try {
-        this.hdrLoader ??= new HDRLoader().setDataType(THREE.HalfFloatType);
-        const tex = await this.hdrLoader.loadAsync(this.url(file));
+        // Own manager per request: FileLoader requests follow its abort signal.
+        const manager = new THREE.LoadingManager();
+        const loader = new HDRLoader(manager).setDataType(THREE.HalfFloatType);
+        const tex = await withStallTimeout(
+          file,
+          ASSETS.loader.requestTimeoutMs,
+          (onProgress) => loader.loadAsync(this.url(file), onProgress),
+          (late) => late.dispose(),
+          () => manager.abort(),
+        );
         if (this.disposed) {
           tex.dispose();
           return null;
@@ -242,9 +333,10 @@ export class AssetLoader implements AssetsApi {
       const file = asset?.files.audio;
       if (!file) return null;
       try {
-        const res = await fetch(this.url(file));
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.arrayBuffer();
+        const data = await fetchWithTimeout(this.url(file), {}, async (res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.arrayBuffer();
+        });
         const ctx = this.getAudioContext() ?? this.createDecodeContext();
         if (!ctx) throw new Error('Web Audio unavailable');
         const buffer = await ctx.decodeAudioData(data);
@@ -317,16 +409,18 @@ export class AssetLoader implements AssetsApi {
   private loadIndex(): Promise<AvailableIndex | null> {
     this.indexPromise ??= (async () => {
       try {
-        const res = await fetch(this.url(ASSETS.indexFile), { cache: 'no-cache' });
-        if (!res.ok) {
+        const body = await fetchWithTimeout(this.url(ASSETS.indexFile), { cache: 'no-cache' }, async (res) =>
+          res.ok ? { status: res.status, text: await res.text() } : { status: res.status, text: null },
+        );
+        if (body.text === null) {
           log.info(
-            `No asset index (HTTP ${res.status}) – run "npm run assets" for CC0 textures/HDRI; procedural fallbacks active`,
+            `No asset index (HTTP ${body.status}) – run "npm run assets" for CC0 textures/HDRI; procedural fallbacks active`,
           );
           return null;
         }
         let raw: unknown;
         try {
-          raw = JSON.parse(await res.text());
+          raw = JSON.parse(body.text);
         } catch {
           // Dev servers answer unknown paths with index.html.
           log.info(
@@ -409,16 +503,31 @@ export class AssetLoader implements AssetsApi {
   private async loadImage(p: TextureLoadPlan, id: string): Promise<THREE.Texture | null> {
     let tex: THREE.Texture | null = null;
     if (p.ktx2Url && this.ktx2Usable() && this.ktx2Loader) {
+      const ktx2 = this.ktx2Loader;
+      const url = this.url(p.ktx2Url);
       try {
-        tex = await this.ktx2Loader.loadAsync(this.url(p.ktx2Url));
+        // Shared loader: a stalled request cannot be aborted alone, its late result is disposed.
+        tex = await withStallTimeout(
+          p.ktx2Url,
+          ASSETS.loader.requestTimeoutMs,
+          (onProgress) => ktx2.loadAsync(url, onProgress),
+          (late) => late.dispose(),
+        );
       } catch (err) {
         log.warn(`KTX2 "${p.ktx2Url}" failed – falling back to ${p.url}`, err);
         tex = null;
       }
     }
     if (!tex) {
+      const url = this.url(p.url);
       try {
-        tex = await this.textureLoader.loadAsync(this.url(p.url));
+        // <img> requests cannot be aborted: a late texture is disposed.
+        tex = await withStallTimeout(
+          p.url,
+          ASSETS.loader.requestTimeoutMs,
+          () => this.textureLoader.loadAsync(url),
+          (late) => late.dispose(),
+        );
         tex.flipY = true;
       } catch (err) {
         log.warn(`Texture "${p.url}" (${id}) failed to load`, err);
@@ -469,7 +578,13 @@ export class AssetLoader implements AssetsApi {
       const file = asset?.files.model;
       if (!file) return null;
       try {
-        const gltf = await this.getGltfLoader().loadAsync(this.url(file));
+        const loader = this.getGltfLoader();
+        const gltf = await withStallTimeout(
+          file,
+          ASSETS.loader.requestTimeoutMs,
+          (onProgress) => loader.loadAsync(this.url(file), onProgress),
+          (late) => disposeObject(late.scene),
+        );
         if (this.disposed) {
           disposeObject(gltf.scene);
           return null;

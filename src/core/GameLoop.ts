@@ -6,6 +6,8 @@
  *   between the last two simulation states so visuals can be interpolated.
  * - `maxSubSteps` prevents the spiral of death on slow frames (time is dropped).
  */
+import { ENGINE } from '../defs/engine';
+
 export interface LoopCallbacks {
   /**
    * Once per frame BEFORE the fixed ticks (also while paused). Poll input and latch intents here so
@@ -100,7 +102,7 @@ export class GameLoop {
     if (this.fpsLimit > 0) {
       const budget = 1000 / this.fpsLimit;
       // Allow slight early frames (rAF jitter) by carrying the remainder.
-      if (deltaMs + this.limiterCarry < budget * 0.96) return;
+      if (deltaMs + this.limiterCarry < budget * ENGINE.fpsLimiterTolerance) return;
       this.limiterCarry = Math.min(budget, Math.max(0, deltaMs + this.limiterCarry - budget));
     }
     this.lastTime = nowMs;

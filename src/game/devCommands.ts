@@ -2,12 +2,43 @@
  * Developer console commands (toggle with ^ / `). Commands for systems that do not exist yet
  * are registered as stubs so the console surface matches the design from day one.
  */
-import { GRAPHICS_PRESETS } from '../defs/graphics';
+import type {
+  DevConsoleApi,
+  LevelInstance,
+  PhysicsApi,
+  PlayerApi,
+  RenderApi,
+  SettingsStore,
+} from '../core/contracts';
+import type { EventBus } from '../core/EventBus';
+import type { GameEvents } from '../core/events';
 import { CAMERA } from '../defs/camera';
+import { DEV_COMMANDS } from '../defs/engine';
+import { GRAPHICS_PRESETS, PRESET_ORDER } from '../defs/graphics';
+import type { PlayerHealth } from '../player/PlayerHealth';
+import type { MigrationResult } from '../save/migrations';
 import type { QualityPreset } from '../save/settingsSchema';
-import type { Game } from './Game';
 
-const PRESETS: readonly QualityPreset[] = ['low', 'medium', 'high', 'ultra'];
+/** What the commands need from the game (Game satisfies it; tests pass stubs). */
+export interface DevCommandHost {
+  readonly devConsole: Pick<DevConsoleApi, 'register'>;
+  readonly player: Pick<
+    PlayerApi,
+    'godMode' | 'noclip' | 'unlocks' | 'teleport' | 'position' | 'velocity' | 'state'
+  >;
+  readonly health: Pick<PlayerHealth, 'godMode' | 'damage' | 'heal' | 'reset' | 'dead' | 'health' | 'armor'>;
+  readonly level: Pick<LevelInstance, 'spawn'>;
+  readonly loop: { timeScale: number };
+  readonly settings: SettingsStore;
+  readonly events: EventBus<GameEvents>;
+  readonly render: { readonly stats: RenderApi['stats']; readonly quality: { readonly gpuName: string } };
+  readonly physics: { readonly stats: PhysicsApi['stats'] };
+  readonly save: { readonly backendName: string; readonly lastLoad: Readonly<MigrationResult> | null };
+  /** The current level unlocks every movement ability regardless of the profile. */
+  readonly movementSandbox: boolean;
+  persistUnlocks(): void;
+  resetSave(): Promise<void>;
+}
 
 function num(v: string | undefined, name: string): number {
   const n = Number(v);
@@ -22,9 +53,11 @@ function onOff(v: string | undefined, current: boolean): boolean {
   throw new Error('on/off erwartet');
 }
 
-export function registerDevCommands(game: Game): void {
+export function registerDevCommands(game: DevCommandHost): void {
   const c = game.devConsole;
   const p = game.player;
+  const hpText = (): string =>
+    `HP ${Math.round(game.health.health)} / Rüstung ${Math.round(game.health.armor)}`;
 
   c.register({
     name: 'god',
@@ -47,15 +80,17 @@ export function registerDevCommands(game: Game): void {
   });
   c.register({
     name: 'unlock',
-    description: 'Bewegungsfähigkeit freischalten/sperren',
+    description: 'Bewegungsfähigkeit freischalten/sperren (wird im Profil gespeichert)',
     usage: 'unlock <doublejump|dash|all> [on|off]',
     complete: () => ['doublejump', 'dash', 'all'],
     run: ([what, v]) => {
+      if (!['doublejump', 'dash', 'all'].includes(what ?? '')) throw new Error('unbekannte Fähigkeit');
       const on = v === undefined ? true : onOff(v, true);
       if (what === 'doublejump' || what === 'all') p.unlocks.doubleJump = on;
       if (what === 'dash' || what === 'all') p.unlocks.dash = on;
-      if (!['doublejump', 'dash', 'all'].includes(what ?? '')) throw new Error('unbekannte Fähigkeit');
-      return `Doppelsprung: ${p.unlocks.doubleJump ? 'AN' : 'AUS'}, Dash: ${p.unlocks.dash ? 'AN' : 'AUS'}`;
+      game.persistUnlocks();
+      const state = `Doppelsprung: ${p.unlocks.doubleJump ? 'AN' : 'AUS'}, Dash: ${p.unlocks.dash ? 'AN' : 'AUS'}`;
+      return game.movementSandbox ? `${state} (Kalibrierungshalle: nach Neustart wieder alles frei)` : state;
     },
   });
   c.register({
@@ -85,9 +120,12 @@ export function registerDevCommands(game: Game): void {
   c.register({
     name: 'timescale',
     description: 'Simulationsgeschwindigkeit',
-    usage: 'timescale <0.05..4>',
+    usage: `timescale <${DEV_COMMANDS.timeScaleMin}..${DEV_COMMANDS.timeScaleMax}>`,
     run: ([v]) => {
-      game.loop.timeScale = Math.min(4, Math.max(0.05, num(v, 'timescale')));
+      game.loop.timeScale = Math.min(
+        DEV_COMMANDS.timeScaleMax,
+        Math.max(DEV_COMMANDS.timeScaleMin, num(v, 'timescale')),
+      );
       return `Timescale ${game.loop.timeScale}`;
     },
   });
@@ -113,11 +151,11 @@ export function registerDevCommands(game: Game): void {
     name: 'preset',
     aliases: ['quality'],
     description: 'Grafik-Preset setzen',
-    usage: 'preset <low|medium|high|ultra>',
-    complete: () => [...PRESETS],
+    usage: `preset <${PRESET_ORDER.join('|')}>`,
+    complete: () => [...PRESET_ORDER],
     run: ([v]) => {
-      const preset = v as QualityPreset;
-      if (!PRESETS.includes(preset)) throw new Error('low|medium|high|ultra');
+      const preset = PRESET_ORDER.find((q): q is QualityPreset => q === v);
+      if (!preset) throw new Error(PRESET_ORDER.join('|'));
       game.settings.update('graphics', { preset, ...GRAPHICS_PRESETS[preset] });
       return `Preset ${preset}`;
     },
@@ -153,16 +191,20 @@ export function registerDevCommands(game: Game): void {
     description: 'Dem Spieler Schaden zufügen (Test für Treffer-Effekte)',
     usage: 'hurt [menge]',
     run: ([v]) => {
-      game.health.damage(v === undefined ? 20 : num(v, 'menge'));
-      return `HP ${Math.round(game.health.health)} / Rüstung ${Math.round(game.health.armor)}`;
+      game.health.damage(v === undefined ? DEV_COMMANDS.hurtDamage : num(v, 'menge'));
+      return hpText();
     },
   });
   c.register({
     name: 'heal',
-    description: 'Vollständig heilen',
+    aliases: ['revive'],
+    description: 'Vollständig heilen (belebt nach dem Tod wieder)',
     run: () => {
-      game.health.heal(Number.POSITIVE_INFINITY);
-      return 'Geheilt';
+      // heal() ignores dead players; reset() revives with start values and re-announces
+      // (HUD and low-HP effect update).
+      if (game.health.dead) game.health.reset();
+      else game.health.heal(Number.POSITIVE_INFINITY);
+      return hpText();
     },
   });
   c.register({
@@ -170,29 +212,34 @@ export function registerDevCommands(game: Game): void {
     description: 'Screen Shake testen',
     usage: 'shake [trauma 0..1]',
     run: ([v]) => {
-      game.events.emit('camera:shake', { trauma: v === undefined ? 0.6 : num(v, 'trauma') });
+      game.events.emit('camera:shake', {
+        trauma: v === undefined ? DEV_COMMANDS.shakeTrauma : num(v, 'trauma'),
+      });
     },
   });
   c.register({
     name: 'stats',
-    description: 'Render-/Physik-Statistik ausgeben',
+    description: 'Render-/Physik-/Speicher-Statistik ausgeben',
     run: () => {
       const r = game.render.stats;
       const ph = game.physics.stats;
+      const load = game.save.lastLoad;
+      const migrated = load?.migratedFrom != null ? `, migriert von v${load.migratedFrom}` : '';
       return [
         `${r.width}x${r.height} @${r.pixelRatio.toFixed(2)} scale ${r.resolutionScale.toFixed(2)}`,
         `draw calls ${r.drawCalls}, tris ${r.triangles}, programs ${r.programs}, textures ${r.textures}`,
         `bodies ${ph.bodies}, colliders ${ph.colliders}, step ${ph.stepMs.toFixed(2)} ms`,
         `GPU: ${game.render.quality.gpuName}`,
+        `Speicher: ${game.save.backendName}, Laden: ${load?.status ?? '–'}${migrated}`,
       ].join('\n');
     },
   });
   c.register({
     name: 'resetsave',
-    description: 'Spielstand löschen (Neustart erforderlich)',
+    description: 'Spielstand löschen und mit Standardwerten weiterspielen',
     run: async () => {
-      await game.save.clear();
-      return 'Spielstand gelöscht – Seite neu laden.';
+      await game.resetSave();
+      return 'Spielstand gelöscht – Standardeinstellungen aktiv (Neu laden startet die Hardware-Erkennung).';
     },
   });
 

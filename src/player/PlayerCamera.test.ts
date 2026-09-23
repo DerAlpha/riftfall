@@ -37,7 +37,10 @@ describe('cameraMath', () => {
   });
 
   it('spring impulse peaks near the requested dip and substepping stays stable', () => {
-    const s = { value: 0, velocity: -springImpulseForPeak(0.1, CAMERA.landing.stiffness) };
+    const s = {
+      value: 0,
+      velocity: -springImpulseForPeak(0.1, CAMERA.landing.stiffness, CAMERA.landing.damping),
+    };
     let min = 0;
     for (let i = 0; i < 120; i++) {
       stepSpringSubstepped(s, 0, CAMERA.landing.stiffness, CAMERA.landing.damping, DT, CAMERA.maxSpringStep);
@@ -51,6 +54,38 @@ describe('cameraMath', () => {
     stepSpringSubstepped(big, 0, 400, 10, 0.25, CAMERA.maxSpringStep);
     expect(Number.isFinite(big.value)).toBe(true);
     expect(Math.abs(big.value)).toBeLessThan(1);
+  });
+
+  it('spring impulse reaches but never exceeds the requested peak (underdamped springs too)', () => {
+    const springs = [
+      CAMERA.landing, // ζ ≈ 0.67
+      VIEWMODEL.kickSpring, // ζ ≈ 0.59
+      { stiffness: 100, damping: 20 }, // critical
+      { stiffness: 100, damping: 40 }, // overdamped
+    ];
+    const dip = 0.1;
+    for (const k of springs) {
+      const peakAt = (dt: number, maxStep: number): number => {
+        const s = { value: 0, velocity: -springImpulseForPeak(dip, k.stiffness, k.damping) };
+        let min = 0;
+        for (let t = 0; t < 1.5; t += dt) {
+          stepSpringSubstepped(s, 0, k.stiffness, k.damping, dt, maxStep);
+          min = Math.min(min, s.value);
+        }
+        return -min;
+      };
+      const overdamped = k.damping > 2 * Math.sqrt(k.stiffness);
+      // Near-continuous integration: the peak is the requested dip (overdamped: below it).
+      const exact = peakAt(1e-4, 1e-4);
+      expect(exact).toBeLessThanOrEqual(dip * 1.01);
+      if (!overdamped) expect(exact).toBeGreaterThan(dip * 0.98);
+      // The game's frame rates and sub-stepping never overshoot it.
+      for (const fps of [30, 60, 144, 240]) {
+        const peak = peakAt(1 / fps, CAMERA.maxSpringStep);
+        expect(peak).toBeLessThanOrEqual(dip * 1.01);
+        if (!overdamped) expect(peak).toBeGreaterThan(dip * 0.8);
+      }
+    }
   });
 });
 
@@ -153,6 +188,39 @@ describe('PlayerCamera + ViewmodelRig', () => {
     }
   });
 
+  it('viewmodel bob, roll, tilt and kicks follow the accessibility camera-motion setting', () => {
+    frame(10);
+    // Run diagonally (forward + strafe): bob, movement inertia and strafe roll.
+    input.move.x = 1;
+    input.move.y = 1;
+    frame(60);
+    let maxDx = 0;
+    let maxRoll = 0;
+    for (let i = 0; i < 30; i++) {
+      frame(1);
+      maxDx = Math.max(maxDx, Math.abs(viewmodel.root.position.x - VIEWMODEL.offset.x));
+      maxRoll = Math.max(maxRoll, Math.abs(viewmodel.root.rotation.z));
+    }
+    expect(maxDx).toBeGreaterThan(0.005);
+    expect(maxRoll).toBeGreaterThan(1 * DEG2RAD);
+    settings.update('accessibility', { cameraMotion: 0 });
+    events.emit('player:land', {
+      impactSpeed: 15,
+      heavy: true,
+      position: player.position,
+      surface: 'default',
+    });
+    // Landing kick, bob, breathing, strafe shift and roll are all gone (no look input → no sway).
+    for (let i = 0; i < 30; i++) {
+      frame(1);
+      expect(viewmodel.root.position.x).toBeCloseTo(VIEWMODEL.offset.x, 9);
+      expect(viewmodel.root.position.y).toBeCloseTo(VIEWMODEL.offset.y, 9);
+      expect(viewmodel.root.position.z).toBeCloseTo(VIEWMODEL.offset.z, 9);
+      expect(viewmodel.root.rotation.x).toBeCloseTo(0, 9);
+      expect(viewmodel.root.rotation.z).toBeCloseTo(0, 9);
+    }
+  });
+
   it('dips on landing and shakes on camera:shake (scaled by screenShake)', () => {
     frame(20);
     events.emit('player:land', {
@@ -217,5 +285,40 @@ describe('PlayerCamera + ViewmodelRig', () => {
     viewmodel.dispose();
     camera.dispose();
     expect(viewmodel.root.parent).toBeNull();
+  });
+
+  it('applyLook before the ticks: this frame moves along the new yaw, update() does not re-apply', () => {
+    frame(30);
+    input.move.y = 1;
+    // Quarter turn to the right in the same frame as the first forward tick.
+    input.look.yaw = Math.PI / 2;
+    camera.applyLook();
+    expect(player.yaw).toBeCloseTo(-Math.PI / 2, 6);
+    player.fixedUpdate(DT);
+    physics.step(DT);
+    player.update(DT, 1);
+    camera.update(DT);
+    input.endFrame();
+    expect(player.yaw).toBeCloseTo(-Math.PI / 2, 6);
+    expect(camera.lookDelta.yaw).toBeCloseTo(-Math.PI / 2, 6);
+    // Facing +X: the very first tick already accelerates along +X, not along the old -Z.
+    expect(player.velocity.x).toBeGreaterThan(0);
+    expect(Math.abs(player.velocity.z)).toBeLessThan(1e-6);
+    // Without applyLook, update() still applies the look itself (once).
+    input.look.yaw = 0.1;
+    camera.update(DT);
+    expect(player.yaw).toBeCloseTo(-Math.PI / 2 - 0.1, 6);
+  });
+
+  it('snapFov applies the FOV setting at once and the next update does not zoom again', () => {
+    frame(30);
+    settings.update('controls', { fov: CAMERA.maxFov });
+    camera.snapFov();
+    const expected = horizontalToVerticalFov(CAMERA.maxFov, CAMERA.fovReferenceAspect);
+    expect(render.camera.fov).toBeCloseTo(expected, 6);
+    const calls = render.fovCalls.length;
+    frame(1);
+    expect(render.fovCalls.length).toBe(calls);
+    expect(render.camera.fov).toBeCloseTo(expected, 6);
   });
 });

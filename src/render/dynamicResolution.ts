@@ -12,6 +12,10 @@
  *   headroom even when the frame time is pinned to vsync. Without it, the controller probes
  *   one step up after `probeSeconds` of stable frames and backs off exponentially when the
  *   probe immediately fails.
+ * - Without GPU time, a frame time that does not improve over `displayBoundSteps` consecutive
+ *   down-steps is display/rAF- or CPU-bound: the scale is restored and that frame time becomes a
+ *   floor for the budget (a 50 Hz panel or a 30 FPS rAF cap never drags the scale to minScale).
+ * - Raising the cap (render scale / preset) or enabling the controller starts at the new cap.
  */
 import { DYNAMIC_RESOLUTION } from '../defs/graphics';
 
@@ -29,6 +33,10 @@ export interface DynamicResolutionConfig {
   maxSampleBudgetRatio: number;
   /** Up to this many consecutive hitch frames are ignored (isolated spikes never cost resolution). */
   spikeToleranceFrames: number;
+  /** Consecutive frame-time down-steps without improvement before the load counts as display-bound (0 = off). */
+  displayBoundSteps: number;
+  /** "Improvement" = smoothed frame time below the sequence start * this. */
+  displayBoundImprovement: number;
 }
 
 export interface DynamicResolutionOptions {
@@ -61,6 +69,11 @@ export class DynamicResolutionController {
   private hasFrameEma = false;
   private hasGpuEma = false;
   private spikeFrames = 0;
+  /** Scale / smoothed frame time when the current run of consecutive down-steps began (-1: none). */
+  private downStartScale = -1;
+  private downStartMs = 0;
+  /** Frame time the display / rAF / CPU cannot go below (ms, 0 = unknown); raises the budget. */
+  private budgetFloorMs = 0;
 
   constructor(private readonly config: DynamicResolutionConfig = DYNAMIC_RESOLUTION) {}
 
@@ -73,17 +86,29 @@ export class DynamicResolutionController {
     return this.enabled;
   }
 
+  /** Frame budget (ms): the target frame time, raised to a detected display / rAF limit. */
+  get budgetMs(): number {
+    return Math.max(1000 / this.targetFps, this.budgetFloorMs);
+  }
+
   /** Apply settings. Returns true if the scale changed. */
   configure(opts: DynamicResolutionOptions): boolean {
     const prev = this._scale;
+    const prevMax = this.maxScale;
+    const wasEnabled = this.enabled;
     this.enabled = opts.enabled;
     this.targetFps = Math.max(1, opts.targetFps);
     this.maxScale = Math.max(this.config.minScale, opts.maxScale);
-    if (!this.enabled) {
+    if (!this.enabled || !wasEnabled || this.maxScale > prevMax) {
+      // Raised cap / newly enabled: start at the cap and let the controller scale down if needed
+      // (climbing back one probe at a time would show the new preset blurry for minutes).
       this._scale = this.maxScale;
+      this.probeBackoff = 1;
     } else {
       this._scale = snap(Math.min(this.maxScale, Math.max(this.config.minScale, this._scale)));
     }
+    // New target / settings: a previously detected display limit has to be measured again.
+    this.budgetFloorMs = 0;
     this.reset();
     return this._scale !== prev;
   }
@@ -106,6 +131,7 @@ export class DynamicResolutionController {
     this.frameEma = 0;
     this.gpuEma = 0;
     this.spikeFrames = 0;
+    this.downStartScale = -1;
   }
 
   /**
@@ -115,8 +141,7 @@ export class DynamicResolutionController {
   update(dt: number, gpuMs = -1): boolean {
     if (!this.enabled || !(dt > 0)) return false;
     const c = this.config;
-    const budgetMs = 1000 / this.targetFps;
-    const maxSampleMs = budgetMs * c.maxSampleBudgetRatio;
+    const maxSampleMs = this.budgetMs * c.maxSampleBudgetRatio;
     const rawMs = dt * 1000;
     // Isolated hitches (tab switch, GC, streaming) are skipped entirely; only a run of slow frames counts.
     if (rawMs > maxSampleMs) {
@@ -141,6 +166,9 @@ export class DynamicResolutionController {
     this.sinceAdjust += dt;
     if (this.sinceAdjust < c.adjustInterval) return false;
 
+    // Frames clearly faster than the floor: the display is faster than measured (e.g. moved screens).
+    if (this.budgetFloorMs > 0 && this.frameEma < this.budgetFloorMs * c.upThreshold) this.budgetFloorMs = 0;
+    const budgetMs = this.budgetMs;
     const useGpu = this.hasGpuEma;
     const load = useGpu ? this.gpuEma : this.frameEma;
     const prev = this._scale;
@@ -148,15 +176,29 @@ export class DynamicResolutionController {
     if (load > budgetMs * c.downThreshold) {
       // A probe that immediately overloads was a false alarm: wait longer before the next one.
       if (this.lastWasProbe) this.probeBackoff = Math.min(c.probeBackoffMax, this.probeBackoff * 2);
-      this._scale = snap(Math.max(c.minScale, this._scale - c.step));
+      if (!useGpu && this.isDisplayBound()) {
+        // Lower resolution did not make frames faster: give the resolution back, raise the budget.
+        this.budgetFloorMs = this.frameEma;
+        this._scale = this.downStartScale;
+        this.downStartScale = -1;
+      } else {
+        if (useGpu) this.downStartScale = -1;
+        else if (this.downStartScale < 0) {
+          this.downStartScale = this._scale;
+          this.downStartMs = this.frameEma;
+        }
+        this._scale = snap(Math.max(c.minScale, this._scale - c.step));
+      }
       this.stableTime = 0;
       this.lastWasProbe = false;
     } else if (load < budgetMs * c.upThreshold) {
+      this.downStartScale = -1;
       this._scale = snap(Math.min(this.maxScale, this._scale + c.step));
       this.stableTime = 0;
       this.lastWasProbe = false;
       this.probeBackoff = 1;
     } else {
+      this.downStartScale = -1;
       this.lastWasProbe = false;
       this.stableTime += this.sinceAdjust;
       if (!useGpu && this._scale < this.maxScale && this.stableTime >= c.probeSeconds * this.probeBackoff) {
@@ -168,5 +210,18 @@ export class DynamicResolutionController {
 
     this.sinceAdjust = 0;
     return this._scale !== prev;
+  }
+
+  /**
+   * True when the current run of down-steps went `displayBoundSteps` deep (or hit minScale) and
+   * the smoothed frame time did not improve meaningfully since the run started.
+   */
+  private isDisplayBound(): boolean {
+    const c = this.config;
+    if (c.displayBoundSteps <= 0 || this.downStartScale < 0) return false;
+    const depth = Math.min(c.displayBoundSteps * c.step, this.downStartScale - c.minScale);
+    if (!(depth > 0)) return false;
+    const stepped = this.downStartScale - this._scale;
+    return stepped >= depth - 1 / SNAP && this.frameEma > this.downStartMs * c.displayBoundImprovement;
   }
 }

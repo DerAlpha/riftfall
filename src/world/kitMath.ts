@@ -171,6 +171,26 @@ export function flickerFactor(
   return k;
 }
 
+export interface ReducedFlickerParams {
+  rate: number;
+  depth: number;
+}
+
+/**
+ * Photosensitivity-safe variant of {@link flickerFactor} (accessibility "reduce flashing"): no hard
+ * dropouts, hum or blackouts, only a smooth noise-driven dimming in [1 - depth, 1]. Deterministic in
+ * (time, seed); `noise` is a smooth 1D noise in [-1, 1].
+ */
+export function reducedFlickerFactor(
+  time: number,
+  seed: number,
+  p: ReducedFlickerParams,
+  noise: (x: number, seed: number) => number,
+): number {
+  const depth = Math.min(1, Math.max(0, p.depth));
+  return 1 - depth * (0.5 + 0.5 * noise(time * p.rate, seed));
+}
+
 export interface StairsLayout {
   steps: number;
   stepRise: number;

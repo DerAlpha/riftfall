@@ -10,10 +10,15 @@
  *   attributes and the fragment shader integrates the analytic chord of the view ray through the
  *   box (works from outside and inside). Adjacent segments of one skylight do not fade at their
  *   shared faces, so a skylight can be split into segments that end on different surfaces.
+ *
+ * Both live on RENDER.volumetricLayer: the post chain draws them after AO and height fog
+ * (VolumetricPass), and they apply the fog transmittance to their own depth.
  */
 import * as THREE from 'three';
 import type { Vec3Like } from '../../core/events';
+import { RENDER } from '../../defs/graphics';
 import { VOLUMETRIC_CONE, VOLUMETRIC_SHAFT } from '../../defs/level';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_PARAMS } from '../postfx/fogShared';
 
 /** Shared uniform object for animated effects (update `.value` once per frame). */
 export interface TimeUniform {
@@ -109,6 +114,7 @@ varying vec3 vWorldPos;
 varying vec3 vWorldNormal;
 varying float vAxial;
 ${NOISE_GLSL}
+${HEIGHT_FOG_GLSL}
 void main() {
   vec3 toCam = cameraPosition - vWorldPos;
   float camDist = length(toCam);
@@ -131,6 +137,7 @@ void main() {
   float nearFade = smoothstep(uNearStart, uNearEnd, camDist);
   float face = gl_FrontFacing ? 1.0 : uBackWeight;
   float a = uIntensity * edge * axial * floorFade * dens * fade * nearFade * face;
+  a *= fogTransmittance(cameraPosition, vWorldPos);
   gl_FragColor = vec4(uColor * a, 1.0);
 }
 `;
@@ -208,6 +215,7 @@ export class VolumetricCone {
         uNearStart: { value: cfg.nearFadeStart },
         uNearEnd: { value: cfg.nearFadeEnd },
         uBackWeight: { value: cfg.backFaceWeight },
+        fogParams: HEIGHT_FOG_PARAMS,
       },
       transparent: true,
       depthWrite: false,
@@ -224,9 +232,9 @@ export class VolumetricCone {
     mesh.quaternion.setFromUnitVectors(_down, axis);
     mesh.castShadow = false;
     mesh.receiveShadow = false;
-    // Additive light is drawn after opaque geometry; never occludes or receives AO.
+    // Additive light, drawn by the post chain after AO and fog; never occludes.
     mesh.renderOrder = 10;
-    mesh.userData.cannotReceiveAO = true;
+    mesh.layers.set(RENDER.volumetricLayer);
     mesh.updateMatrix();
     mesh.matrixAutoUpdate = false;
     this.mesh = mesh;
@@ -300,6 +308,7 @@ varying vec3 vInv1;
 varying vec3 vInv2;
 varying vec2 vFadeU;
 ${NOISE_GLSL}
+${HEIGHT_FOG_GLSL}
 vec3 toUnit(vec3 d) { return vec3(dot(vInv0, d), dot(vInv1, d), dot(vInv2, d)); }
 void main() {
   vec3 ro = toUnit(cameraPosition - vOrigin);
@@ -334,6 +343,7 @@ void main() {
   }
   dens *= 0.25;
   float a = (1.0 - exp(-uDensity * chord * dens)) * uIntensity;
+  a *= fogTransmittance(cameraPosition, cameraPosition + seg * (0.5 * (tn + tf)));
   gl_FragColor = vec4(uColor * a, 1.0);
 }
 `;
@@ -457,6 +467,7 @@ export class VolumetricShafts {
         uNoiseAmount: { value: cfg.noiseAmount },
         uStartFade: { value: cfg.startFade },
         uEndFade: { value: cfg.endFade },
+        fogParams: HEIGHT_FOG_PARAMS,
       },
       transparent: true,
       depthWrite: false,
@@ -469,7 +480,7 @@ export class VolumetricShafts {
     const mesh = new THREE.Mesh(geo, this.material);
     mesh.name = 'VolumetricShafts';
     mesh.renderOrder = 10;
-    mesh.userData.cannotReceiveAO = true;
+    mesh.layers.set(RENDER.volumetricLayer);
     mesh.matrixAutoUpdate = false;
     this.mesh = mesh;
   }

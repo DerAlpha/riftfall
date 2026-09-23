@@ -6,6 +6,7 @@ import type { GameEvents } from '../core/events';
 import { CAMERA } from '../defs/camera';
 import { PAD } from '../defs/input';
 import { createDefaultSettings, type Settings, type SettingsSection } from '../save/settingsSchema';
+import { learnedLayout } from './bindings';
 import { InputSystem } from './InputSystem';
 
 function makeSettings(events: EventBus<GameEvents>): SettingsStore {
@@ -26,6 +27,28 @@ function key(type: 'keydown' | 'keyup', code: string, opts: KeyboardEventInit = 
   window.dispatchEvent(e);
   return e;
 }
+
+/** Keyboard event with an explicit timeStamp (AltGr pairing compares event times). */
+function keyAt(
+  type: 'keydown' | 'keyup',
+  code: string,
+  keyName: string,
+  timeStamp: number,
+  opts: KeyboardEventInit = {},
+): KeyboardEvent {
+  const e = new KeyboardEvent(type, { code, key: keyName, bubbles: true, cancelable: true, ...opts });
+  Object.defineProperty(e, 'timeStamp', { value: timeStamp });
+  window.dispatchEvent(e);
+  return e;
+}
+
+function connectPad(pad: FakePad): void {
+  const ev = new Event('gamepadconnected');
+  Object.defineProperty(ev, 'gamepad', { value: pad });
+  window.dispatchEvent(ev);
+}
+
+const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 function mouseMove(dx: number, dy: number): void {
   const e = new MouseEvent('mousemove', { bubbles: true });
@@ -189,6 +212,9 @@ describe('InputSystem', () => {
   });
 
   it('applies mouse look only while pointer locked, with sensitivity and spike filtering', () => {
+    // A browser with the Pointer Lock API (jsdom has none).
+    Object.defineProperty(canvas, 'requestPointerLock', { configurable: true, value: vi.fn() });
+    mouseMove(10, 0);
     mouseMove(10, 0);
     frame();
     expect(input.getLook({ yaw: 0, pitch: 0 }).yaw).toBe(0);
@@ -351,5 +377,212 @@ describe('InputSystem', () => {
 
     key('keydown', 'KeyW');
     expect(input.device).toBe('kbm');
+  });
+
+  it('reports the pause edge and raw pad buttons while disabled (menus)', () => {
+    const pad = fakePad();
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad] });
+    const ev = new Event('gamepadconnected');
+    Object.defineProperty(ev, 'gamepad', { value: pad });
+    window.dispatchEvent(ev);
+    input.enabled = false;
+    pad.buttons[PAD.START] = { pressed: true, value: 1, touched: true };
+    pad.buttons[PAD.DOWN] = { pressed: true, value: 1, touched: true };
+    frame();
+    expect(input.pressed('pause')).toBe(false);
+    expect(input.pressedIgnoringEnabled('pause')).toBe(true);
+    expect(input.padButtonPressed(PAD.DOWN)).toBe(true);
+    expect(input.padButtonDown(PAD.DOWN)).toBe(true);
+    frame();
+    expect(input.pressedIgnoringEnabled('pause')).toBe(false);
+    expect(input.padButtonPressed(PAD.DOWN)).toBe(false);
+    expect(input.padButtonDown(PAD.DOWN)).toBe(true);
+    key('keydown', 'KeyP');
+    frame();
+    expect(input.pressedIgnoringEnabled('pause')).toBe(true);
+  });
+
+  it('never lets the back/forward mouse buttons navigate the page, also unlocked in menus', async () => {
+    input.enabled = false; // menu open, pointer unlocked
+    for (const type of ['mousedown', 'mouseup', 'auxclick'] as const) {
+      for (const button of [3, 4]) {
+        const e = new MouseEvent(type, { button, bubbles: true, cancelable: true });
+        document.body.dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(true);
+      }
+    }
+    const left = new MouseEvent('mouseup', { button: 0, bubbles: true, cancelable: true });
+    document.body.dispatchEvent(left);
+    expect(left.defaultPrevented).toBe(false);
+    // Binding "Maustaste 4": the mouseup after the capture is cancelled too.
+    const p = input.captureBinding(1000);
+    await tick();
+    window.dispatchEvent(new MouseEvent('mousedown', { button: 3, bubbles: true, cancelable: true }));
+    await expect(p).resolves.toEqual({ device: 'mouse', button: 3 });
+    const up = new MouseEvent('mouseup', { button: 3, bubbles: true, cancelable: true });
+    document.body.dispatchEvent(up);
+    expect(up.defaultPrevented).toBe(true);
+  });
+
+  it('treats Windows AltGr (synthetic ControlLeft + AltRight) as AltRight, never as Ctrl', async () => {
+    const bindings = structuredClone(settings.current.controls.bindings);
+    bindings.crouch = [{ device: 'key', code: 'ControlLeft' }];
+    settings.update('controls', { bindings });
+    keyAt('keydown', 'ControlLeft', 'Control', 500, { ctrlKey: true });
+    keyAt('keydown', 'AltRight', 'AltGraph', 500, { ctrlKey: true, altKey: true });
+    frame();
+    expect(input.isDown('crouch')).toBe(false);
+    expect(input.pressed('crouch')).toBe(false);
+    // Held AltGr auto-repeats the pair.
+    keyAt('keydown', 'ControlLeft', 'Control', 530, { ctrlKey: true, repeat: true });
+    keyAt('keydown', 'AltRight', 'AltGraph', 530, { ctrlKey: true, altKey: true, repeat: true });
+    frame();
+    expect(input.isDown('crouch')).toBe(false);
+    keyAt('keyup', 'ControlLeft', 'Control', 600);
+    keyAt('keyup', 'AltRight', 'AltGraph', 600);
+    // A real left Ctrl still works.
+    keyAt('keydown', 'ControlLeft', 'Control', 1000, { ctrlKey: true });
+    frame();
+    expect(input.pressed('crouch')).toBe(true);
+    keyAt('keyup', 'ControlLeft', 'Control', 1100);
+
+    // Rebinding: AltGr is captured as AltRight …
+    const p = input.captureBinding(1000);
+    await tick();
+    keyAt('keydown', 'ControlLeft', 'Control', 2000, { ctrlKey: true });
+    keyAt('keydown', 'AltRight', 'AltGraph', 2000, { ctrlKey: true, altKey: true });
+    await expect(p).resolves.toEqual({ device: 'key', code: 'AltRight' });
+    // … a lone left Ctrl as ControlLeft once the AltGr window has passed …
+    const p2 = input.captureBinding(1000);
+    await tick();
+    keyAt('keydown', 'ControlLeft', 'Control', 3000, { ctrlKey: true });
+    expect(input.capturing).toBe(true);
+    await expect(p2).resolves.toEqual({ device: 'key', code: 'ControlLeft' });
+    // … and Ctrl followed quickly by another key is still Ctrl (it came first).
+    const p3 = input.captureBinding(1000);
+    await tick();
+    keyAt('keydown', 'ControlLeft', 'Control', 4000, { ctrlKey: true });
+    keyAt('keydown', 'KeyK', 'k', 4005, { ctrlKey: true });
+    await expect(p3).resolves.toEqual({ device: 'key', code: 'ControlLeft' });
+  });
+
+  it('learns what unmodified keys print (key labels without getLayoutMap)', () => {
+    key('keydown', 'KeyY', { key: 'z' });
+    key('keydown', 'Digit2', { key: '"', shiftKey: true }); // shifted symbol: not learned
+    key('keydown', 'KeyE', { key: '€', ctrlKey: true, altKey: true }); // AltGr: not learned
+    expect(learnedLayout.get('KeyY')).toBe('z');
+    expect(learnedLayout.has('Digit2')).toBe(false);
+    expect(learnedLayout.has('KeyE')).toBe(false);
+  });
+
+  it('releases keys whose keyup macOS swallows while Cmd is held', () => {
+    key('keydown', 'KeyW');
+    key('keydown', 'ShiftLeft');
+    frame();
+    key('keydown', 'MetaLeft', { key: 'Meta' });
+    // W released while Cmd is down: macOS delivers no keyup for it.
+    key('keyup', 'MetaLeft', { key: 'Meta' });
+    frame();
+    expect(input.isDown('moveForward')).toBe(false);
+    expect(input.released('moveForward')).toBe(true);
+    expect(input.isDown('sprint')).toBe(true); // modifiers keep their state
+  });
+
+  it('treats the Mac ISO "<" key (Backquote code) as an ordinary, bindable key', async () => {
+    const p = input.captureBinding(1000);
+    await tick();
+    const e = key('keydown', 'Backquote', { key: '<' });
+    expect(e.defaultPrevented).toBe(true);
+    await expect(p).resolves.toEqual({ device: 'key', code: 'Backquote' });
+    // The console key itself ("^" = Dead on German layouts) stays reserved.
+    const p2 = input.captureBinding(100);
+    await tick();
+    expect(key('keydown', 'Backquote', { key: 'Dead' }).defaultPrevented).toBe(false);
+    input.cancelCapture();
+    await expect(p2).resolves.toBeNull();
+  });
+
+  it('switches to another pad only on a new press, never because a button stays held', () => {
+    const main = fakePad();
+    const stuck = fakePad();
+    stuck.index = 1;
+    stuck.id = 'Pedals with toggle switch';
+    stuck.buttons[PAD.Y] = { pressed: true, value: 1, touched: true };
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [main, stuck] });
+    connectPad(main);
+    connectPad(stuck);
+    main.axes[1] = -1;
+    for (let i = 0; i < 3; i++) {
+      frame();
+      expect(input.getMove({ x: 0, y: 0 }).y).toBeCloseTo(1, 5);
+      expect(input.isDown('weaponNext')).toBe(false); // the stuck device's Y
+    }
+    // A genuine press on the other device takes over; its held Y is no new press there.
+    stuck.buttons[PAD.A] = { pressed: true, value: 1, touched: true };
+    frame();
+    expect(input.pressed('jump')).toBe(true);
+    // Raw edges compare against that device's own previous state: its long-held Y is no press.
+    expect(input.padButtonPressed(PAD.A)).toBe(true);
+    expect(input.padButtonPressed(PAD.Y)).toBe(false);
+    expect(input.getMove({ x: 0, y: 0 }).y).toBe(0);
+    // Pressing a button on the first pad switches back.
+    main.buttons[PAD.B] = { pressed: true, value: 1, touched: true };
+    frame();
+    expect(input.pressed('crouch')).toBe(true);
+    expect(input.getMove({ x: 0, y: 0 }).y).toBeCloseTo(1, 5);
+  });
+
+  it('never reads trigger axes resting at -1 as a stick on non-standard pads (no camera spin)', () => {
+    const pad = fakePad();
+    pad.mapping = '';
+    pad.axes = [0, 0, -1, 0, 0, -1]; // XInput order without remapping: LX, LY, LT, RX, RY, RT
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad] });
+    connectPad(pad);
+    frame();
+    frame();
+    expect(input.getLook({ yaw: 0, pitch: 0 }).yaw).toBe(0);
+    expect(input.device).toBe('kbm');
+    pad.axes[1] = -1; // the left stick still moves
+    frame();
+    expect(input.getMove({ x: 0, y: 0 }).y).toBeCloseTo(1, 5);
+  });
+
+  it('reports a missing Pointer Lock API and then accepts unlocked mouse look while playing', () => {
+    const locks: boolean[] = [];
+    events.on('input:pointerLock', ({ locked }) => locks.push(locked));
+    expect(input.pointerLockSupported).toBe(false); // jsdom
+    expect(input.pointerLockProblem).toBeNull();
+    input.requestPointerLock();
+    expect(input.pointerLockProblem).toBe('unsupported');
+    expect(locks).toEqual([false]);
+    const k = CAMERA.mouseRadiansPerCount * settings.current.controls.mouseSensitivity;
+    mouseMove(5, 0); // the first event after construction is dropped by the spike filter
+    mouseMove(10, 0);
+    frame();
+    expect(input.getLook({ yaw: 0, pitch: 0 }).yaw).toBeCloseTo(10 * k, 9);
+    // Menus open: movement is not collected.
+    input.enabled = false;
+    mouseMove(10, 0);
+    input.enabled = true;
+    frame();
+    expect(input.getLook({ yaw: 0, pitch: 0 }).yaw).toBe(0);
+  });
+
+  it('records a refused lock as denied and clears it once a lock is granted', async () => {
+    const err = new Error('iframe without allow-pointer-lock');
+    err.name = 'SecurityError';
+    Object.defineProperty(canvas, 'requestPointerLock', {
+      configurable: true,
+      value: vi.fn(() => Promise.reject(err)),
+    });
+    const locks: boolean[] = [];
+    events.on('input:pointerLock', ({ locked }) => locks.push(locked));
+    input.requestPointerLock();
+    await tick();
+    expect(input.pointerLockProblem).toBe('denied');
+    expect(locks).toEqual([false]);
+    Object.defineProperty(document, 'pointerLockElement', { configurable: true, get: () => canvas });
+    document.dispatchEvent(new Event('pointerlockchange'));
+    expect(input.pointerLockProblem).toBeNull();
   });
 });

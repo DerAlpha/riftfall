@@ -31,7 +31,7 @@ export function AudioTab({ deps }: { deps: MenuDeps }) {
       <Section title="Verhalten">
         <Toggle
           label="Im Hintergrund stummschalten"
-          hint="Wenn der Tab nicht aktiv ist"
+          hint="Auch Menütöne, solange der Tab nicht aktiv ist – das Spiel selbst pausiert dann immer"
           value={a.muteInBackground}
           onChange={(v) => set({ muteInBackground: v })}
         />

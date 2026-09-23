@@ -10,7 +10,10 @@ import {
   cloneBindingMap,
   getSlotBinding,
   isConsoleToggleKey,
+  isReservedKey,
   isValidBindingMap,
+  learnedLayout,
+  learnPrintedKey,
   parseBinding,
   sanitizeBindings,
   setBinding,
@@ -72,7 +75,8 @@ describe('parseBinding / sanitizeBindings', () => {
   it('validates entries', () => {
     expect(parseBinding({ device: 'key', code: 'KeyW' })).toEqual(key('KeyW'));
     expect(parseBinding({ device: 'key', code: '' })).toBeNull();
-    expect(parseBinding({ device: 'key', code: 'Backquote' })).toBeNull(); // fixed console key
+    // Backquote is the Mac ISO "<" key (on other layouts it toggles the console and never fires).
+    expect(parseBinding({ device: 'key', code: 'Backquote' })).toEqual(key('Backquote'));
     expect(parseBinding({ device: 'key', code: 'F3' })).toBeNull(); // fixed debug key
     expect(parseBinding({ device: 'mouse', button: 1.5 })).toBeNull();
     // Limits match what the input system tracks (and what the settings sanitizer keeps).
@@ -160,16 +164,38 @@ describe('setBinding', () => {
     expect(conflicts).toEqual([]);
   });
 
-  it('reports every action sharing a binding (pad X is reload + interact)', () => {
+  it('reports every action sharing a binding but hands the old binding to only one (pad X)', () => {
     const { map, conflicts } = setBinding(base(), 'melee', { family: 'pad', index: 0 }, pad(PAD.X));
     expect(getSlotBinding(map, 'melee', { family: 'pad', index: 0 })).toEqual(pad(PAD.X));
     expect(conflicts.map((c) => c.action).sort()).toEqual(['interact', 'reload']);
     expect(getSlotBinding(map, 'reload', { family: 'pad', index: 0 })).toEqual(pad(PAD.RS));
+    // R-stick press must not land on two actions: interact simply loses X.
+    expect(getSlotBinding(map, 'interact', { family: 'pad', index: 0 })).toBeNull();
+    expect(conflicts.find((c) => c.action === 'interact')?.swappedIn).toBeNull();
+  });
+
+  it('never swaps a binding in that another action still owns', () => {
+    // reload's X is shared with interact: weaponNext (had Y) must not receive X as well.
+    const { map, conflicts } = setBinding(base(), 'reload', { family: 'pad', index: 0 }, pad(PAD.Y));
+    expect(getSlotBinding(map, 'reload', { family: 'pad', index: 0 })).toEqual(pad(PAD.Y));
+    expect(getSlotBinding(map, 'interact', { family: 'pad', index: 0 })).toEqual(pad(PAD.X));
+    expect(getSlotBinding(map, 'weaponNext', { family: 'pad', index: 0 })).toBeNull();
+    expect(conflicts).toEqual([{ action: 'weaponNext', binding: pad(PAD.Y), swappedIn: null }]);
+    const owners = (b: Binding): number =>
+      ACTIONS.filter((a) => map[a].some((x) => bindingEquals(x, b))).length;
+    expect(owners(pad(PAD.X))).toBe(1);
   });
 
   it('clears a slot with null', () => {
-    const { map } = setBinding(base(), 'crouch', { family: 'kbm', index: 0 }, null);
-    expect(map.crouch).toEqual([key('KeyC'), pad(PAD.B)]);
+    const { map } = setBinding(base(), 'moveForward', { family: 'kbm', index: 0 }, null);
+    expect(map.moveForward).toEqual([key('ArrowUp')]);
+  });
+
+  it('does not put crouch on Ctrl by default (Ctrl+Tab / Ctrl+W close or switch the tab)', () => {
+    const ctrl = ['ControlLeft', 'ControlRight'];
+    for (const a of ACTIONS) {
+      expect(DEFAULT_BINDINGS[a].some((b) => b.device === 'key' && ctrl.includes(b.code))).toBe(false);
+    }
   });
 
   it('rejects a binding of the wrong family', () => {
@@ -195,7 +221,7 @@ describe('helpers', () => {
   });
 
   it('summarises bindings per family', () => {
-    expect(actionBindingSummary(DEFAULT_BINDINGS, 'crouch', 'kbm')).toBe('Strg links / C');
+    expect(actionBindingSummary(DEFAULT_BINDINGS, 'moveForward', 'kbm')).toBe('W / Pfeil hoch');
     expect(actionBindingSummary(DEFAULT_BINDINGS, 'weapon1', 'pad')).toBe('—');
   });
 
@@ -209,5 +235,32 @@ describe('helpers', () => {
     expect(isConsoleToggleKey('', '^')).toBe(true);
     expect(isConsoleToggleKey('Equal', 'Dead')).toBe(false);
     expect(isConsoleToggleKey('KeyA', 'a')).toBe(false);
+    // Mac ISO: the "<" key next to left Shift reports Backquote – an ordinary key.
+    expect(isConsoleToggleKey('Backquote', '<')).toBe(false);
+    expect(isConsoleToggleKey('Backquote', '>')).toBe(false);
+    // Other PC layouts print other characters on Backquote and must keep the console.
+    expect(isConsoleToggleKey('Backquote', '²')).toBe(true);
+    expect(isConsoleToggleKey('Backquote', '§')).toBe(true);
+  });
+
+  it('reserves only the debug key and the console toggle', () => {
+    expect(isReservedKey('F3', 'F3')).toBe(true);
+    expect(isReservedKey('Backquote', 'Dead')).toBe(true);
+    expect(isReservedKey('Backquote', '<')).toBe(false);
+    expect(isReservedKey('KeyW', 'w')).toBe(false);
+  });
+
+  it('labels keys by what they printed when no layout map exists (Firefox/Safari)', () => {
+    // German QWERTZ: the physical US "Y" position prints "z", ";" prints "ö".
+    learnPrintedKey('KeyY', 'z');
+    learnPrintedKey('Semicolon', 'ö');
+    learnPrintedKey('Minus', 'ß');
+    learnPrintedKey('Space', ' '); // named keys are never learned
+    learnPrintedKey('KeyQ', 'Dead');
+    expect(bindingLabel(key('KeyY'), learnedLayout)).toBe('Z');
+    expect(bindingLabel(key('Semicolon'), learnedLayout)).toBe('Ö');
+    expect(bindingLabel(key('Minus'), learnedLayout)).toBe('ß');
+    expect(bindingLabel(key('Space'), learnedLayout)).toBe('Leertaste');
+    expect(learnedLayout.has('KeyQ')).toBe(false);
   });
 });

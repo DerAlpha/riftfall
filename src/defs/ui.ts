@@ -87,8 +87,8 @@ export const DEV_CONSOLE = {
   historyStorageKey: 'riftfall.console.history',
   /** Warnings/errors from the log history shown when the console is created. */
   recentWarnings: 12,
-  /** A caret/backtick that sneaks into the input right after toggling (dead keys) is removed within this window. */
-  toggleCharSuppressMs: 200,
+  /** PageUp/PageDown scroll the output by this fraction of its visible height. */
+  pageScrollFraction: 0.9,
   prompt: '>',
 } as const;
 
@@ -140,4 +140,16 @@ export const MENU = {
   targetFpsOptions: [30, 60, 90, 120, 144],
   anisotropyOptions: [1, 2, 4, 8, 16],
   crosshairColors: ['#e8f6ff', '#00e5ff', '#35f2a4', '#ffe14d', '#ff8a1f', '#ff4dd2'],
+  /**
+   * Settings that are saved but not read by any system yet: the menus show them disabled with the
+   * milestone that brings their system (see CLAUDE.md milestone table). Remove an entry when the
+   * system lands.
+   */
+  plannedMilestone: {
+    particles: 2,
+    hitmarkers: 2,
+    damageNumbers: 2,
+    aimAssist: 2,
+    subtitles: 11,
+  },
 } as const;

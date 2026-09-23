@@ -39,14 +39,17 @@ export class EventBus<E extends object> {
 
   /**
    * Emit synchronously. Handlers added/removed during emission do not affect the
-   * current dispatch (we iterate over a snapshot only when the list is mutated).
+   * current dispatch: the handler count is frozen up front and several handlers are
+   * iterated over a copy. A single handler needs no copy (zero allocation): it is read
+   * before it runs, and handlers it adds lie beyond the frozen count.
    * A throwing handler is isolated so one faulty listener cannot break the game loop.
    */
   emit<K extends keyof E>(type: K, payload: E[K]): void {
     const list = this.handlers.get(type);
     if (!list || list.length === 0) return;
-    const snapshot = list.length === 1 ? list : list.slice();
-    for (let i = 0; i < snapshot.length; i++) {
+    const n = list.length;
+    const snapshot = n === 1 ? list : list.slice();
+    for (let i = 0; i < n; i++) {
       try {
         (snapshot[i] as Handler<E[K]>)(payload);
       } catch (err) {

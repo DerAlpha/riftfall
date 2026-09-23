@@ -20,7 +20,7 @@ import {
   type Settings,
   type SettingsSection,
 } from '../save/settingsSchema';
-import { TEST_ROOM_LAYOUT as L } from '../defs/level';
+import { FLICKER, TEST_ROOM_LAYOUT as L } from '../defs/level';
 import { isMaterialId } from '../defs/materials';
 import { buildTestRoom, corridorRampBottomZ, southStairs } from './TestRoom';
 
@@ -219,6 +219,55 @@ describe('buildTestRoom', () => {
       intensities.add(Math.round(spot().intensity));
     }
     expect(intensities.size).toBeGreaterThan(3);
+  });
+
+  it('only dims flickering lights gently while reduce flashing is on', () => {
+    const lights: THREE.Light[] = [];
+    const panels: THREE.MeshStandardMaterial[] = [];
+    level.root.traverse((o) => {
+      if ((o as THREE.Light).isLight) lights.push(o as THREE.Light);
+      const mat = (o as THREE.Mesh).isMesh ? (o as THREE.Mesh).material : null;
+      if (mat instanceof THREE.MeshStandardMaterial && mat.name.endsWith(':flicker')) panels.push(mat);
+    });
+    expect(panels.length).toBeGreaterThan(0);
+    const targets: (() => number)[] = [
+      ...lights.map((l) => () => l.intensity),
+      ...panels.map((m) => () => m.emissiveIntensity),
+    ];
+    const min = targets.map(() => Infinity);
+    const max = targets.map(() => 0);
+    const prev = targets.map(() => NaN);
+    let maxStep = 0;
+    settings.update('accessibility', { reduceFlashing: true });
+    try {
+      for (let i = 0; i < 1800; i++) {
+        level.update(1 / 60, i / 60);
+        targets.forEach((read, j) => {
+          const v = read();
+          min[j] = Math.min(min[j]!, v);
+          max[j] = Math.max(max[j]!, v);
+          if (prev[j]! > 0) maxStep = Math.max(maxStep, Math.abs(v - prev[j]!) / prev[j]!);
+          prev[j] = v;
+        });
+      }
+    } finally {
+      settings.update('accessibility', { reduceFlashing: false });
+    }
+    for (let j = 0; j < targets.length; j++) {
+      if (max[j]! <= 0) continue;
+      expect(min[j]! / max[j]!).toBeGreaterThanOrEqual(1 - FLICKER.reduced.depth - 1e-6);
+    }
+    // Smooth dimming: no frame-to-frame jump anywhere near a strobe.
+    expect(maxStep).toBeLessThan(0.01);
+    // Turning the option off restores the regular flicker.
+    const flicker = L.lights.spots.findIndex((s) => s.flicker);
+    const spots = lights.filter((l): l is THREE.SpotLight => (l as THREE.SpotLight).isSpotLight);
+    const seen = new Set<number>();
+    for (let i = 0; i < 600; i++) {
+      level.update(1 / 60, i / 60);
+      seen.add(Math.round(spots[flicker]!.intensity));
+    }
+    expect(seen.size).toBeGreaterThan(3);
   });
 
   it('removes all physics objects on dispose', async () => {

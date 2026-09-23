@@ -17,8 +17,9 @@
  *
  * Collision response: velocity is clipped only against surfaces that actually stopped part of
  * the move (so PlayerApi.velocity is the real velocity; climbed steps are not "walls"). Ground is
- * walkable (≤ maxSlopeDeg) per an axis ray, else per the most upward contact normal; steeper
- * surfaces count as air and a fall onto them turns into a slide.
+ * walkable (≤ maxSlopeDeg) per an axis ray, else per the most upward contact normal, else per
+ * two contacts wedging the capsule (V crevice); steeper surfaces count as air and a fall onto
+ * them turns into a slide.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three';
@@ -35,6 +36,7 @@ import { PLAYER } from '../defs/player';
 import { groupsForKind, type PhysicsWorld } from '../physics/PhysicsWorld';
 import {
   accelerate,
+  addUniqueNormal,
   advanceGait,
   airAccelerate,
   applyFriction,
@@ -51,6 +53,7 @@ import {
   ledgeHeightOk,
   mantleCurve,
   mantleDuration,
+  pairSupportNormal,
   rechargeDash,
   slopeAcceleration,
   slopeAngle,
@@ -84,6 +87,10 @@ const PROBE_GROUPS = interactionGroups(COLLISION_GROUP.PLAYER, COLLISION_FILTER.
 const PLAYER_SOLVER_GROUPS = interactionGroups(COLLISION_GROUP.PLAYER, COLLISION_FILTER.playerSolver);
 /** Movement below this (m per tick) is float noise, not a real block. */
 const MOVE_EPS = 1e-4;
+/** Contact normals closer than this (dot product) are the same surface (Rapier repeats contacts). */
+const SAME_NORMAL_DOT = 0.999;
+/** Distinct contact normals kept per move for the two-contact support test. */
+const MAX_CONTACT_NORMALS = 8;
 
 const EMPTY_PAYLOAD: Record<string, never> = {};
 const EDGE_JUMP = 1;
@@ -105,6 +112,8 @@ const _down = { x: 0, y: -1, z: 0 };
 const _dashDirOut = { x: 0, y: 0, z: 0 };
 const _wallN = { x: 0, y: 0, z: 0 };
 const _support = { x: 0, y: 1, z: 0 };
+const _pairSupport = { x: 0, y: 1, z: 0 };
+const _contactNormals = new Float64Array(MAX_CONTACT_NORMALS * 3);
 
 export interface PlayerUnlocks {
   doubleJump: boolean;
@@ -194,6 +203,8 @@ export class PlayerController implements PlayerApi {
   private jumpCooldown = 0;
   private jumpedSinceGrounded = false;
   private jumpActive = false;
+  /** Seconds since the last ground/double jump took off (gates the jump cut). */
+  private jumpRiseTime = 0;
   private doubleJumpUsed = false;
   private slideTime = 0;
   private slideBoostCooldown = 0;
@@ -406,12 +417,16 @@ export class PlayerController implements PlayerApi {
       this.tickNoclip(dt);
       return;
     }
+    const controls = this.settings.current.controls;
     if (this._state === 'mantle') {
+      // Presses during the vault are not lost: toggles apply now, a dash fires right after it.
+      this.updateCrouchIntent(crouchPressed, controls.toggleCrouch);
+      this.updateSprint(sprintPressed, controls.toggleSprint, controls.autoSprint);
+      if (dashPressed) this.dashLatched = true;
       this.tickMantle(dt);
       return;
     }
 
-    const controls = this.settings.current.controls;
     this.wishMag = this.computeWish();
     this.updateCrouchIntent(crouchPressed, controls.toggleCrouch);
     this.updateSprint(sprintPressed, controls.toggleSprint, controls.autoSprint);
@@ -436,6 +451,8 @@ export class PlayerController implements PlayerApi {
     this.tickState(dt);
     this.moveAndCollide(dt);
     this.applyCrouchCollider();
+    // The boost cooldown runs from the END of a slide: slide-hops can't re-earn the boost.
+    if (this._state === 'slide') this.slideBoostCooldown = S.boostCooldown;
   }
 
   // -------------------------------------------------------------------------
@@ -483,7 +500,8 @@ export class PlayerController implements PlayerApi {
     const adsOk = this._adsAmount < G.sprintAdsCancel;
     if (!forwardOk || !adsOk) this.sprintToggled = false;
     const wants = autoSprint || (toggle ? this.sprintToggled : this.sprintHeld);
-    this._sprinting = wants && forwardOk && adsOk && !this.crouchWanted;
+    // Also not while held crouched by a low ceiling (the speed is crouch speed there anyway).
+    this._sprinting = wants && forwardOk && adsOk && !this.crouchWanted && !this._crouched;
   }
 
   private groundWishSpeed(): number {
@@ -554,7 +572,11 @@ export class PlayerController implements PlayerApi {
       this.groundJump();
       return;
     }
-    if (this._state === 'air' && this.unlocks.doubleJump && !this.doubleJumpUsed) this.doubleJump();
+    if (this._state === 'air' && this.unlocks.doubleJump && !this.doubleJumpUsed) {
+      // Touchdown is imminent: keep the press buffered for a full ground jump (double jump kept).
+      if (this.velocity.y < 0 && this.groundWithin(-this.velocity.y * J.landPredictTime)) return;
+      this.doubleJump();
+    }
   }
 
   private groundJump(): void {
@@ -568,6 +590,7 @@ export class PlayerController implements PlayerApi {
     this.jumpCooldown = J.cooldown;
     this.jumpedSinceGrounded = true;
     this.jumpActive = true;
+    this.jumpRiseTime = 0;
     this.jumpedThisTick = true;
     this._grounded = false;
     // Jumping out of a toggled crouch stands up (only when not slide-jumping).
@@ -590,13 +613,19 @@ export class PlayerController implements PlayerApi {
     );
     this.doubleJumpUsed = true;
     this.jumpActive = true;
+    this.jumpRiseTime = 0;
     this.jumpedThisTick = true;
     this.jumpBuffer = 0;
     this.events.emit('player:jump', { double: true, position: this.position });
   }
 
   private tryStartSlide(): boolean {
-    if (!this._grounded || this.intendedSpeed() < S.minStartSpeed) return false;
+    if (!this._grounded) return false;
+    // Also the real motion (3D, so slopes are not penalised): pushing a dynamic prop keeps
+    // `velocity` at wish speed while the player barely moves.
+    const a = this.actualVelocity;
+    const moved = Math.hypot(a.x, a.y, a.z);
+    if (Math.min(this.intendedSpeed(), moved) < S.minStartSpeed) return false;
     this.startSlide();
     return true;
   }
@@ -608,7 +637,9 @@ export class PlayerController implements PlayerApi {
   private startSlide(): void {
     const speed = this.intendedSpeed();
     if (this.slideBoostCooldown <= 0 && speed > 1e-3) {
-      const s = Math.min(S.maxSpeed, speed + S.startBoost) / speed;
+      // Never boost past sprint + boost: repeated landing slides can't stack speed.
+      const boosted = Math.min(speed + S.startBoost, G.sprintSpeed + S.startBoost);
+      const s = Math.min(S.maxSpeed, Math.max(speed, boosted)) / speed;
       this.velocity.x *= s;
       this.velocity.z *= s;
       this.slideBoostCooldown = S.boostCooldown;
@@ -676,7 +707,8 @@ export class PlayerController implements PlayerApi {
    * capsule can get onto it. Face first (a low forward ray, then the ledge top just behind the
    * face: finds thin walls and railings → vault); otherwise top first (down ray at full reach,
    * then the face below it: overhangs). Finally the standing capsule is swept from the top of
-   * the vertical phase to the target, so a mantle can never pass through a wall.
+   * the vertical phase to the target (and, when crouched, up through the vertical phase), so a
+   * mantle can never pass through a wall or ceiling.
    */
   private tryMantle(): boolean {
     if (this.mantleCooldown > 0) return false;
@@ -688,7 +720,7 @@ export class PlayerController implements PlayerApi {
     const reach = R + M.reach;
     const top = M.maxHeight + M.probeUpMargin;
 
-    let faceDist = this.probeFace(fx, fz, Math.min(M.faceProbeLow, minH * 0.5), reach);
+    let faceDist = this.probeFace(fx, fz, Math.min(M.faceProbeLow, minH * M.faceProbeHeightFraction), reach);
     let ledgeY = Number.isNaN(faceDist)
       ? Number.NaN
       : this.probeLedgeTop(fx, fz, faceDist + M.ledgeInset, top, minH);
@@ -696,7 +728,7 @@ export class PlayerController implements PlayerApi {
       ledgeY = this.probeLedgeTop(fx, fz, reach, top, minH);
       if (Number.isNaN(ledgeY)) return false;
       const h = ledgeY - p.y;
-      faceDist = this.probeFace(fx, fz, Math.max(h - M.faceProbeBelow, h * 0.5), reach);
+      faceDist = this.probeFace(fx, fz, Math.max(h - M.faceProbeBelow, h * M.faceProbeHeightFraction), reach);
       if (Number.isNaN(faceDist)) return false;
     }
     const ledgeH = ledgeY - p.y;
@@ -728,6 +760,28 @@ export class PlayerController implements PlayerApi {
       this.body,
     );
     if (block >= 0) return false;
+    // Vertical phase when crouched: the band between the crouched head and the target height
+    // above the start is not covered by the current capsule, so sweep the standing one up
+    // through it (a start pose without headroom hits at 0).
+    if (this._crouched) {
+      _shapePos.x = p.x;
+      _shapePos.y = p.y + C.headroomTestLift + STAND_HALF + R;
+      _shapePos.z = p.z;
+      _dir.x = 0;
+      _dir.y = 1;
+      _dir.z = 0;
+      const up = this.physics.castShape(
+        this.standTestShape,
+        _shapePos,
+        null,
+        _dir,
+        Math.max(0, targetY - p.y - C.headroomTestLift),
+        PROBE_GROUPS,
+        this.collider,
+        this.body,
+      );
+      if (up >= 0) return false;
+    }
 
     this.mantleStart.copy(p);
     this.mantleEnd.set(targetX, targetY, targetZ);
@@ -740,7 +794,7 @@ export class PlayerController implements PlayerApi {
       (this.velocity.x * fx + this.velocity.z * fz) * M.exitMomentumKeep,
     );
     if (this._state === 'slide') this.events.emit('player:slideEnd', EMPTY_PAYLOAD);
-    // Clearance was verified for the standing capsule; stand up without a headroom test.
+    // Clearance of the whole path was verified for the standing capsule; stand up without a headroom test.
     if (this._crouched) this.setCrouched(false);
     this.velocity.set(0, 0, 0);
     this.jumpBuffer = 0;
@@ -805,7 +859,9 @@ export class PlayerController implements PlayerApi {
     );
     if (this.wishMag > 0) steerTowards(this.velocity, this.wishDir, A.airControl * this.wishMag, dt);
     if (this.jumpActive && this.velocity.y <= 0) this.jumpActive = false;
-    this.integrateGravity(dt, effectiveGravity(this.velocity.y, this.jumpActive, this.jumpHeld, A));
+    this.jumpRiseTime += dt;
+    const cutAllowed = this.jumpActive && this.jumpRiseTime > J.minCutTime;
+    this.integrateGravity(dt, effectiveGravity(this.velocity.y, cutAllowed, this.jumpHeld, A));
   }
 
   private tickSlide(dt: number): void {
@@ -874,6 +930,8 @@ export class PlayerController implements PlayerApi {
     this.body.setNextKinematicTranslation(this.position);
     if (t >= 1) {
       this.velocity.set(this.mantleDir.x * this.mantleExitSpeed, 0, this.mantleDir.z * this.mantleExitSpeed);
+      // The eased end of the curve is slow; the exit speed is the motion the next tick continues.
+      this.actualVelocity.copy(this.velocity);
       this._grounded = true;
       this.timeSinceGrounded = 0;
       this.jumpedSinceGrounded = false;
@@ -947,6 +1005,7 @@ export class PlayerController implements PlayerApi {
     // forward speed into an upward launch – except that a fall onto a steep slope becomes a slide
     // along it. Dynamic props are pushed instead of clipped.
     let supportNy = -2;
+    let normalCount = 0;
     const count = this.kcc.numComputedCollisions();
     for (let i = 0; i < count; i++) {
       const c = this.kcc.computedCollision(i, this.collision);
@@ -958,6 +1017,7 @@ export class PlayerController implements PlayerApi {
         _support.y = nrm.y;
         _support.z = nrm.z;
       }
+      normalCount = addUniqueNormal(_contactNormals, normalCount, nrm, SAME_NORMAL_DOT);
       const parent = c.collider.parent();
       if (parent && parent.isDynamic()) continue;
       if (nrm.y >= WALKABLE_COS) continue;
@@ -1012,6 +1072,19 @@ export class PlayerController implements PlayerApi {
         }
       }
     }
+    // Wedged between faces that are each too steep (V crevice, steep slope into a wall): two
+    // contacts together can hold the capsule up like walkable ground.
+    if (
+      !groundedNow &&
+      mayGround &&
+      fallBlocked &&
+      pairSupportNormal(_contactNormals, normalCount, _pairSupport) >= WALKABLE_COS
+    ) {
+      groundedNow = true;
+      this.groundNormal.x = _pairSupport.x;
+      this.groundNormal.y = _pairSupport.y;
+      this.groundNormal.z = _pairSupport.z;
+    }
     if (!groundedNow) {
       this.groundNormal.x = 0;
       this.groundNormal.y = 1;
@@ -1026,7 +1099,11 @@ export class PlayerController implements PlayerApi {
     if (wasGrounded && groundedNow && this._state !== 'air') {
       const surprise = _moved.y - expectedDy;
       if (Math.abs(surprise) > C.stepSmoothMinDelta) {
-        this.stepOffset = clamp(this.stepOffset - surprise, -C.stepSmoothMax, C.stepSmoothMax);
+        const before = this.stepOffset;
+        this.stepOffset = clamp(before - surprise, -C.stepSmoothMax, C.stepSmoothMax);
+        // Keep the absorbed pop out of the render interpolation too, otherwise the lerped feet
+        // show only part of it while the offset already cancels all of it (eye moves the wrong way).
+        this.prevFeet.y += before - this.stepOffset;
       }
     }
 

@@ -7,17 +7,19 @@
  * value noise; in-scattering adds a Henyey-Greenstein sun lobe. Sky pixels (depth = 1) are
  * fogged up to a max distance. With FOG_STEPS > 0 a short jittered raymarch adds wispy
  * noise density near the camera (volumetric detail for high/ultra).
+ * The density parameters and the optical-depth integral are shared (fogShared.ts) with the
+ * volumetrics that are composited after this pass and apply their own transmittance.
  */
 import * as THREE from 'three';
 import { BlendFunction, Effect, EffectAttribute } from 'postprocessing';
 import type { FogDef } from '../../defs/maps';
 import { POSTFX } from '../../defs/postfx';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_PARAMS } from './fogShared';
 
 const fragmentShader = /* glsl */ `
 uniform vec3 fogColor;
 uniform vec3 fogSunColor;
 uniform vec3 fogSunDir;
-uniform vec4 fogParams;
 uniform vec4 fogNoiseParams;
 uniform vec2 fogScatter;
 uniform vec3 fogWind;
@@ -25,6 +27,7 @@ uniform vec4 fogMarch;
 uniform mat4 fogProjInverse;
 uniform mat4 fogCameraWorld;
 uniform vec3 fogCameraPos;
+${HEIGHT_FOG_GLSL}
 
 float fogHash(vec3 p) {
   p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
@@ -59,21 +62,6 @@ float fogPhaseHG(float cosTheta, float g) {
   float g2 = g * g;
   float denom = max(1.0 + g2 - 2.0 * g * cosTheta, 1e-4);
   return (1.0 - g2) / (4.0 * PI * denom * sqrt(denom));
-}
-
-// Height density factor; the exponent is capped so points far below the base height cannot overflow.
-float fogHeightDensity(float y) {
-  return exp(min(-fogParams.y * (y - fogParams.z), 60.0));
-}
-
-// Closed-form optical depth of exponential height fog from ro along unit rd over dist.
-float fogOpticalDepth(vec3 ro, vec3 rd, float dist) {
-  float base = fogParams.x * fogHeightDensity(ro.y);
-  // Lower bound avoids exp() overflow (inf/NaN) for long rays diving into dense fog.
-  float k = max(fogParams.y * rd.y * dist, -60.0);
-  // (1 - e^-k) / k with a series fallback near k = 0 (horizontal rays).
-  float shape = abs(k) > 1e-3 ? (1.0 - exp(-k)) / k : 1.0 - 0.5 * k;
-  return base * dist * shape;
 }
 
 float fogIGN(vec2 p) {
@@ -136,7 +124,7 @@ export class HeightFogEffect extends Effect {
         ['fogColor', new THREE.Uniform(new THREE.Color(0.05, 0.07, 0.09))],
         ['fogSunColor', new THREE.Uniform(new THREE.Color(0, 0, 0))],
         ['fogSunDir', new THREE.Uniform(new THREE.Vector3(0, 1, 0))],
-        ['fogParams', new THREE.Uniform(new THREE.Vector4(0, 0.2, 0, hf.maxSkyDistance))],
+        ['fogParams', HEIGHT_FOG_PARAMS],
         ['fogNoiseParams', new THREE.Uniform(new THREE.Vector4(0.08, 0, 0, hf.noiseSampleDistance))],
         ['fogScatter', new THREE.Uniform(new THREE.Vector2(0.7, 0))],
         [

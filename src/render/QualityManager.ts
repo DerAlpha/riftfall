@@ -17,6 +17,8 @@ const log = createLogger('Quality');
 
 interface BenchmarkState {
   current: QualityPreset;
+  /** Wall-clock time fed so far, including discarded frames (drives the timeout). */
+  elapsed: number;
   warmup: number;
   time: number;
   frames: number;
@@ -115,9 +117,11 @@ export class QualityManager implements QualityApi {
 
   runBenchmark(current: QualityPreset): Promise<QualityPreset | null> {
     if (this.benchmark) return this.benchmark.promise;
+    // Nothing to recommend below the lowest preset: do not give up dynamic resolution to measure.
+    if (lowerPreset(current) === null) return Promise.resolve(null);
     let resolve!: (p: QualityPreset | null) => void;
     const promise = new Promise<QualityPreset | null>((r) => (resolve = r));
-    this.benchmark = { current, warmup: 0, time: 0, frames: 0, resolve, promise };
+    this.benchmark = { current, elapsed: 0, warmup: 0, time: 0, frames: 0, resolve, promise };
     // Measure the preset honestly: full resolution, no dynamic scaling while benchmarking.
     if (this.dynres.configure({ ...this.lastOptions, enabled: false })) this.emitScale();
     return promise;
@@ -132,22 +136,37 @@ export class QualityManager implements QualityApi {
 
   private stepBenchmark(dt: number): void {
     const b = this.benchmark!;
-    if (!(dt > 0) || dt > AUTO_DETECT.benchmarkMaxFrameSeconds) return;
-    if (b.warmup < AUTO_DETECT.benchmarkWarmupSeconds) {
+    if (!(dt > 0)) return;
+    const cfg = AUTO_DETECT;
+    const threshold = this.targetFps * cfg.benchmarkDowngradeRatio;
+    b.elapsed += dt;
+    // Hitches are discarded below, so a device where every frame is one (≤ 5 FPS) would never
+    // finish – and keep dynamic resolution off for the whole session, every session.
+    if (b.elapsed >= (cfg.benchmarkWarmupSeconds + cfg.benchmarkSeconds) * cfg.benchmarkTimeoutFactor) {
+      const fps = b.time > 0 ? b.frames / b.time : 0;
+      log.info(`Benchmark timed out after ${b.elapsed.toFixed(1)} s (${b.frames} usable frames)`);
+      this.finishBenchmark(b, fps < threshold ? lowerPreset(b.current) : null);
+      return;
+    }
+    if (dt > cfg.benchmarkMaxFrameSeconds) return;
+    if (b.warmup < cfg.benchmarkWarmupSeconds) {
       b.warmup += dt;
       return;
     }
     b.time += dt;
     b.frames++;
-    if (b.time < AUTO_DETECT.benchmarkSeconds) return;
+    if (b.time < cfg.benchmarkSeconds) return;
 
     const avgFps = b.frames / b.time;
-    const threshold = this.targetFps * AUTO_DETECT.benchmarkDowngradeRatio;
     const result = avgFps < threshold ? lowerPreset(b.current) : null;
     log.info(
       `Benchmark: ${avgFps.toFixed(1)} FPS avg on "${b.current}" (threshold ${threshold.toFixed(1)})` +
         (result ? ` → recommend "${result}"` : ' → keep'),
     );
+    this.finishBenchmark(b, result);
+  }
+
+  private finishBenchmark(b: BenchmarkState, result: QualityPreset | null): void {
     this.benchmark = null;
     // Restore dynamic resolution as configured by the user.
     this.lastOptions = { ...this.lastOptions, enabled: this.requestedDynres };

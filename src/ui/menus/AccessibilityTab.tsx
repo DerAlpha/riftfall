@@ -1,7 +1,7 @@
 import { MENU } from '../../defs/ui';
 import type { AccessibilitySettings, GameplaySettings } from '../../save/settingsSchema';
 import { useSettings, type MenuDeps } from './context';
-import { ActionRow, pct, Section, Segmented, Slider, Toggle, type Option } from './widgets';
+import { ActionRow, fromMilestone, pct, Section, Segmented, Slider, Toggle, type Option } from './widgets';
 
 const COLORBLIND: readonly Option<AccessibilitySettings['colorblindMode']>[] = [
   { value: 'none', label: 'Aus' },
@@ -24,6 +24,7 @@ export function AccessibilityTab({ deps }: { deps: MenuDeps }) {
   const setA = (patch: Partial<AccessibilitySettings>): void => deps.settings.update('accessibility', patch);
   const setG = (patch: Partial<GameplaySettings>): void => deps.settings.update('gameplay', patch);
   const r = MENU.ranges;
+  const later = MENU.plannedMilestone;
   return (
     <div class="menu-tab">
       <Section title="Sehen">
@@ -39,7 +40,13 @@ export function AccessibilityTab({ deps }: { deps: MenuDeps }) {
           value={a.reduceFlashing}
           onChange={(v) => setA({ reduceFlashing: v })}
         />
-        <Toggle label="Untertitel" value={a.subtitles} onChange={(v) => setA({ subtitles: v })} />
+        <Toggle
+          label="Untertitel"
+          hint={fromMilestone(later.subtitles)}
+          disabled
+          value={a.subtitles}
+          onChange={(v) => setA({ subtitles: v })}
+        />
       </Section>
 
       <Section title="Bewegungsempfindlichkeit">
@@ -97,8 +104,20 @@ export function AccessibilityTab({ deps }: { deps: MenuDeps }) {
             />
           </div>
         </ActionRow>
-        <Toggle label="Treffermarker" value={g.hitmarkers} onChange={(v) => setG({ hitmarkers: v })} />
-        <Toggle label="Schadenszahlen" value={g.damageNumbers} onChange={(v) => setG({ damageNumbers: v })} />
+        <Toggle
+          label="Treffermarker"
+          hint={fromMilestone(later.hitmarkers)}
+          disabled
+          value={g.hitmarkers}
+          onChange={(v) => setG({ hitmarkers: v })}
+        />
+        <Toggle
+          label="Schadenszahlen"
+          hint={fromMilestone(later.damageNumbers)}
+          disabled
+          value={g.damageNumbers}
+          onChange={(v) => setG({ damageNumbers: v })}
+        />
       </Section>
 
       <div class="menu-tab__footer">

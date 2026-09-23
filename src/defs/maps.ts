@@ -76,6 +76,8 @@ export interface MapAtmosphereDef {
   reverb: 'small' | 'medium' | 'large' | 'hangar';
   /** Asset ids preloaded when the map is loaded. */
   preload: readonly string[];
+  /** Movement sandbox: every movement ability is unlocked regardless of the profile's unlocks. */
+  movementSandbox?: boolean;
 }
 
 export const TEST_ROOM: MapAtmosphereDef = {
@@ -133,6 +135,7 @@ export const TEST_ROOM: MapAtmosphereDef = {
   hemi: { sky: [0.35, 0.45, 0.6], ground: [0.08, 0.06, 0.05], intensity: 0.07 },
   reverb: 'hangar',
   preload: ['hdri.industrial'],
+  movementSandbox: true,
 };
 
 export const MAPS: Record<string, MapAtmosphereDef> = {

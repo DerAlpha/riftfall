@@ -28,4 +28,16 @@ describe('LoadingScreen', () => {
     expect(root.classList.contains('is-active')).toBe(false);
     ls.dispose();
   });
+
+  it('stops the logo glitch when flashing effects are reduced', () => {
+    const root = document.createElement('div');
+    const ls = new LoadingScreen(root);
+    const el = root.firstElementChild as HTMLElement;
+    expect(el.classList.contains('loading--calm')).toBe(false);
+    ls.setReducedFlashing(true);
+    expect(el.classList.contains('loading--calm')).toBe(true);
+    ls.setReducedFlashing(false);
+    expect(el.classList.contains('loading--calm')).toBe(false);
+    ls.dispose();
+  });
 });

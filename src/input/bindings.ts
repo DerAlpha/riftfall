@@ -1,6 +1,7 @@
 /**
  * Pure binding helpers: German labels, rebinding with swap semantics and repair of stored maps.
- * No DOM access – shared by InputSystem, menus and tests.
+ * No DOM access – shared by InputSystem, menus and tests. The only state is the learned keyboard
+ * layout (fed by InputSystem from keydown events where getLayoutMap is unavailable).
  */
 import {
   ACTIONS,
@@ -84,15 +85,21 @@ export function isFixedKeyCode(code: string): boolean {
 /**
  * True when a keydown should toggle the dev console: the physical Backquote key ("^" on German,
  * "`" on US layouts, often reported as key "Dead"), or a fallback code that produces the caret.
+ * Backquote printing "<" / ">" is the Mac ISO key next to left Shift: an ordinary key.
  */
 export function isConsoleToggleKey(code: string, key: string): boolean {
-  if (code === FIXED_KEYS.console) return true;
+  if (code === FIXED_KEYS.console) return !(CONSOLE_KEY.notOnBackquote as readonly string[]).includes(key);
   if ((CONSOLE_KEY.fallbackCodes as readonly string[]).includes(code)) {
     return (CONSOLE_KEY.keys as readonly string[]).includes(key);
   }
   if (code === '' || code === 'Unidentified')
     return (CONSOLE_KEY.unidentifiedKeys as readonly string[]).includes(key);
   return false;
+}
+
+/** Keydowns that never reach gameplay or a rebinding capture: the debug key and the console toggle. */
+export function isReservedKey(code: string, key: string): boolean {
+  return code === FIXED_KEYS.debugOverlay || isConsoleToggleKey(code, key);
 }
 
 const KEY_CODE_RE = /^[A-Za-z][A-Za-z0-9]{0,31}$/;
@@ -106,13 +113,17 @@ function isInt(v: unknown, min: number, max: number): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 }
 
-/** Validates an unknown value as a Binding and returns a clean copy (or null). Fixed keys are rejected. */
+/**
+ * Validates an unknown value as a Binding and returns a clean copy (or null). The debug key is
+ * rejected; Backquote is allowed because on Mac ISO keyboards it is the "<" key (see CONSOLE_KEY) –
+ * on other layouts it toggles the console, so such a binding simply never fires there.
+ */
 export function parseBinding(raw: unknown): Binding | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
   switch (r.device) {
     case 'key':
-      return typeof r.code === 'string' && KEY_CODE_RE.test(r.code) && !isFixedKeyCode(r.code)
+      return typeof r.code === 'string' && KEY_CODE_RE.test(r.code) && r.code !== FIXED_KEYS.debugOverlay
         ? { device: 'key', code: r.code }
         : null;
     case 'mouse':
@@ -161,7 +172,9 @@ function withFamily(list: readonly Binding[], family: BindingFamily, fam: Bindin
 /**
  * Assign `binding` to `slot` of `action` (null clears the slot). Returns a new map; the input is
  * not mutated. If another action already uses the binding it receives the slot's previous binding
- * instead (swap) – or loses it when the slot was empty – and is reported as a conflict.
+ * instead (swap) – or loses it when the slot was empty – and is reported as a conflict. The
+ * previous binding is handed to at most one action and only while no action owns it any more, so a
+ * swap never puts one button on two actions (defaults share pad X between reload and interact).
  * A binding of a different family than the slot is rejected (map returned unchanged).
  */
 export function setBinding(
@@ -202,13 +215,19 @@ export function setBinding(
     const ofam = familyBindings(next[other], slot.family);
     const k = ofam.findIndex((x) => bindingEquals(x, b));
     if (k < 0) continue;
-    const swapped = old && !ofam.some((x) => bindingEquals(x, old)) ? cloneBinding(old) : null;
+    // Checked against the updated map: once one action took `old`, it is owned again.
+    const swapped = old && !isBindingOwned(next, old) ? cloneBinding(old) : null;
     if (swapped) ofam[k] = swapped;
     else ofam.splice(k, 1);
     next[other] = withFamily(next[other], slot.family, ofam);
     conflicts.push({ action: other, binding: cloneBinding(b), swappedIn: swapped });
   }
   return { map: next, conflicts };
+}
+
+function isBindingOwned(map: BindingMap, b: Binding): boolean {
+  for (const a of ACTIONS) if (map[a].some((x) => bindingEquals(x, b))) return true;
+  return false;
 }
 
 /**
@@ -329,6 +348,25 @@ const PAD_NAMES: Readonly<Record<number, string>> = {
   [PAD.RIGHT]: 'Steuerkreuz →',
   16: 'Home',
 };
+
+const learned = new Map<string, string>();
+
+/**
+ * Code → printed character learned from keydown events. Fallback for browsers without
+ * navigator.keyboard.getLayoutMap() (Firefox, Safari): captured keys then show what the key prints
+ * (Z/Y, umlauts) instead of the US name of the physical position.
+ */
+export const learnedLayout: KeyboardLayout = learned;
+
+/**
+ * Record what an unmodified keydown printed (`key` of a KeyboardEvent without Shift/Ctrl/Alt/Meta,
+ * so digits are not learned as their shifted symbols). Dead keys and named keys are ignored.
+ */
+export function learnPrintedKey(code: string, key: string): void {
+  if (code === '' || key.length !== 1 || key === ' ') return;
+  const printed = key.toLowerCase();
+  if (learned.get(code) !== printed) learned.set(code, printed);
+}
 
 function keyLabel(code: string, layout?: KeyboardLayout): string {
   const named = KEY_NAMES[code];

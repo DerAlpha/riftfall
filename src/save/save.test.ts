@@ -1,4 +1,4 @@
-import { IDBFactory } from 'fake-indexeddb';
+import { IDBFactory, forceCloseDatabase } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
 import type { SaveData } from '../core/contracts';
 import { CAMERA } from '../defs/camera';
@@ -7,14 +7,8 @@ import { ACTIONS, DEFAULT_BINDINGS, INPUT } from '../defs/input';
 import { MENU } from '../defs/ui';
 import { createDefaultProfile, createDefaultSave } from './defaults';
 import { MIGRATIONS, SAVE_VERSION, migrateSave } from './migrations';
-import {
-  SETTINGS_SECTIONS,
-  jsonEqual,
-  sanitizeBindingMap,
-  sanitizeProfile,
-  sanitizeSettings,
-} from './sanitize';
-import { BACKUP_SUFFIX, SaveSystem } from './SaveSystem';
+import { SETTINGS_SECTIONS, sanitizeBindingMap, sanitizeProfile, sanitizeSettings } from './sanitize';
+import { BACKUP_SUFFIX, FALLBACK_BACKUP_SUFFIX, SaveSystem, type IndexedDbBackend } from './SaveSystem';
 import { createDefaultSettings } from './settingsSchema';
 
 /** Minimal Storage implementation with switchable failures. */
@@ -49,6 +43,53 @@ const SLOT = ENGINE.saveSlotKey;
 
 function idbOnly(factory: IDBFactory = new IDBFactory()) {
   return { env: { indexedDB: factory, localStorage: null } };
+}
+
+/** IndexedDB that never answers (open times out after `timeoutMs`). */
+function hangingIdb(): IDBFactory {
+  return { open: () => ({}) } as unknown as IDBFactory;
+}
+
+/** Wraps a factory: collects every opened connection (to force-close it) and can fail opens. */
+function controlledIdb(inner: IDBFactory) {
+  const opened: IDBDatabase[] = [];
+  const control = { opened, failOpen: false };
+  const factory = {
+    open(name: string, version?: number): IDBOpenDBRequest {
+      if (control.failOpen) throw new DOMException('Internal error opening backing store', 'UnknownError');
+      const req = inner.open(name, version);
+      req.addEventListener('success', () => opened.push(req.result));
+      return req;
+    },
+  } as unknown as IDBFactory;
+  return { factory, control };
+}
+
+function forceClose(db: IDBDatabase | undefined): void {
+  expect(db).toBeDefined();
+  forceCloseDatabase(db as unknown as Parameters<typeof forceCloseDatabase>[0]);
+}
+
+function openDb(factory: IDBFactory, version: number): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = factory.open(ENGINE.saveDbName, version);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error('open failed'));
+  });
+}
+
+function readDb(db: IDBDatabase, key: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(ENGINE.saveStoreName, 'readonly').objectStore(ENGINE.saveStoreName).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error('read failed'));
+  });
+}
+
+function withFov(fov: number): SaveData {
+  const save = sampleSave();
+  save.settings.controls.fov = fov;
+  return save;
 }
 
 function sampleSave(): SaveData {
@@ -168,7 +209,7 @@ describe('sanitizeBindingMap', () => {
         { device: 'mouse', button: 0 },
         { device: 'mouse', button: 99 },
         { device: 'key', code: '' },
-        { device: 'key', code: 'Backquote' },
+        { device: 'key', code: 'F3' },
         { device: 'laser', code: 'KeyA' },
         { device: 'padAxis', axis: 1, direction: 2 },
         { device: 'padAxis', axis: 2, direction: -1 },
@@ -400,20 +441,40 @@ describe('SaveSystem', () => {
     expect(storage.getItem(`${LS_PREFIX}${SLOT}.corrupt${BACKUP_SUFFIX}`)).not.toBeNull();
   });
 
-  it('keeps a backup of a save from a newer version and never overwrites it', async () => {
-    const sys = await SaveSystem.create(idbOnly());
+  it('never overwrites a save from a newer version: keeps it, backs it up, saves in memory only', async () => {
+    const factory = new IDBFactory();
+    const sys = await SaveSystem.create(idbOnly(factory));
     const future = { version: SAVE_VERSION + 1, settings: { shiny: true }, profile: { level: 42 } };
     await sys.backend.write(SLOT, future);
     const loaded = await sys.load();
     expect(sys.lastLoad).toMatchObject({ status: 'future', recovered: true });
     expect(loaded.version).toBe(SAVE_VERSION);
-    const futureKey = `${SLOT}.v${SAVE_VERSION + 1}${BACKUP_SUFFIX}`;
-    expect(await sys.backend.read(futureKey)).toEqual(future);
+    expect(sys.unavailable).toBe('future');
+    expect(sys.backendName).toBe('memory');
 
     await sys.save(loaded);
     await sys.save(sampleSave());
-    expect(await sys.backend.read(futureKey)).toEqual(future);
-    expect(jsonEqual(await sys.backend.read(SLOT), sampleSave())).toBe(true);
+    // The session keeps working in memory …
+    expect(await sys.load()).toEqual(sampleSave());
+    // … while storage still holds the newer build's save untouched (no .bak rotation either).
+    const other = await SaveSystem.create(idbOnly(factory));
+    expect(await other.backend.read(SLOT)).toEqual(future);
+    expect(await other.backend.read(SLOT + BACKUP_SUFFIX)).toBeUndefined();
+    expect(await other.backend.read(`${SLOT}.v${SAVE_VERSION + 1}${BACKUP_SUFFIX}`)).toEqual(future);
+  });
+
+  it('keeps a newer save in localStorage untouched as well', async () => {
+    const storage = new MemoryStorage();
+    const future = JSON.stringify({ version: 99, settings: { controls: { fov: 117 } }, profile: {} });
+    storage.setItem(LS_PREFIX + SLOT, future);
+    const sys = await SaveSystem.create({ env: { indexedDB: null, localStorage: storage } });
+    await sys.load();
+    await sys.save(sampleSave());
+    await sys.save(withFov(90));
+    await sys.clear();
+    expect(storage.getItem(LS_PREFIX + SLOT)).toBe(future);
+    expect(storage.getItem(LS_PREFIX + SLOT + BACKUP_SUFFIX)).toBeNull();
+    expect(storage.getItem(`${LS_PREFIX}${SLOT}.v99${BACKUP_SUFFIX}`)).toBe(future);
   });
 
   it('falls back to localStorage when IndexedDB is missing or broken', async () => {
@@ -459,5 +520,183 @@ describe('SaveSystem', () => {
     await expect(sys.load()).resolves.toMatchObject({ version: SAVE_VERSION });
     await expect(sys.save(sampleSave())).resolves.toBeUndefined();
     await expect(sys.clear()).resolves.toBeUndefined();
+  });
+
+  it('does not overwrite the stored save with defaults when loading fails', async () => {
+    const storage = new MemoryStorage();
+    const sys = await SaveSystem.create({ env: { indexedDB: null, localStorage: storage } });
+    await sys.save(sampleSave());
+    storage.failReads = true;
+    await sys.load();
+    storage.failReads = false;
+    await sys.save(withFov(70));
+    expect(sys.unavailable).toBe('storageLost');
+    const again = await SaveSystem.create({ env: { indexedDB: null, localStorage: storage } });
+    expect(await again.load()).toEqual(sampleSave());
+  });
+
+  it('saves even when the backup copy cannot be written', async () => {
+    const storage = new MemoryStorage();
+    const sys = await SaveSystem.create({ env: { indexedDB: null, localStorage: storage } });
+    const setItem = storage.setItem.bind(storage);
+    storage.setItem = (k: string, v: string) => {
+      if (k.endsWith(BACKUP_SUFFIX)) throw new DOMException('quota', 'QuotaExceededError');
+      setItem(k, v);
+    };
+    await sys.save(withFov(100));
+    await sys.save(withFov(112));
+    expect((await sys.load()).settings.controls.fov).toBe(112);
+  });
+
+  it('drops the backup copy when the save itself exceeds the quota', async () => {
+    const storage = new MemoryStorage();
+    const sys = await SaveSystem.create({ env: { indexedDB: null, localStorage: storage } });
+    const setItem = storage.setItem.bind(storage);
+    storage.setItem = (k: string, v: string) => {
+      const bakExists = storage.getItem(LS_PREFIX + SLOT + BACKUP_SUFFIX) !== null;
+      if (k === LS_PREFIX + SLOT && bakExists) throw new DOMException('quota', 'QuotaExceededError');
+      setItem(k, v);
+    };
+    await sys.save(withFov(100));
+    await sys.save(withFov(112));
+    expect((await sys.load()).settings.controls.fov).toBe(112);
+    expect(storage.getItem(LS_PREFIX + SLOT + BACKUP_SUFFIX)).toBeNull();
+  });
+
+  it('retries a transient IndexedDB open failure before falling back', async () => {
+    const inner = new IDBFactory();
+    let opens = 0;
+    const flaky = {
+      open: (name: string, version?: number) => {
+        if (opens++ === 0) throw new DOMException('Internal error opening backing store', 'UnknownError');
+        return inner.open(name, version);
+      },
+    } as unknown as IDBFactory;
+    const sys = await SaveSystem.create({ env: { indexedDB: flaky, localStorage: new MemoryStorage() } });
+    expect(sys.backendName).toBe('indexeddb');
+    expect(opens).toBe(2);
+  });
+
+  it('reopens IndexedDB after the browser closed the connection', async () => {
+    const inner = new IDBFactory();
+    const { factory, control } = controlledIdb(inner);
+    const sys = await SaveSystem.create(idbOnly(factory));
+    await sys.save(sampleSave());
+
+    forceClose(control.opened[0]); // fires "close"
+    await sys.save(withFov(88));
+    expect(sys.backendName).toBe('indexeddb');
+    // Closed without a close event (older browsers): the InvalidStateError triggers the reopen.
+    (sys.backend as IndexedDbBackend).close();
+    await sys.save(withFov(89));
+    expect(sys.backendName).toBe('indexeddb');
+    expect(sys.unavailable).toBeNull();
+
+    const fresh = await SaveSystem.create(idbOnly(inner));
+    expect((await fresh.load()).settings.controls.fov).toBe(89);
+  });
+
+  it('stops saving when a newer build takes over the database instead of forking the save', async () => {
+    const factory = new IDBFactory();
+    const storage = new MemoryStorage();
+    const env = { env: { indexedDB: factory, localStorage: storage } };
+    const sys = await SaveSystem.create(env);
+    await sys.save(sampleSave());
+
+    const newer = await openDb(factory, 2); // our connection closes on versionchange
+    await sys.save(withFov(77));
+    expect(sys.unavailable).toBe('versionchange');
+    expect(sys.backendName).toBe('memory');
+    expect((await sys.load()).settings.controls.fov).toBe(77); // in-session state is kept
+    expect(storage.getItem(LS_PREFIX + SLOT)).toBeNull();
+    expect(((await readDb(newer, SLOT)) as SaveData).settings.controls.fov).toBe(104);
+
+    // A later session of this (older) build cannot open the upgraded database: memory only.
+    const later = await SaveSystem.create(env);
+    expect(later.unavailable).toBe('versionchange');
+    expect(later.backendName).toBe('memory');
+    newer.close();
+  });
+
+  it('falls back to localStorage when a lost connection cannot be reopened and merges it back later', async () => {
+    const inner = new IDBFactory();
+    const storage = new MemoryStorage();
+    const { factory, control } = controlledIdb(inner);
+    const sys = await SaveSystem.create({ env: { indexedDB: factory, localStorage: storage } });
+    await sys.load();
+    await sys.save(sampleSave());
+
+    control.failOpen = true;
+    forceClose(control.opened[0]);
+    await sys.save(withFov(112));
+    expect(sys.backendName).toBe('localStorage');
+    expect(storage.getItem(LS_PREFIX + SLOT)).not.toBeNull();
+
+    const next = await SaveSystem.create({ env: { indexedDB: inner, localStorage: storage } });
+    const loaded = await next.load();
+    expect(loaded.settings.controls.fov).toBe(112);
+    await next.save(loaded); // flush the merge write
+    expect(storage.getItem(LS_PREFIX + SLOT)).toBeNull();
+    const third = await SaveSystem.create(idbOnly(inner));
+    expect((await third.load()).settings.controls.fov).toBe(112);
+  });
+
+  it('adopts a localStorage save when IndexedDB is empty', async () => {
+    const storage = new MemoryStorage();
+    const a = await SaveSystem.create({
+      env: { indexedDB: hangingIdb(), localStorage: storage },
+      timeoutMs: 20,
+    });
+    expect(a.backendName).toBe('localStorage');
+    await a.load();
+    await a.save(sampleSave());
+
+    const inner = new IDBFactory();
+    const b = await SaveSystem.create({ env: { indexedDB: inner, localStorage: storage } });
+    const loaded = await b.load();
+    expect(loaded).toEqual(sampleSave());
+    await b.save(loaded);
+    expect(storage.getItem(LS_PREFIX + SLOT)).toBeNull();
+    const c = await SaveSystem.create(idbOnly(inner));
+    expect(await c.load()).toEqual(sampleSave());
+  });
+
+  it('never lets a session that fell back at boot replace the IndexedDB save', async () => {
+    const inner = new IDBFactory();
+    const storage = new MemoryStorage();
+    const s0 = await SaveSystem.create({ env: { indexedDB: inner, localStorage: storage } });
+    await s0.load();
+    await s0.save(withFov(95));
+
+    // IndexedDB hangs: this session starts from defaults in localStorage.
+    const a = await SaveSystem.create({
+      env: { indexedDB: hangingIdb(), localStorage: storage },
+      timeoutMs: 20,
+    });
+    expect(a.backendName).toBe('localStorage');
+    const defaults = await a.load();
+    expect(a.lastLoad?.status).toBe('empty');
+    defaults.settings.controls.fov = 111;
+    await a.save(defaults);
+
+    const b = await SaveSystem.create({ env: { indexedDB: inner, localStorage: storage } });
+    expect((await b.load()).settings.controls.fov).toBe(95);
+    expect(b.lastLoad?.status).toBe('current');
+    const kept = (await b.backend.read(SLOT + FALLBACK_BACKUP_SUFFIX)) as SaveData;
+    expect(kept.settings.controls.fov).toBe(111);
+    expect(storage.getItem(LS_PREFIX + SLOT)).toBeNull();
+  });
+
+  it('clear() also drops a localStorage fallback copy so it cannot come back', async () => {
+    const storage = new MemoryStorage();
+    const a = await SaveSystem.create({
+      env: { indexedDB: hangingIdb(), localStorage: storage },
+      timeoutMs: 20,
+    });
+    await a.save(sampleSave());
+    const b = await SaveSystem.create({ env: { indexedDB: new IDBFactory(), localStorage: storage } });
+    await b.clear();
+    expect(storage.getItem(LS_PREFIX + SLOT)).toBeNull();
+    expect((await b.load()).settings).toEqual(createDefaultSettings());
   });
 });

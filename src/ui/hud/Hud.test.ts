@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsStore } from '../../core/contracts';
 import { EventBus } from '../../core/EventBus';
 import type { GameEvents } from '../../core/events';
@@ -128,5 +128,33 @@ describe('Hud', () => {
     expect(speed.textContent).toBe('9.4 m/s');
     hud.setMovementReadoutVisible(false);
     expect((root.querySelector('.hud-movement') as HTMLElement).hidden).toBe(true);
+  });
+
+  it('does not count a pause as one long frame in the FPS counter', () => {
+    let now = 1000;
+    const spy = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    try {
+      settings.update('graphics', { showFps: true });
+      const fps = root.querySelector('.hud-fps') as HTMLElement;
+      const frameMs = 1000 / 60;
+      const run = (frames: number): void => {
+        for (let i = 0; i < frames; i++) {
+          hud.update(frameMs / 1000, 0);
+          now += frameMs;
+        }
+      };
+      run(30);
+      expect(fps.textContent).toBe('60 FPS');
+      // Paused for 10 s: update() does not run, then the game resumes.
+      now += 10_000;
+      events.emit('game:resumed', {});
+      // Without the reset the first frame after resuming would show "0 FPS" (10 s for one frame).
+      run(1);
+      expect(fps.textContent).toBe('60 FPS');
+      run(Math.ceil(1000 / HUD.fps.refreshHz / frameMs) + 1);
+      expect(fps.textContent).toBe('60 FPS');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

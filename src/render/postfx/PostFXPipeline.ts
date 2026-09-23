@@ -4,6 +4,8 @@
  *   RenderPass(world)
  *   → N8AO                                          (off: pass absent)
  *   → EffectPass[MotionBlur?, HeightFog]            (world-space; MB is CONVOLUTION|DEPTH → sorted first)
+ *   → Volumetrics                                   (additive cones/shafts/dust on their own layer:
+ *                                                    not darkened by AO, fogged to their own depth)
  *   → EffectPass[DepthOfField]                      (own pass: its bokeh reads the pass input, so fog
  *                                                    must already be in it; enabled only while aiming)
  *   → RenderPass(viewmodel, clear depth only)       (never fogged/blurred, never clips into walls)
@@ -45,7 +47,7 @@ import {
 } from 'postprocessing';
 import { N8AOPostPass } from 'n8ao';
 import { createLogger } from '../../core/log';
-import { QUALITY_LEVELS } from '../../defs/graphics';
+import { QUALITY_LEVELS, RENDER } from '../../defs/graphics';
 import type { ColorGradingDef, FogDef } from '../../defs/maps';
 import { POSTFX } from '../../defs/postfx';
 import type { AccessibilitySettings, GraphicsSettings, QualityLevel } from '../../save/settingsSchema';
@@ -55,8 +57,14 @@ import { HeightFogEffect } from './HeightFogEffect';
 import { createLUTTexture, IDENTITY_GRADING, updateLUTTexture } from './lut';
 import { MotionBlurEffect } from './MotionBlurEffect';
 import { ScreenStatusEffect } from './ScreenStatusEffect';
+import { VolumetricPass } from './VolumetricPass';
 
 const log = createLogger('PostFX');
+
+const _bufferSize = new THREE.Vector2();
+
+/** DepthOfFieldEffect's bokeh passes (not in the typings; each material has a `scale` uniform). */
+const DOF_BOKEH_PASSES = ['bokehNearBasePass', 'bokehNearFillPass', 'bokehFarBasePass', 'bokehFarFillPass'];
 
 /** EffectPass that can drop its effects without disposing them (effects survive pass rebuilds). */
 class OwnedEffectPass extends EffectPass {
@@ -116,6 +124,7 @@ export interface PostFXInfo {
 
 interface Structure {
   ao: boolean;
+  volumetrics: boolean;
   motionBlur: boolean;
   dof: boolean;
   bloom: boolean;
@@ -132,7 +141,7 @@ const TONE_MAPPING: Record<GraphicsSettings['toneMapping'], ToneMappingMode> = {
 };
 
 function structureKey(s: Structure): string {
-  return `${s.ao}|${s.motionBlur}|${s.dof}|${s.bloom}|${s.ca}|${s.vignette}|${s.grain}|${s.aa}`;
+  return `${s.ao}|${s.volumetrics}|${s.motionBlur}|${s.dof}|${s.bloom}|${s.ca}|${s.vignette}|${s.grain}|${s.aa}`;
 }
 
 /** n8ao keeps its fullscreen quads outside Pass.dispose()'s reach; free their materials too. */
@@ -153,6 +162,7 @@ export class PostFXPipeline {
   // Persistent passes / effects (created once).
   private readonly worldPass: RenderPass;
   private readonly viewmodelPass: RenderPass;
+  private readonly volumetricPass: VolumetricPass;
   private readonly fog: HeightFogEffect;
   private readonly exposure: ExposureEffect;
   private readonly toneMapping: ToneMappingEffect;
@@ -176,6 +186,7 @@ export class PostFXPipeline {
   private dofPass: OwnedEffectPass | null = null;
 
   private structure: string | null = null;
+  private volumetrics = false;
   private aoLevel: QualityLevel = 'off';
   private bloomLevel: QualityLevel = 'off';
   private fogSteps = 0;
@@ -212,6 +223,8 @@ export class PostFXPipeline {
     // Keep the world depth in the composer's stable depth texture (nothing after this reads depth anyway).
     this.viewmodelPass.needsDepthBlit = false;
 
+    this.volumetricPass = new VolumetricPass(worldScene, worldCamera, RENDER.volumetricLayer);
+
     this.fog = new HeightFogEffect(worldCamera, 0);
     this.exposure = new ExposureEffect(1);
     this.toneMapping = new ToneMappingEffect({ mode: ToneMappingMode.AGX });
@@ -228,8 +241,10 @@ export class PostFXPipeline {
   applyGraphics(g: GraphicsSettings): void {
     const aoParams = QUALITY_LEVELS.ambientOcclusion[g.ambientOcclusion];
     const bloomParams = QUALITY_LEVELS.bloom[g.bloom];
+    const vol = QUALITY_LEVELS.volumetrics[g.volumetrics];
     const structure: Structure = {
       ao: aoParams !== null,
+      volumetrics: vol !== null,
       motionBlur: g.motionBlur,
       dof: g.depthOfField,
       bloom: bloomParams !== null,
@@ -250,7 +265,7 @@ export class PostFXPipeline {
     }
     this.bloomLevel = g.bloom;
 
-    const vol = QUALITY_LEVELS.volumetrics[g.volumetrics];
+    this.volumetrics = structure.volumetrics;
     this.fogSteps = vol ? vol.fogSteps : 0;
     this.fog.setSteps(this.fogSteps);
 
@@ -294,6 +309,7 @@ export class PostFXPipeline {
 
   setSize(width: number, height: number): void {
     this.composer.setSize(width, height);
+    this.updateDofScale();
   }
 
   get info(): PostFXInfo {
@@ -380,12 +396,41 @@ export class PostFXPipeline {
     this.ao = null;
     this.worldPass.dispose();
     this.viewmodelPass.dispose();
+    this.volumetricPass.dispose();
     this.composer.dispose();
   }
 
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------
+
+  /**
+   * postprocessing's bokeh steps `texelSize * coc * scale`, i.e. bokehScale is a radius in
+   * drawing-buffer pixels. Scale it with the buffer height so the ADS blur covers the same screen
+   * fraction at any resolution, DPR and dynamic-resolution step. Only the bokeh kernels are
+   * scaled: the public bokehScale setter also drives the CoC mask strength (focus transition).
+   */
+  private updateDofScale(): void {
+    const dof = this.dof;
+    if (!dof) return;
+    const d = POSTFX.depthOfField;
+    const height = Math.max(1, this.renderer.getDrawingBufferSize(_bufferSize).y);
+    const scale = (d.bokehScale * height) / d.referenceHeight;
+    const internals = dof as unknown as Record<
+      string,
+      { fullscreenMaterial?: { scale?: number } } | undefined
+    >;
+    let applied = 0;
+    for (const key of DOF_BOKEH_PASSES) {
+      const material = internals[key]?.fullscreenMaterial;
+      if (material && typeof material.scale === 'number') {
+        material.scale = scale;
+        applied++;
+      }
+    }
+    // Library internals changed: the public setter is the next best thing.
+    if (applied !== DOF_BOKEH_PASSES.length) dof.bokehScale = scale;
+  }
 
   private updateExposure(): void {
     this.exposure.exposure = POSTFX.toneMapping.exposure * this.userExposure * this.baseExposure;
@@ -443,6 +488,7 @@ export class PostFXPipeline {
         bokehScale: d.bokehScale,
         resolutionScale: d.resolutionScale,
       });
+      this.updateDofScale();
     } else if (!s.dof && this.dof) this.dof = this.drop(this.dof);
 
     if (s.bloom && !this.bloom) {
@@ -533,6 +579,7 @@ export class PostFXPipeline {
     if (this.motionBlur) worldEffects.push(this.motionBlur);
     worldEffects.push(this.fog);
     effectPass('WorldFX', worldEffects);
+    if (this.volumetrics) add(this.volumetricPass);
 
     if (this.dof) {
       this.dofPass = effectPass('DepthOfField', [this.dof]);

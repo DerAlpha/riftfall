@@ -24,6 +24,22 @@ describe('presetFromGpu', () => {
     ['Adreno (TM) 740', 'low'],
     ['Google SwiftShader', 'low'],
     ['llvmpipe (LLVM 15.0.7, 256 bits)', 'low'],
+    // Entry models of otherwise 'high' families.
+    ['ANGLE (AMD, AMD Radeon RX 640 Direct3D11 vs_5_0 ps_5_0, D3D11)', 'medium'],
+    ['ANGLE (AMD, AMD Radeon RX 6400 Direct3D11 vs_5_0 ps_5_0, D3D11)', 'medium'],
+    ['ANGLE (AMD, AMD Radeon RX 6500 XT Direct3D11 vs_5_0 ps_5_0, D3D11)', 'medium'],
+    ['ANGLE (AMD, AMD Radeon RX 6300 Direct3D11 vs_5_0 ps_5_0, D3D11)', 'medium'],
+    ['ANGLE (NVIDIA, NVIDIA GeForce RTX 2050 Direct3D11 vs_5_0 ps_5_0, D3D11)', 'medium'],
+    ['ANGLE (Intel, Intel(R) Arc(TM) A380 Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', 'medium'],
+    ['ANGLE (Intel, Intel(R) Arc(TM) A310 Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', 'medium'],
+    ['ANGLE (Intel, Mesa Intel(R) Arc(tm) A380 Graphics (DG2), OpenGL 4.6)', 'medium'],
+    ['ANGLE (Intel, Intel(R) Arc(TM) Graphics (0x00007D55) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'medium'],
+    ['ANGLE (Intel, Intel(R) Arc(TM) 140V GPU (16GB) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'medium'],
+    // ...while the rest of those families stays 'high'.
+    ['ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)', 'high'],
+    ['ANGLE (AMD, AMD Radeon RX 6800 XT Direct3D11 vs_5_0 ps_5_0, D3D11)', 'high'],
+    ['ANGLE (NVIDIA, NVIDIA GeForce RTX 2060 Direct3D11 vs_5_0 ps_5_0, D3D11)', 'high'],
+    ['ANGLE (NVIDIA, NVIDIA GeForce RTX 2080 Ti Direct3D11 vs_5_0 ps_5_0, D3D11)', 'high'],
   ] as const)('%s → %s', (gpu, expected) => {
     expect(presetFromGpu(gpu)).toBe(expected);
   });

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ASSET_DEFS, ASSETS, POLYHAVEN, withExtension } from '../defs/assets';
 import { MAPS } from '../defs/maps';
 import { MATERIALS } from '../defs/materials';
-import { AssetLoader } from './AssetLoader';
+import { AssetLoader, withStallTimeout } from './AssetLoader';
 import {
   ASSET_MANIFEST,
   getAssetEntry,
@@ -171,6 +171,8 @@ describe('AssetLoader (no downloaded assets)', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('requests only the index, falls back everywhere and never rejects', async () => {
@@ -181,7 +183,10 @@ describe('AssetLoader (no downloaded assets)', () => {
     await loader.preload(REQUIRED_IDS, (l, t, label) => progress.push([l, t, label]));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]).toEqual(['./' + ASSETS.indexFile, { cache: 'no-cache' }]);
+    expect(fetchMock.mock.calls[0]).toEqual([
+      './' + ASSETS.indexFile,
+      { cache: 'no-cache', signal: expect.any(AbortSignal) },
+    ]);
     expect(progress[0]).toEqual([0, REQUIRED_IDS.length, getAssetEntry(REQUIRED_IDS[0] as string)?.label]);
     expect(progress.at(-1)?.[0]).toBe(REQUIRED_IDS.length);
     expect([...loader.missing].sort()).toEqual([...REQUIRED_IDS].sort());
@@ -228,5 +233,136 @@ describe('AssetLoader (no downloaded assets)', () => {
     expect(loader.missing).toEqual(['tex.floor']);
     expect(loader.availableIndex?.assets['tex.floor']).toBeDefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up on a stalled index request and aborts it', async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | null | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init?: RequestInit) => {
+        signal = init?.signal;
+        return new Promise<Response>(() => undefined);
+      }),
+    );
+    const loader = new AssetLoader(fakeRenderer, () => null, '/');
+    const pending = loader.loadTextureSet('tex.floor');
+    await vi.advanceTimersByTimeAsync(ASSETS.loader.requestTimeoutMs);
+    expect(await pending).toBeNull();
+    expect(signal?.aborted).toBe(true);
+    expect(loader.missing).toEqual(['tex.floor']);
+  });
+
+  it('falls back when a texture request stalls and disposes the late texture', async () => {
+    vi.useFakeTimers();
+    const index = {
+      version: ASSETS.indexVersion,
+      generatedAt: 'now',
+      assets: { 'tex.floor': { type: 'textureSet', files: { map: 'assets/textures/x/x_diff_1k.jpg' } } },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(index), { status: 200 })),
+    );
+    let deliver: (tex: THREE.Texture<HTMLImageElement>) => void = () => undefined;
+    vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockImplementation(
+      () =>
+        new Promise<THREE.Texture<HTMLImageElement>>((resolve) => {
+          deliver = resolve;
+        }),
+    );
+    const loader = new AssetLoader(fakeRenderer, () => null, '/');
+    const pending = loader.loadTextureSet('tex.floor');
+    await vi.advanceTimersByTimeAsync(ASSETS.loader.requestTimeoutMs);
+    expect(await pending).toBeNull();
+    expect(loader.missing).toEqual(['tex.floor']);
+
+    const late = new THREE.Texture<HTMLImageElement>();
+    const dispose = vi.spyOn(late, 'dispose');
+    deliver(late);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts a stalled HDRI download and uses the fallback', async () => {
+    vi.useFakeTimers();
+    const index = {
+      version: ASSETS.indexVersion,
+      generatedAt: 'now',
+      assets: { 'hdri.industrial': { type: 'hdri', files: { hdr: 'assets/hdri/h_1k.hdr' } } },
+    };
+    let hdrSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        if (input instanceof Request) {
+          hdrSignal = input.signal;
+          return new Promise<Response>(() => undefined);
+        }
+        return Promise.resolve(new Response(JSON.stringify(index), { status: 200 }));
+      }),
+    );
+    const loader = new AssetLoader(fakeRenderer, () => null, 'http://localhost/');
+    const pending = loader.loadHDRI('hdri.industrial');
+    await vi.advanceTimersByTimeAsync(ASSETS.loader.requestTimeoutMs);
+    expect(await pending).toBeNull();
+    expect(hdrSignal?.aborted).toBe(true);
+    expect(loader.missing).toEqual(['hdri.industrial']);
+  });
+});
+
+describe('withStallTimeout', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('extends the deadline while progress is reported', async () => {
+    vi.useFakeTimers();
+    const ms = ASSETS.loader.requestTimeoutMs;
+    let progress: () => void = () => undefined;
+    let finish: (v: string) => void = () => undefined;
+    const p = withStallTimeout('x', ms, (onProgress) => {
+      progress = onProgress;
+      return new Promise<string>((resolve) => {
+        finish = resolve;
+      });
+    });
+    let settled = false;
+    void p.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(ms - 1);
+      progress();
+    }
+    expect(settled).toBe(false);
+    finish('done');
+    await expect(p).resolves.toBe('done');
+  });
+
+  it('rejects after a stall, aborts, and disposes a late result', async () => {
+    vi.useFakeTimers();
+    const ms = ASSETS.loader.requestTimeoutMs;
+    const abort = vi.fn();
+    const dispose = vi.fn();
+    let finish: (v: string) => void = () => undefined;
+    const p = withStallTimeout(
+      'x',
+      ms,
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        }),
+      dispose,
+      abort,
+    );
+    const outcome = p.catch((err: unknown) => err);
+    await vi.advanceTimersByTimeAsync(ms);
+    expect(await outcome).toMatchObject({ name: 'TimeoutError' });
+    expect(abort).toHaveBeenCalledTimes(1);
+    finish('late');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dispose).toHaveBeenCalledWith('late');
   });
 });

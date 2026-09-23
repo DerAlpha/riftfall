@@ -4,22 +4,29 @@
  * writes public/assets/available.json – the index the runtime AssetLoader reads first (assets not
  * listed there are never requested). Also regenerates the asset section of CREDITS.md.
  *
- *   node scripts/fetch-assets.mjs [--strict] [--force] [--no-ktx2] [--dry-run] [--only=id,id]
+ *   node scripts/fetch-assets.mjs [--strict] [--force] [--no-ktx2] [--no-prune] [--dry-run] [--only=id,id]
  *
  * --strict   exit 1 if anything failed (default: warn and exit 0 – assets are optional)
  * --force    re-download / re-convert even if files exist and verify
  * --no-ktx2  skip the optional KTX2 conversion (otherwise done when `toktx` is on PATH)
+ * --no-prune keep files the index no longer references (default: delete them, see below)
  * --dry-run  only resolve URLs and print what would be downloaded
- * --only     restrict to the given asset ids
+ * --only     restrict to the given asset ids (other entries of the previous index are kept)
  *
- * Idempotent: existing files whose size/MD5 match Poly Haven's metadata are kept. Node 20+,
- * no dependencies (src/defs/assets.ts is loaded via Node's type stripping, or transpiled with the
- * project's TypeScript on older Node versions).
+ * Idempotent: existing files whose size/MD5 match Poly Haven's metadata are kept; a KTX2 file is
+ * kept only if it is a complete container, newer than its source and made with the current
+ * ASSETS.ktx2 arguments (recorded per entry in the index). Downloads, conversions, the index and
+ * CREDITS.md are written to a temp file and renamed, so an interrupted run never leaves a truncated
+ * file that a later run trusts. Index entries of ids no longer in src/defs/assets.ts are dropped,
+ * and files below the texture/HDRI folders that the index does not reference (removed or renamed
+ * assets, old resolutions, leftovers of interrupted runs) are deleted – Vite would otherwise ship
+ * them, uncredited. Node 20+, no dependencies (src/defs/assets.ts is loaded via Node's type
+ * stripping, or transpiled with the project's TypeScript on older Node versions).
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { mkdir, open, readFile, readdir, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -34,6 +41,7 @@ const flags = {
   strict: args.includes('--strict'),
   force: args.includes('--force'),
   noKtx2: args.includes('--no-ktx2'),
+  noPrune: args.includes('--no-prune'),
   dryRun: args.includes('--dry-run'),
   only: (args.find((a) => a.startsWith('--only=')) ?? '').slice('--only='.length).split(',').filter(Boolean),
 };
@@ -148,6 +156,60 @@ async function exists(absPath) {
   }
 }
 
+/** Write via a temp file + rename: readers never see a truncated file, even after a crash. */
+async function writeFileAtomic(absPath, data) {
+  const tmp = `${absPath}.tmp`;
+  await writeFile(tmp, data);
+  await rename(tmp, absPath);
+}
+
+/** Assets of the previous available.json (null if missing, unreadable or another version). */
+async function readPreviousIndex(indexPath, version) {
+  try {
+    const old = JSON.parse(await readFile(indexPath, 'utf8'));
+    return old?.version === version && old.assets && typeof old.assets === 'object' ? old.assets : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Base-relative, forward-slash path of a file below public/ (the form the index uses). */
+function publicRel(absPath) {
+  return relative(PUBLIC_DIR, absPath).split(sep).join('/');
+}
+
+/**
+ * Deletes files below absDir that are not in `keep` (base-relative paths) and directories that end
+ * up empty. Returns how many entries remain in absDir.
+ */
+async function pruneDir(absDir, keep, stats) {
+  let entries;
+  try {
+    entries = await readdir(absDir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  let remaining = 0;
+  for (const entry of entries) {
+    const abs = join(absDir, entry.name);
+    if (entry.isDirectory()) {
+      if ((await pruneDir(abs, keep, stats)) === 0) await rmdir(abs);
+      else remaining++;
+      continue;
+    }
+    const rel = publicRel(abs);
+    if (keep.has(rel)) {
+      remaining++;
+      continue;
+    }
+    stats.bytes += (await stat(abs)).size;
+    await rm(abs, { force: true });
+    stats.removed++;
+    console.info(`  pruned public/${rel}`);
+  }
+  return remaining;
+}
+
 /** Poly Haven files JSON: map key → resolution → format → { url, md5, size }. */
 function pickFile(filesJson, key, resolutions, format) {
   const byRes = filesJson?.[key];
@@ -173,6 +235,53 @@ async function runLimited(items, limit, fn) {
 // ---------------------------------------------------------------------------
 // KTX2 (optional)
 // ---------------------------------------------------------------------------
+
+/** KTX2 identifier: «KTX 20»\r\n\x1A\n. */
+const KTX2_MAGIC = Buffer.from([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]);
+/** Identifier + header + index; the level index follows. */
+const KTX2_HEADER_BYTES = 80;
+const KTX2_LEVEL_COUNT_OFFSET = 40;
+/** byteOffset, byteLength, uncompressedByteLength (uint64 each). */
+const KTX2_LEVEL_ENTRY_BYTES = 24;
+/** More mip levels than a 2^31 texture has: a corrupt header. */
+const KTX2_MAX_LEVELS = 32;
+
+/** True if the file is a complete KTX2 container: identifier present and every mip level inside the file. */
+async function ktx2Complete(absPath) {
+  let fh;
+  try {
+    fh = await open(absPath, 'r');
+    const { size } = await fh.stat();
+    if (size < KTX2_HEADER_BYTES) return false;
+    const header = Buffer.alloc(KTX2_HEADER_BYTES);
+    await fh.read(header, 0, KTX2_HEADER_BYTES, 0);
+    if (!header.subarray(0, KTX2_MAGIC.length).equals(KTX2_MAGIC)) return false;
+    // levelCount 0 = "generate mips at runtime", still one level entry.
+    const levels = Math.max(1, header.readUInt32LE(KTX2_LEVEL_COUNT_OFFSET));
+    if (levels > KTX2_MAX_LEVELS) return false;
+    const index = Buffer.alloc(levels * KTX2_LEVEL_ENTRY_BYTES);
+    const { bytesRead } = await fh.read(index, 0, index.length, KTX2_HEADER_BYTES);
+    if (bytesRead < index.length) return false;
+    for (let i = 0; i < levels; i++) {
+      const offset = index.readBigUInt64LE(i * KTX2_LEVEL_ENTRY_BYTES);
+      const length = index.readBigUInt64LE(i * KTX2_LEVEL_ENTRY_BYTES + 8);
+      if (length === 0n || offset + length > BigInt(size)) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await fh?.close();
+  }
+}
+
+/** Short hash of a conversion command: stored in the index, a change of ASSETS.ktx2 reconverts. */
+function conversionSignature(tool, toolArgs) {
+  return createHash('sha1')
+    .update(JSON.stringify([tool, ...toolArgs]))
+    .digest('hex')
+    .slice(0, 16);
+}
 
 function hasTool(tool) {
   const r = spawnSync(tool, ['--version'], { stdio: 'ignore' });
@@ -215,6 +324,8 @@ async function main() {
   const cfg = ASSETS.fetch;
   const selected = ASSET_DEFS.filter((d) => flags.only.length === 0 || flags.only.includes(d.id));
   const ktx2Enabled = !flags.noKtx2 && !flags.dryRun && hasTool(ASSETS.ktx2.tool);
+  const indexPath = join(PUBLIC_DIR, ASSETS.indexFile);
+  const previousAssets = await readPreviousIndex(indexPath, ASSETS.indexVersion);
 
   console.info(`RIFTFALL asset fetch – ${selected.length} asset(s) from Poly Haven (CC0) → public/assets/`);
   console.info(
@@ -232,6 +343,8 @@ async function main() {
       type: def.type,
       files: {},
       ktx2: {},
+      /** role → conversionSignature of the KTX2 file. */
+      ktx2Args: {},
       downloaded: 0,
       cached: 0,
       bytes: 0,
@@ -378,16 +491,26 @@ async function main() {
         const src = join(PUBLIC_DIR, rel);
         const outRel = withExtension(rel, 'ktx2');
         const out = join(PUBLIC_DIR, outRel);
+        // toktx writes its output in place: convert into a temp file (still *.ktx2) and rename.
+        const tmp = join(PUBLIC_DIR, withExtension(rel, 'part.ktx2'));
+        const toolArgs = SRGB_TEXTURE_ROLES.includes(role) ? ASSETS.ktx2.colorArgs : ASSETS.ktx2.dataArgs;
+        const signature = conversionSignature(ASSETS.ktx2.tool, toolArgs);
         try {
           const fresh =
-            !flags.force && (await exists(out)) && (await stat(out)).mtimeMs >= (await stat(src)).mtimeMs;
+            !flags.force &&
+            previousAssets?.[def.id]?.ktx2Args?.[role] === signature &&
+            (await ktx2Complete(out)) &&
+            (await stat(out)).mtimeMs >= (await stat(src)).mtimeMs;
           if (!fresh) {
-            const toolArgs = SRGB_TEXTURE_ROLES.includes(role) ? ASSETS.ktx2.colorArgs : ASSETS.ktx2.dataArgs;
-            const r = await runTool(ASSETS.ktx2.tool, [...toolArgs, out, src], ASSETS.ktx2.timeoutMs);
+            const r = await runTool(ASSETS.ktx2.tool, [...toolArgs, tmp, src], ASSETS.ktx2.timeoutMs);
             if (!r.ok) throw new Error(r.message || 'conversion failed');
+            if (!(await ktx2Complete(tmp))) throw new Error('conversion wrote an incomplete KTX2 file');
+            await rename(tmp, out);
           }
           result.ktx2[role] = outRel;
+          result.ktx2Args[role] = signature;
         } catch (err) {
+          await rm(tmp, { force: true });
           await rm(out, { force: true });
           result.warnings.push(`KTX2 ${role}: ${err.message ?? err}`);
         }
@@ -399,31 +522,52 @@ async function main() {
 
   // --- available.json -------------------------------------------------------
   const usable = results.filter((r) => (r.type === 'hdri' ? r.files.hdr : r.files.map));
+  const partial = flags.only.length > 0;
+  let pruned = null;
   if (!flags.dryRun) {
-    const indexPath = join(PUBLIC_DIR, ASSETS.indexFile);
-    let previous = {};
-    if (flags.only.length > 0) {
-      // Partial run: keep entries of assets that were not processed.
-      try {
-        const old = JSON.parse(await readFile(indexPath, 'utf8'));
-        if (old?.version === ASSETS.indexVersion) previous = old.assets ?? {};
-      } catch {
-        previous = {};
+    const assets = {};
+    if (partial) {
+      // Partial run: keep entries of defined assets that were not processed.
+      if (!previousAssets)
+        console.warn(
+          '  ! previous index missing or unreadable – it will list only the processed assets (run without --only to rebuild it)',
+        );
+      const defined = new Set(ASSET_DEFS.map((d) => d.id));
+      const processed = new Set(results.map((r) => r.id));
+      for (const [id, entry] of Object.entries(previousAssets ?? {})) {
+        if (!defined.has(id)) console.info(`  index: dropped "${id}" (not in src/defs/assets.ts any more)`);
+        else if (!processed.has(id)) assets[id] = entry;
       }
-      for (const r of results) delete previous[r.id];
     }
-    const assets = { ...previous };
     for (const r of usable) {
       assets[r.id] = {
         type: r.type,
         files: r.files,
-        ...(Object.keys(r.ktx2).length > 0 ? { ktx2: r.ktx2 } : {}),
+        ...(Object.keys(r.ktx2).length > 0 ? { ktx2: r.ktx2, ktx2Args: r.ktx2Args } : {}),
       };
     }
     const index = { version: ASSETS.indexVersion, generatedAt: new Date().toISOString(), assets };
     await mkdir(dirname(indexPath), { recursive: true });
-    await writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`);
+    await writeFileAtomic(indexPath, `${JSON.stringify(index, null, 2)}\n`);
     await writeCredits(ASSET_DEFS);
+
+    // Without the previous index a partial run cannot know which files the other assets use.
+    if (!flags.noPrune && !(partial && !previousAssets)) {
+      const keep = new Set();
+      const addPaths = (map) => Object.values(map ?? {}).forEach((rel) => keep.add(rel));
+      for (const entry of Object.values(assets)) {
+        addPaths(entry.files);
+        addPaths(entry.ktx2);
+      }
+      // Files of processed assets that are not usable yet (e.g. only the albedo failed) stay for the next run.
+      for (const r of results) {
+        addPaths(r.files);
+        addPaths(r.ktx2);
+      }
+      pruned = { removed: 0, bytes: 0 };
+      for (const dir of [ASSETS.dirs.textures, ASSETS.dirs.hdri])
+        await pruneDir(join(PUBLIC_DIR, dir), keep, pruned);
+    }
   }
 
   // --- summary --------------------------------------------------------------
@@ -443,6 +587,8 @@ async function main() {
     console.info(
       `  index: public/${ASSETS.indexFile} (${usable.length}/${results.length} available), CREDITS.md updated`,
     );
+  if (pruned && pruned.removed > 0)
+    console.info(`  pruned ${pruned.removed} unreferenced file(s) (${fmtBytes(pruned.bytes)})`);
   if (failures > 0) {
     console.warn(`  ${failures} asset(s) unavailable – the game uses procedural fallbacks for them.`);
     if (flags.strict) process.exit(1);
@@ -486,7 +632,7 @@ async function writeCredits(assetDefs) {
     start >= 0 && end > start
       ? text.slice(0, start) + section + text.slice(end + CREDITS_END.length)
       : `${text.trimEnd()}\n\n## Assets\n\n${section}\n`;
-  if (next !== text) await writeFile(CREDITS_FILE, next);
+  if (next !== text) await writeFileAtomic(CREDITS_FILE, next);
 }
 
 main().catch((err) => {

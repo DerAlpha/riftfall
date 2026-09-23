@@ -10,6 +10,25 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 4 L40 28 L60 32 L40 36 L32 60 L24 36 L4 32 L24 28Z' fill='%2300e5ff'/%3E%3C/svg%3E"
     />
+    <noscript>
+      <!-- Only applies without JavaScript: the notice must sit above the boot splash (#loading). -->
+      <style>
+        .noscript-notice {
+          position: fixed;
+          inset: 0;
+          z-index: 100;
+          display: grid;
+          place-items: center;
+          padding: 16px;
+          text-align: center;
+          background: #05080b;
+          color: #d6e2ea;
+          font:
+            16px/1.6 system-ui,
+            sans-serif;
+        }
+      </style>
+    </noscript>
   </head>
   <body>
     <div id="app">
@@ -20,7 +39,37 @@
       <div id="console" class="layer layer-console"></div>
       <div id="loading" class="layer layer-loading"></div>
     </div>
-    <noscript>RIFTFALL benötigt JavaScript und WebGL2.</noscript>
+    <noscript><div class="noscript-notice">RIFTFALL benötigt JavaScript und WebGL2.</div></noscript>
+    <script>
+      // Boot watchdog (classic script, so it runs even where the module entry cannot): if the entry
+      // module fails to load or parse before main.ts runs (very old browser, broken deploy), replace
+      // the endless boot splash with a message. Later errors are handled by main.ts itself.
+      (function () {
+        var shown = false;
+        function fail() {
+          if (shown || window.__riftfallBooted) return;
+          var root = document.getElementById('loading');
+          if (!root) return;
+          shown = true;
+          root.innerHTML =
+            '<div class="fatal-error" role="alert" style="position:absolute;left:50%;top:50%;' +
+            'transform:translate(-50%,-50%);max-width:90vw;padding:24px;background:#0b1117;color:#d6e2ea;' +
+            'font:16px/1.6 system-ui,sans-serif"><h1>Browser nicht unterstützt</h1><p>RIFTFALL ' +
+            'benötigt einen aktuellen Browser mit WebGL2 (aktuelle Versionen von Chrome, Edge, Firefox ' +
+            'oder Safari). Falls das Spiel gerade aktualisiert wurde: Seite neu laden.</p></div>';
+        }
+        window.addEventListener(
+          'error',
+          function (e) {
+            // A script error (ErrorEvent) or a module script whose graph failed to load.
+            var t = e.target;
+            if (e instanceof ErrorEvent || (t && t.tagName === 'SCRIPT')) fail();
+          },
+          true,
+        );
+        if (!('noModule' in document.createElement('script'))) fail();
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

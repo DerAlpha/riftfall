@@ -136,7 +136,7 @@ export class ViewmodelRig {
     this.unsubscribers.push(
       deps.events.on('player:land', (e) => {
         const kick = Math.min(e.impactSpeed * VIEWMODEL.landingKickPerSpeed, VIEWMODEL.maxLandingKick);
-        this.kickY.velocity -= springImpulseForPeak(kick, KICK.stiffness);
+        this.kickY.velocity -= springImpulseForPeak(kick, KICK.stiffness, KICK.damping);
       }),
       deps.events.on('player:jump', () => {
         this.kickY.velocity -= VIEWMODEL.jumpKick;
@@ -177,6 +177,9 @@ export class ViewmodelRig {
     const cam = this.camera;
     const ads = player.adsAmount;
     const motionScale = lerp(1, SW.adsScale, ads);
+    // Accessibility "camera motion" scales movement-driven motion (bob, breathing, movement
+    // inertia, roll/tilt, kicks) like the camera does; look sway follows the player's own input.
+    const a11y = cam.cameraMotion;
     const maxStep = CAMERA.maxSpringStep;
 
     // --- look sway: impulses proportional to the look delta (frame-rate independent). The device
@@ -239,41 +242,43 @@ export class ViewmodelRig {
 
     // --- bob synced to the camera gait phase (figure-8) + idle breathing ---
     const phase = cam.bobPhase;
-    const bob = cam.bobIntensity * motionScale;
+    const bob = cam.bobIntensity * motionScale * a11y;
     const bobX = Math.sin(phase) * VIEWMODEL.bob.horizontalAmplitude * bob;
     const bobY = Math.cos(2 * phase) * VIEWMODEL.bob.verticalAmplitude * bob;
     const bobRoll = Math.sin(phase) * VIEWMODEL.bob.rollDeg * DEG2RAD * bob;
     const br = VIEWMODEL.breathing;
-    const breath = Math.sin(this.time * br.rate) * motionScale;
+    const breath = Math.sin(this.time * br.rate) * motionScale * a11y;
 
     // --- compose ---
     const O = VIEWMODEL.offset;
     const AO = VIEWMODEL.adsOffset;
     const sway = motionScale;
-    const px = lerp(O.x, AO.x, ads) + (this.swayX.value + this.moveX) * sway + bobX;
+    const kickY = this.kickY.value * a11y;
+    const px = lerp(O.x, AO.x, ads) + (this.swayX.value + this.moveX * a11y) * sway + bobX;
     const py =
       lerp(O.y, AO.y, ads) +
       this.swayY.value * sway +
       bobY +
       breath * br.amplitude +
-      this.kickY.value +
+      kickY +
       VIEWMODEL.sprintLower.y * lower +
       VIEWMODEL.crouchOffset.y * this.crouchBlend;
-    const pz = lerp(O.z, AO.z, ads) + this.kickZ.value + this.moveZ * sway;
+    const pz = lerp(O.z, AO.z, ads) + this.kickZ.value * a11y + this.moveZ * a11y * sway;
     this.root.position.set(px, py, pz);
 
     const pitch =
       this.swayPitch.value * sway +
       breath * br.pitchDeg * DEG2RAD +
-      this.kickY.value * KICK.pitchDegPerMeter * DEG2RAD +
+      kickY * KICK.pitchDegPerMeter * DEG2RAD +
       VIEWMODEL.sprintLower.pitchDeg * DEG2RAD * lower;
     const yaw =
       this.swayYaw.value * sway + VIEWMODEL.sprintLower.yawDeg * DEG2RAD * this.lowerBlend * (1 - ads);
+    const tiltDeg =
+      VIEWMODEL.slideTiltDeg * this.slideBlend + VIEWMODEL.crouchOffset.rollDeg * this.crouchBlend;
     const roll =
-      (-this.swayYaw.value * SW.rollPerYaw + this.moveRoll) * sway +
+      (-this.swayYaw.value * SW.rollPerYaw + this.moveRoll * a11y) * sway +
       bobRoll +
-      VIEWMODEL.slideTiltDeg * DEG2RAD * this.slideBlend +
-      VIEWMODEL.crouchOffset.rollDeg * DEG2RAD * this.crouchBlend;
+      tiltDeg * DEG2RAD * a11y;
     this.root.rotation.set(pitch, yaw, roll);
 
     // --- emissive life on the placeholder (uniform updates only, no recompiles) ---

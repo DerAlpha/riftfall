@@ -15,7 +15,7 @@ import { createLogger } from '../core/log';
 import { clamp, clamp01, damp, DEG2RAD, RAD2DEG } from '../core/math';
 import { CAMERA } from '../defs/camera';
 import { ENGINE } from '../defs/engine';
-import { RENDER } from '../defs/graphics';
+import { ENVIRONMENT, RENDER } from '../defs/graphics';
 import type { MapAtmosphereDef } from '../defs/maps';
 import { POSTFX } from '../defs/postfx';
 import type { AccessibilitySettings, GraphicsSettings } from '../save/settingsSchema';
@@ -131,7 +131,11 @@ export class RenderSystem implements RenderApi {
   /** Smoothed 0..1 sun visibility at the eye (see setViewmodelSunVisibility). */
   private vmSunVisibility = 0;
   private readonly vmHemi: THREE.HemisphereLight;
-  private readonly gpuTimer: GpuTimer;
+  /** Replaced after a WebGL context restore (its queries belong to the lost context). */
+  private gpuTimer: GpuTimer;
+  /** Last map atmosphere, re-applied after a WebGL context restore. */
+  private lastAtmosphere: MapAtmosphereDef | null = null;
+  private contextLost = false;
   private readonly _stats: RenderStats = {
     drawCalls: 0,
     triangles: 0,
@@ -284,6 +288,10 @@ export class RenderSystem implements RenderApi {
       this.resizeObserver.observe(parent);
     }
     window.addEventListener('resize', this.onResize);
+    // three registered its own listeners in the WebGLRenderer constructor, so on restore its GL
+    // state is already rebuilt when ours runs.
+    canvas.addEventListener('webglcontextlost', this.onContextLost);
+    canvas.addEventListener('webglcontextrestored', this.onContextRestored);
 
     this.unsubscribe.push(
       events.on('settings:changed', ({ settings, sections }) => {
@@ -347,16 +355,10 @@ export class RenderSystem implements RenderApi {
   }
 
   applyAtmosphere(def: MapAtmosphereDef, hdri: THREE.Texture | null): void {
+    this.lastAtmosphere = def;
     this.environment.apply(def.environment, hdri, [this.scene, this.viewmodelScene], this.scene);
     this.shadows.setSun(def.sun);
-
-    const h = def.hemi;
-    this.hemi.color.setRGB(h.sky[0], h.sky[1], h.sky[2]);
-    this.hemi.groundColor.setRGB(h.ground[0], h.ground[1], h.ground[2]);
-    this.hemi.intensity = h.intensity;
-    this.vmHemi.color.copy(this.hemi.color);
-    this.vmHemi.groundColor.copy(this.hemi.groundColor);
-    this.vmHemi.intensity = h.intensity * RENDER.viewmodelHemiScale;
+    this.applyHemisphere(def);
 
     const sunDir = this.shadows.sunDirection;
     this.vmSun.color.copy(this.shadows.sunColor);
@@ -432,7 +434,8 @@ export class RenderSystem implements RenderApi {
   }
 
   render(realDt: number): void {
-    if (this.disposed) return;
+    // While the context is lost nothing reaches the screen and GPU timings would be garbage.
+    if (this.disposed || this.contextLost) return;
     const dt = clamp(Number.isFinite(realDt) ? realDt : 0, 0, ENGINE.maxFrameDelta);
     this.time += dt;
     this.maybeResize();
@@ -498,6 +501,8 @@ export class RenderSystem implements RenderApi {
     this.unsubscribe.length = 0;
     this.resizeObserver?.disconnect();
     window.removeEventListener('resize', this.onResize);
+    this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
+    this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.post.dispose();
     this.shadows.dispose();
     this.environment.dispose();
@@ -514,6 +519,49 @@ export class RenderSystem implements RenderApi {
   private readonly onResize = (): void => {
     this.resizeDirty = true;
   };
+
+  private readonly onContextLost = (): void => {
+    this.contextLost = true;
+    log.warn('WebGL context lost');
+  };
+
+  /**
+   * three rebuilds its own GL state on restore, but two things of ours stay tied to the old context:
+   * the PMREM environment (a render-target texture three never re-uploads → black IBL) and the GPU
+   * timer (its queries never report again → dynamic resolution would act on a frozen GPU time).
+   */
+  private readonly onContextRestored = (): void => {
+    this.contextLost = false;
+    log.warn('WebGL context restored: rebuilding environment and GPU timer');
+    // The old timer is abandoned, not disposed: deleting foreign queries only raises GL errors.
+    this.gpuTimer = new GpuTimer(
+      this.renderer.getContext() as WebGL2RenderingContext,
+      RENDER.gpuTimerQueries,
+    );
+    this.quality.reportGpuTime(-1);
+    this.quality.notifyResize(); // drops the stale GPU-time average
+    try {
+      this.environment.restore();
+      if (this.lastAtmosphere) this.applyHemisphere(this.lastAtmosphere);
+    } catch (err) {
+      log.error('Rebuilding the environment after a context restore failed', err);
+    }
+    this.warmup();
+  };
+
+  /** Hemisphere fill for world + viewmodel; takes over the IBL ambient term when IBL is unavailable. */
+  private applyHemisphere(def: MapAtmosphereDef): void {
+    const h = def.hemi;
+    const intensity = this.environment.texture
+      ? h.intensity
+      : h.intensity + def.environment.intensity * ENVIRONMENT.noIblHemiScale;
+    this.hemi.color.setRGB(h.sky[0], h.sky[1], h.sky[2]);
+    this.hemi.groundColor.setRGB(h.ground[0], h.ground[1], h.ground[2]);
+    this.hemi.intensity = intensity;
+    this.vmHemi.color.copy(this.hemi.color);
+    this.vmHemi.groundColor.copy(this.hemi.groundColor);
+    this.vmHemi.intensity = intensity * RENDER.viewmodelHemiScale;
+  }
 
   /** Compile every shader of the current scenes + post chain now (loading screen), not mid-game. */
   private warmup(): void {

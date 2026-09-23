@@ -7,9 +7,14 @@
  * lost). `endFrame` clears the per-frame state.
  *
  * Browser limits (documented, not fixable from JS): reserved shortcuts such as Ctrl+W / Ctrl+T /
- * Ctrl+N / Cmd+Q cannot be prevented outside fullscreen + Keyboard Lock. As a mitigation, closing
- * the tab while Ctrl/Meta is held during gameplay asks for confirmation (beforeunload).
+ * Ctrl+N / Ctrl+Tab / Cmd+Q cannot be prevented outside fullscreen + Keyboard Lock. As a mitigation,
+ * crouch is not on Ctrl by default and closing the tab while Ctrl/Meta is held during gameplay asks
+ * for confirmation (beforeunload); Ctrl+Tab switches the tab and the game pauses on visibility.
  * Escape always leaves pointer lock and the browser refuses to re-lock for ~1 s afterwards.
+ *
+ * Without pointer lock (API missing, or the request is refused – e.g. an iframe without
+ * `allow-pointer-lock`) `pointerLockProblem` says why; gameplay then reads plain (unlocked) mouse
+ * movement so lock-less play keeps mouse look.
  */
 import type { InputApi, LookOut, SettingsStore, Vec2Out } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
@@ -18,7 +23,7 @@ import { createLogger } from '../core/log';
 import { DEG2RAD, clamp01 } from '../core/math';
 import { CAMERA } from '../defs/camera';
 import { ACTIONS, GAMEPAD, INPUT, POINTER, type Action, type Binding, type BindingMap } from '../defs/input';
-import { isConsoleToggleKey, isFixedKeyCode, sanitizeBindings } from './bindings';
+import { isFixedKeyCode, isReservedKey, learnPrintedKey, sanitizeBindings } from './bindings';
 import { axisDeflection, clampLength1, shapeStick } from './gamepadMath';
 import { MouseSpikeFilter } from './MouseSpikeFilter';
 
@@ -55,10 +60,25 @@ interface CaptureState {
 }
 
 const PREVENT_CODES: ReadonlySet<string> = new Set(INPUT.preventDefaultCodes);
+const NAVIGATION_BUTTONS: ReadonlySet<number> = new Set(INPUT.navigationMouseButtons);
+/** Keys that stay held while Cmd is released on macOS (everything else lost its keyup). */
+const MODIFIER_CODES: ReadonlySet<string> = new Set([
+  'ShiftLeft',
+  'ShiftRight',
+  'ControlLeft',
+  'ControlRight',
+  'AltLeft',
+  'AltRight',
+  'MetaLeft',
+  'MetaRight',
+]);
 const WHEEL_CAPTURE_OPTS: AddEventListenerOptions = { capture: true, passive: false };
 const TRIGGER_BUTTONS: ReadonlySet<number> = new Set(GAMEPAD.triggerButtons);
 
 type Listener = [EventTarget, string, EventListener, AddEventListenerOptions | boolean | undefined];
+
+/** Why pointer lock is not available: the API is missing, or the browser refused the request. */
+export type PointerLockProblem = 'unsupported' | 'denied';
 
 function isTextEntry(t: EventTarget | null): boolean {
   if (typeof HTMLElement === 'undefined' || !(t instanceof HTMLElement)) return false;
@@ -132,6 +152,12 @@ export class InputSystem implements InputApi {
   private readonly moveStick: Vec2Out = { x: 0, y: 0 };
   private readonly lookStick: Vec2Out = { x: 0, y: 0 };
   private readonly warnedPadIds = new Set<string>();
+  /** Pressed-button bitmask of every connected pad (by index) in the previous poll. */
+  private readonly padMasks = new Map<number, number>();
+  /** Per pad index: bitmask of axes never read as stick axes (see nonStickAxes), fixed at first sight. */
+  private readonly padNonStickAxes = new Map<number, number>();
+  /** padNonStickAxes of the active pad. */
+  private padIgnoredAxes = 0;
 
   // --- actions ---
   private activeMap: BindingMap = sanitizeBindings(undefined);
@@ -151,9 +177,16 @@ export class InputSystem implements InputApi {
   private lockPending = false;
   private lockRetryTimer = 0;
   private lockRetried = false;
+  private _lockProblem: PointerLockProblem | null = null;
+
+  // --- keyboard ---
+  /** timeStamp of the last ControlLeft keydown (AltGr on Windows is ControlLeft + AltRight). */
+  private lastCtrlLeftDownAt = Number.NEGATIVE_INFINITY;
 
   // --- rebinding ---
   private capture: CaptureState | null = null;
+  /** A captured ControlLeft waits INPUT.altGrPairMs for an AltRight that would make it AltGr. */
+  private pendingCtrlTimer = 0;
   private suppressClickUntil = 0;
   /** The non-passive window wheel listener only exists while a capture is running (keeps menu scrolling fast). */
   private wheelCaptureActive = false;
@@ -182,6 +215,10 @@ export class InputSystem implements InputApi {
     this.listen(win, 'click', this.onSuppressClick as EventListener, true);
     this.listen(win, 'auxclick', this.onSuppressClick as EventListener, true);
     this.listen(win, 'contextmenu', this.onSuppressClick as EventListener, true);
+    // Back/forward mouse buttons must never navigate away – in gameplay, menus or a capture.
+    this.listen(win, 'mousedown', this.onNavigationButton as EventListener, true);
+    this.listen(win, 'mouseup', this.onNavigationButton as EventListener, true);
+    this.listen(win, 'auxclick', this.onNavigationButton as EventListener, true);
 
     this.listen(win, 'keydown', this.onKeyDown as EventListener);
     this.listen(win, 'keyup', this.onKeyUp as EventListener);
@@ -314,8 +351,9 @@ export class InputSystem implements InputApi {
 
   requestPointerLock(): void {
     if (this.disposed || this.lockedState || this.lockPending) return;
-    if (typeof this.target.requestPointerLock !== 'function') {
-      log.warn('Pointer Lock API nicht verfügbar');
+    if (!this.pointerLockSupported) {
+      if (this._lockProblem !== 'unsupported') log.warn('Pointer Lock API nicht verfügbar');
+      this._lockProblem = 'unsupported';
       this.events.emit('input:pointerLock', { locked: false });
       return;
     }
@@ -404,6 +442,35 @@ export class InputSystem implements InputApi {
   /** True while captureBinding() waits for input. */
   get capturing(): boolean {
     return this.capture !== null;
+  }
+
+  /** The Pointer Lock API exists on the target (it can still be refused, see pointerLockProblem). */
+  get pointerLockSupported(): boolean {
+    return typeof this.target.requestPointerLock === 'function';
+  }
+
+  /** Why the last lock request failed (null once a lock was granted, or before any request). */
+  get pointerLockProblem(): PointerLockProblem | null {
+    return this._lockProblem;
+  }
+
+  /**
+   * `pressed` that also reports while disabled, so a paused game (menus) can react to the binding
+   * that paused it. Edges are evaluated every frame regardless of `enabled`.
+   */
+  pressedIgnoringEnabled(action: Action): boolean {
+    const i = ACTION_INDEX.get(action);
+    return i !== undefined && this.pressedEdge[i] === 1;
+  }
+
+  /** Raw gamepad button (W3C standard index) held this frame, independent of bindings and `enabled` (menus). */
+  padButtonDown(button: number): boolean {
+    return this.padPresent && this.padDownNow[button] === 1;
+  }
+
+  /** Raw gamepad button went down this frame, independent of bindings and `enabled` (menus). */
+  padButtonPressed(button: number): boolean {
+    return this.padPresent && this.padDownNow[button] === 1 && this.padDownPrev[button] !== 1;
   }
 
   /** True while a gamepad is connected and polled. */
@@ -548,13 +615,24 @@ export class InputSystem implements InputApi {
     if (current?.connected) pad = current;
     let connected = 0;
     let switched = false;
+    let switchedPrevMask = 0;
     for (let i = 0; i < pads.length; i++) {
       const p = pads[i];
       if (!p || !p.connected) continue;
       connected++;
+      const mask = padButtonMask(p);
+      const known = this.padMasks.get(i);
+      // First sight: what is held now is no press on another pad's behalf; the axes are at rest.
+      if (known === undefined) this.padNonStickAxes.set(i, this.nonStickAxes(p));
+      const prevMask = known ?? mask;
+      this.padMasks.set(i, mask);
       if (p === pad || switched) continue;
-      // Another controller takes over as soon as one of its buttons is pressed.
-      if (!pad || anyButtonDown(p)) {
+      // Another controller takes over on a NEW press – a button that stays held (a stuck or toggle
+      // switch, a resting thumb) must not steal the active pad every frame.
+      if (!pad || (mask & ~prevMask) !== 0) {
+        // A pad taking over from none that was never polled starts from nothing held (its held
+        // buttons are presses, as on connect); otherwise from its own previous state.
+        switchedPrevMask = known ?? 0;
         pad = p;
         this.padIndex = i;
         switched = true;
@@ -566,15 +644,16 @@ export class InputSystem implements InputApi {
       if (this.padPresent) this.clearPad();
       return;
     }
-    if (pad.mapping !== 'standard' && !this.warnedPadIds.has(pad.id)) {
-      this.warnedPadIds.add(pad.id);
-      log.warn(`Gamepad ohne Standard-Belegung („${pad.id}“) – Tasten können abweichen`);
-    }
+    this.padIgnoredAxes = this.padNonStickAxes.get(this.padIndex) ?? 0;
     this.padPresent = true;
 
     const prev = this.padDownPrev;
     this.padDownPrev = this.padDownNow;
     this.padDownNow = prev;
+    if (switched) {
+      // Edges of the new pad compare against its own previous state, never another device's.
+      for (let i = 0; i < GAMEPAD.maxButtons; i++) this.padDownPrev[i] = (switchedPrevMask >> i) & 1;
+    }
     const now = this.padDownNow;
     const buttons = pad.buttons;
     const nb = Math.min(buttons.length, GAMEPAD.maxButtons);
@@ -598,16 +677,16 @@ export class InputSystem implements InputApi {
     const dz = finiteOr(this.settings.current.controls.gamepadDeadzone, GAMEPAD.stickDeadzone);
     const ax = GAMEPAD.axes;
     shapeStick(
-      this.padAxes[ax.leftX]!,
-      this.padAxes[ax.leftY]!,
+      this.stickAxis(ax.leftX),
+      this.stickAxis(ax.leftY),
       dz,
       GAMEPAD.outerDeadzone,
       1,
       this.moveStick,
     );
     shapeStick(
-      this.padAxes[ax.rightX]!,
-      this.padAxes[ax.rightY]!,
+      this.stickAxis(ax.rightX),
+      this.stickAxis(ax.rightY),
       dz,
       GAMEPAD.outerDeadzone,
       GAMEPAD.lookCurveExponent,
@@ -627,6 +706,35 @@ export class InputSystem implements InputApi {
     }
   }
 
+  /** Raw axis value for stick shaping; 0 for axes that are not sticks (see nonStickAxes). */
+  private stickAxis(a: number): number {
+    return (this.padIgnoredAxes >> a) & 1 ? 0 : this.padAxes[a]!;
+  }
+
+  /**
+   * Once per pad, when first seen (at rest): without the standard mapping the stick axis indices are
+   * guesses, and an XInput layout (LX, LY, LT, RX, RY, RT) puts a trigger resting at -1 on the
+   * "right stick X" axis – a permanent full deflection that would spin the camera. Axes resting far
+   * from 0 are never read as sticks (padAxis bindings still see them).
+   */
+  private nonStickAxes(pad: Gamepad): number {
+    if (pad.mapping === 'standard') return 0;
+    const axes = pad.axes;
+    const n = Math.min(axes.length, GAMEPAD.maxAxes);
+    let mask = 0;
+    for (let a = 0; a < n; a++) {
+      if (Math.abs(finiteOr(axes[a]!, 0)) > GAMEPAD.nonStandardTriggerRest) mask |= 1 << a;
+    }
+    if (!this.warnedPadIds.has(pad.id)) {
+      this.warnedPadIds.add(pad.id);
+      const ignored = mask
+        ? ` – Achsen ohne Ruhelage 0 werden nicht als Stick gelesen (Maske ${mask.toString(2)})`
+        : '';
+      log.warn(`Gamepad ohne Standard-Belegung („${pad.id}“) – Tasten können abweichen${ignored}`);
+    }
+    return mask;
+  }
+
   private clearPad(): void {
     this.padPresent = false;
     this.padDownNow.fill(0);
@@ -644,6 +752,11 @@ export class InputSystem implements InputApi {
 
   private readonly onPadDisconnected = (e: GamepadEvent): void => {
     this.padsConnected = Math.max(0, this.padsConnected - 1);
+    if (e.gamepad) {
+      // Another device may take this index: it gets a fresh baseline and calibration.
+      this.padMasks.delete(e.gamepad.index);
+      this.padNonStickAxes.delete(e.gamepad.index);
+    }
     if (e.gamepad && e.gamepad.index === this.padIndex) {
       this.padIndex = -1;
       this.clearPad();
@@ -663,8 +776,15 @@ export class InputSystem implements InputApi {
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     const code = e.code;
-    if (!code || isFixedKeyCode(code) || isConsoleToggleKey(code, e.key)) return;
+    if (!code || isReservedKey(code, e.key)) return;
     if (isTextEntry(e.target)) return;
+    if (code === 'ControlLeft') {
+      this.lastCtrlLeftDownAt = e.timeStamp;
+    } else if (code === 'AltRight' && e.timeStamp - this.lastCtrlLeftDownAt <= INPUT.altGrPairMs) {
+      // The ControlLeft right before was Windows' synthetic half of AltGr (also on auto-repeat).
+      this.keysDown.delete('ControlLeft');
+      this.keysPressed.delete('ControlLeft');
+    }
     if (!this.keysDown.has(code)) {
       // Auto-repeat after a cleared state (blur) re-holds the key without a fresh press edge.
       if (!e.repeat) this.keysPressed.add(code);
@@ -679,6 +799,11 @@ export class InputSystem implements InputApi {
     const code = e.code;
     if (!code) return;
     this.keysDown.delete(code);
+    if (code === 'MetaLeft' || code === 'MetaRight') {
+      // macOS sends no keyup for keys released while Cmd is held: they would stay down forever.
+      // Deleting during Set iteration is safe (deleted entries are skipped).
+      for (const c of this.keysDown) if (!MODIFIER_CODES.has(c)) this.keysDown.delete(c);
+    }
     if (isFixedKeyCode(code)) return;
     if (this.ownsKeyboard(e.target) && (this.boundCodes.has(code) || PREVENT_CODES.has(code)))
       e.preventDefault();
@@ -699,8 +824,11 @@ export class InputSystem implements InputApi {
   private readonly onMouseUp = (e: MouseEvent): void => {
     const b = e.button;
     if (b >= 0 && b < INPUT.maxMouseButtons) this.mouseDown[b] = 0;
-    // Back/forward mouse buttons navigate on mouseup in some browsers.
-    if (this.lockedState && b >= 3) e.preventDefault();
+  };
+
+  /** Chromium navigates back/forward on the side buttons' mouseup (others on mousedown/auxclick). */
+  private readonly onNavigationButton = (e: MouseEvent): void => {
+    if (NAVIGATION_BUTTONS.has(e.button)) e.preventDefault();
   };
 
   private readonly onContextMenu = (e: MouseEvent): void => {
@@ -737,7 +865,9 @@ export class InputSystem implements InputApi {
   };
 
   private readonly onMouseMove = (e: MouseEvent): void => {
-    if (!this.lockedState) return;
+    // Unlocked movement only counts when pointer lock is unavailable and the game plays lock-less.
+    if (!this.lockedState && !(this._enabled && (this._lockProblem !== null || !this.pointerLockSupported)))
+      return;
     const dx = e.movementX;
     const dy = e.movementY;
     if (!Number.isFinite(dx) || !Number.isFinite(dy) || (dx === 0 && dy === 0)) return;
@@ -835,6 +965,7 @@ export class InputSystem implements InputApi {
     this.mouseAccX = 0;
     this.mouseAccY = 0;
     if (locked) {
+      this._lockProblem = null;
       this.cancelLockRetry();
       this.spikeFilter.onLock(now);
       // Gameplay owns the mouse again: never keep a rebinding capture armed.
@@ -872,7 +1003,9 @@ export class InputSystem implements InputApi {
       );
       return;
     }
-    log.warn('Pointer Lock verweigert', err);
+    // Logged once per episode: lock-less play requests the lock again on every canvas click.
+    if (this._lockProblem !== 'denied') log.warn('Pointer Lock verweigert', err);
+    this._lockProblem = 'denied';
     this.events.emit('input:pointerLock', { locked: false });
   }
 
@@ -889,6 +1022,8 @@ export class InputSystem implements InputApi {
     const cap = this.capture;
     if (!cap || (only && cap !== only)) return;
     this.capture = null;
+    window.clearTimeout(this.pendingCtrlTimer);
+    this.pendingCtrlTimer = 0;
     this.setWheelCapture(false);
     window.clearTimeout(cap.timer);
     cap.resolve(b);
@@ -902,14 +1037,31 @@ export class InputSystem implements InputApi {
   }
 
   private readonly onCaptureKey = (e: KeyboardEvent): void => {
+    // Runs first for every keydown: learn what the key prints (labels without getLayoutMap).
+    // Unmodified only (digits must not be learned as their Shift symbols); AltGr reports Ctrl+Alt.
+    if (!e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && typeof e.key === 'string') {
+      learnPrintedKey(e.code, e.key);
+    }
     const cap = this.capture;
     if (!cap?.armed) return;
     const code = e.code;
     // Console / debug keys keep working and can never be bound; typing into the console is not a binding.
-    if (!code || isFixedKeyCode(code) || isConsoleToggleKey(code, e.key) || isTextEntry(e.target)) return;
+    if (!code || isReservedKey(code, e.key) || isTextEntry(e.target)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (e.repeat) return;
+    if (this.pendingCtrlTimer) {
+      // AltRight right after ControlLeft is AltGr (Windows); any other key: Ctrl came first.
+      this.finishCapture({ device: 'key', code: code === 'AltRight' ? 'AltRight' : 'ControlLeft' });
+      return;
+    }
+    if (code === 'ControlLeft') {
+      this.pendingCtrlTimer = window.setTimeout(() => {
+        this.pendingCtrlTimer = 0;
+        this.finishCapture({ device: 'key', code: 'ControlLeft' }, cap);
+      }, INPUT.altGrPairMs);
+      return;
+    }
     this.finishCapture(code === 'Escape' ? null : { device: 'key', code });
   };
 
@@ -981,8 +1133,17 @@ export class InputSystem implements InputApi {
   }
 }
 
-function anyButtonDown(p: Gamepad): boolean {
+/** Held buttons as a bitmask (bit i = standard button i; triggers use the trigger threshold). */
+function padButtonMask(p: Gamepad): number {
   const b = p.buttons;
-  for (let i = 0; i < b.length; i++) if (b[i]!.pressed) return true;
-  return false;
+  const n = Math.min(b.length, GAMEPAD.maxButtons);
+  let mask = 0;
+  for (let i = 0; i < n; i++) {
+    const btn = b[i]!;
+    const down = TRIGGER_BUTTONS.has(i)
+      ? finiteOr(btn.value, btn.pressed ? 1 : 0) >= GAMEPAD.triggerThreshold
+      : btn.pressed;
+    if (down) mask |= 1 << i;
+  }
+  return mask;
 }

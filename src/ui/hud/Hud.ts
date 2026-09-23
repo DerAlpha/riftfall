@@ -207,6 +207,8 @@ export class Hud {
       ),
       events.on('player:damaged', ({ amount, direction }) => this.onDamaged(amount, direction)),
       events.on('ui:menu', ({ open }) => this.el.classList.toggle('hud--menu', open)),
+      // update() does not run while paused: the pause must not count as one very long frame.
+      events.on('game:resumed', () => this.resetFps()),
     );
   }
 
@@ -337,10 +339,14 @@ export class Hud {
     if (showFps !== this.fpsVisible) {
       this.fpsVisible = showFps;
       this.fpsEl.hidden = !showFps;
-      this.fpsFrames = 0;
-      this.fpsTime = 0;
-      this.lastFrameAt = -1;
+      this.resetFps();
     }
+  }
+
+  private resetFps(): void {
+    this.fpsFrames = 0;
+    this.fpsTime = 0;
+    this.lastFrameAt = -1;
   }
 
   private setHealth(health: number, maxHealth: number, armor: number, maxArmor: number): void {

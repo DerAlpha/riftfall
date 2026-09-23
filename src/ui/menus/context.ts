@@ -1,28 +1,41 @@
 /** Shared types and hooks of the Preact menus. */
 import { useEffect, useState } from 'preact/hooks';
-import type { InputApi, SettingsStore } from '../../core/contracts';
+import type { InputApi, SaveBackend, SettingsStore } from '../../core/contracts';
 import type { EventBus } from '../../core/EventBus';
 import type { GameEvents } from '../../core/events';
-import type { KeyboardLayout } from '../../input/bindings';
+import { learnedLayout, type KeyboardLayout } from '../../input/bindings';
+import type { PointerLockProblem } from '../../input/InputSystem';
 import type { Settings } from '../../save/settingsSchema';
 
 export interface MenuInfo {
   gpuName: string;
-  saveBackend: string;
+  saveBackend: SaveBackend['name'];
   version: string;
 }
 
-/** InputApi plus the optional capture abort of InputSystem (menus cancel a pending capture on unmount). */
-export type MenuInput = InputApi & { cancelCapture?(): void };
+/**
+ * InputApi plus optional extras of InputSystem: the capture abort (menus cancel a pending capture
+ * on unmount) and the pointer lock availability (menus explain a refused lock and offer lock-less play).
+ */
+export type MenuInput = InputApi & {
+  cancelCapture?(): void;
+  readonly pointerLockSupported?: boolean;
+  readonly pointerLockProblem?: PointerLockProblem | null;
+};
+
+export interface PlayOptions {
+  /** Play without pointer lock (it is unavailable or refused); mouse look uses plain movement. */
+  lockless?: boolean;
+}
 
 export interface MenuDeps {
   settings: SettingsStore;
   input: MenuInput;
   events: EventBus<GameEvents>;
-  /** Start click (user gesture): requests pointer lock + unlocks audio. */
-  onStart(): void;
-  /** Resume click (user gesture): re-requests pointer lock. */
-  onResume(): void;
+  /** Start click (user gesture): requests pointer lock (unless lock-less) + unlocks audio. */
+  onStart(opts?: PlayOptions): void;
+  /** Resume click (user gesture): re-requests pointer lock (unless lock-less). */
+  onResume(opts?: PlayOptions): void;
   getInfo(): MenuInfo;
 }
 
@@ -71,7 +84,11 @@ function loadLayout(): Promise<KeyboardLayout | null> {
   return layoutPromise;
 }
 
-/** Physical-code → printed-character map of the user's keyboard (null until/unless available). */
+/**
+ * Physical-code → printed-character map of the user's keyboard. Without getLayoutMap (Firefox,
+ * Safari) the map learned from keydowns is used (it grows as keys are pressed – a captured key is
+ * always learned); null while neither knows anything.
+ */
 export function useKeyboardLayout(): KeyboardLayout | null {
   const [layout, setLayout] = useState<KeyboardLayout | null>(layoutCache);
   useEffect(() => {
@@ -81,5 +98,18 @@ export function useKeyboardLayout(): KeyboardLayout | null {
       alive = false;
     };
   }, []);
-  return layout;
+  return layout ?? (learnedLayout.size > 0 ? learnedLayout : null);
+}
+
+/** Why pointer lock is unavailable (null when it works or was never needed); re-renders on lock changes. */
+export function usePointerLockProblem(deps: MenuDeps): PointerLockProblem | null {
+  const read = (): PointerLockProblem | null =>
+    deps.input.pointerLockProblem ?? (deps.input.pointerLockSupported === false ? 'unsupported' : null);
+  const [problem, setProblem] = useState(read);
+  useEffect(() => {
+    setProblem(read());
+    // The input system records the problem before it reports the failed lock.
+    return deps.events.on('input:pointerLock', () => setProblem(read()));
+  }, [deps.events, deps.input]);
+  return problem;
 }

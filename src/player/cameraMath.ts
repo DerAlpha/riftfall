@@ -24,12 +24,19 @@ export function addTrauma(trauma: number, amount: number): number {
 }
 
 /**
- * Initial spring velocity that produces a peak displacement of about `dip` for a
- * (near-)critically damped spring of the given stiffness: x(t) = v0·t·e^(−ωt) peaks at
- * v0 / (ω·e).
+ * Initial spring velocity (unit mass, starting at rest at the target) whose first peak
+ * displacement is `dip`. Underdamped (ζ < 1): x(t) = v0/ωd · e^(−ζωt) · sin(ωd·t) peaks at
+ * t* = atan2(ωd, ζω)/ωd. (Over)critically damped: the critical peak v0/(ω·e) is used, which
+ * over-damping only lowers, so the dip is never exceeded.
  */
-export function springImpulseForPeak(dip: number, stiffness: number): number {
-  return dip * Math.sqrt(stiffness) * Math.E;
+export function springImpulseForPeak(dip: number, stiffness: number, damping: number): number {
+  const w = Math.sqrt(Math.max(0, stiffness));
+  if (w <= 0) return 0;
+  const zeta = damping / (2 * w);
+  if (zeta >= 1) return dip * w * Math.E;
+  const wd = w * Math.sqrt(1 - zeta * zeta);
+  const t = Math.atan2(wd, zeta * w) / wd;
+  return (dip * wd) / (Math.exp(-zeta * w * t) * Math.sin(wd * t));
 }
 
 /**

@@ -1,6 +1,8 @@
 /**
  * Composition root: constructs every system, wires events and owns the game loop.
- * Systems only know each other through the contracts in src/core/contracts.ts.
+ * Game wires the concrete systems; cross-system consumers depend on the contracts in
+ * src/core/contracts.ts where possible. Pause/pointer-lock flow lives in PauseController,
+ * save wiring in GamePersistence, gamepad menu navigation in MenuPadNavigator.
  */
 import * as THREE from 'three';
 import { EventBus } from '../core/EventBus';
@@ -8,17 +10,19 @@ import type { GameEvents, PauseReason } from '../core/events';
 import { GameLoop } from '../core/GameLoop';
 import { createLogger } from '../core/log';
 import type { LevelInstance, SaveData } from '../core/contracts';
-import { ENGINE } from '../defs/engine';
+import { BOOT_PROGRESS, ENGINE } from '../defs/engine';
 import { MOVEMENT } from '../defs/movement';
 import { GRAPHICS_PRESETS, RENDER } from '../defs/graphics';
-import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
+import { COLLISION_GROUP, PHYSICS, interactionGroups } from '../defs/physics';
+import { POSTFX } from '../defs/postfx';
 import { TEST_ROOM } from '../defs/maps';
 import { SaveSystem } from '../save/SaveSystem';
 import { SettingsStore } from '../save/SettingsStore';
-import type { QualityPreset, Settings } from '../save/settingsSchema';
+import type { QualityPreset } from '../save/settingsSchema';
 import { RenderSystem } from '../render/RenderSystem';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { AssetLoader } from '../assets/AssetLoader';
+import { getAssetEntry } from '../assets/manifest';
 import { AudioEngine } from '../audio/AudioEngine';
 import { AudioEventBridge } from '../audio/AudioEventBridge';
 import { InputSystem } from '../input/InputSystem';
@@ -31,9 +35,12 @@ import { PlayerHealth } from '../player/PlayerHealth';
 import { Hud } from '../ui/hud/Hud';
 import { DebugOverlay, type DebugSnapshot } from '../ui/debug/DebugOverlay';
 import { DevConsole } from '../ui/console/DevConsole';
-import { LoadingScreen } from '../ui/LoadingScreen';
+import type { LoadingScreen } from '../ui/LoadingScreen';
 import { mountMenus, type MenuController } from '../ui/menus';
 import { registerDevCommands } from './devCommands';
+import { GamePersistence } from './GamePersistence';
+import { MenuPadNavigator } from './MenuPadNavigator';
+import { PauseController } from './PauseController';
 
 const log = createLogger('Game');
 
@@ -47,7 +54,10 @@ export interface GameOptions {
   noPointerLock: boolean;
   /** Expose a debug handle on window (smoke tests). */
   exposeHandle: boolean;
-  /** Force a graphics preset for this session and skip auto-detect/benchmark (`?preset=ultra`). */
+  /**
+   * Force a graphics preset for this session only (`?preset=ultra`): not saved, no auto-detect,
+   * no benchmark, profile flags untouched.
+   */
   forcePreset: QualityPreset | null;
 }
 
@@ -59,10 +69,11 @@ function el(id: string): HTMLElement {
 
 export class Game {
   readonly loop: GameLoop;
+  readonly pauseState: PauseController;
+  readonly padNav: MenuPadNavigator;
 
-  private started = false;
-  private pausedFor = new Set<PauseReason>();
   private time = 0;
+  private benchmarkRunning = false;
   private readonly _yawDir = new THREE.Vector3();
   private readonly _up = new THREE.Vector3(0, 1, 0);
   private readonly _toSun = new THREE.Vector3();
@@ -70,7 +81,7 @@ export class Game {
   private constructor(
     readonly opts: GameOptions,
     readonly save: SaveSystem,
-    private saveData: SaveData,
+    readonly persistence: GamePersistence,
     readonly settings: SettingsStore,
     readonly render: RenderSystem,
     readonly physics: PhysicsWorld,
@@ -100,13 +111,31 @@ export class Game {
       { tickRate: ENGINE.tickRate, maxSubSteps: ENGINE.maxSubSteps, maxFrameDelta: ENGINE.maxFrameDelta },
     );
     this.loop.fpsLimit = settings.current.graphics.fpsLimit;
+    this.pauseState = new PauseController({
+      input,
+      menus,
+      loop: this.loop,
+      audio,
+      events,
+      consoleOpen: () => devConsole.open,
+      noPointerLock: opts.noPointerLock,
+    });
+    this.padNav = new MenuPadNavigator(el('ui'), input, () => {
+      // B on the pause menu's main view (no sub-view took the "back"): resume.
+      if (menus.current === 'pause') this.pauseState.resume(true);
+    });
   }
 
-  /** Boot everything with a visible loading screen. Throws only for truly fatal problems (no WebGL2). */
-  static async create(opts: GameOptions): Promise<Game> {
+  private get saveData(): SaveData {
+    return this.persistence.data;
+  }
+
+  /**
+   * Boot everything behind `loading` (already shown by main.ts). Throws only for truly fatal
+   * problems (no WebGL2 context, failed engine chunks).
+   */
+  static async create(opts: GameOptions, loading: LoadingScreen): Promise<Game> {
     const events = new EventBus<GameEvents>();
-    const loading = new LoadingScreen(el('loading'));
-    loading.show();
     const progress = (fraction: number, label: string): void => {
       loading.setProgress(fraction, label);
       events.emit('loading:progress', { loaded: fraction, total: 1, label });
@@ -114,17 +143,15 @@ export class Game {
     // Let the loading screen paint before heavy work starts.
     await nextFrame();
 
-    progress(0.02, 'Lade Profil…');
+    progress(BOOT_PROGRESS.profile, 'Lade Profil…');
     const save = await SaveSystem.create();
-    const saveData = await save.load();
-    // SettingsStore debounces; this runs once per burst of changes.
-    const persist = (s: Settings): void => {
-      saveData.settings = s;
-      void save.save(saveData);
-    };
-    const settings = new SettingsStore(events, saveData.settings, persist);
+    const persistence = new GamePersistence(await save.load(), save);
+    const saveData = persistence.data;
+    // SettingsStore debounces; the callback runs once per burst of changes.
+    const settings = new SettingsStore(events, saveData.settings, persistence.persistSettings);
+    loading.setReducedFlashing(settings.current.accessibility.reduceFlashing);
 
-    progress(0.08, 'Initialisiere Renderer…');
+    progress(BOOT_PROGRESS.renderer, 'Initialisiere Renderer…');
     const canvas = el('game-canvas') as HTMLCanvasElement;
     const render = new RenderSystem(
       canvas,
@@ -134,17 +161,21 @@ export class Game {
     );
 
     if (opts.forcePreset) {
-      settings.update('graphics', { preset: opts.forcePreset, ...GRAPHICS_PRESETS[opts.forcePreset] });
-      saveData.profile.qualityBenchmarked = true;
+      persistence.overrideGraphicsForSession(settings, {
+        preset: opts.forcePreset,
+        ...GRAPHICS_PRESETS[opts.forcePreset],
+      });
     } else if (!saveData.profile.qualityAutoDetected) {
       const preset = render.quality.detectPreset();
       log.info(`Auto-detected graphics preset "${preset}" for GPU: ${render.quality.gpuName}`);
       settings.update('graphics', { preset, ...GRAPHICS_PRESETS[preset] });
       saveData.profile.qualityAutoDetected = true;
+      // The settings write is skipped when the detected preset equals the stored one.
+      void persistence.saveNow();
     }
     render.applyGraphicsSettings(settings.current.graphics);
 
-    progress(0.15, 'Initialisiere Physik…');
+    progress(BOOT_PROGRESS.physics, 'Initialisiere Physik…');
     const physics = await PhysicsWorld.create();
 
     const audio = new AudioEngine(events, settings.current.audio);
@@ -152,13 +183,16 @@ export class Game {
     const audioBridge = new AudioEventBridge(events, audio);
     const input = new InputSystem(canvas, events, settings);
 
-    progress(0.2, 'Lade Assets…');
+    const A = BOOT_PROGRESS.assets;
+    progress(A.start, 'Lade Assets…');
     await assets.preload(TEST_ROOM.preload, (loaded, total, label) =>
-      progress(0.2 + 0.25 * (total > 0 ? loaded / total : 1), `Lade ${label}…`),
+      progress(A.start + A.span * (total > 0 ? loaded / total : 1), `Lade ${label}…`),
     );
+    await registerAudioAssets(TEST_ROOM.preload, assets, audio);
 
-    progress(0.45, 'Generiere Materialien…');
-    const materials = new MaterialLibrary(render, assets, settings);
+    const L = BOOT_PROGRESS.level;
+    progress(L.start, 'Generiere Materialien…');
+    const materials = new MaterialLibrary(render, assets, settings, events);
     const level = await buildTestRoom({
       render,
       physics,
@@ -166,20 +200,21 @@ export class Game {
       materials,
       settings,
       events,
-      onProgress: (label, fraction) => progress(0.45 + 0.45 * fraction, label),
+      onProgress: (label, fraction) => progress(L.start + L.span * fraction, label),
     });
     render.scene.add(level.root);
 
-    progress(0.92, 'Kalibriere Umgebung…');
+    progress(BOOT_PROGRESS.environment, 'Kalibriere Umgebung…');
     const hdri = level.atmosphere.environment.hdri
       ? await assets.loadHDRI(level.atmosphere.environment.hdri)
       : null;
     render.applyAtmosphere(level.atmosphere, hdri);
     audio.setReverbZone(level.atmosphere.reverb);
 
+    // Unlocks come from the profile; a movement sandbox (the calibration hall) grants everything.
+    const unlocks = TEST_ROOM.movementSandbox ? { doubleJump: true, dash: true } : saveData.profile.unlocks;
     const player = new PlayerController({ physics, input, events, settings }, level.spawn, {
-      // The calibration hall is a movement sandbox: all movement abilities unlocked.
-      unlocks: { doubleJump: true, dash: true },
+      unlocks: { doubleJump: unlocks.doubleJump, dash: unlocks.dash },
     });
     const playerCamera = new PlayerCamera({ player, input, render, events, settings });
     const viewmodel = new ViewmodelRig({ render, player, camera: playerCamera, events });
@@ -195,8 +230,8 @@ export class Game {
       settings,
       input,
       events,
-      onStart: () => gameRef?.startPlaying(),
-      onResume: () => gameRef?.resumeFromMenu(),
+      onStart: (o) => gameRef?.startPlaying(o?.lockless),
+      onResume: (o) => gameRef?.resumeFromMenu(o?.lockless),
       getInfo: () => ({
         gpuName: render.quality.gpuName,
         saveBackend: save.backendName,
@@ -207,7 +242,7 @@ export class Game {
     const game = new Game(
       opts,
       save,
-      saveData,
+      persistence,
       settings,
       render,
       physics,
@@ -254,14 +289,27 @@ export class Game {
   // -------------------------------------------------------------------------
 
   private beginFrame(realDt: number): void {
+    const wasCapturing = this.input.capturing;
     this.input.beginFrame(realDt);
-    if (this.input.pressed('pause') && this.started && this.pausedFor.size === 0) this.openPauseMenu();
+    this.pauseState.onFrame(wasCapturing);
+    if (this.menus.isOpen && !this.devConsole.open && !wasCapturing && !this.input.capturing) {
+      this.padNav.update(realDt);
+    } else {
+      this.padNav.reset();
+    }
+    // Look before the ticks: wish/dash/mantle directions use the yaw the camera shows this frame.
+    if (!this.loop.paused) this.playerCamera.applyLook();
   }
 
   private fixedUpdate(dt: number): void {
     // The player computes its kinematic move against the current world, then the world steps
     // (dynamic props react to the pushes), so everything ends the tick in a consistent state.
     this.player.fixedUpdate(dt);
+    if (!this.player.noclip && this.player.position.y < PHYSICS.killPlaneY) {
+      // Fell out of the world (tp/noclip outside the hall, or a collision bug): back to spawn.
+      log.warn(`Player below kill plane (y ${this.player.position.y.toFixed(1)}) – respawn`);
+      this.player.teleport(this.level.spawn.position, this.level.spawn.yaw);
+    }
     this.physics.step(dt);
     this.health.fixedUpdate(dt);
     this.level.fixedUpdate?.(dt);
@@ -295,50 +343,30 @@ export class Game {
   private renderFrame(realDt: number, alpha: number): void {
     this.physics.syncVisuals(alpha);
     this.render.render(realDt);
-    this.render.quality.onFrame(realDt);
+    // Menu frames (backdrop blur, frozen scene) would skew dynamic resolution and the benchmark.
+    if (!this.loop.paused) this.render.quality.onFrame(realDt);
     if (this.debug.visible) this.debug.update(realDt, () => this.debugSnapshot(realDt));
     this.input.endFrame();
   }
 
   // -------------------------------------------------------------------------
-  // Pause / pointer lock flow
+  // Events / pause flow
   // -------------------------------------------------------------------------
 
   private wireEvents(): void {
-    this.events.on('input:pointerLock', ({ locked }) => {
-      if (locked) {
-        if (this.pausedFor.has('pointerlock') || this.pausedFor.has('menu')) {
-          this.unpause('pointerlock');
-          this.unpause('menu');
-          this.menus.hide();
-        }
-      } else if (this.started && !this.opts.noPointerLock && !this.devConsole.open) {
-        this.openPauseMenu('pointerlock');
-      }
-    });
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        if (this.started) this.openPauseMenu('visibility');
-      } else {
-        this.unpause('visibility');
-      }
-    });
-
-    this.events.on('ui:console', ({ open }) => {
-      this.input.enabled = !open && this.pausedFor.size === 0;
-      // A real Esc while the console was open releases pointer lock without opening the menu;
-      // closing the console must then fall back to the pause menu instead of lock-less gameplay.
-      if (
-        !open &&
-        this.started &&
-        this.pausedFor.size === 0 &&
-        !this.opts.noPointerLock &&
-        !this.input.pointerLocked
-      ) {
-        this.openPauseMenu('pointerlock');
-      }
-    });
+    const pause = this.pauseState;
+    this.events.on('input:pointerLock', ({ locked }) => pause.onPointerLock(locked));
+    document.addEventListener('visibilitychange', () => pause.onVisibility(document.hidden));
+    this.events.on('ui:console', ({ open }) => pause.onConsole(open));
+    // Capture phase after InputSystem's: a key swallowed by a rebinding capture never arrives here.
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.code === 'Escape') pause.noteEscape();
+      },
+      true,
+    );
+    this.render.canvas.addEventListener('mousedown', () => pause.onCanvasPointerDown());
 
     this.events.on('settings:changed', ({ settings, sections }) => {
       if (sections.includes('graphics')) {
@@ -346,94 +374,91 @@ export class Game {
         this.loop.fpsLimit = settings.graphics.fpsLimit;
       }
       if (sections.includes('audio')) this.audio.applySettings(settings.audio);
+      // The camera rig only runs while playing: preview FOV changes behind the pause menu.
+      if (sections.includes('controls') && this.loop.paused) this.playerCamera.snapFov();
     });
 
     this.events.on('player:healthChanged', ({ health, maxHealth }) => {
       this.render.setHealthFraction(maxHealth > 0 ? health / maxHealth : 1);
     });
     this.events.on('player:damaged', ({ amount }) => {
-      this.render.addHitPulse(Math.min(1, amount / 40));
+      this.render.addHitPulse(Math.min(1, amount / POSTFX.chromaticAberration.damageForFullPulse));
     });
     this.events.on('fx:hitPulse', ({ strength }) => this.render.addHitPulse(strength));
 
-    const persistNow = (): void => {
-      this.settings.flush();
-      void this.save.save(this.saveData);
-    };
+    // Only pending settings are written on unload: profile changes are saved when they happen, and
+    // an unconditional write would resurrect a wiped save or let a stale tab overwrite newer data.
+    const persistNow = (): void => this.settings.flush();
     // pagehide is the reliable signal on mobile Safari; beforeunload covers desktop browsers.
     window.addEventListener('pagehide', persistNow);
     window.addEventListener('beforeunload', persistNow);
   }
 
-  /** Called from the start screen click (a user gesture: pointer lock + audio unlock are allowed). */
-  startPlaying(): void {
-    void this.audio.unlock();
-    this.started = true;
+  /**
+   * Start screen activated: a click (pointer lock + audio unlock allowed) or a gamepad press.
+   * `lockless`: the menu asks to play without pointer lock (the API is missing or was refused).
+   */
+  startPlaying(lockless = false): void {
     this.saveData.profile.lastPlayedAt = Date.now();
-    void this.save.save(this.saveData);
-    if (this.opts.noPointerLock) {
-      this.unpause('menu');
-      this.menus.hide();
-    } else {
-      this.input.requestPointerLock();
-    }
+    void this.persistence.saveNow();
+    this.pauseState.start(lockless || this.padNav.activating);
     void this.maybeRunBenchmark();
   }
 
-  resumeFromMenu(): void {
-    void this.audio.unlock();
-    if (this.opts.noPointerLock) {
-      this.pausedFor.clear();
-      this.applyPauseState();
-      this.menus.hide();
-    } else {
-      this.input.requestPointerLock();
-    }
-  }
-
-  private openPauseMenu(reason: PauseReason = 'menu'): void {
-    this.pause(reason);
-    this.pause('menu');
-    if (!this.opts.noPointerLock) this.input.exitPointerLock();
-    this.menus.showPause();
+  /** Pause menu "Fortsetzen" (click, Enter, or gamepad A); `lockless` as in startPlaying. */
+  resumeFromMenu(lockless = false): void {
+    this.pauseState.resume(lockless || this.padNav.activating);
   }
 
   pause(reason: PauseReason): void {
-    this.pausedFor.add(reason);
-    this.applyPauseState();
+    this.pauseState.pause(reason);
   }
 
   unpause(reason: PauseReason): void {
-    this.pausedFor.delete(reason);
-    this.applyPauseState();
+    this.pauseState.unpause(reason);
   }
 
-  private applyPauseState(): void {
-    const paused = this.pausedFor.size > 0;
-    if (paused === this.loop.paused) return;
-    this.loop.paused = paused;
-    this.input.enabled = !paused && !this.devConsole.open;
-    this.audio.setPaused(paused);
-    if (!paused) this.loop.resetAccumulator();
-    this.events.emit(
-      paused ? 'game:paused' : 'game:resumed',
-      paused ? { reason: [...this.pausedFor][0] ?? 'menu' } : {},
-    );
+  // -------------------------------------------------------------------------
+  // Profile / save
+  // -------------------------------------------------------------------------
+
+  /** Store the player's current movement unlocks in the profile (dev console `unlock`). */
+  persistUnlocks(): void {
+    const u = this.player.unlocks;
+    this.saveData.profile.unlocks = { doubleJump: u.doubleJump, dash: u.dash };
+    void this.persistence.saveNow();
+  }
+
+  /** Dev console `resetsave`: wipe storage and continue with defaults (applied live). */
+  resetSave(): Promise<void> {
+    return this.persistence.reset(this.settings);
+  }
+
+  /** True when the current level grants every movement ability regardless of the profile. */
+  get movementSandbox(): boolean {
+    return TEST_ROOM.movementSandbox === true;
   }
 
   /** First-run benchmark: may downgrade the auto-detected preset once. */
   private async maybeRunBenchmark(): Promise<void> {
-    if (this.saveData.profile.qualityBenchmarked) return;
+    if (this.opts.forcePreset || this.benchmarkRunning || this.saveData.profile.qualityBenchmarked) return;
     const current = this.settings.current.graphics.preset;
     if (current === 'custom') return;
+    const graphicsBefore = this.settings.current.graphics;
+    this.benchmarkRunning = true;
     const recommended: QualityPreset | null = await this.render.quality.runBenchmark(current);
+    this.benchmarkRunning = false;
     this.saveData.profile.qualityBenchmarked = true;
-    if (recommended && recommended !== current) {
+    // Sections are replaced on every change: a new object means the player (or the console)
+    // changed graphics while it measured – their choice wins over the measurement.
+    if (this.settings.current.graphics !== graphicsBefore) {
+      log.info('Benchmark result discarded: graphics settings changed during the measurement');
+    } else if (recommended && recommended !== current) {
       log.info(`Benchmark: switching graphics preset ${current} → ${recommended}`);
       this.settings.update('graphics', { preset: recommended, ...GRAPHICS_PRESETS[recommended] });
       this.events.emit('quality:presetApplied', { preset: recommended, auto: true });
     }
-    void this.save.save(this.saveData);
+    void this.persistence.saveNow();
   }
 
   // -------------------------------------------------------------------------
@@ -515,6 +540,19 @@ export class Game {
         this.player.pitch = THREE.MathUtils.degToRad(pitchDeg);
       },
     };
+  }
+}
+
+/** Hand decoded audio assets of the level to the audio engine (it falls back to synth sounds). */
+async function registerAudioAssets(
+  ids: readonly string[],
+  assets: AssetLoader,
+  audio: AudioEngine,
+): Promise<void> {
+  for (const id of ids) {
+    if (getAssetEntry(id)?.type !== 'audio') continue;
+    const buffer = await assets.loadAudio(id); // cached by preload
+    if (buffer) audio.registerBuffer(id, buffer);
   }
 }
 

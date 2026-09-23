@@ -5,17 +5,27 @@
  */
 import type { GraphicsSettings, QualityLevel, QualityPreset } from '../save/settingsSchema';
 
+/**
+ * Target frame rate and dynamic resolution are user-only: they say nothing about quality (a 144 Hz
+ * player on High is still on High) and picking a preset must not reset them.
+ */
 export type PresetValues = Omit<
   GraphicsSettings,
-  'preset' | 'fpsLimit' | 'showFps' | 'toneMapping' | 'exposure'
+  'preset' | 'fpsLimit' | 'showFps' | 'toneMapping' | 'exposure' | 'targetFps' | 'dynamicResolution'
 >;
+
+/** Rank per preset. A Record, so adding a QualityPreset without a rank fails to compile. */
+const PRESET_RANK: Record<QualityPreset, number> = { low: 0, medium: 1, high: 2, ultra: 3 };
+
+/** Every preset from lowest to highest – the single source for UI lists, the console and URL parsing. */
+export const PRESET_ORDER: readonly QualityPreset[] = (Object.keys(PRESET_RANK) as QualityPreset[]).sort(
+  (a, b) => PRESET_RANK[a] - PRESET_RANK[b],
+);
 
 export const GRAPHICS_PRESETS: Record<QualityPreset, PresetValues> = {
   low: {
     renderScale: 0.75,
     maxPixelRatio: 1,
-    dynamicResolution: true,
-    targetFps: 60,
     shadows: 'low',
     ambientOcclusion: 'off',
     bloom: 'low',
@@ -33,8 +43,6 @@ export const GRAPHICS_PRESETS: Record<QualityPreset, PresetValues> = {
   medium: {
     renderScale: 1,
     maxPixelRatio: 1,
-    dynamicResolution: true,
-    targetFps: 60,
     shadows: 'medium',
     ambientOcclusion: 'low',
     bloom: 'medium',
@@ -52,8 +60,6 @@ export const GRAPHICS_PRESETS: Record<QualityPreset, PresetValues> = {
   high: {
     renderScale: 1,
     maxPixelRatio: 1.5,
-    dynamicResolution: true,
-    targetFps: 60,
     shadows: 'high',
     ambientOcclusion: 'medium',
     bloom: 'high',
@@ -71,8 +77,6 @@ export const GRAPHICS_PRESETS: Record<QualityPreset, PresetValues> = {
   ultra: {
     renderScale: 1,
     maxPixelRatio: 2,
-    dynamicResolution: true,
-    targetFps: 60,
     shadows: 'ultra',
     ambientOcclusion: 'high',
     bloom: 'ultra',
@@ -93,21 +97,26 @@ export const GRAPHICS_PRESETS: Record<QualityPreset, PresetValues> = {
 export const QUALITY_LEVELS = {
   shadows: {
     off: null,
-    low: { cascades: 1, mapSize: 1024, maxFar: 35, radius: 2, localShadowMapSize: 256, maxLocalShadows: 0 },
+    /**
+     * radius: PCF kernel radius in shadow texels. three r186 always takes 5 taps (per-pixel rotated
+     * Vogel disk, no temporal resolve), so radii above ~2 texels only turn the penumbra into
+     * screen-fixed dither; higher presets buy finer texels instead of wider kernels.
+     */
+    low: { cascades: 1, mapSize: 1024, maxFar: 35, radius: 1, localShadowMapSize: 256, maxLocalShadows: 0 },
     medium: {
       cascades: 2,
       mapSize: 1024,
       maxFar: 55,
-      radius: 3,
+      radius: 1.5,
       localShadowMapSize: 512,
       maxLocalShadows: 2,
     },
-    high: { cascades: 3, mapSize: 2048, maxFar: 80, radius: 4, localShadowMapSize: 512, maxLocalShadows: 4 },
+    high: { cascades: 3, mapSize: 2048, maxFar: 80, radius: 2, localShadowMapSize: 512, maxLocalShadows: 4 },
     ultra: {
       cascades: 4,
       mapSize: 2048,
       maxFar: 120,
-      radius: 5,
+      radius: 2,
       localShadowMapSize: 1024,
       maxLocalShadows: 6,
     },
@@ -135,7 +144,7 @@ export const QUALITY_LEVELS = {
     ultra: { cones: true, fogSteps: 24, dust: 1.4 },
   },
   particles: {
-    off: { budgetMultiplier: 0.25 },
+    off: { budgetMultiplier: 0 },
     low: { budgetMultiplier: 0.4 },
     medium: { budgetMultiplier: 0.7 },
     high: { budgetMultiplier: 1.0 },
@@ -184,6 +193,14 @@ export const DYNAMIC_RESOLUTION = {
    */
   maxSampleBudgetRatio: 3,
   spikeToleranceFrames: 3,
+  /**
+   * Without GPU timing a frame time pinned by the display / rAF rate (50 Hz panel, 30 FPS power
+   * saving) or by the CPU looks like overload. If this many consecutive down-steps did not bring
+   * the smoothed frame time below start * displayBoundImprovement, resolution is not the limit:
+   * the scale is restored and that frame time becomes the budget floor (0 disables the check).
+   */
+  displayBoundSteps: 3,
+  displayBoundImprovement: 0.95,
 } as const;
 
 export const AUTO_DETECT = {
@@ -196,6 +213,12 @@ export const AUTO_DETECT = {
     { match: ['gtx 9', 'gtx 10', 'gtx 16', 'rx 5', 'rx 4', 'geforce mx'], preset: 'medium' },
     // Safari masks every Apple Silicon GPU as "Apple GPU"; phones/tablets are capped by the mobile rule.
     { match: ['apple gpu'], preset: 'medium' },
+    // Entry models inside the 'high' families below (RX 6300/6400/6500, RTX 2050, Arc A3xx and the
+    // integrated Arc parts) are GTX 1050–1650 class; they must match before the family substrings.
+    {
+      match: ['rx 63', 'rx 64', 'rx 65', 'rtx 2050', 'arc(tm) a3', 'arc a3', 'arc(tm) graphics', 'arc(tm) 1'],
+      preset: 'medium',
+    },
     {
       match: ['rtx 20', 'rtx 30', 'rx 6', 'apple m1', 'apple m2', 'intel(r) arc', 'intel arc', 'arc(tm)'],
       preset: 'high',
@@ -215,6 +238,11 @@ export const AUTO_DETECT = {
   /** Frames longer than this (tab switches, hitches while loading) are ignored by the benchmark. */
   benchmarkMaxFrameSeconds: 0.2,
   benchmarkDowngradeRatio: 0.8,
+  /**
+   * Wall-clock cap: when (warmup + measurement) * this has passed and the benchmark is still not
+   * done (every frame slower than benchmarkMaxFrameSeconds, i.e. ≤ 5 FPS), it ends with a downgrade.
+   */
+  benchmarkTimeoutFactor: 3,
 } as const satisfies {
   gpuRules: readonly { match: readonly string[]; preset: QualityPreset }[];
   fallbackPreset: QualityPreset;
@@ -226,6 +254,7 @@ export const AUTO_DETECT = {
   benchmarkWarmupSeconds: number;
   benchmarkMaxFrameSeconds: number;
   benchmarkDowngradeRatio: number;
+  benchmarkTimeoutFactor: number;
 };
 
 /**
@@ -256,6 +285,12 @@ export const SHADOWS = {
 
 /** Environment lighting (PMREM) and the procedural fallback environment used when no HDRI is available. */
 export const ENVIRONMENT = {
+  /**
+   * Without IBL (no color-renderable half-float targets for the PMREM) the hemisphere light stands
+   * in for its ambient term: hemi intensity += environment.intensity * this. Roughly the
+   * cos-weighted irradiance of the procedural environment relative to a typical hemisphere sky.
+   */
+  noIblHemiScale: 6,
   /** Blur (radians) applied when PMREM-ing the procedural scene; softens the panel reflections. */
   fallbackSigma: 0.035,
   fallbackNear: 0.1,
@@ -290,4 +325,9 @@ export const RENDER = {
   resizeThrottleMs: 120,
   /** Smoothing (1/s) of the low-health factor so the screen effect fades in/out. */
   lowHealthLambda: 5,
+  /**
+   * Render layer of the additive volumetrics (light cones, shafts, dust). The main camera does not
+   * see it; the post chain draws it after AO and height fog. Must differ from ENGINE.viewmodelLayer.
+   */
+  volumetricLayer: 2,
 } as const;

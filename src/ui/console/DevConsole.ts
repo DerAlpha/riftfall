@@ -16,8 +16,25 @@ const log = createLogger('Console');
 type LineKind = 'info' | 'warn' | 'error' | 'input';
 
 /** Characters the toggle key can leave behind in the input (dead-key compositions). */
-const TOGGLE_CHARS = /[\^`°~]/g;
 const TRAILING_TOGGLE_CHARS = /[\^`°~]+$/;
+const LEADING_TOGGLE_CHAR = /^[\^`°~]/;
+/** Combining grave, circumflex and tilde: what a pending ^ / ` / ~ dead key adds to a vowel (û, è, õ). */
+const DEAD_KEY_MARKS = /[\u0300\u0302\u0303]/g;
+
+/**
+ * The first text committed after the console opened, cleaned of what the toggle key left pending:
+ * on Windows a dead "^" stays pending in the OS layout (preventDefault cannot clear it) and arrives
+ * with the next keystroke – as "^h", or composed into the vowel ("û"). Commands are ASCII, so a
+ * leading toggle character is dropped and the dead-key mark is stripped from the first character.
+ */
+export function stripToggleResidue(text: string): string {
+  const rest = text.replace(LEADING_TOGGLE_CHAR, '');
+  const cp = rest.codePointAt(0);
+  if (cp === undefined) return rest;
+  const first = String.fromCodePoint(cp);
+  const bare = first.normalize('NFD').replace(DEAD_KEY_MARKS, '').normalize('NFC');
+  return bare === first ? rest : bare + rest.slice(first.length);
+}
 
 export class DevConsole implements DevConsoleApi {
   private _open = false;
@@ -27,7 +44,8 @@ export class DevConsole implements DevConsoleApi {
   private history: string[] = [];
   private historyPos = -1;
   private draft = '';
-  private suppressCharsUntil = 0;
+  /** The next committed input is cleaned of dead-key residue of the toggle key (one-shot). */
+  private stripNextCommit = false;
   private lineCount = 0;
   /** Consecutive identical log lines are collapsed into one line with a counter (warning spam). */
   private lastLog: { text: string; el: HTMLElement; count: number } | null = null;
@@ -52,7 +70,7 @@ export class DevConsole implements DevConsoleApi {
     const header = document.createElement('div');
     header.className = 'dev-console__header';
     header.innerHTML =
-      '<span class="dev-console__title">RIFTFALL // KONSOLE</span><span class="dev-console__hint">help · Tab ergänzt · ↑↓ Verlauf · ^ / Esc schließt</span>';
+      '<span class="dev-console__title">RIFTFALL // KONSOLE</span><span class="dev-console__hint">help · Tab ergänzt · ↑↓ Verlauf · Bild↑↓ blättert · ^ / Esc schließt</span>';
 
     this.output = document.createElement('div');
     this.output.className = 'dev-console__output';
@@ -83,6 +101,7 @@ export class DevConsole implements DevConsoleApi {
     window.addEventListener('keydown', this.onWindowKey, true);
     this.input.addEventListener('keydown', this.onInputKey);
     this.input.addEventListener('input', this.onInputChange);
+    this.input.addEventListener('compositionend', this.onCompositionEnd);
     this.unsubs.push(onLog(this.onLogEntry));
 
     this.print('RIFTFALL Entwicklerkonsole – „help“ listet alle Befehle.', 'info');
@@ -137,7 +156,7 @@ export class DevConsole implements DevConsoleApi {
     this._open = next;
     this.panel.classList.toggle('dev-console--open', next);
     this.panel.setAttribute('aria-hidden', next ? 'false' : 'true');
-    this.suppressCharsUntil = performance.now() + DEV_CONSOLE.toggleCharSuppressMs;
+    this.stripNextCommit = next;
     if (next) {
       const active = document.activeElement;
       this.returnFocus = active instanceof HTMLElement && active !== document.body ? active : null;
@@ -158,6 +177,7 @@ export class DevConsole implements DevConsoleApi {
     window.removeEventListener('keydown', this.onWindowKey, true);
     this.input.removeEventListener('keydown', this.onInputKey);
     this.input.removeEventListener('input', this.onInputChange);
+    this.input.removeEventListener('compositionend', this.onCompositionEnd);
     for (const u of this.unsubs) u();
     this.unsubs.length = 0;
     this.panel.remove();
@@ -260,6 +280,8 @@ export class DevConsole implements DevConsoleApi {
   };
 
   private readonly onInputKey = (e: KeyboardEvent): void => {
+    // The user acts on what is there: nothing pending is stripped afterwards.
+    if (e.key === 'Enter' || e.key === 'Escape' || e.key === 'Backspace') this.stripNextCommit = false;
     switch (e.key) {
       case 'Enter': {
         e.preventDefault();
@@ -285,6 +307,20 @@ export class DevConsole implements DevConsoleApi {
         e.preventDefault();
         this.browseHistory(1);
         break;
+      // Paging works without a mouse: while pointer-locked, wheel and cursor belong to the game.
+      case 'PageUp':
+      case 'PageDown':
+        e.preventDefault();
+        this.scrollOutput(
+          (e.key === 'PageUp' ? -1 : 1) * this.output.clientHeight * DEV_CONSOLE.pageScrollFraction,
+        );
+        break;
+      case 'Home':
+      case 'End':
+        if (!e.ctrlKey) break; // plain Home/End move the text cursor
+        e.preventDefault();
+        this.output.scrollTop = e.key === 'Home' ? 0 : this.output.scrollHeight;
+        break;
       default:
         break;
     }
@@ -292,12 +328,36 @@ export class DevConsole implements DevConsoleApi {
     e.stopPropagation();
   };
 
-  private readonly onInputChange = (): void => {
-    if (performance.now() < this.suppressCharsUntil) {
-      const cleaned = this.input.value.replace(TOGGLE_CHARS, '');
-      if (cleaned !== this.input.value) this.input.value = cleaned;
-    }
+  private scrollOutput(delta: number): void {
+    this.output.scrollTop = Math.max(0, this.output.scrollTop + delta);
+  }
+
+  private readonly onInputChange = (e: Event): void => {
+    // Composed text is handled once it is committed (compositionend): editing it mid-composition
+    // would break the IME.
+    if ((e as InputEvent).isComposing) return;
+    this.cleanFirstCommit((e as InputEvent).data ?? null);
   };
+
+  private readonly onCompositionEnd = (e: CompositionEvent): void => {
+    this.cleanFirstCommit(e.data);
+  };
+
+  /** One-shot: strip dead-key residue of the toggle key from the first text committed after opening. */
+  private cleanFirstCommit(data: string | null): void {
+    if (!this.stripNextCommit) return;
+    this.stripNextCommit = false;
+    if (!data) return;
+    const cleaned = stripToggleResidue(data);
+    if (cleaned === data) return;
+    const value = this.input.value;
+    const end = this.input.selectionStart ?? value.length;
+    const start = end - data.length;
+    if (start < 0 || value.slice(start, end) !== data) return;
+    this.input.value = value.slice(0, start) + cleaned + value.slice(end);
+    const caret = start + cleaned.length;
+    this.input.setSelectionRange(caret, caret);
+  }
 
   private readonly onLogEntry = (e: LogEntry): void => {
     if (e.level === 'warn' || e.level === 'error') this.printLog(e);

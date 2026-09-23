@@ -7,6 +7,11 @@
  * - `maxSubSteps` prevents the spiral of death on slow frames (time is dropped).
  */
 export interface LoopCallbacks {
+  /**
+   * Once per frame BEFORE the fixed ticks (also while paused). Poll input and latch intents here so
+   * the ticks of this very frame already see them (no extra frame of input latency).
+   */
+  beginFrame?(realDt: number): void;
   /** Fixed simulation step. `dt` is always 1 / tickRate (already time-scaled via tick count). */
   fixedUpdate(dt: number, tick: number): void;
   /** Once per frame before rendering. `dt` = scaled frame delta, `alpha` = interpolation factor. */
@@ -110,6 +115,7 @@ export class GameLoop {
     const frameDelta = Math.min(Math.max(realDt, 0), this.opts.maxFrameDelta);
     this.stats.frameDelta = frameDelta;
     let ticks = 0;
+    this.cb.beginFrame?.(frameDelta);
 
     if (!this.paused) {
       this.accumulator += frameDelta * this.timeScale;

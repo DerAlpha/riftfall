@@ -63,7 +63,13 @@ export interface SpringState {
   velocity: number;
 }
 
-export function springStep(s: SpringState, target: number, stiffness: number, damping: number, dt: number): void {
+export function springStep(
+  s: SpringState,
+  target: number,
+  stiffness: number,
+  damping: number,
+  dt: number,
+): void {
   const force = (target - s.value) * stiffness - s.velocity * damping;
   s.velocity += force * dt;
   s.value += s.velocity * dt;

@@ -22,4 +22,8 @@ export const ENGINE = {
   saveStoreName: 'saves',
   saveSlotKey: 'profile-main',
   localStorageKey: 'riftfall.save',
+  /** SettingsStore coalesces bursts of changes (sliders) into one save after this quiet time. */
+  settingsSaveDebounceMs: 400,
+  /** Opening/probing a storage backend longer than this counts as a failure (blocked IndexedDB). */
+  saveBackendTimeoutMs: 3000,
 } as const;

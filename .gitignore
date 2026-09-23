@@ -12,3 +12,4 @@ public/assets/audio/
 .asset-cache/
 test-results/
 smoke-output/
+public/assets/available.json

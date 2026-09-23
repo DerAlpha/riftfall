@@ -108,6 +108,19 @@ export const GAMEPAD = {
   lookCurveExponent: 2.2,
   /** Axis indices of the standard mapping. */
   axes: { leftX: 0, leftY: 1, rightX: 2, rightY: 3 },
+  /** Standard-mapping buttons that are analog triggers (use `triggerThreshold`). */
+  triggerButtons: [6, 7],
+  /** padAxis bindings count as held above this deflection (after the deadzone). */
+  axisPressThreshold: 0.5,
+  /** Rebinding: stick deflection required to capture a padAxis binding. */
+  captureAxisThreshold: 0.7,
+  /** Stick deflection / trigger value that marks the gamepad as the active device. */
+  activityThreshold: 0.35,
+  /** Tracked button/axis counts (standard mapping: 17 buttons, 4 axes). */
+  maxButtons: 20,
+  maxAxes: 8,
+  /** Rumble requests are clamped to this duration (ms). */
+  maxRumbleMs: 2500,
   /** Aim assist (gamepad only; used from M2). */
   aimAssist: {
     slowdownRadiusDeg: 4,
@@ -116,4 +129,83 @@ export const GAMEPAD = {
     magnetismStrength: 0.35,
     maxRange: 45,
   },
+} as const;
+
+/** Pointer lock + raw mouse handling. */
+export const POINTER = {
+  /** Request raw (un-accelerated) mouse input; falls back automatically where unsupported. */
+  unadjustedMovement: true,
+  /** Mouse events within this window after locking are dropped (they carry the cursor-to-center jump). */
+  lockSettleMs: 50,
+  /** Additionally drop at least this many events after locking. */
+  skipEventsAfterLock: 1,
+  /** A single event is treated as a spike if its magnitude (|dx|+|dy|) exceeds this many counts … */
+  spikeMinCounts: 600,
+  /** … and this multiple of the recent average magnitude (genuine flicks ramp up). */
+  spikeRatio: 10,
+  /** EMA factor for the recent average event magnitude. */
+  spikeEmaAlpha: 0.25,
+  /** After this many consecutive rejections the movement is accepted (sustained fast flick, high-DPI mice). */
+  maxConsecutiveSpikes: 1,
+  /** Browsers refuse re-locking for about a second after the user left the lock with Escape. */
+  escapeCooldownMs: 1100,
+  /** Retry once after the cooldown when a request inside it was refused (the click activation is still valid). */
+  retryAfterCooldown: true,
+  retryMarginMs: 80,
+  /** Mouse movement (|dx|+|dy| counts per event) needed to switch the active device back to mouse. */
+  deviceSwitchCounts: 3,
+  /** After a mouse button was captured for rebinding, the following click is swallowed for this long. */
+  captureClickSuppressMs: 600,
+} as const;
+
+/** Keyboard/mouse handling not covered by bindings. */
+export const INPUT = {
+  /** Default timeout of captureBinding (ms). */
+  captureTimeoutMs: 8000,
+  /** Max bindings per action per device family (keyboard+mouse / gamepad): primary + secondary. */
+  maxBindingsPerFamily: 2,
+  /** Tracked mouse buttons (0 left, 1 middle, 2 right, 3 back, 4 forward). */
+  maxMouseButtons: 5,
+  /** Pixel-mode wheel deltas (trackpads) are accumulated; one wheel step per this many pixels. */
+  wheelPixelsPerStep: 40,
+  /**
+   * Codes whose browser default is suppressed while gameplay owns the keyboard (page scrolling,
+   * focus traversal, Firefox quick find, menu bar on Alt). Bound codes are always suppressed too.
+   * Reserved browser shortcuts (Ctrl+W/T/N, Cmd+Q, …) can NOT be suppressed outside fullscreen.
+   */
+  preventDefaultCodes: [
+    'Tab',
+    'Space',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'PageUp',
+    'PageDown',
+    'Home',
+    'End',
+    'Backspace',
+    'AltLeft',
+    'AltRight',
+    'Slash',
+    'Quote',
+    'F1',
+    'ContextMenu',
+  ],
+  /**
+   * While one of these is held during gameplay, closing the tab asks for confirmation
+   * (beforeunload). Mitigates Ctrl+W while crouching with Ctrl – that shortcut cannot be prevented.
+   */
+  unloadGuardCodes: ['ControlLeft', 'ControlRight', 'MetaLeft', 'MetaRight'],
+} as const;
+
+/**
+ * Console toggle. FIXED_KEYS.console (Backquote) always toggles; the fallback codes toggle only when
+ * they produce one of `keys` (Mac ISO layouts report the "^" key left of "1" as IntlBackslash).
+ */
+export const CONSOLE_KEY = {
+  fallbackCodes: ['IntlBackslash'],
+  keys: ['^', '`', '°', '~', 'Dead'],
+  /** Keys accepted when the browser reports no usable code at all. */
+  unidentifiedKeys: ['^', '`'],
 } as const;

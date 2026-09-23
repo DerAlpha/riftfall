@@ -79,6 +79,15 @@ try {
   await page.goto(`${base}?autostart=1&nolock=1&smoke=1`, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__RIFTFALL__?.ready === true, null, { timeout: 180_000 });
   report.bootMs = Date.now() - t0;
+  // Record movement events in-page: SwiftShader runs at a few FPS, so single snapshots can miss
+  // short states; the event log is timing-independent.
+  await page.evaluate(() => {
+    const ev = window.__RIFTFALL__.game.events;
+    window.__events = [];
+    for (const type of ['player:jump', 'player:slideStart', 'player:dash', 'player:mantle', 'player:land']) {
+      ev.on(type, (e) => window.__events.push({ type, double: e.double }));
+    }
+  });
   await sleep(2500);
 
   const snap = async (name) => {
@@ -104,9 +113,12 @@ try {
   await page.keyboard.press('Space');
   await sleep(600);
   await snap('03-sprint-doublejump');
+  // Slide test on a clear lane through the arena (z = 10, running towards +X).
+  await page.evaluate(() => window.__RIFTFALL__.teleport(-10, 0.1, 10, -90, 0));
+  await sleep(600);
   await page.keyboard.down('ShiftLeft');
   await page.keyboard.down('KeyW');
-  await sleep(700);
+  await sleep(1200);
   await page.keyboard.down('ControlLeft');
   await sleep(500);
   const slide = await page.evaluate(() => window.__RIFTFALL__.snapshot());
@@ -136,8 +148,22 @@ try {
   const end = report.steps[report.steps.length - 1];
   const moved = Math.hypot(end.position[0] - start.position[0], end.position[2] - start.position[2]);
   report.movedMeters = moved;
-  report.slideDetected = slide.state === 'slide' || report.steps.some((s) => s.state === 'slide');
-  report.ok = report.pageErrors.length === 0 && moved > 2;
+  const events = await page.evaluate(() => window.__events);
+  const count = (t) => events.filter((e) => e.type === t).length;
+  report.events = {
+    jump: count('player:jump'),
+    doubleJump: events.filter((e) => e.double).length,
+    slide: count('player:slideStart'),
+    dash: count('player:dash'),
+    land: count('player:land'),
+  };
+  report.slideDetected = report.events.slide > 0 || slide.state === 'slide';
+  report.ok =
+    report.pageErrors.length === 0 &&
+    moved > 2 &&
+    report.events.jump > 0 &&
+    report.slideDetected &&
+    report.events.dash > 0;
 } catch (err) {
   report.fatal = String(err?.stack || err);
 } finally {
@@ -145,5 +171,20 @@ try {
   await browser?.close().catch(() => {});
   server.kill('SIGTERM');
 }
-console.log(JSON.stringify({ ok: report.ok, bootMs: report.bootMs, moved: report.movedMeters, slide: report.slideDetected, pageErrors: report.pageErrors.length, consoleErrors: report.consoleErrors.length, fatal: report.fatal }, null, 2));
+console.info(
+  JSON.stringify(
+    {
+      ok: report.ok,
+      bootMs: report.bootMs,
+      events: report.events,
+      moved: report.movedMeters,
+      slide: report.slideDetected,
+      pageErrors: report.pageErrors.length,
+      consoleErrors: report.consoleErrors.length,
+      fatal: report.fatal,
+    },
+    null,
+    2,
+  ),
+);
 process.exit(report.ok ? 0 : 1);

@@ -160,7 +160,12 @@ export interface PhysicsApi {
   removeCollider(collider: RAPIER.Collider): void;
   /** Interpolate registered dynamic body visuals between the last two fixed steps. */
   syncVisuals(alpha: number): void;
-  raycast(origin: Vec3Like, direction: Vec3Like, maxDistance: number, opts?: RaycastOptions): RaycastHit | null;
+  raycast(
+    origin: Vec3Like,
+    direction: Vec3Like,
+    maxDistance: number,
+    opts?: RaycastOptions,
+  ): RaycastHit | null;
   getColliderData(collider: RAPIER.Collider): ColliderData | undefined;
   readonly stats: { bodies: number; colliders: number; dynamicBodies: number; stepMs: number };
   dispose(): void;
@@ -254,7 +259,10 @@ export interface LoadedModel {
 
 export interface AssetsApi {
   /** Loads all given ids (skipping cached), reporting progress. Never rejects. */
-  preload(ids: readonly string[], onProgress?: (loaded: number, total: number, label: string) => void): Promise<void>;
+  preload(
+    ids: readonly string[],
+    onProgress?: (loaded: number, total: number, label: string) => void,
+  ): Promise<void>;
   /** Equirectangular HDR environment (linear, HalfFloat). null if unavailable (caller uses procedural env). */
   loadHDRI(id: string): Promise<THREE.Texture | null>;
   /** Single texture; returns a clearly visible placeholder texture on failure. */

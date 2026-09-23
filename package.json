@@ -19,8 +19,7 @@
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm run test",
     "assets": "node scripts/fetch-assets.mjs",
-    "smoke": "node tools/smoke.mjs",
-    "postinstall": "node scripts/copy-decoders.mjs"
+    "smoke": "node tools/smoke.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",

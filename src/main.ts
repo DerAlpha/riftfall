@@ -1,6 +1,9 @@
 import './ui/styles.css';
 import { RenderSystem } from './render/RenderSystem';
 import { createLogger } from './core/log';
+import type { QualityPreset } from './save/settingsSchema';
+
+const PRESETS: readonly QualityPreset[] = ['low', 'medium', 'high', 'ultra'];
 
 const log = createLogger('Main');
 
@@ -31,6 +34,7 @@ async function boot(): Promise<void> {
     autostart: params.has('autostart'),
     noPointerLock: params.has('nolock'),
     exposeHandle: params.has('smoke') || import.meta.env.DEV,
+    forcePreset: PRESETS.find((p) => p === params.get('preset')) ?? null,
   });
   if (game.opts.exposeHandle) {
     (window as unknown as { __RIFTFALL__: unknown }).__RIFTFALL__ = game.createDebugHandle();

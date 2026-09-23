@@ -9,7 +9,10 @@ import { GameLoop } from '../core/GameLoop';
 import { createLogger } from '../core/log';
 import type { LevelInstance, SaveData } from '../core/contracts';
 import { ENGINE } from '../defs/engine';
-import { GRAPHICS_PRESETS } from '../defs/graphics';
+import { MOVEMENT } from '../defs/movement';
+import { GRAPHICS_PRESETS, RENDER } from '../defs/graphics';
+import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
+import { TEST_ROOM } from '../defs/maps';
 import { SaveSystem } from '../save/SaveSystem';
 import { SettingsStore } from '../save/SettingsStore';
 import type { QualityPreset, Settings } from '../save/settingsSchema';
@@ -34,6 +37,9 @@ import { registerDevCommands } from './devCommands';
 
 const log = createLogger('Game');
 
+/** Sun occlusion probe: a ray that only hits static world geometry. */
+const SUN_PROBE_GROUPS = interactionGroups(COLLISION_GROUP.WORLD, COLLISION_GROUP.WORLD);
+
 export interface GameOptions {
   /** Skip the start screen (automated tests). */
   autostart: boolean;
@@ -41,6 +47,8 @@ export interface GameOptions {
   noPointerLock: boolean;
   /** Expose a debug handle on window (smoke tests). */
   exposeHandle: boolean;
+  /** Force a graphics preset for this session and skip auto-detect/benchmark (`?preset=ultra`). */
+  forcePreset: QualityPreset | null;
 }
 
 function el(id: string): HTMLElement {
@@ -50,7 +58,6 @@ function el(id: string): HTMLElement {
 }
 
 export class Game {
-  readonly events = new EventBus<GameEvents>();
   readonly loop: GameLoop;
 
   private started = false;
@@ -58,6 +65,7 @@ export class Game {
   private time = 0;
   private readonly _yawDir = new THREE.Vector3();
   private readonly _up = new THREE.Vector3(0, 1, 0);
+  private readonly _toSun = new THREE.Vector3();
 
   private constructor(
     readonly opts: GameOptions,
@@ -80,9 +88,8 @@ export class Game {
     readonly debug: DebugOverlay,
     readonly devConsole: DevConsole,
     readonly menus: MenuController,
-    events: EventBus<GameEvents>,
+    readonly events: EventBus<GameEvents>,
   ) {
-    this.events = events;
     this.loop = new GameLoop(
       {
         beginFrame: (dt) => this.beginFrame(dt),
@@ -110,19 +117,26 @@ export class Game {
     progress(0.02, 'Lade Profil…');
     const save = await SaveSystem.create();
     const saveData = await save.load();
-    let saveTimer = 0;
+    // SettingsStore debounces; this runs once per burst of changes.
     const persist = (s: Settings): void => {
       saveData.settings = s;
-      window.clearTimeout(saveTimer);
-      saveTimer = window.setTimeout(() => void save.save(saveData), 0);
+      void save.save(saveData);
     };
     const settings = new SettingsStore(events, saveData.settings, persist);
 
     progress(0.08, 'Initialisiere Renderer…');
     const canvas = el('game-canvas') as HTMLCanvasElement;
-    const render = new RenderSystem(canvas, events, settings.current.graphics, settings.current.accessibility);
+    const render = new RenderSystem(
+      canvas,
+      events,
+      settings.current.graphics,
+      settings.current.accessibility,
+    );
 
-    if (!saveData.profile.qualityAutoDetected) {
+    if (opts.forcePreset) {
+      settings.update('graphics', { preset: opts.forcePreset, ...GRAPHICS_PRESETS[opts.forcePreset] });
+      saveData.profile.qualityBenchmarked = true;
+    } else if (!saveData.profile.qualityAutoDetected) {
       const preset = render.quality.detectPreset();
       log.info(`Auto-detected graphics preset "${preset}" for GPU: ${render.quality.gpuName}`);
       settings.update('graphics', { preset, ...GRAPHICS_PRESETS[preset] });
@@ -139,7 +153,6 @@ export class Game {
     const input = new InputSystem(canvas, events, settings);
 
     progress(0.2, 'Lade Assets…');
-    const { TEST_ROOM } = await import('../defs/maps');
     await assets.preload(TEST_ROOM.preload, (loaded, total, label) =>
       progress(0.2 + 0.25 * (total > 0 ? loaded / total : 1), `Lade ${label}…`),
     );
@@ -158,7 +171,9 @@ export class Game {
     render.scene.add(level.root);
 
     progress(0.92, 'Kalibriere Umgebung…');
-    const hdri = level.atmosphere.environment.hdri ? await assets.loadHDRI(level.atmosphere.environment.hdri) : null;
+    const hdri = level.atmosphere.environment.hdri
+      ? await assets.loadHDRI(level.atmosphere.environment.hdri)
+      : null;
     render.applyAtmosphere(level.atmosphere, hdri);
     audio.setReverbZone(level.atmosphere.reverb);
 
@@ -168,9 +183,10 @@ export class Game {
     });
     const playerCamera = new PlayerCamera({ player, input, render, events, settings });
     const viewmodel = new ViewmodelRig({ render, player, camera: playerCamera, events });
-    const health = new PlayerHealth(events);
+    const health = new PlayerHealth({ events, player });
 
     const hud = new Hud(el('hud'), events, settings);
+    health.announce();
     const debug = new DebugOverlay(el('debug'), events);
     const devConsole = new DevConsole(el('console'), events);
 
@@ -181,7 +197,11 @@ export class Game {
       events,
       onStart: () => gameRef?.startPlaying(),
       onResume: () => gameRef?.resumeFromMenu(),
-      getInfo: () => ({ gpuName: render.quality.gpuName, saveBackend: save.backendName, version: __APP_VERSION__ }),
+      getInfo: () => ({
+        gpuName: render.quality.gpuName,
+        saveBackend: save.backendName,
+        version: __APP_VERSION__,
+      }),
     });
 
     const game = new Game(
@@ -258,9 +278,18 @@ export class Game {
     cam.getWorldDirection(this._yawDir);
     this.audio.setListener(cam.position, this._yawDir, this._up);
 
-    this.render.setAdsAmount(this.player.adsAmount);
-    this.hud.setDash(this.player.dashCharges, this.player.unlocks.dash ? 2 : 0, this.player.dashRecharge);
-    this.hud.update(dt, this.player.yaw);
+    // Is the eye in direct sunlight? One ray per frame towards the sun (static world only).
+    this._toSun.copy(this.render.sunDirection).negate();
+    const blocked = this.physics.raycast(cam.position, this._toSun, RENDER.viewmodelSunProbeDistance, {
+      groups: SUN_PROBE_GROUPS,
+      excludeCollider: this.player.collider,
+    });
+    this.render.setViewmodelSunVisibility(blocked ? 0 : 1, dt);
+
+    const p = this.player;
+    this.hud.setDash(p.dashCharges, p.unlocks.dash ? MOVEMENT.dash.charges : 0, p.dashRecharge);
+    this.hud.setMovement(Math.hypot(p.velocity.x, p.velocity.z), p.state);
+    this.hud.update(dt, p.yaw);
   }
 
   private renderFrame(realDt: number, alpha: number): void {
@@ -298,6 +327,17 @@ export class Game {
 
     this.events.on('ui:console', ({ open }) => {
       this.input.enabled = !open && this.pausedFor.size === 0;
+      // A real Esc while the console was open releases pointer lock without opening the menu;
+      // closing the console must then fall back to the pause menu instead of lock-less gameplay.
+      if (
+        !open &&
+        this.started &&
+        this.pausedFor.size === 0 &&
+        !this.opts.noPointerLock &&
+        !this.input.pointerLocked
+      ) {
+        this.openPauseMenu('pointerlock');
+      }
     });
 
     this.events.on('settings:changed', ({ settings, sections }) => {
@@ -316,10 +356,13 @@ export class Game {
     });
     this.events.on('fx:hitPulse', ({ strength }) => this.render.addHitPulse(strength));
 
-    window.addEventListener('beforeunload', () => {
-      this.settings.flush?.();
+    const persistNow = (): void => {
+      this.settings.flush();
       void this.save.save(this.saveData);
-    });
+    };
+    // pagehide is the reliable signal on mobile Safari; beforeunload covers desktop browsers.
+    window.addEventListener('pagehide', persistNow);
+    window.addEventListener('beforeunload', persistNow);
   }
 
   /** Called from the start screen click (a user gesture: pointer lock + audio unlock are allowed). */
@@ -372,7 +415,10 @@ export class Game {
     this.input.enabled = !paused && !this.devConsole.open;
     this.audio.setPaused(paused);
     if (!paused) this.loop.resetAccumulator();
-    this.events.emit(paused ? 'game:paused' : 'game:resumed', paused ? { reason: [...this.pausedFor][0] ?? 'menu' } : {});
+    this.events.emit(
+      paused ? 'game:paused' : 'game:resumed',
+      paused ? { reason: [...this.pausedFor][0] ?? 'menu' } : {},
+    );
   }
 
   /** First-run benchmark: may downgrade the auto-detected preset once. */
@@ -459,6 +505,11 @@ export class Game {
           missingAssets: [...this.assets.missing],
         };
       },
+      teleport: (x: number, y: number, z: number, yawDeg = 0, pitchDeg = 0) => {
+        this.player.teleport({ x, y, z }, THREE.MathUtils.degToRad(yawDeg));
+        this.player.pitch = THREE.MathUtils.degToRad(pitchDeg);
+      },
+      exec: (line: string) => this.devConsole.execute(line),
       setLook: (yawDeg: number, pitchDeg: number) => {
         this.player.yaw = THREE.MathUtils.degToRad(yawDeg);
         this.player.pitch = THREE.MathUtils.degToRad(pitchDeg);

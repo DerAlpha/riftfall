@@ -131,7 +131,11 @@ export function registerDevCommands(game: Game): void {
         game.settings.update('graphics', { dynamicResolution: true, preset: 'custom' });
         return 'Dynamische Auflösung AN';
       }
-      game.settings.update('graphics', { renderScale: num(v, 'rscale'), dynamicResolution: false, preset: 'custom' });
+      game.settings.update('graphics', {
+        renderScale: num(v, 'rscale'),
+        dynamicResolution: false,
+        preset: 'custom',
+      });
       return `Render-Skalierung ${game.settings.current.graphics.renderScale}`;
     },
   });
@@ -194,7 +198,12 @@ export function registerDevCommands(game: Game): void {
 
   // Stubs for later milestones – keeps the console API stable.
   const later = (name: string, usage: string, description: string, milestone: number): void =>
-    c.register({ name, usage, description, run: () => `„${name}“ ist ab Meilenstein ${milestone} verfügbar.` });
+    c.register({
+      name,
+      usage,
+      description,
+      run: () => `„${name}“ ist ab Meilenstein ${milestone} verfügbar.`,
+    });
   later('wave', 'wave <n>', 'Welle setzen', 3);
   later('spawn', 'spawn <gegner> [anzahl]', 'Gegner spawnen', 3);
   later('give', 'give <waffe>', 'Waffe geben', 2);

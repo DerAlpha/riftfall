@@ -34,7 +34,13 @@ export interface GameEvents {
   // --- player movement (emitted from fixed tick) ---
   'player:jump': { double: boolean; position: Vec3Like };
   'player:land': { impactSpeed: number; heavy: boolean; position: Vec3Like; surface: SurfaceType };
-  'player:footstep': { position: Vec3Like; speed: number; sprinting: boolean; crouched: boolean; surface: SurfaceType };
+  'player:footstep': {
+    position: Vec3Like;
+    speed: number;
+    sprinting: boolean;
+    crouched: boolean;
+    surface: SurfaceType;
+  };
   'player:slideStart': { speed: number; position: Vec3Like };
   'player:slideEnd': Record<string, never>;
   'player:dash': { direction: Vec3Like; chargesLeft: number; position: Vec3Like };
@@ -44,6 +50,7 @@ export interface GameEvents {
   'player:teleported': { position: Vec3Like };
 
   // --- combat feedback (M1: driven by dev console `hurt`) ---
+  /** `direction`: world space, from the player TOWARDS the damage source (HUD indicator uses x/z only). */
   'player:damaged': { amount: number; healthFraction: number; direction?: Vec3Like };
   'player:healthChanged': { health: number; maxHealth: number; armor: number; maxArmor: number };
 

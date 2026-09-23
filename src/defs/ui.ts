@@ -2,6 +2,7 @@
  * UI tuning: HUD behaviour, debug overlay, dev console, loading screen and menu ranges.
  * Visual styling lives in src/ui/styles.css; values here are the ones TS code needs.
  */
+import type { HitZone } from '../core/events';
 import { CAMERA } from './camera';
 
 export const HUD = {
@@ -14,6 +15,10 @@ export const HUD = {
     /** Spread changes below this (0..1) are not written to the DOM. */
     spreadQuantum: 0.01,
     defaultColor: '#e8f6ff',
+    /** Crosshair fades out between these ADS amounts (0..1); opacity changes below the epsilon are skipped. */
+    adsFadeStart: 0.2,
+    adsFadeEnd: 0.75,
+    opacityEpsilon: 0.02,
   },
   damageIndicator: {
     /** Pooled indicator elements (simultaneous directions). */
@@ -52,6 +57,73 @@ export const HUD = {
   },
   fps: {
     refreshHz: 4,
+  },
+  /** Zones that count as critical hits (yellow-orange hitmarker and damage numbers). */
+  critZones: ['head', 'weakpoint'] as readonly HitZone[],
+  /**
+   * Hitmarker (X at the crosshair). Per variant: size (scale multiplier), visible time, fade-out at
+   * its end, pop (start scale easing to 1 over popTime) and `hold` – a lower-ranked hit cannot
+   * replace the marker for this long (kill > crit > hit > shield).
+   */
+  hitmarker: {
+    variants: {
+      shield: { size: 0.85, duration: 0.2, fade: 0.1, popScale: 1.2, popTime: 0.05, hold: 0.04 },
+      hit: { size: 1, duration: 0.26, fade: 0.14, popScale: 1.5, popTime: 0.06, hold: 0.05 },
+      crit: { size: 1.18, duration: 0.34, fade: 0.16, popScale: 1.65, popTime: 0.07, hold: 0.1 },
+      kill: { size: 1.6, duration: 0.55, fade: 0.25, popScale: 1.9, popTime: 0.09, hold: 0.22 },
+    },
+    /** Reduce flashing: gentler pop and a dimmer marker. */
+    reducedPopScale: 1.12,
+    reducedOpacity: 0.75,
+    /** Scale/opacity changes below this are not written to the DOM. */
+    epsilon: 0.01,
+  },
+  /** Floating damage numbers projected from the hit point. */
+  damageNumbers: {
+    pool: 24,
+    /** Hits on one target within this window add up into one number (s). */
+    mergeWindow: 0.08,
+    lifetime: 0.95,
+    fadeTime: 0.35,
+    /** A merge rewinds the age to at most this fraction of the lifetime. */
+    mergeAgeCap: 0.3,
+    risePx: 48,
+    jitterPx: 18,
+    popScale: 1.45,
+    popTime: 0.09,
+    critScale: 1.22,
+    killScale: 1.35,
+    /** Full size up to refDistance (m), then shrinking with distance down to minScale. */
+    refDistance: 7,
+    minScale: 0.62,
+    /** Points closer than this in front of the camera (m) or beyond this NDC range are hidden. */
+    minDepth: 0.05,
+    offscreenNdc: 1.1,
+    /** Screen position changes below this (px) are not written. */
+    pxEpsilon: 0.4,
+  },
+  /** Kill confirmation under the crosshair with a streak counter. */
+  killConfirm: {
+    duration: 2.1,
+    fade: 0.45,
+    popScale: 1.35,
+    popTime: 0.12,
+    /** Kills within this many seconds of each other count as a streak. */
+    streakWindow: 4,
+    labels: { kill: 'ELIMINIERT', head: 'KOPFSCHUSS', weakpoint: 'KERNTREFFER' },
+  },
+  ammo: {
+    /** Low-ammo warning at or below this fraction of the magazine. */
+    lowFraction: 0.25,
+    /** Dry fire flashes the counter for this long (s). */
+    dryFlashSeconds: 0.28,
+    prompts: { reload: 'NACHLADEN', empty: 'KEINE MUNITION' },
+  },
+  weapon: {
+    /** The weapon name flares for this long after a switch (s). */
+    switchFlashSeconds: 0.6,
+    /** Label of an empty inventory slot. */
+    emptySlot: '—',
   },
 } as const;
 
@@ -146,10 +218,6 @@ export const MENU = {
    * system lands.
    */
   plannedMilestone: {
-    particles: 2,
-    hitmarkers: 2,
-    damageNumbers: 2,
-    aimAssist: 2,
     subtitles: 11,
   },
 } as const;

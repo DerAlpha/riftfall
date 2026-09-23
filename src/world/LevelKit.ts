@@ -985,7 +985,7 @@ export class LevelKit {
     const h = opts.size / 2;
     const body = this.opts.physics.addDynamicBox(opts.center, { x: h, y: h, z: h }, mesh, {
       rotation: rot,
-      data: { kind: 'prop', surface: def?.surface ?? 'metal' },
+      data: { kind: 'prop', surface: def?.surface ?? 'metal', penetrable: def?.penetrable },
     });
     this.bodies.push(body);
     return mesh;

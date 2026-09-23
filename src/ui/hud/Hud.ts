@@ -2,14 +2,30 @@
  * In-game HUD (plain DOM, no framework). All per-frame setters compare against cached values and
  * only touch the DOM when something visible changed; animated values are written as transforms /
  * opacity so the browser can composite them without layout.
+ *
+ * Combat HUD (M2) – the HUD subscribes itself to:
+ * - `combat:damage` / `combat:kill` (source 'player' only): hitmarker (hit / crit / kill / shield),
+ *   floating damage numbers (merged per target within HUD.damageNumbers.mergeWindow), kill
+ *   confirmation + streak counter; gated by settings.gameplay.hitmarkers / damageNumbers and
+ *   toned down by accessibility.reduceFlashing,
+ * - `weapon:ammoChanged` (mag / reserve / magSize, low-ammo + empty states, NACHLADEN / KEINE
+ *   MUNITION prompt), `weapon:reloadStart` / `weapon:reloadEnd` (prompt hidden while reloading),
+ *   `weapon:dryFire` (counter flash), `weapon:inventoryChanged` / `weapon:equipStart` /
+ *   `weapon:equipped` (weapon name + slot chips).
+ * Game.ts feeds per frame: setSpread(weapons.spread), setAds(weapons.adsAmount), update(dt, yaw);
+ * once: setCamera(render.camera) – damage numbers are projected with it.
  */
+import type { Camera } from 'three';
 import type { SettingsStore } from '../../core/contracts';
 import type { EventBus } from '../../core/EventBus';
 import type { GameEvents, MovementState, Vec3Like } from '../../core/events';
-import { DEG2RAD, RAD2DEG, clamp01, lerp, wrapAngle } from '../../core/math';
+import { DEG2RAD, RAD2DEG, clamp01, lerp, smoothstep, wrapAngle } from '../../core/math';
 import { PLAYER } from '../../defs/player';
 import { HUD } from '../../defs/ui';
 import type { Settings } from '../../save/settingsSchema';
+import { CombatHud } from './CombatHud';
+import { WeaponHud } from './WeaponHud';
+import './hud-combat.css';
 
 const CROSSHAIR_STYLES = ['dot', 'cross', 'circle', 'chevron'] as const;
 const COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
@@ -63,14 +79,19 @@ export class Hud {
   private readonly movementSpeed: HTMLSpanElement;
   private readonly movementState: HTMLSpanElement;
   private readonly fpsEl: HTMLDivElement;
-  private readonly ammoMag: HTMLSpanElement;
-  private readonly ammoReserve: HTMLSpanElement;
+  private readonly combat: CombatHud;
+  private readonly weapon: WeaponHud;
   private readonly pointsValue: HTMLSpanElement;
   private readonly waveValue: HTMLSpanElement;
   private readonly indicators: DamageIndicator[] = [];
 
   // cached shown values
   private spread = -1;
+  private ads = 0;
+  private shownCrosshairOpacity = 1;
+  private viewportW = 0;
+  private viewportH = 0;
+  private readonly onResize = (): void => this.measureViewport();
   private health = -1;
   private maxHealth = -1;
   private armor = -1;
@@ -125,6 +146,9 @@ export class Hud {
     this.hitVignette = h('div', 'hud-hit', this.el);
     this.hitVignette.style.opacity = '0';
 
+    // --- hit feedback (hitmarker, damage numbers, kill confirmation) ---
+    this.combat = new CombatHud(this.el);
+
     // --- top left: wave ---
     const tl = h('div', 'hud-corner hud-corner--tl', this.el);
     const wave = h('div', 'hud-wave hud-placeholder', tl);
@@ -165,18 +189,13 @@ export class Hud {
     this.healthFill = h('div', 'hud-bar__fill', healthTrack);
     this.healthValue = h('span', 'hud-bar__value', this.healthBar);
 
-    // --- bottom right: points + ammo (placeholders in M1) ---
+    // --- bottom right: points (placeholder until M4), weapon + ammo ---
     const br = h('div', 'hud-corner hud-corner--br', this.el);
     const points = h('div', 'hud-points hud-placeholder', br);
     h('span', 'hud-label', points).textContent = 'PUNKTE';
     this.pointsValue = h('span', 'hud-points__value', points);
     this.pointsValue.textContent = '—';
-    const ammo = h('div', 'hud-ammo hud-placeholder', br);
-    this.ammoMag = h('span', 'hud-ammo__mag', ammo);
-    this.ammoMag.textContent = '—';
-    h('span', 'hud-ammo__sep', ammo).textContent = '/';
-    this.ammoReserve = h('span', 'hud-ammo__reserve', ammo);
-    this.ammoReserve.textContent = '—';
+    this.weapon = new WeaponHud(br, this.el);
 
     // --- bottom center: movement readout ---
     this.movementEl = h('div', 'hud-movement', this.el);
@@ -209,12 +228,50 @@ export class Hud {
       events.on('ui:menu', ({ open }) => this.el.classList.toggle('hud--menu', open)),
       // update() does not run while paused: the pause must not count as one very long frame.
       events.on('game:resumed', () => this.resetFps()),
+      events.on('combat:damage', (e) => {
+        if (e.source === 'player') this.combat.onDamage(e.targetId, e.amount, e.zone, e.killed, e.point);
+      }),
+      events.on('combat:kill', (e) => {
+        if (e.source === 'player') this.combat.onKill(e.zone);
+      }),
+      events.on('weapon:ammoChanged', (e) => this.weapon.setAmmo(e.mag, e.reserve, e.magSize)),
+      events.on('weapon:inventoryChanged', (e) => this.weapon.setInventory(e.slots, e.current)),
+      events.on('weapon:equipStart', (e) => this.weapon.setWeapon(e.weaponId, e.slot)),
+      events.on('weapon:equipped', (e) => this.weapon.setWeapon(e.weaponId, e.slot)),
+      events.on('weapon:reloadStart', () => this.weapon.setReloading(true)),
+      events.on('weapon:reloadEnd', () => this.weapon.setReloading(false)),
+      events.on('weapon:dryFire', () => this.weapon.onDryFire()),
     );
+    if (typeof window !== 'undefined') window.addEventListener('resize', this.onResize);
+    this.measureViewport();
   }
 
   // -------------------------------------------------------------------------
   // Public API
   // -------------------------------------------------------------------------
+
+  /** World camera used to project damage numbers (render.camera); null hides them. */
+  setCamera(camera: Camera | null): void {
+    this.combat.setCamera(camera);
+  }
+
+  /** 0..1 aim-down-sights amount: the crosshair fades out while aiming (hitmarkers stay). */
+  setAds(amount: number): void {
+    const a = clamp01(Number.isFinite(amount) ? amount : 0);
+    this.ads = a;
+    const C = HUD.crosshair;
+    const op = 1 - smoothstep(C.adsFadeStart, C.adsFadeEnd, a);
+    // Small steps are skipped, but the fully shown / fully hidden end states are always written.
+    const endState = op === 0 || op === 1;
+    if (op === this.shownCrosshairOpacity) return;
+    if (!endState && Math.abs(op - this.shownCrosshairOpacity) < C.opacityEpsilon) return;
+    this.shownCrosshairOpacity = op;
+    this.crosshair.style.opacity = op >= 1 ? '' : op.toFixed(3);
+  }
+
+  get adsAmount(): number {
+    return this.ads;
+  }
 
   /** Crosshair spread 0..1 (weapon bloom / movement). */
   setSpread(spread: number): void {
@@ -275,11 +332,12 @@ export class Hud {
     return this.movementVisible;
   }
 
-  /** M2+: ammo in magazine / reserve (null shows the placeholder). */
-  setAmmo(mag: number | null, reserve: number | null): void {
-    this.setPlaceholderText(this.ammoMag, mag === null ? '—' : String(mag));
-    this.setPlaceholderText(this.ammoReserve, reserve === null ? '—' : String(reserve));
-    this.ammoMag.parentElement?.classList.toggle('hud-placeholder', mag === null);
+  /**
+   * Ammo in magazine / reserve (null shows the placeholder). Normally fed by weapon:ammoChanged;
+   * `magSize` drives the magazine bar and the low-ammo warning.
+   */
+  setAmmo(mag: number | null, reserve: number | null, magSize?: number): void {
+    this.weapon.setAmmo(mag, reserve, magSize);
   }
 
   /** M4+: points (null shows the placeholder). */
@@ -305,11 +363,15 @@ export class Hud {
     this.updateIndicators(d, Number.isFinite(cameraYaw) ? cameraYaw : 0);
     this.updateMovement(d);
     this.updateFps();
+    this.combat.update(d, this.viewportW, this.viewportH);
+    this.weapon.update(d);
   }
 
   dispose(): void {
     for (const u of this.unsubs) u();
     this.unsubs.length = 0;
+    if (typeof window !== 'undefined') window.removeEventListener('resize', this.onResize);
+    this.combat.setCamera(null);
     this.el.remove();
   }
 
@@ -333,6 +395,12 @@ export class Hud {
     this.el.style.setProperty('--hud-scale', String(scale));
     this.reduceFlashing = a.reduceFlashing;
     this.el.classList.toggle('hud--reduce-flashing', a.reduceFlashing);
+    this.combat.configure({
+      hitmarkers: g.hitmarkers !== false,
+      damageNumbers: g.damageNumbers !== false,
+      reduceFlashing: a.reduceFlashing,
+      hudScale: scale,
+    });
     for (const cls of COLORBLIND_CLASSES) this.el.classList.toggle(cls, cls === `cb-${a.colorblindMode}`);
 
     const showFps = s.graphics.showFps;
@@ -341,6 +409,13 @@ export class Hud {
       this.fpsEl.hidden = !showFps;
       this.resetFps();
     }
+  }
+
+  /** Viewport in CSS px (the HUD layer covers the window); cached – no layout reads per frame. */
+  private measureViewport(): void {
+    if (typeof window === 'undefined') return;
+    this.viewportW = window.innerWidth;
+    this.viewportH = window.innerHeight;
   }
 
   private resetFps(): void {

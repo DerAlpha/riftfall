@@ -82,9 +82,21 @@ try {
   // Record movement events in-page: SwiftShader runs at a few FPS, so single snapshots can miss
   // short states; the event log is timing-independent.
   await page.evaluate(() => {
-    const ev = window.__RIFTFALL__.game.events;
+    const ev = window.__RIFTFALL__.game.sys.events;
     window.__events = [];
-    for (const type of ['player:jump', 'player:slideStart', 'player:dash', 'player:mantle', 'player:land']) {
+    for (const type of [
+      'player:jump',
+      'player:slideStart',
+      'player:dash',
+      'player:mantle',
+      'player:land',
+      'weapon:fired',
+      'weapon:reloadStart',
+      'weapon:equipped',
+      'combat:damage',
+      'combat:impact',
+      'combat:kill',
+    ]) {
       ev.on(type, (e) => window.__events.push({ type, double: e.double }));
     }
   });
@@ -147,7 +159,37 @@ try {
   await sleep(300);
   await snap('07-console');
   await page.keyboard.press('Backquote');
-  const end = report.steps[report.steps.length - 1];
+
+  // Shooting range: pistol taps at a dummy, then a rifle burst and a reload.
+  await page.evaluate(() => window.__RIFTFALL__.teleport(-5.5, 0.1, -12.5, 0, -2));
+  await page.keyboard.press('Digit1');
+  await sleep(1500);
+  const canvas = await page.$('#game-canvas');
+  const box = await canvas.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  for (let i = 0; i < 5; i++) {
+    await page.mouse.down();
+    await sleep(120);
+    await page.mouse.up();
+    await sleep(350);
+  }
+  await snap('08-pistol');
+  await page.keyboard.press('Digit2');
+  await sleep(1500);
+  await page.mouse.down();
+  await sleep(1500);
+  await snap('09-rifle-burst');
+  await page.mouse.up();
+  await page.keyboard.press('KeyR');
+  await sleep(2500);
+  await page.keyboard.press('Digit3');
+  await sleep(1500);
+  await page.mouse.down();
+  await sleep(150);
+  await page.mouse.up();
+  await sleep(300);
+  await snap('10-shotgun');
+  const end = report.steps.find((st) => st.name === '07-console') ?? report.steps[report.steps.length - 1];
   const moved = Math.hypot(end.position[0] - start.position[0], end.position[2] - start.position[2]);
   report.movedMeters = moved;
   const events = await page.evaluate(() => window.__events);
@@ -158,6 +200,11 @@ try {
     slide: count('player:slideStart'),
     dash: count('player:dash'),
     land: count('player:land'),
+    fired: count('weapon:fired'),
+    reload: count('weapon:reloadStart'),
+    damage: count('combat:damage'),
+    impact: count('combat:impact'),
+    kill: count('combat:kill'),
   };
   report.slideDetected = report.events.slide > 0 || slide.state === 'slide';
   report.ok =
@@ -166,7 +213,11 @@ try {
     report.events.jump > 0 &&
     report.events.doubleJump > 0 &&
     report.slideDetected &&
-    report.events.dash > 0;
+    report.events.dash > 0 &&
+    report.events.fired > 0 &&
+    report.events.damage > 0 &&
+    report.events.impact > 0 &&
+    report.events.reload > 0;
 } catch (err) {
   report.fatal = String(err?.stack || err);
 } finally {

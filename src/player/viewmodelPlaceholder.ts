@@ -14,6 +14,7 @@ import {
   Matrix4,
   Mesh,
   MeshPhysicalMaterial,
+  Object3D,
   MeshStandardMaterial,
   PlaneGeometry,
   Quaternion,
@@ -136,6 +137,18 @@ const COLORS = {
 /** Where the core light should sit (barrel center), in model space. */
 export const PLACEHOLDER_CORE_POSITION = { x: 0, y: 0.035, z: -0.27 } as const;
 
+/**
+ * Effect sockets (model space, rotation in degrees; local −Z = effect direction) so muzzle flash,
+ * tracers and casings also work while no weapon model is shown.
+ */
+export const PLACEHOLDER_SOCKETS = {
+  muzzle: { pos: [0, 0.035, -0.372], rot: [0, 0, 0] },
+  ejectPort: { pos: [0.034, 0.06, -0.06], rot: [-40, -110, 0] },
+  sight: { pos: [0, 0.084, -0.05], rot: [0, 0, 0] },
+} as const;
+
+export type PlaceholderSocket = keyof typeof PLACEHOLDER_SOCKETS;
+
 export interface PlaceholderDevice {
   root: Group;
   /** Materials whose emissive intensity the rig animates. */
@@ -143,6 +156,7 @@ export interface PlaceholderDevice {
   stripMaterial: MeshStandardMaterial;
   screenMaterial: MeshStandardMaterial;
   screenTexture: DataTexture;
+  sockets: Record<PlaceholderSocket, Object3D>;
   dispose(): void;
 }
 
@@ -261,8 +275,21 @@ export function createPlaceholderDevice(): PlaceholderDevice {
     root.add(mesh);
   }
 
+  const DEG = Math.PI / 180;
+  const sockets = {} as Record<PlaceholderSocket, Object3D>;
+  for (const key of Object.keys(PLACEHOLDER_SOCKETS) as PlaceholderSocket[]) {
+    const def = PLACEHOLDER_SOCKETS[key];
+    const socket = new Object3D();
+    socket.name = `socket-${key}`;
+    socket.position.set(def.pos[0], def.pos[1], def.pos[2]);
+    socket.rotation.set(def.rot[0] * DEG, def.rot[1] * DEG, def.rot[2] * DEG);
+    root.add(socket);
+    sockets[key] = socket;
+  }
+
   return {
     root,
+    sockets,
     coreMaterial: materials.core,
     stripMaterial: materials.strip,
     screenMaterial: materials.screen,

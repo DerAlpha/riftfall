@@ -23,6 +23,7 @@ import {
 } from '../defs/level';
 import { TEST_ROOM, type MapAtmosphereDef } from '../defs/maps';
 import { getMaterialDef, type MaterialId } from '../defs/materials';
+import { TARGETS } from '../defs/targets';
 import type { GraphicsSettings, QualityLevel } from '../save/settingsSchema';
 import { DustParticles, dustRegionsWithCones } from '../render/vfx/DustParticles';
 import {
@@ -101,6 +102,7 @@ export function testRoomSolidFootprints(): Rect[] {
 
 const _dir = new THREE.Vector3();
 const _color = new THREE.Color();
+const _up = new THREE.Vector3(0, 1, 0);
 
 function color3(c: readonly [number, number, number]): THREE.Color {
   return new THREE.Color().setRGB(c[0], c[1], c[2], THREE.LinearSRGBColorSpace);
@@ -264,6 +266,7 @@ export const buildTestRoom: LevelBuilder = async (ctx) => {
   buildMezzanine(kit);
   buildCorridor(kit);
   buildMantleCourse(kit);
+  buildRange(kit);
   buildDoubleJump(kit);
   buildPit(kit);
   buildDressing(kit);
@@ -1078,6 +1081,49 @@ function buildMantleCourse(kit: LevelKit): void {
       { x: fw, y: g.top - g.bottom, z: fd },
       { collider: false },
     );
+  }
+}
+
+/** Shooting range: distance dashes along the lane and the rail tracks of moving dummies. */
+function buildRange(kit: LevelKit): void {
+  const r = L.range;
+  for (const z of r.distanceMarkers) {
+    for (const x of [r.minX, r.maxX - r.markerLength]) {
+      kit.marking(M.stripCyan, x, z - r.markerDepth / 2, x + r.markerLength, z + r.markerDepth / 2, 0);
+    }
+  }
+  const R = TARGETS.rail;
+  const rot = new THREE.Quaternion();
+  for (const t of L.targets) {
+    if (!t.rail) continue;
+    const [x0, , z0] = t.position;
+    const [x1, , z1] = t.rail.to;
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    if (!(len > 0)) continue;
+    // Local +Z runs along the rail, +X across it.
+    rot.setFromAxisAngle(_up, Math.atan2(x1 - x0, z1 - z0));
+    const ax = (z1 - z0) / len;
+    const az = -(x1 - x0) / len;
+    const mx = (x0 + x1) / 2;
+    const mz = (z0 + z1) / 2;
+    const noCollider = { rotation: rot, collider: false };
+    for (const side of [-0.5, 0.5]) {
+      kit.box(
+        M.trim,
+        { x: mx + ax * side * R.gauge, y: R.height / 2, z: mz + az * side * R.gauge },
+        { x: R.barWidth, y: R.height, z: len + R.stopLength * 2 },
+        noCollider,
+      );
+    }
+    for (const end of [-0.5, 0.5]) {
+      const d = end * (len + R.stopLength * 3);
+      kit.box(
+        M.hazard,
+        { x: mx + ((x1 - x0) / len) * d, y: R.stopHeight / 2, z: mz + ((z1 - z0) / len) * d },
+        { x: R.gauge + R.barWidth * 2, y: R.stopHeight, z: R.stopLength },
+        noCollider,
+      );
+    }
   }
 }
 

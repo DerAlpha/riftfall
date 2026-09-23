@@ -1,5 +1,5 @@
 /** Audio engine tuning. Volumes are linear gain 0..1, times in seconds. */
-import type { SurfaceType } from '../core/events';
+import type { FleshSurface, HitZone, ImpactKind, SurfaceType } from '../core/events';
 
 export const AUDIO = {
   buses: ['music', 'sfx', 'voice', 'ui'] as const,
@@ -142,6 +142,88 @@ export const AUDIO = {
      * plays the resampled pre-rendered sounds meanwhile.
      */
     prewarmSampleRate: 48000,
+    /** Variants per gunshot id (full-auto needs more to avoid the machine-gun effect) and per impact. */
+    weaponFireVariants: 5,
+    impactVariants: 4,
+  },
+
+  /** Weapon / combat sound mapping and levels (AudioEventBridge, sounds in audio/weaponSynth.ts). */
+  weapons: {
+    /** Gunshot layers (WeaponAudioDef.fire order: body, mechanical, tail); later layers reuse the last gain. */
+    fireGain: 0.9,
+    fireLayerGains: [1, 0.62, 0.5] as readonly number[],
+    firePitchVariance: 0.035,
+    /**
+     * Extra per-shot layers by weapon id, until WeaponAudioDef grows a field for them: the SG-12
+     * pump-cycle sound carries its own lead-in so it lines up with the viewmodel's pump stroke.
+     */
+    extraFireLayers: { shotgun: ['weapon.shotgun.pumpCycle'] } as Readonly<Record<string, readonly string[]>>,
+    extraLayerGain: 0.7,
+    /** Mechanical "last rounds" tick: from ceil(magazine × fraction) rounds (at most maxRounds) down. */
+    lowAmmo: { id: 'weapon.lowAmmo', fraction: 0.25, maxRounds: 6, gain: 0.3, pitchRise: 0.35 },
+    dryGain: 0.55,
+    equipGain: 0.5,
+    holsterGain: 0.4,
+    reloadStartGain: 0.45,
+    reloadStepGain: 0.62,
+    inspectGain: 0.4,
+    meleeGain: 0.55,
+    meleeHitId: 'weapon.melee.hit',
+    meleeHitGain: 0.8,
+    handlingPitchVariance: 0.04,
+    /** Positional impact sounds per surface (combat:impact). */
+    impactSounds: {
+      metal: 'impact.metal',
+      concrete: 'impact.concrete',
+      grate: 'impact.grate',
+      rubber: 'impact.rubber',
+      glass: 'impact.glass',
+      default: 'impact.concrete',
+      flesh: 'impact.flesh',
+      slime: 'impact.slime',
+      armor: 'impact.metal',
+      shield: 'impact.shield',
+    } satisfies Record<SurfaceType | FleshSurface, string>,
+    impactGain: 0.62,
+    /** Per-kind gain multipliers (pellets: nine at once; melee: one heavy blow). */
+    impactKindGain: {
+      bullet: 1,
+      pellet: 0.55,
+      projectile: 1,
+      melee: 1.2,
+      explosion: 0,
+      beam: 0.6,
+    } satisfies Record<ImpactKind, number>,
+    impactPitchVariance: 0.09,
+    /** Token bucket for impact sounds: burst capacity and refill per second (shotgun blasts, walls of lead). */
+    impactBurst: 5,
+    impactRefillPerSecond: 45,
+    /** Casing clinks (VFX onClink callback → AudioEventBridge.playCasing). */
+    casingGain: 0.32,
+    /** Clink speed (m/s) mapped to [casingMinGain, 1]. */
+    casingSpeedRange: [0.5, 4] as const,
+    casingMinGain: 0.35,
+    casingPitchVariance: 0.12,
+    casingBurst: 4,
+    casingRefillPerSecond: 16,
+    /** Hit feedback (ui bus: dry and crisp). Only the player's own hits (source 'player') sound. */
+    hitSounds: {
+      hit: 'ui.hitmarker',
+      crit: 'ui.headshot',
+      kill: 'ui.kill',
+    },
+    hitGain: 0.42,
+    critGain: 0.5,
+    killGain: 0.62,
+    /** Head/weakpoint kills layer the crit ding under the kill sound at this gain. */
+    critKillLayerGain: 0.35,
+    /** Shield hits: the hitmarker plays lower and quieter ("blocked"). */
+    shieldHitPitch: 0.72,
+    shieldHitGain: 0.3,
+    /** Zones that count as critical hits (sound + HUD color). */
+    critZones: ['head', 'weakpoint'] as readonly HitZone[],
+    /** Hit sounds closer together than this are merged (s). */
+    hitMinInterval: 0.03,
   },
 } as const;
 

@@ -138,6 +138,19 @@ export interface PlayerControllerOptions {
   unlocks?: PlayerUnlocks;
 }
 
+/**
+ * External aim-down-sights source (the weapon system). While set, it replaces the raw `ads`
+ * input: its adsAmount is the player's, its move speed multiplier replaces
+ * MOVEMENT.ground.adsSpeedMultiplier, and `blocksSprint` stops sprinting (firing, reloading).
+ */
+export interface AdsProvider {
+  /** 0..1 blend this frame. */
+  readonly adsAmount: number;
+  /** Ground speed multiplier at full ADS. */
+  readonly adsMoveSpeedMultiplier: number;
+  readonly blocksSprint: boolean;
+}
+
 export class PlayerController implements PlayerApi {
   /** Feet position at the latest fixed tick. */
   readonly position = new Vector3();
@@ -170,6 +183,8 @@ export class PlayerController implements PlayerApi {
   private _sprinting = false;
   private _noclip = false;
   private _adsAmount = 0;
+  /** When set, drives adsAmount / ADS speed / sprint blocking instead of the raw `ads` input. */
+  adsProvider: AdsProvider | null = null;
   private _stateTime = 0;
   private snapEnabled = true;
   private disposed = false;
@@ -290,7 +305,8 @@ export class PlayerController implements PlayerApi {
     return this.dashCharge.charges >= D.charges ? 1 : this.dashCharge.progress;
   }
   get adsAmount(): number {
-    return this._adsAmount;
+    const p = this.adsProvider;
+    return p ? p.adsAmount : this._adsAmount;
   }
   get noclip(): boolean {
     return this._noclip;
@@ -340,7 +356,7 @@ export class PlayerController implements PlayerApi {
     this.sampleInput();
     this.inputFrame++;
 
-    const adsTarget = this.adsHeld ? 1 : 0;
+    const adsTarget = this.adsHeld && !this.adsProvider ? 1 : 0;
     const adsLambda = adsTarget > this._adsAmount ? PLAYER.ads.lambdaIn : PLAYER.ads.lambdaOut;
     this._adsAmount = damp(this._adsAmount, adsTarget, adsLambda, dt);
 
@@ -497,7 +513,7 @@ export class PlayerController implements PlayerApi {
       }
     }
     const forwardOk = this.moveInput.y >= G.sprintForwardThreshold;
-    const adsOk = this._adsAmount < G.sprintAdsCancel;
+    const adsOk = this.adsAmount < G.sprintAdsCancel && !(this.adsProvider?.blocksSprint ?? false);
     if (!forwardOk || !adsOk) this.sprintToggled = false;
     const wants = autoSprint || (toggle ? this.sprintToggled : this.sprintHeld);
     // Also not while held crouched by a low ceiling (the speed is crouch speed there anyway).
@@ -508,7 +524,7 @@ export class PlayerController implements PlayerApi {
     let speed =
       this._crouched || this.crouchWanted ? G.crouchSpeed : this._sprinting ? G.sprintSpeed : G.runSpeed;
     if (this.moveInput.y < 0) speed *= G.backwardSpeedMultiplier;
-    speed *= lerp(1, G.adsSpeedMultiplier, this._adsAmount);
+    speed *= lerp(1, this.adsProvider?.adsMoveSpeedMultiplier ?? G.adsSpeedMultiplier, this.adsAmount);
     return speed * this.wishMag;
   }
 

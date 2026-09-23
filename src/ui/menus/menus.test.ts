@@ -237,27 +237,37 @@ describe('menus', () => {
     act(() => button(root, 'Einstellungen').click());
     act(() => button(root, 'Barrierefreiheit').click());
     await flush();
-    for (const label of ['Untertitel', 'Treffermarker', 'Schadenszahlen']) {
-      const row = rowOf(label);
-      expect(row.classList.contains('menu-row--disabled')).toBe(true);
-      expect(row.querySelector('button')!.disabled).toBe(true);
-      expect(row.textContent).toContain('ab Meilenstein');
-    }
+    const row = rowOf('Untertitel');
+    expect(row.classList.contains('menu-row--disabled')).toBe(true);
+    expect(row.querySelector('button')!.disabled).toBe(true);
+    expect(row.textContent).toContain('ab Meilenstein');
     const subtitles = settings.current.accessibility.subtitles;
     act(() => rowOf('Untertitel').querySelector('button')!.click());
     expect(settings.current.accessibility.subtitles).toBe(subtitles);
     expect(rowOf('Blitzeffekte').classList.contains('menu-row--disabled')).toBe(false);
+  });
+
+  it('enables the M2 settings (hit markers, damage numbers, particles, aim assist)', async () => {
+    act(() => menus.showPause());
+    act(() => button(root, 'Einstellungen').click());
+    act(() => button(root, 'Barrierefreiheit').click());
+    await flush();
+    for (const label of ['Treffermarker', 'Schadenszahlen']) {
+      expect(rowOf(label).classList.contains('menu-row--disabled')).toBe(false);
+    }
+    const damageNumbers = settings.current.gameplay.damageNumbers;
+    act(() => rowOf('Schadenszahlen').querySelector('button')!.click());
+    expect(settings.current.gameplay.damageNumbers).toBe(!damageNumbers);
 
     act(() => button(root, 'Grafik').click());
     await flush();
     const particles = [...rowOf('Partikel').querySelectorAll('button')];
     expect(particles.length).toBeGreaterThan(0);
-    expect(particles.every((b) => b.disabled)).toBe(true);
-    expect(rowOf('Schatten').classList.contains('menu-row--disabled')).toBe(false);
+    expect(particles.some((b) => b.disabled)).toBe(false);
 
     act(() => button(root, 'Steuerung').click());
     await flush();
-    expect(rowOf('Zielhilfe').classList.contains('menu-row--disabled')).toBe(true);
+    expect(rowOf('Zielhilfe').classList.contains('menu-row--disabled')).toBe(false);
   });
 
   it('names the save backend in German and warns when nothing is saved', () => {

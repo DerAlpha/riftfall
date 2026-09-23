@@ -11,6 +11,12 @@
  *   viewmodel camera.
  *
  * Bob/roll/tilt/FOV kicks are scaled by `accessibility.cameraMotion`, shake by `accessibility.screenShake`.
+ *
+ * Weapon hooks (M2): `addRecoil` eases real aim kicks onto player yaw/pitch over a few frames
+ * (`takeRecoilPitchLoss` reports kick the pitch limit swallowed), `addViewPunch` adds a
+ * visual-only spring punch (scaled by screenShake), and an optional
+ * `lookModifier` replaces the default ADS sensitivity scaling (weapon ADS sensitivity, gamepad
+ * aim assist) and the default ADS FOV zoom.
  */
 import type { InputApi, LookOut, RaycastOptions, RenderApi, SettingsStore } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
@@ -20,6 +26,7 @@ import { CAMERA } from '../defs/camera';
 import { MOVEMENT } from '../defs/movement';
 import { COLLISION_FILTER, COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { POSTFX } from '../defs/postfx';
+import { WEAPON_CAMERA } from '../defs/weapons';
 import {
   addTrauma,
   decayTrauma,
@@ -40,6 +47,40 @@ const SEED_Y = 67;
 
 const _look: LookOut = { yaw: 0, pitch: 0 };
 const _dir = { x: 0, y: 0, z: 0 };
+const PUNCH = WEAPON_CAMERA.viewPunch;
+const MAX_PUNCH = WEAPON_CAMERA.maxViewPunchDeg * DEG2RAD;
+
+/**
+ * External look hook (weapon system). When set it replaces the default ADS handling: it scales
+ * and may bend this frame's look delta (weapon ADS sensitivity, gamepad aim assist), and its
+ * FOV multiplier replaces CAMERA.fov.adsZoom.
+ */
+export interface LookModifier {
+  /** Adjust the look delta in place (radians, InputApi.getLook convention: yaw + = right, pitch + = up). */
+  modifyLook(look: LookOut): void;
+  /** Horizontal FOV multiplier (ADS zoom), 1 = unzoomed. */
+  readonly fovMultiplier: number;
+}
+
+interface RecoilImpulse {
+  pitch: number;
+  yaw: number;
+  duration: number;
+  elapsed: number;
+  active: boolean;
+}
+
+function stepPunchSpring(s: SpringState, dt: number): void {
+  stepSpringSubstepped(s, 0, PUNCH.stiffness, PUNCH.damping, dt, CAMERA.maxSpringStep);
+  if (s.value > MAX_PUNCH) s.value = MAX_PUNCH;
+  else if (s.value < -MAX_PUNCH) s.value = -MAX_PUNCH;
+}
+
+/** Ease-out quad: a kick is fastest at the start (punchy), then settles. */
+function easeOut(t: number): number {
+  const u = 1 - t;
+  return 1 - u * u;
+}
 
 export interface PlayerCameraDeps {
   player: PlayerController;
@@ -73,6 +114,16 @@ export class PlayerCamera {
   private lookApplied = false;
   private focusDistance: number = POSTFX.depthOfField.defaultFocusDistance;
   private _roll = 0;
+  /** Weapon look hook (ADS sensitivity, aim assist, ADS zoom); null = default ADS handling. */
+  lookModifier: LookModifier | null = null;
+  private readonly recoilImpulses: RecoilImpulse[] = [];
+  private recoilNowPitch = 0;
+  private recoilNowYaw = 0;
+  /** Recoil pitch (rad, + = up) the pitch limit swallowed since the last takeRecoilPitchLoss(). */
+  private recoilPitchLoss = 0;
+  private readonly punchPitch: SpringState = { value: 0, velocity: 0 };
+  private readonly punchYaw: SpringState = { value: 0, velocity: 0 };
+  private readonly punchRoll: SpringState = { value: 0, velocity: 0 };
 
   constructor(deps: PlayerCameraDeps) {
     this.player = deps.player;
@@ -82,6 +133,9 @@ export class PlayerCamera {
     this.focusOpts = { groups: FOCUS_GROUPS, excludeCollider: this.player.collider };
     this.render.camera.rotation.order = 'YXZ';
     this.fovH = this.baseFov();
+    for (let i = 0; i < WEAPON_CAMERA.maxRecoilImpulses; i++) {
+      this.recoilImpulses.push({ pitch: 0, yaw: 0, duration: 0, elapsed: 0, active: false });
+    }
     this.unsubscribers.push(
       deps.events.on('player:land', (e) => {
         const dip = Math.min(e.impactSpeed * CAMERA.landing.dipPerSpeed, CAMERA.landing.maxDip);
@@ -124,6 +178,101 @@ export class PlayerCamera {
   get currentFocusDistance(): number {
     return this.focusDistance;
   }
+  /** Current visual view-punch pitch (radians, before accessibility scaling). */
+  get viewPunchPitch(): number {
+    return this.punchPitch.value;
+  }
+
+  /**
+   * Weapon recoil: rotate the real aim by `pitch` (+ = up) / `yaw` (+ = left, three.js convention)
+   * radians, eased in over `duration` seconds (0 = with the next update, e.g. recovery steps).
+   */
+  addRecoil(pitch: number, yaw: number, duration = 0): void {
+    if (!Number.isFinite(pitch) || !Number.isFinite(yaw)) return;
+    if (!(duration > 0)) {
+      this.recoilNowPitch += pitch;
+      this.recoilNowYaw += yaw;
+      return;
+    }
+    let slot: RecoilImpulse | null = null;
+    let oldest: RecoilImpulse | null = null;
+    for (let i = 0; i < this.recoilImpulses.length; i++) {
+      const imp = this.recoilImpulses[i]!;
+      if (!imp.active) {
+        slot = imp;
+        break;
+      }
+      if (!oldest || imp.elapsed / imp.duration > oldest.elapsed / oldest.duration) oldest = imp;
+    }
+    if (!slot && oldest) {
+      // Out of slots: land the most advanced kick at once and reuse its slot.
+      const rest = 1 - easeOut(Math.min(1, oldest.elapsed / oldest.duration));
+      this.recoilNowPitch += oldest.pitch * rest;
+      this.recoilNowYaw += oldest.yaw * rest;
+      slot = oldest;
+    }
+    if (!slot) return;
+    slot.pitch = pitch;
+    slot.yaw = yaw;
+    slot.duration = duration;
+    slot.elapsed = 0;
+    slot.active = true;
+  }
+
+  /**
+   * Recoil pitch (radians, + = up) that the pitch limit swallowed since the last call; resets it.
+   * The weapon removes it from its unrecovered offset, so recovery never drags the aim below
+   * where it started (e.g. firing while looking straight up).
+   */
+  takeRecoilPitchLoss(): number {
+    const loss = this.recoilPitchLoss;
+    this.recoilPitchLoss = 0;
+    return loss;
+  }
+
+  /** Visual-only punch (radians; pitch + = up, yaw + = left, roll): springs back, never moves the aim. */
+  addViewPunch(pitch: number, yaw: number, roll: number): void {
+    this.punch(this.punchPitch, pitch);
+    this.punch(this.punchYaw, yaw);
+    this.punch(this.punchRoll, roll);
+  }
+
+  private punch(s: SpringState, angle: number): void {
+    if (!Number.isFinite(angle) || angle === 0) return;
+    const v = springImpulseForPeak(Math.abs(angle), PUNCH.stiffness, PUNCH.damping);
+    s.velocity += angle > 0 ? v : -v;
+  }
+
+  /** Apply this frame's share of the eased recoil kicks to the player's aim. */
+  private stepRecoil(dt: number): void {
+    let dp = this.recoilNowPitch;
+    let dy = this.recoilNowYaw;
+    this.recoilNowPitch = 0;
+    this.recoilNowYaw = 0;
+    for (let i = 0; i < this.recoilImpulses.length; i++) {
+      const imp = this.recoilImpulses[i]!;
+      if (!imp.active) continue;
+      const t0 = imp.elapsed / imp.duration;
+      imp.elapsed = Math.min(imp.duration, imp.elapsed + dt);
+      const t1 = imp.elapsed / imp.duration;
+      const w = easeOut(t1) - easeOut(t0);
+      dp += imp.pitch * w;
+      dy += imp.yaw * w;
+      if (imp.elapsed >= imp.duration) imp.active = false;
+    }
+    if (dp === 0 && dy === 0) return;
+    const player = this.player;
+    const wanted = player.pitch + dp;
+    player.pitch = clamp(wanted, -PITCH_LIMIT, PITCH_LIMIT);
+    this.recoilPitchLoss += wanted - player.pitch;
+    player.yaw = wrapAngle(player.yaw + dy);
+  }
+
+  private stepPunch(dt: number): void {
+    stepPunchSpring(this.punchPitch, dt);
+    stepPunchSpring(this.punchYaw, dt);
+    stepPunchSpring(this.punchRoll, dt);
+  }
 
   update(dt: number): void {
     const settings = this.settings.current;
@@ -137,6 +286,8 @@ export class PlayerCamera {
     if (!this.lookApplied) this.applyLook();
     this.lookApplied = false;
     if (!Number.isFinite(this.fovH)) this.fovH = this.baseFov();
+    this.stepRecoil(dt);
+    this.stepPunch(dt);
 
     // --- head bob (driven by the controller's gait phase) ---
     const state = player.state;
@@ -201,21 +352,26 @@ export class PlayerCamera {
     // Right vector for yaw: (cos, 0, -sin).
     cam.position.set(eye.x + cosY * lateral, eye.y + bobY + dip + shakeY, eye.z - sinY * lateral);
     const mantle = this.mantleBlend * motion * DEG2RAD;
+    const punchScale = settings.accessibility.screenShake;
     this._roll =
-      (bobRoll + this.strafeRoll + this.slideTilt) * motion + mantle * CAMERA.mantle.rollDeg + shakeRoll;
+      (bobRoll + this.strafeRoll + this.slideTilt) * motion +
+      mantle * CAMERA.mantle.rollDeg +
+      shakeRoll +
+      this.punchRoll.value * punchScale;
     const pitch =
       player.pitch +
       shakePitch +
+      this.punchPitch.value * punchScale +
       dip * CAMERA.landing.pitchDegPerMeter * DEG2RAD +
       mantle * CAMERA.mantle.pitchDeg;
-    cam.rotation.set(pitch, player.yaw + shakeYaw, this._roll);
+    cam.rotation.set(pitch, player.yaw + shakeYaw + this.punchYaw.value * punchScale, this._roll);
 
     // --- FOV (horizontal setting → vertical) ---
     let kick = 0;
     if (state === 'dash') kick = CAMERA.fov.dashKick;
     else if (state === 'slide') kick = CAMERA.fov.slideKick;
     else if (player.sprinting && speed > MOVEMENT.ground.runSpeed) kick = CAMERA.fov.sprintKick;
-    const fovTarget = this.baseFov() + kick * motion + CAMERA.fov.adsZoom * ads;
+    const fovTarget = this.baseFov() + kick * motion + this.adsFovOffset(ads);
     this.fovH = damp(this.fovH, fovTarget, CAMERA.fov.lambda, dt);
     const vFov = horizontalToVerticalFov(this.fovH, CAMERA.fovReferenceAspect);
     if (Math.abs(vFov - this.lastVerticalFov) > CAMERA.fov.epsilon) {
@@ -247,11 +403,19 @@ export class PlayerCamera {
     if (!Number.isFinite(player.yaw)) player.yaw = 0;
     if (!Number.isFinite(player.pitch)) player.pitch = 0;
     this.input.getLook(_look);
-    const sens = lerp(1, this.settings.current.controls.adsSensitivityMultiplier, player.adsAmount);
+    const mod = this.lookModifier;
+    if (mod) {
+      mod.modifyLook(_look);
+      if (!Number.isFinite(_look.yaw) || !Number.isFinite(_look.pitch)) _look.yaw = _look.pitch = 0;
+    } else {
+      const sens = lerp(1, this.settings.current.controls.adsSensitivityMultiplier, player.adsAmount);
+      _look.yaw *= sens;
+      _look.pitch *= sens;
+    }
     const prevPitch = player.pitch;
-    const dYaw = -_look.yaw * sens;
+    const dYaw = -_look.yaw;
     player.yaw = wrapAngle(player.yaw + dYaw);
-    player.pitch = clamp(player.pitch + _look.pitch * sens, -PITCH_LIMIT, PITCH_LIMIT);
+    player.pitch = clamp(player.pitch + _look.pitch, -PITCH_LIMIT, PITCH_LIMIT);
     this.lookDelta.yaw = dYaw;
     this.lookDelta.pitch = player.pitch - prevPitch;
     this.lookApplied = true;
@@ -262,10 +426,18 @@ export class PlayerCamera {
    * when update() does not run). The next update() continues from here without a second zoom.
    */
   snapFov(): void {
-    this.fovH = this.baseFov() + CAMERA.fov.adsZoom * this.player.adsAmount;
+    this.fovH = this.baseFov() + this.adsFovOffset(this.player.adsAmount);
     const vFov = horizontalToVerticalFov(this.fovH, CAMERA.fovReferenceAspect);
     this.render.setFov(vFov);
     this.lastVerticalFov = vFov;
+  }
+
+  /** Horizontal degrees added by aiming: the look modifier's zoom, else CAMERA.fov.adsZoom. */
+  private adsFovOffset(ads: number): number {
+    const mod = this.lookModifier;
+    if (!mod) return CAMERA.fov.adsZoom * ads;
+    const m = mod.fovMultiplier;
+    return Number.isFinite(m) && m > 0 ? this.baseFov() * (m - 1) : 0;
   }
 
   private baseFov(): number {

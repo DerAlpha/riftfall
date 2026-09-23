@@ -72,6 +72,8 @@ export interface GameEvents {
   'fx:hitPulse': { strength: number };
 
   // --- weapons (M2) – emitted by WeaponSystem, consumed by viewmodel animator, VFX, audio, HUD ---
+  /** The current weapon starts lowering (switch); `next` is equipped when it is done. */
+  'weapon:holsterStart': { weaponId: string; slot: number; duration: number; next: string | null };
   'weapon:equipStart': { weaponId: string; slot: number; duration: number; previous: string | null };
   'weapon:equipped': { weaponId: string; slot: number };
   /** `muzzle` is the world-space muzzle position (viewmodel socket mapped into the world camera). */

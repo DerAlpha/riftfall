@@ -310,6 +310,8 @@ export interface MaterialDef {
   readonly castShadow: boolean;
   /** Footstep / impact surface. */
   readonly surface: SurfaceType;
+  /** Thin enough for bullets to pass through (glass, grates, hollow crates); default false. */
+  readonly penetrable?: boolean;
 }
 
 const BLACK: RGB = [0, 0, 0];
@@ -448,6 +450,7 @@ export const MATERIALS = {
     resolution: 0.5,
     uvScale: 1,
     surface: 'grate',
+    penetrable: true,
   },
   wall_panel: {
     ...TEXTURED,
@@ -525,6 +528,7 @@ export const MATERIALS = {
     // Crates use per-face UVs: one repeat per face whatever the crate size.
     uvScale: 1,
     surface: 'metal',
+    penetrable: true,
   },
   pipe: {
     ...TEXTURED,
@@ -549,6 +553,7 @@ export const MATERIALS = {
     physical: { transmission: 0, ior: 1.5, specularIntensity: 1 },
     castShadow: false,
     surface: 'glass',
+    penetrable: true,
   },
   emissive_cyan: { ...EMISSIVE, id: 'emissive_cyan', emissive: [0.25, 0.85, 1.0], emissiveIntensity: 6 },
   emissive_orange: { ...EMISSIVE, id: 'emissive_orange', emissive: [1.0, 0.42, 0.08], emissiveIntensity: 6 },

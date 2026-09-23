@@ -72,7 +72,7 @@ try {
   }
   const info = await page.evaluate(() => ({
     ...window.__RIFTFALL__.snapshot(),
-    passes: window.__RIFTFALL__.game.render.composerInfo,
+    passes: window.__RIFTFALL__.game.sys.render.composerInfo,
   }));
   writeFileSync(`smoke-output/${prefix}-info.json`, JSON.stringify({ preset, info, errors }, null, 2));
   console.info(

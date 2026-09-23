@@ -16,7 +16,7 @@ import {
 } from '../../input/bindings';
 import type { ControlSettings } from '../../save/settingsSchema';
 import { useKeyboardLayout, useSettings, type MenuDeps } from './context';
-import { ActionRow, fixed, fromMilestone, pct, Section, Slider, Toggle } from './widgets';
+import { ActionRow, fixed, pct, Section, Slider, Toggle } from './widgets';
 
 const SLOTS: readonly { slot: BindingSlot; label: string }[] = [
   { slot: { family: 'kbm', index: 0 }, label: 'Primär' },
@@ -256,8 +256,7 @@ export function ControlsTab({ deps }: { deps: MenuDeps }) {
         />
         <Toggle
           label="Zielhilfe"
-          hint={`Nur mit Gamepad · ${fromMilestone(MENU.plannedMilestone.aimAssist)}`}
-          disabled
+          hint="Nur mit Gamepad"
           value={c.aimAssist}
           onChange={(v) => set({ aimAssist: v })}
         />

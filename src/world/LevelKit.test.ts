@@ -201,7 +201,7 @@ describe('LevelKit', () => {
     kit.build();
     const dyn = calls.filter((c) => c.kind === 'dynamic');
     expect(dyn.length).toBe(2);
-    expect(dyn[0]!.data).toEqual({ kind: 'prop', surface: 'metal' });
+    expect(dyn[0]!.data).toMatchObject({ kind: 'prop', surface: 'metal' });
     // Dynamic crates share one geometry per size.
     const crates = kit.meshes.filter((m) => m.name.startsWith('crate:'));
     expect(crates.length).toBe(2);

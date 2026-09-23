@@ -1,0 +1,317 @@
+/* ------------------------------------------------------------------------------------------ */
+/* Combat HUD (M2): hitmarker, damage numbers, kill confirmation, weapon + ammo, prompt.       */
+/* Animated values (scale, opacity, position) are written inline by CombatHud/WeaponHud as     */
+/* transforms/opacity; this file only styles. Colors are remapped by the colour vision modes.  */
+/* ------------------------------------------------------------------------------------------ */
+.hud {
+  --hm-hit: #ffffff;
+  --hm-crit: #ffb627;
+  --hm-kill: #ff3b30;
+  --hm-shield: #86d8ff;
+  --dmg-normal: #f2fcff;
+  --dmg-crit: #ffc23a;
+  --dmg-kill: #ff5a44;
+  --dmg-shield: #8fdcff;
+}
+
+/* --- hitmarker --- */
+.hud-hitmarker {
+  --hm-color: var(--hm-hit);
+  --hm-gap: 7px;
+  --hm-len: 9px;
+  --hm-thick: 2px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  will-change: transform, opacity;
+}
+.hm-arm {
+  position: absolute;
+  left: 0;
+  top: calc(var(--hm-thick) / -2);
+  width: var(--hm-len);
+  height: var(--hm-thick);
+  background: var(--hm-color);
+  transform-origin: 0 50%;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.95);
+}
+.hm-arm--tl {
+  transform: rotate(-135deg) translateX(var(--hm-gap));
+}
+.hm-arm--tr {
+  transform: rotate(-45deg) translateX(var(--hm-gap));
+}
+.hm-arm--br {
+  transform: rotate(45deg) translateX(var(--hm-gap));
+}
+.hm-arm--bl {
+  transform: rotate(135deg) translateX(var(--hm-gap));
+}
+.hm--crit {
+  --hm-color: var(--hm-crit);
+  --hm-thick: 2.5px;
+}
+.hm--kill {
+  --hm-color: var(--hm-kill);
+  --hm-thick: 3px;
+  --hm-len: 11px;
+}
+.hm--kill .hm-arm {
+  box-shadow:
+    0 0 2px rgba(0, 0, 0, 0.95),
+    0 0 8px var(--hm-kill);
+}
+.hm--shield {
+  --hm-color: var(--hm-shield);
+  --hm-thick: 1.5px;
+}
+.hud--reduce-flashing .hm--kill .hm-arm {
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.95);
+}
+
+/* --- damage numbers --- */
+.hud-dmgnums {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.hud-dmgnum {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--dmg-normal);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    0 0 6px rgba(0, 0, 0, 0.6);
+  will-change: transform, opacity;
+}
+.hud-dmgnum.is-crit {
+  color: var(--dmg-crit);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    0 0 10px rgba(255, 150, 20, 0.55);
+}
+.hud-dmgnum.is-kill {
+  color: var(--dmg-kill);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    0 0 12px rgba(255, 50, 30, 0.6);
+}
+.hud-dmgnum.is-shield {
+  color: var(--dmg-shield);
+  font-weight: 600;
+}
+
+/* --- kill confirmation --- */
+.hud-kill {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 40px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform-origin: 50% 50%;
+  font-size: 12px;
+  letter-spacing: 0.3em;
+  color: var(--rf-text-bright);
+  white-space: nowrap;
+  will-change: transform, opacity;
+}
+.hud-kill__icon {
+  width: 8px;
+  height: 8px;
+  background: var(--hm-kill);
+  transform: rotate(45deg);
+  box-shadow: 0 0 8px var(--hm-kill);
+}
+.hud-kill__count {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--hm-crit);
+}
+.hud-kill:not(.has-streak) .hud-kill__count {
+  display: none;
+}
+
+/* --- prompt under the crosshair --- */
+.hud-prompt {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 78px);
+  transform: translateX(-50%) scale(var(--hud-scale));
+  padding: 3px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  color: var(--hud-warn);
+  background: rgba(4, 8, 11, 0.45);
+  border: 1px solid rgba(255, 138, 31, 0.45);
+  animation: rf-prompt-pulse 0.9s ease-in-out infinite alternate;
+}
+.hud-prompt.is-empty {
+  color: var(--rf-danger);
+  border-color: rgba(255, 77, 58, 0.55);
+}
+.hud--reduce-flashing .hud-prompt {
+  animation: none;
+}
+@keyframes rf-prompt-pulse {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.55;
+  }
+}
+
+/* --- weapon name + slots --- */
+.hud-weapon {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+.hud-weapon__name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--rf-text-bright);
+  transition:
+    color 0.4s ease,
+    text-shadow 0.4s ease;
+}
+.hud-weapon.is-switching .hud-weapon__name {
+  color: var(--hud-accent);
+  text-shadow: 0 0 12px rgba(0, 229, 255, 0.7);
+  transition: none;
+}
+.hud-weapon__slots {
+  display: flex;
+  gap: 5px;
+}
+.hud-slot {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 7px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--rf-text-dim);
+  border: 1px solid var(--rf-line-soft);
+  background: rgba(4, 8, 11, 0.35);
+}
+.hud-slot__key {
+  color: var(--rf-text-dim);
+  font-family: var(--rf-font-mono);
+}
+.hud-slot.is-current {
+  color: var(--rf-text-bright);
+  border-color: var(--hud-accent);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.35);
+}
+.hud-slot.is-current .hud-slot__key {
+  color: var(--hud-accent);
+}
+.hud-slot.is-empty {
+  opacity: 0.45;
+}
+
+/* --- ammo states (base layout in styles.css) --- */
+.hud-ammo {
+  flex-wrap: wrap;
+}
+.hud-ammo__mag {
+  transition: color 0.2s ease;
+}
+.hud-ammo__bar {
+  flex-basis: 100%;
+  height: 3px;
+  margin-top: 4px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+.hud-ammo__fill {
+  width: 100%;
+  height: 100%;
+  background: var(--hud-accent);
+  box-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+  transform-origin: right center;
+  transition: transform 0.08s linear;
+}
+.hud-ammo.is-low .hud-ammo__mag {
+  color: var(--hud-warn);
+}
+.hud-ammo.is-low .hud-ammo__fill {
+  background: var(--hud-warn);
+  box-shadow: 0 0 6px rgba(255, 138, 31, 0.6);
+}
+.hud-ammo.is-empty .hud-ammo__mag {
+  color: var(--rf-danger);
+}
+.hud-ammo.is-reloading .hud-ammo__mag {
+  opacity: 0.5;
+}
+.hud-ammo.is-dry .hud-ammo__mag {
+  color: var(--rf-danger);
+}
+/* Two identically shaped keyframes: WeaponHud alternates them so every dry click restarts the shake. */
+.hud-ammo.is-dry-a .hud-ammo__mag {
+  animation: rf-ammo-dry-a 0.24s ease-out;
+}
+.hud-ammo.is-dry-b .hud-ammo__mag {
+  animation: rf-ammo-dry-b 0.24s ease-out;
+}
+.hud--reduce-flashing .hud-ammo.is-dry .hud-ammo__mag {
+  animation: none;
+}
+@keyframes rf-ammo-dry-a {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+@keyframes rf-ammo-dry-b {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+/* --- colour vision modes --- */
+.cb-protanopia,
+.cb-deuteranopia {
+  --hm-crit: #ffe14d;
+  --hm-kill: #ff4dd2;
+  --dmg-crit: #ffe14d;
+  --dmg-kill: #ff6adf;
+}
+.cb-tritanopia {
+  --hm-kill: #ff2d6f;
+  --dmg-kill: #ff2d6f;
+  --hm-shield: #d0f4ff;
+}

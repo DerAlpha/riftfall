@@ -22,6 +22,7 @@ import {
   normalizeChannels,
   normalizeRms,
 } from './dsp';
+import { WEAPON_SYNTH_DEFS, weaponSynthAlias } from './weaponSynth';
 
 const log = createLogger('Synth');
 const S = AUDIO.synth;
@@ -620,15 +621,22 @@ export const SYNTH_DEFS = {
   'ui.hover': { variants: 1, duration: 0.04, channels: 1, level: 0.5, recipe: uiHover },
   'ui.back': { variants: 1, duration: 0.14, channels: 1, level: 0.8, recipe: uiBack },
   hurt: { variants: 3, duration: 0.34, channels: 1, level: 1, recipe: hurt },
+  // Weapons, impacts, casings, hit feedback (audio/weaponSynth.ts) – rendered after movement.
+  ...WEAPON_SYNTH_DEFS,
 } as const satisfies Record<string, SynthDef>;
 
 export type SynthId = keyof typeof SYNTH_DEFS;
 
 export const SYNTH_IDS = Object.keys(SYNTH_DEFS) as readonly SynthId[];
 
-/** Synth id for a sound id: exact match, or `footstep.default` for unknown surfaces; null otherwise. */
+/**
+ * Synth id for a sound id: exact match, a weapon-sound alias (weaponSynth.ts), or `footstep.default`
+ * for unknown surfaces; null otherwise.
+ */
 export function resolveSynthId(id: string): SynthId | null {
   if (Object.prototype.hasOwnProperty.call(SYNTH_DEFS, id)) return id as SynthId;
+  const alias = weaponSynthAlias(id);
+  if (alias) return alias;
   if (id.startsWith('footstep.')) return 'footstep.default';
   return null;
 }

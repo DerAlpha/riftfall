@@ -118,5 +118,23 @@ export const POSTFX = {
     /** 0..1 strength of the daltonization correction. */
     colorblindStrength: 1,
   },
+  /**
+   * Screen-space explosion shockwave (vfx/ShockwaveEffect.ts): own EffectPass right after the
+   * world effects, enabled only while a wave runs. Radii/thickness in UV (screen-height) units.
+   */
+  shockwave: {
+    maxWaves: 4,
+    duration: 0.55,
+    /** Peak UV displacement at strength 1. */
+    amplitude: 0.018,
+    /** Ring half-width relative to its screen radius, clamped. */
+    thicknessRatio: 0.35,
+    minThickness: 0.015,
+    maxThickness: 0.14,
+    /** Epicenters behind the camera or closer than this in front of it are not drawn (m). */
+    minDepth: 0.25,
+    /** Full displacement up to this camera distance, then ∝ 1 / distance (m). */
+    fullDistance: 6,
+  },
   smaaPreset: 'HIGH',
 } as const;

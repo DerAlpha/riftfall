@@ -106,15 +106,11 @@ export function AccessibilityTab({ deps }: { deps: MenuDeps }) {
         </ActionRow>
         <Toggle
           label="Treffermarker"
-          hint={fromMilestone(later.hitmarkers)}
-          disabled
           value={g.hitmarkers}
           onChange={(v) => setG({ hitmarkers: v })}
         />
         <Toggle
           label="Schadenszahlen"
-          hint={fromMilestone(later.damageNumbers)}
-          disabled
           value={g.damageNumbers}
           onChange={(v) => setG({ damageNumbers: v })}
         />

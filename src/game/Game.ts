@@ -37,6 +37,13 @@ import { DebugOverlay, type DebugSnapshot } from '../ui/debug/DebugOverlay';
 import { DevConsole } from '../ui/console/DevConsole';
 import type { LoadingScreen } from '../ui/LoadingScreen';
 import { mountMenus, type MenuController } from '../ui/menus';
+import { CombatWorld } from '../combat/CombatWorld';
+import { WeaponSystem } from '../weapons/WeaponSystem';
+import { getLoadout } from '../defs/weapons';
+import { VfxSystem } from '../vfx/VfxSystem';
+import { VfxBridge } from '../vfx/VfxBridge';
+import { createVfxCommands } from '../vfx/vfxCommands';
+import { TrainingTargets } from '../world/TrainingTargets';
 import { registerDevCommands } from './devCommands';
 import { GamePersistence } from './GamePersistence';
 import { MenuPadNavigator } from './MenuPadNavigator';
@@ -67,6 +74,36 @@ function el(id: string): HTMLElement {
   return node;
 }
 
+/** Every system the composition root builds. Grows with each milestone – add fields here. */
+export interface GameSystems {
+  events: EventBus<GameEvents>;
+  save: SaveSystem;
+  persistence: GamePersistence;
+  settings: SettingsStore;
+  render: RenderSystem;
+  physics: PhysicsWorld;
+  assets: AssetLoader;
+  audio: AudioEngine;
+  audioBridge: AudioEventBridge;
+  input: InputSystem;
+  materials: MaterialLibrary;
+  level: LevelInstance;
+  player: PlayerController;
+  playerCamera: PlayerCamera;
+  viewmodel: ViewmodelRig;
+  health: PlayerHealth;
+  hud: Hud;
+  debug: DebugOverlay;
+  devConsole: DevConsole;
+  menus: MenuController;
+  // M2
+  combat: CombatWorld;
+  weapons: WeaponSystem;
+  vfx: VfxSystem;
+  vfxBridge: VfxBridge;
+  targets: TrainingTargets | null;
+}
+
 export class Game {
   readonly loop: GameLoop;
   readonly pauseState: PauseController;
@@ -80,27 +117,9 @@ export class Game {
 
   private constructor(
     readonly opts: GameOptions,
-    readonly save: SaveSystem,
-    readonly persistence: GamePersistence,
-    readonly settings: SettingsStore,
-    readonly render: RenderSystem,
-    readonly physics: PhysicsWorld,
-    readonly assets: AssetLoader,
-    readonly audio: AudioEngine,
-    readonly audioBridge: AudioEventBridge,
-    readonly input: InputSystem,
-    readonly materials: MaterialLibrary,
-    readonly level: LevelInstance,
-    readonly player: PlayerController,
-    readonly playerCamera: PlayerCamera,
-    readonly viewmodel: ViewmodelRig,
-    readonly health: PlayerHealth,
-    readonly hud: Hud,
-    readonly debug: DebugOverlay,
-    readonly devConsole: DevConsole,
-    readonly menus: MenuController,
-    readonly events: EventBus<GameEvents>,
+    readonly sys: GameSystems,
   ) {
+    const { input, menus, audio, events, devConsole, settings } = sys;
     this.loop = new GameLoop(
       {
         beginFrame: (dt) => this.beginFrame(dt),
@@ -127,7 +146,7 @@ export class Game {
   }
 
   private get saveData(): SaveData {
-    return this.persistence.data;
+    return this.sys.persistence.data;
   }
 
   /**
@@ -204,6 +223,31 @@ export class Game {
     });
     render.scene.add(level.root);
 
+    // Combat world + VFX before the atmosphere: VFX adds a constant pool of flash lights, and lit
+    // materials would compile twice if those lights appeared after applyAtmosphere's warm-up.
+    const combat = new CombatWorld({ events, physics });
+    combat.setLevel(level.root);
+    const vfx = await VfxSystem.create({
+      render,
+      settings,
+      physics,
+      events,
+      shockwave: (p, r, s) => render.addShockwave(p, r, s),
+      onClink: audioBridge.onCasingClink,
+    });
+    const vfxBridge = new VfxBridge({ events, vfx });
+    const targets =
+      TEST_ROOM.id === level.id
+        ? new TrainingTargets({
+            scene: render.scene,
+            combat,
+            events,
+            physics,
+            render,
+            reduceFlashing: settings.current.accessibility.reduceFlashing,
+          })
+        : null;
+
     progress(BOOT_PROGRESS.environment, 'Kalibriere Umgebung…');
     const hdri = level.atmosphere.environment.hdri
       ? await assets.loadHDRI(level.atmosphere.environment.hdri)
@@ -218,9 +262,23 @@ export class Game {
     });
     const playerCamera = new PlayerCamera({ player, input, render, events, settings });
     const viewmodel = new ViewmodelRig({ render, player, camera: playerCamera, events });
+    vfx.setSockets(viewmodel);
     const health = new PlayerHealth({ events, player });
+    const weapons = new WeaponSystem({
+      events,
+      input,
+      settings,
+      player,
+      camera: playerCamera,
+      render,
+      combat,
+      physics,
+      getMuzzleWorld: (out) => viewmodel.getSocketWorldPosition('muzzle', out),
+    });
+    viewmodel.setAdsSource(weapons);
 
     const hud = new Hud(el('hud'), events, settings);
+    hud.setCamera(render.camera);
     health.announce();
     const debug = new DebugOverlay(el('debug'), events);
     const devConsole = new DevConsole(el('console'), events);
@@ -239,8 +297,8 @@ export class Game {
       }),
     });
 
-    const game = new Game(
-      opts,
+    const game = new Game(opts, {
+      events,
       save,
       persistence,
       settings,
@@ -260,15 +318,25 @@ export class Game {
       debug,
       devConsole,
       menus,
-      events,
-    );
+      combat,
+      weapons,
+      vfx,
+      vfxBridge,
+      targets,
+    });
     gameRef = game;
-    registerDevCommands(game);
+    game.registerCommands();
     game.wireEvents();
 
-    // Warm up shaders so the first real frame does not hitch.
+    // Every weapon-event listener (animator, audio, VFX, HUD) exists now: hand out the loadout.
+    const loadout = getLoadout(level.id);
+    weapons.setLoadout(loadout.weapons, loadout.slots);
+
+    // Warm up shaders so the first real frame does not hitch. Weapon models compile against a render
+    // target like the post chain; VFX renders one invisible frame through the composer.
     render.renderer.compile(render.scene, render.camera);
-    render.renderer.compile(render.viewmodelScene, render.viewmodelCamera);
+    viewmodel.warmupWeapons(render.renderer);
+    vfx.warmup();
 
     progress(1, 'Bereit');
     loading.hide();
@@ -289,64 +357,94 @@ export class Game {
   // -------------------------------------------------------------------------
 
   private beginFrame(realDt: number): void {
-    const wasCapturing = this.input.capturing;
-    this.input.beginFrame(realDt);
+    const { input, menus, devConsole, playerCamera } = this.sys;
+    const wasCapturing = input.capturing;
+    input.beginFrame(realDt);
     this.pauseState.onFrame(wasCapturing);
-    if (this.menus.isOpen && !this.devConsole.open && !wasCapturing && !this.input.capturing) {
+    if (menus.isOpen && !devConsole.open && !wasCapturing && !input.capturing) {
       this.padNav.update(realDt);
     } else {
       this.padNav.reset();
     }
     // Look before the ticks: wish/dash/mantle directions use the yaw the camera shows this frame.
-    if (!this.loop.paused) this.playerCamera.applyLook();
+    // applyLook also runs the weapon look hook (ADS sensitivity, gamepad aim assist).
+    if (!this.loop.paused) playerCamera.applyLook();
   }
 
   private fixedUpdate(dt: number): void {
-    // The player computes its kinematic move against the current world, then the world steps
-    // (dynamic props react to the pushes), so everything ends the tick in a consistent state.
-    this.player.fixedUpdate(dt);
-    if (!this.player.noclip && this.player.position.y < PHYSICS.killPlaneY) {
+    const { player, targets, weapons, physics, health, level } = this.sys;
+    // The player computes its kinematic move against the current world; targets refresh their
+    // hitboxes; weapons then fire against exactly those hitboxes; finally the world steps (props
+    // react to pushes and bullet impulses), so everything ends the tick in a consistent state.
+    player.fixedUpdate(dt);
+    targets?.fixedUpdate(dt);
+    weapons.fixedUpdate(dt);
+    if (!player.noclip && player.position.y < PHYSICS.killPlaneY) {
       // Fell out of the world (tp/noclip outside the hall, or a collision bug): back to spawn.
-      log.warn(`Player below kill plane (y ${this.player.position.y.toFixed(1)}) – respawn`);
-      this.player.teleport(this.level.spawn.position, this.level.spawn.yaw);
+      log.warn(`Player below kill plane (y ${player.position.y.toFixed(1)}) – respawn`);
+      player.teleport(level.spawn.position, level.spawn.yaw);
     }
-    this.physics.step(dt);
-    this.health.fixedUpdate(dt);
-    this.level.fixedUpdate?.(dt);
+    physics.step(dt);
+    health.fixedUpdate(dt);
+    level.fixedUpdate?.(dt);
   }
 
   private update(dt: number, alpha: number): void {
+    const { player, weapons, playerCamera, viewmodel, vfx, level, targets, render, audio, physics, hud } =
+      this.sys;
     this.time += dt;
-    this.player.update(dt, alpha);
-    this.playerCamera.update(dt);
-    this.viewmodel.update(dt);
-    this.level.update(dt, this.time);
+    player.update(dt, alpha);
+    // Weapons before the camera: ADS blend, recoil counter-pull and FOV zoom of this frame.
+    weapons.update(dt);
+    playerCamera.update(dt);
+    viewmodel.update(dt);
+    // VFX after the viewmodel: muzzle flashes and casings use this frame's socket positions.
+    vfx.update(dt);
+    level.update(dt, this.time);
+    targets?.update(dt, alpha);
 
-    const cam = this.render.camera;
+    const cam = render.camera;
     cam.getWorldDirection(this._yawDir);
-    this.audio.setListener(cam.position, this._yawDir, this._up);
+    audio.setListener(cam.position, this._yawDir, this._up);
 
     // Is the eye in direct sunlight? One ray per frame towards the sun (static world only).
-    this._toSun.copy(this.render.sunDirection).negate();
-    const blocked = this.physics.raycast(cam.position, this._toSun, RENDER.viewmodelSunProbeDistance, {
+    this._toSun.copy(render.sunDirection).negate();
+    const blocked = physics.raycast(cam.position, this._toSun, RENDER.viewmodelSunProbeDistance, {
       groups: SUN_PROBE_GROUPS,
-      excludeCollider: this.player.collider,
+      excludeCollider: player.collider,
     });
-    this.render.setViewmodelSunVisibility(blocked ? 0 : 1, dt);
+    render.setViewmodelSunVisibility(blocked ? 0 : 1, dt);
 
-    const p = this.player;
-    this.hud.setDash(p.dashCharges, p.unlocks.dash ? MOVEMENT.dash.charges : 0, p.dashRecharge);
-    this.hud.setMovement(Math.hypot(p.velocity.x, p.velocity.z), p.state);
-    this.hud.update(dt, p.yaw);
+    hud.setDash(player.dashCharges, player.unlocks.dash ? MOVEMENT.dash.charges : 0, player.dashRecharge);
+    hud.setMovement(Math.hypot(player.velocity.x, player.velocity.z), player.state);
+    hud.setSpread(weapons.spread);
+    hud.setAds(weapons.adsAmount);
+    hud.update(dt, player.yaw);
   }
 
   private renderFrame(realDt: number, alpha: number): void {
-    this.physics.syncVisuals(alpha);
-    this.render.render(realDt);
+    const { physics, render, debug, input } = this.sys;
+    physics.syncVisuals(alpha);
+    render.render(realDt);
     // Menu frames (backdrop blur, frozen scene) would skew dynamic resolution and the benchmark.
-    if (!this.loop.paused) this.render.quality.onFrame(realDt);
-    if (this.debug.visible) this.debug.update(realDt, () => this.debugSnapshot(realDt));
-    this.input.endFrame();
+    if (!this.loop.paused) render.quality.onFrame(realDt);
+    if (debug.visible) debug.update(realDt, () => this.debugSnapshot(realDt));
+    input.endFrame();
+  }
+
+  /** Dev console: core commands (devCommands.ts) plus per-system command sets. */
+  private registerCommands(): void {
+    const { devConsole, vfx, physics, render, weapons, targets } = this.sys;
+    registerDevCommands({
+      ...this.sys,
+      loop: this.loop,
+      weapons,
+      targets,
+      persistUnlocks: () => this.persistUnlocks(),
+      resetSave: () => this.resetSave(),
+      movementSandbox: this.movementSandbox,
+    });
+    for (const c of createVfxCommands({ vfx, physics, camera: render.camera })) devConsole.register(c);
   }
 
   // -------------------------------------------------------------------------
@@ -355,9 +453,9 @@ export class Game {
 
   private wireEvents(): void {
     const pause = this.pauseState;
-    this.events.on('input:pointerLock', ({ locked }) => pause.onPointerLock(locked));
+    this.sys.events.on('input:pointerLock', ({ locked }) => pause.onPointerLock(locked));
     document.addEventListener('visibilitychange', () => pause.onVisibility(document.hidden));
-    this.events.on('ui:console', ({ open }) => pause.onConsole(open));
+    this.sys.events.on('ui:console', ({ open }) => pause.onConsole(open));
     // Capture phase after InputSystem's: a key swallowed by a rebinding capture never arrives here.
     window.addEventListener(
       'keydown',
@@ -366,29 +464,29 @@ export class Game {
       },
       true,
     );
-    this.render.canvas.addEventListener('mousedown', () => pause.onCanvasPointerDown());
+    this.sys.render.canvas.addEventListener('mousedown', () => pause.onCanvasPointerDown());
 
-    this.events.on('settings:changed', ({ settings, sections }) => {
+    this.sys.events.on('settings:changed', ({ settings, sections }) => {
       if (sections.includes('graphics')) {
-        this.render.applyGraphicsSettings(settings.graphics);
+        this.sys.render.applyGraphicsSettings(settings.graphics);
         this.loop.fpsLimit = settings.graphics.fpsLimit;
       }
-      if (sections.includes('audio')) this.audio.applySettings(settings.audio);
+      if (sections.includes('audio')) this.sys.audio.applySettings(settings.audio);
       // The camera rig only runs while playing: preview FOV changes behind the pause menu.
-      if (sections.includes('controls') && this.loop.paused) this.playerCamera.snapFov();
+      if (sections.includes('controls') && this.loop.paused) this.sys.playerCamera.snapFov();
     });
 
-    this.events.on('player:healthChanged', ({ health, maxHealth }) => {
-      this.render.setHealthFraction(maxHealth > 0 ? health / maxHealth : 1);
+    this.sys.events.on('player:healthChanged', ({ health, maxHealth }) => {
+      this.sys.render.setHealthFraction(maxHealth > 0 ? health / maxHealth : 1);
     });
-    this.events.on('player:damaged', ({ amount }) => {
-      this.render.addHitPulse(Math.min(1, amount / POSTFX.chromaticAberration.damageForFullPulse));
+    this.sys.events.on('player:damaged', ({ amount }) => {
+      this.sys.render.addHitPulse(Math.min(1, amount / POSTFX.chromaticAberration.damageForFullPulse));
     });
-    this.events.on('fx:hitPulse', ({ strength }) => this.render.addHitPulse(strength));
+    this.sys.events.on('fx:hitPulse', ({ strength }) => this.sys.render.addHitPulse(strength));
 
     // Only pending settings are written on unload: profile changes are saved when they happen, and
     // an unconditional write would resurrect a wiped save or let a stale tab overwrite newer data.
-    const persistNow = (): void => this.settings.flush();
+    const persistNow = (): void => this.sys.settings.flush();
     // pagehide is the reliable signal on mobile Safari; beforeunload covers desktop browsers.
     window.addEventListener('pagehide', persistNow);
     window.addEventListener('beforeunload', persistNow);
@@ -400,7 +498,7 @@ export class Game {
    */
   startPlaying(lockless = false): void {
     this.saveData.profile.lastPlayedAt = Date.now();
-    void this.persistence.saveNow();
+    void this.sys.persistence.saveNow();
     this.pauseState.start(lockless || this.padNav.activating);
     void this.maybeRunBenchmark();
   }
@@ -424,14 +522,14 @@ export class Game {
 
   /** Store the player's current movement unlocks in the profile (dev console `unlock`). */
   persistUnlocks(): void {
-    const u = this.player.unlocks;
+    const u = this.sys.player.unlocks;
     this.saveData.profile.unlocks = { doubleJump: u.doubleJump, dash: u.dash };
-    void this.persistence.saveNow();
+    void this.sys.persistence.saveNow();
   }
 
   /** Dev console `resetsave`: wipe storage and continue with defaults (applied live). */
   resetSave(): Promise<void> {
-    return this.persistence.reset(this.settings);
+    return this.sys.persistence.reset(this.sys.settings);
   }
 
   /** True when the current level grants every movement ability regardless of the profile. */
@@ -442,23 +540,23 @@ export class Game {
   /** First-run benchmark: may downgrade the auto-detected preset once. */
   private async maybeRunBenchmark(): Promise<void> {
     if (this.opts.forcePreset || this.benchmarkRunning || this.saveData.profile.qualityBenchmarked) return;
-    const current = this.settings.current.graphics.preset;
+    const current = this.sys.settings.current.graphics.preset;
     if (current === 'custom') return;
-    const graphicsBefore = this.settings.current.graphics;
+    const graphicsBefore = this.sys.settings.current.graphics;
     this.benchmarkRunning = true;
-    const recommended: QualityPreset | null = await this.render.quality.runBenchmark(current);
+    const recommended: QualityPreset | null = await this.sys.render.quality.runBenchmark(current);
     this.benchmarkRunning = false;
     this.saveData.profile.qualityBenchmarked = true;
     // Sections are replaced on every change: a new object means the player (or the console)
     // changed graphics while it measured – their choice wins over the measurement.
-    if (this.settings.current.graphics !== graphicsBefore) {
+    if (this.sys.settings.current.graphics !== graphicsBefore) {
       log.info('Benchmark result discarded: graphics settings changed during the measurement');
     } else if (recommended && recommended !== current) {
       log.info(`Benchmark: switching graphics preset ${current} → ${recommended}`);
-      this.settings.update('graphics', { preset: recommended, ...GRAPHICS_PRESETS[recommended] });
-      this.events.emit('quality:presetApplied', { preset: recommended, auto: true });
+      this.sys.settings.update('graphics', { preset: recommended, ...GRAPHICS_PRESETS[recommended] });
+      this.sys.events.emit('quality:presetApplied', { preset: recommended, auto: true });
     }
-    void this.persistence.saveNow();
+    void this.sys.persistence.saveNow();
   }
 
   // -------------------------------------------------------------------------
@@ -466,8 +564,8 @@ export class Game {
   // -------------------------------------------------------------------------
 
   private debugSnapshot(realDt: number): DebugSnapshot {
-    const r = this.render.stats;
-    const p = this.player;
+    const r = this.sys.render.stats;
+    const p = this.sys.player;
     const mem = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
     return {
       fps: realDt > 0 ? 1 / realDt : 0,
@@ -486,19 +584,19 @@ export class Game {
       pixelRatio: r.pixelRatio,
       resolutionScale: r.resolutionScale,
       gpuMs: r.gpuMs,
-      gpuName: this.render.quality.gpuName,
-      preset: this.settings.current.graphics.preset,
+      gpuName: this.sys.render.quality.gpuName,
+      preset: this.sys.settings.current.graphics.preset,
       entities: {
-        bodies: this.physics.stats.bodies,
-        colliders: this.physics.stats.colliders,
-        dynamicBodies: this.physics.stats.dynamicBodies,
-        meshes: this.level.stats.meshes,
-        lights: this.level.stats.lights,
+        bodies: this.sys.physics.stats.bodies,
+        colliders: this.sys.physics.stats.colliders,
+        dynamicBodies: this.sys.physics.stats.dynamicBodies,
+        meshes: this.sys.level.stats.meshes,
+        lights: this.sys.level.stats.lights,
       },
-      physicsMs: this.physics.stats.stepMs,
+      physicsMs: this.sys.physics.stats.stepMs,
       memoryMb: mem ? mem.usedJSHeapSize / (1024 * 1024) : -1,
-      audioVoices: this.audio.stats.activeVoices,
-      audioState: this.audio.stats.contextState,
+      audioVoices: this.sys.audio.stats.activeVoices,
+      audioState: this.sys.audio.stats.contextState,
       player: {
         state: p.state,
         speed: Math.hypot(p.velocity.x, p.velocity.z),
@@ -507,7 +605,7 @@ export class Game {
         grounded: p.grounded,
         crouched: p.crouched,
       },
-      missingAssets: [...this.assets.missing],
+      missingAssets: [...this.sys.assets.missing],
     };
   }
 
@@ -517,27 +615,27 @@ export class Game {
       ready: true,
       game: this,
       snapshot: () => {
-        const p = this.player;
+        const p = this.sys.player;
         return {
           position: [p.position.x, p.position.y, p.position.z],
           velocity: [p.velocity.x, p.velocity.y, p.velocity.z],
           state: p.state,
           grounded: p.grounded,
           fps: this.loop.stats.frameDelta > 0 ? 1 / this.loop.stats.frameDelta : 0,
-          drawCalls: this.render.stats.drawCalls,
-          triangles: this.render.stats.triangles,
-          resolutionScale: this.render.stats.resolutionScale,
-          missingAssets: [...this.assets.missing],
+          drawCalls: this.sys.render.stats.drawCalls,
+          triangles: this.sys.render.stats.triangles,
+          resolutionScale: this.sys.render.stats.resolutionScale,
+          missingAssets: [...this.sys.assets.missing],
         };
       },
       teleport: (x: number, y: number, z: number, yawDeg = 0, pitchDeg = 0) => {
-        this.player.teleport({ x, y, z }, THREE.MathUtils.degToRad(yawDeg));
-        this.player.pitch = THREE.MathUtils.degToRad(pitchDeg);
+        this.sys.player.teleport({ x, y, z }, THREE.MathUtils.degToRad(yawDeg));
+        this.sys.player.pitch = THREE.MathUtils.degToRad(pitchDeg);
       },
-      exec: (line: string) => this.devConsole.execute(line),
+      exec: (line: string) => this.sys.devConsole.execute(line),
       setLook: (yawDeg: number, pitchDeg: number) => {
-        this.player.yaw = THREE.MathUtils.degToRad(yawDeg);
-        this.player.pitch = THREE.MathUtils.degToRad(pitchDeg);
+        this.sys.player.yaw = THREE.MathUtils.degToRad(yawDeg);
+        this.sys.player.pitch = THREE.MathUtils.degToRad(pitchDeg);
       },
     };
   }

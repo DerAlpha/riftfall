@@ -2,7 +2,7 @@ import { MENU } from '../../defs/ui';
 import type { GraphicsSettings, QualityLevel, QualityPreset } from '../../save/settingsSchema';
 import { useSettings, type MenuDeps } from './context';
 import { individualPatch, PRESET_ORDER, presetPatch } from './presets';
-import { fixed, fromMilestone, pct, Section, Segmented, Slider, Toggle, type Option } from './widgets';
+import { fixed, pct, Section, Segmented, Slider, Toggle, type Option } from './widgets';
 
 const PRESET_LABELS: Readonly<Record<QualityPreset, string>> = {
   low: 'Niedrig',
@@ -144,8 +144,6 @@ export function GraphicsTab({ deps }: { deps: MenuDeps }) {
         />
         <Segmented
           label="Partikel"
-          hint={fromMilestone(MENU.plannedMilestone.particles)}
-          disabled
           value={g.particles}
           options={LEVELS}
           onChange={(v) => set({ particles: v })}

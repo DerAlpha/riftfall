@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import type { RenderApi, RenderStats } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
-import type { GameEvents } from '../core/events';
+import type { GameEvents, Vec3Like } from '../core/events';
 import { createLogger } from '../core/log';
 import { clamp, clamp01, damp, DEG2RAD, RAD2DEG } from '../core/math';
 import { CAMERA } from '../defs/camera';
@@ -426,6 +426,15 @@ export class RenderSystem implements RenderApi {
   addHitPulse(strength: number): void {
     if (!(strength > 0)) return;
     this.hitPulse = Math.min(1, this.hitPulse + strength);
+  }
+
+  /**
+   * Screen-space shockwave (explosions): a distortion ring around the world `position` that grows
+   * to `radius` meters over POSTFX.shockwave.duration; `strength` scales the displacement.
+   */
+  addShockwave(position: Vec3Like, radius: number, strength = 1): void {
+    if (this.disposed) return;
+    this.post.addShockwave(position, radius, strength);
   }
 
   setHealthFraction(f: number): void {

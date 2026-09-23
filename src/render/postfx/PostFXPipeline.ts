@@ -4,8 +4,12 @@
  *   RenderPass(world)
  *   → N8AO                                          (off: pass absent)
  *   → EffectPass[MotionBlur?, HeightFog]            (world-space; MB is CONVOLUTION|DEPTH → sorted first)
- *   → Volumetrics                                   (additive cones/shafts/dust on their own layer:
- *                                                    not darkened by AO, fogged to their own depth)
+ *   → EffectPass[Shockwave]                         (explosion UV distortion; own pass because UV
+ *                                                    transforms cannot share a pass with a convolution;
+ *                                                    enabled only while a wave runs)
+ *   → Volumetrics                                   (additive cones/shafts/dust + VFX particles/tracers
+ *                                                    on their own layer: not darkened by AO, fogged to
+ *                                                    their own depth; always present for the VFX)
  *   → EffectPass[DepthOfField]                      (own pass: its bokeh reads the pass input, so fog
  *                                                    must already be in it; enabled only while aiming)
  *   → RenderPass(viewmodel, clear depth only)       (never fogged/blurred, never clips into walls)
@@ -58,6 +62,8 @@ import { createLUTTexture, IDENTITY_GRADING, updateLUTTexture } from './lut';
 import { MotionBlurEffect } from './MotionBlurEffect';
 import { ScreenStatusEffect } from './ScreenStatusEffect';
 import { VolumetricPass } from './VolumetricPass';
+import { ShockwaveEffect } from '../../vfx/ShockwaveEffect';
+import type { Vec3Like } from '../../core/events';
 
 const log = createLogger('PostFX');
 
@@ -169,6 +175,7 @@ export class PostFXPipeline {
   private readonly lut: GradingLUTEffect;
   private readonly lutTexture: THREE.Data3DTexture;
   private readonly status: ScreenStatusEffect;
+  private readonly shockwave: ShockwaveEffect;
 
   // Optional (created on demand, disposed when the feature is switched off).
   private ao: N8AOPostPass | null = null;
@@ -184,9 +191,9 @@ export class PostFXPipeline {
   // Current effect passes (rebuilt on structure changes).
   private effectPasses: OwnedEffectPass[] = [];
   private dofPass: OwnedEffectPass | null = null;
+  private shockwavePass: OwnedEffectPass | null = null;
 
   private structure: string | null = null;
-  private volumetrics = false;
   private aoLevel: QualityLevel = 'off';
   private bloomLevel: QualityLevel = 'off';
   private fogSteps = 0;
@@ -232,6 +239,7 @@ export class PostFXPipeline {
     this.lut = new GradingLUTEffect(this.lutTexture);
     const lh = POSTFX.lowHealth;
     this.status = new ScreenStatusEffect(lh.tint, lh.edgeInner, lh.edgeOuter);
+    this.shockwave = new ShockwaveEffect(worldCamera);
   }
 
   // ---------------------------------------------------------------------------
@@ -265,7 +273,6 @@ export class PostFXPipeline {
     }
     this.bloomLevel = g.bloom;
 
-    this.volumetrics = structure.volumetrics;
     this.fogSteps = vol ? vol.fogSteps : 0;
     this.fog.setSteps(this.fogSteps);
 
@@ -307,6 +314,11 @@ export class PostFXPipeline {
     this.motionBlur?.resetHistory();
   }
 
+  /** Start an explosion shockwave at a world position growing to `radius` meters. */
+  addShockwave(position: Vec3Like, radius: number, strength: number): void {
+    this.shockwave.trigger(position, radius, strength);
+  }
+
   setSize(width: number, height: number): void {
     this.composer.setSize(width, height);
     this.updateDofScale();
@@ -329,6 +341,8 @@ export class PostFXPipeline {
 
   render(s: PostFXFrameState): void {
     if (this.motionBlur) this.motionBlur.setFrameDelta(s.dt);
+    this.shockwave.advance(s.dt);
+    if (this.shockwavePass) this.shockwavePass.enabled = this.shockwave.active;
 
     if (this.dof && this.dofPass) {
       const active = s.adsAmount > POSTFX.depthOfField.minAmount;
@@ -363,11 +377,14 @@ export class PostFXPipeline {
   /** Render one frame with every optional pass enabled so all post shaders compile up front. */
   warmup(): void {
     const dofWasEnabled = this.dofPass?.enabled ?? false;
+    const shockwaveWasEnabled = this.shockwavePass?.enabled ?? false;
     if (this.dofPass) this.dofPass.enabled = true;
+    if (this.shockwavePass) this.shockwavePass.enabled = true;
     try {
       this.composer.render(0);
     } finally {
       if (this.dofPass) this.dofPass.enabled = dofWasEnabled;
+      if (this.shockwavePass) this.shockwavePass.enabled = shockwaveWasEnabled;
     }
   }
 
@@ -376,8 +393,10 @@ export class PostFXPipeline {
     for (const p of this.effectPasses) p.release();
     this.effectPasses = [];
     this.dofPass = null;
+    this.shockwavePass = null;
     const effects: (Effect | null)[] = [
       this.fog,
+      this.shockwave,
       this.exposure,
       this.toneMapping,
       this.lut,
@@ -561,6 +580,7 @@ export class PostFXPipeline {
     for (const p of this.effectPasses) p.release();
     this.effectPasses = [];
     this.dofPass = null;
+    this.shockwavePass = null;
 
     const cam = this.worldCamera;
     const add = (pass: Pass): void => composer.addPass(pass);
@@ -579,7 +599,11 @@ export class PostFXPipeline {
     if (this.motionBlur) worldEffects.push(this.motionBlur);
     worldEffects.push(this.fog);
     effectPass('WorldFX', worldEffects);
-    if (this.volumetrics) add(this.volumetricPass);
+    this.shockwavePass = effectPass('Shockwave', [this.shockwave]);
+    this.shockwavePass.enabled = this.shockwave.active;
+    // Always present: VFX particles and tracers share the volumetric layer. With volumetrics off
+    // the level hides its cones/shafts/dust, so only the VFX draw here.
+    add(this.volumetricPass);
 
     if (this.dof) {
       this.dofPass = effectPass('DepthOfField', [this.dof]);

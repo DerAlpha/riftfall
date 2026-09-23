@@ -8,6 +8,7 @@
  * mantle course in front of the calibration wall, west double-jump platforms and dash-gap pit.
  */
 import type { MaterialId } from './materials';
+import type { TargetPlacementDef } from './targets';
 
 export type Vec3Tuple = readonly [number, number, number];
 export type Vec2Tuple = readonly [number, number];
@@ -725,6 +726,43 @@ export const TEST_ROOM_LAYOUT = {
       { position: [0, 5.6, 28.6], color: [1, 0.45, 0.12], intensity: 26, distance: 10, flicker: false },
     ] as readonly PointLightDef[],
   },
+  /**
+   * Shooting range (M2): the arena's north hazard border is the firing line; dummies stand between
+   * the mezzanine and the mantle course in front of the calibration wall (7–13 m), a few more in
+   * the arena. Rails and distance dashes are level geometry (TestRoom); the dummies themselves are
+   * world/TrainingTargets.
+   */
+  range: {
+    /** Glowing distance dashes at both lane edges (x) at these z. */
+    minX: -11.5,
+    maxX: 11.5,
+    distanceMarkers: [-19.5, -22, -24.8] as readonly number[],
+    markerLength: 0.9,
+    markerDepth: 0.06,
+  },
+  targets: [
+    // Range lane.
+    { type: 'dummy', position: [-5.5, 0, -19.5], yawDeg: 0 },
+    { type: 'dummy', position: [5.5, 0, -19.5], yawDeg: 0 },
+    {
+      type: 'dummy',
+      position: [-9.5, 0, -22],
+      yawDeg: 0,
+      rail: { to: [9.5, 0, -22], speed: 2.4, pause: 0.7 },
+    },
+    { type: 'dummy', position: [2.2, 0, -24.8], yawDeg: 0 },
+    { type: 'armored', position: [-4.5, 0, -24.8], yawDeg: 0 },
+    // Arena.
+    { type: 'dummy', position: [-3, 0, 2.6], yawDeg: 0 },
+    { type: 'dummy', position: [3.2, 0, -2.4], yawDeg: 20 },
+    {
+      type: 'dummy',
+      position: [10.2, 0, -4.5],
+      yawDeg: -90,
+      rail: { to: [10.2, 0, 4.5], speed: 1.8, pause: 1 },
+    },
+    { type: 'armored', position: [0, 0, -9.2], yawDeg: 0 },
+  ] as readonly TargetPlacementDef[],
   dust: [
     { min: [-13, 0.3, -13], max: [13, 11, 13], share: 0.55 },
     { min: [-12, 0.3, -30], max: [12, 9, -18], share: 0.15 },

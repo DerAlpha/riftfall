@@ -18,6 +18,7 @@ import { GRAPHICS_PRESETS, PRESET_ORDER } from '../defs/graphics';
 import type { PlayerHealth } from '../player/PlayerHealth';
 import type { MigrationResult } from '../save/migrations';
 import type { QualityPreset } from '../save/settingsSchema';
+import { WEAPONS } from '../defs/weapons';
 
 /** What the commands need from the game (Game satisfies it; tests pass stubs). */
 export interface DevCommandHost {
@@ -38,6 +39,14 @@ export interface DevCommandHost {
   readonly movementSandbox: boolean;
   persistUnlocks(): void;
   resetSave(): Promise<void>;
+  /** M2: weapons + training targets (optional so older test hosts keep working). */
+  readonly weapons?: {
+    give(id: string): void;
+    refillAmmo(fillMagazines?: boolean): void;
+    infiniteAmmo: boolean;
+    readonly currentWeaponId: string | null;
+  };
+  readonly targets?: { resetAll(): void } | null;
 }
 
 function num(v: string | undefined, name: string): number {
@@ -253,6 +262,50 @@ export function registerDevCommands(game: DevCommandHost): void {
     });
   later('wave', 'wave <n>', 'Welle setzen', 3);
   later('spawn', 'spawn <gegner> [anzahl]', 'Gegner spawnen', 3);
-  later('give', 'give <waffe>', 'Waffe geben', 2);
+  const weapons = game.weapons;
+  if (weapons) {
+    const ids = Object.keys(WEAPONS);
+    c.register({
+      name: 'give',
+      description: 'Waffe geben',
+      usage: `give <${ids.join('|')}>`,
+      complete: () => ids,
+      run: ([id]) => {
+        if (!id || !ids.includes(id)) throw new Error(`unbekannte Waffe – ${ids.join(', ')}`);
+        weapons.give(id);
+        return `${WEAPONS[id as keyof typeof WEAPONS].name} ausgerüstet`;
+      },
+    });
+    c.register({
+      name: 'ammo',
+      description: 'Munition auffüllen (inkl. Magazine)',
+      run: () => {
+        weapons.refillAmmo(true);
+        return 'Munition aufgefüllt';
+      },
+    });
+    c.register({
+      name: 'infammo',
+      description: 'Unendlich Munition umschalten',
+      usage: 'infammo [on|off]',
+      run: ([v]) => {
+        weapons.infiniteAmmo = onOff(v, weapons.infiniteAmmo);
+        return `Unendlich Munition: ${weapons.infiniteAmmo ? 'AN' : 'AUS'}`;
+      },
+    });
+  } else {
+    later('give', 'give <waffe>', 'Waffe geben', 2);
+  }
+  const targets = game.targets;
+  if (targets) {
+    c.register({
+      name: 'targets',
+      description: 'Trainingsziele zurücksetzen',
+      run: () => {
+        targets.resetAll();
+        return 'Trainingsziele zurückgesetzt';
+      },
+    });
+  }
   later('points', 'points <menge>', 'Punkte geben', 4);
 }

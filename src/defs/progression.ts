@@ -207,7 +207,7 @@ export const PROGRESSION = {
   /** Run end: XP per full minute survived. */
   survivalPerMinute: 20,
   /** Skill points: per level reached (highest level ever) and per prestige rank. */
-  skillPoints: { perLevel: 1, perPrestige: 3 },
+  skillPoints: { perLevel: 1, perPrestige: 5 },
   /**
    * Reference player for the pacing test (src/progression/pacing.ts): a solid but not expert
    * player on the research lab, ~2 h a day.

@@ -643,6 +643,10 @@
 .hud--reduce-flashing .hud-perk.is-new-b {
   animation: rf-fade-in 0.4s ease-out both;
 }
+/* The pop class stays on the icon: the removal must outrank the calm pop above. */
+.hud--reduce-flashing .hud-perk.is-leaving {
+  animation: rf-eco-perk-out 0.4s ease-in both;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .hud-points__mult,

@@ -14,6 +14,7 @@
  * meshes in the world pass. Unknown ids fall back to DEFAULT_* styles (drawn, never crash).
  */
 import type { DamageElement } from '../core/events';
+import { POSTFX } from './postfx';
 import type { Range, Rgb } from './vfx';
 
 // ---------------------------------------------------------------------------
@@ -32,6 +33,7 @@ export const GLOW_SHAPES = [
   'swirl',
   'disc',
   'flame',
+  'halo',
 ] as const;
 export type GlowShape = (typeof GLOW_SHAPES)[number];
 
@@ -121,16 +123,16 @@ const OLIVE: Rgb = [0.12, 0.13, 0.08];
 
 /** Grenade LED: a flare glint blinking at `rate` Hz. */
 function led(color: Rgb, rate: number, offset: number): GlowLayerDef {
-  return { shape: 'flare', size: 0.3, color, intensity: 9, pulse: { rate, depth: 0.92, square: true }, offset };
+  return { shape: 'flare', size: 0.26, color, intensity: 6, pulse: { rate, depth: 0.92, square: true }, offset };
 }
 
 export const PROJECTILE_VISUALS = {
   /** PL-2 plasma bolt: a white-hot stretched core in a cyan sheath. */
   'projectile.plasma': {
     glows: [
-      { shape: 'bolt', size: 0.12, color: PLASMA_CORE, intensity: 14, stretch: 0.012, maxStretch: 0.9 },
-      { shape: 'bolt', size: 0.34, color: PLASMA, intensity: 3.2, stretch: 0.012, maxStretch: 0.9 },
-      { shape: 'orb', size: 0.7, color: PLASMA, intensity: 0.9, offset: 0.05 },
+      { shape: 'bolt', size: 0.1, color: PLASMA_CORE, intensity: 9, stretch: 0.012, maxStretch: 0.9 },
+      { shape: 'bolt', size: 0.3, color: PLASMA, intensity: 2.2, stretch: 0.012, maxStretch: 0.9 },
+      { shape: 'orb', size: 0.7, color: PLASMA, intensity: 0.55, offset: 0.05 },
     ],
     body: null,
   },
@@ -193,7 +195,7 @@ export const PROJECTILE_VISUALS = {
   },
   'projectile.singularity': {
     glows: [
-      { shape: 'void', size: 0.34, color: VOID, intensity: 3.5, spin: 6 },
+      { shape: 'void', size: 0.32, color: VOID, intensity: 2.4, spin: 6 },
       led(VOID, 7, 0),
     ],
     body: {
@@ -212,9 +214,9 @@ export const PROJECTILE_VISUALS = {
   'projectile.voidorb': {
     glows: [
       { shape: 'disc', size: 0.34, color: [0, 0, 0], intensity: 1, blend: 'dark' },
-      { shape: 'void', size: 0.62, color: VOID, intensity: 4.5, spin: 5 },
-      { shape: 'swirl', size: 1.25, color: VOID_DEEP, intensity: 2.2, spin: -3.5 },
-      { shape: 'orb', size: 1.6, color: VOID_DEEP, intensity: 0.55 },
+      { shape: 'void', size: 0.62, color: VOID, intensity: 2.6, spin: 5 },
+      { shape: 'swirl', size: 1.25, color: VOID_DEEP, intensity: 2, spin: -3.5 },
+      { shape: 'halo', size: 1.5, color: VOID_DEEP, intensity: 0.9 },
     ],
     body: null,
     lens: { strength: 0.5, radius: 0.55 },
@@ -222,18 +224,18 @@ export const PROJECTILE_VISUALS = {
   /** Äther-Harfe: a white-blue orb wrapped in crackling filaments. */
   'projectile.shockorb': {
     glows: [
-      { shape: 'orb', size: 0.26, color: SHOCK_CORE, intensity: 12 },
-      { shape: 'electric', size: 0.85, color: SHOCK, intensity: 5, spin: 2 },
-      { shape: 'orb', size: 1.2, color: SHOCK, intensity: 0.8 },
+      { shape: 'orb', size: 0.22, color: SHOCK_CORE, intensity: 6 },
+      { shape: 'electric', size: 0.8, color: SHOCK, intensity: 2.6, spin: 2 },
+      { shape: 'orb', size: 1.1, color: SHOCK, intensity: 0.45 },
     ],
     body: null,
   },
   /** Kryo-Nova: a faceted ice star around a cold white core. */
   'projectile.cryoorb': {
     glows: [
-      { shape: 'orb', size: 0.3, color: FROST_CORE, intensity: 9 },
-      { shape: 'crystal', size: 0.95, color: FROST, intensity: 3.2, spin: 1.5 },
-      { shape: 'orb', size: 1.3, color: FROST, intensity: 0.7 },
+      { shape: 'orb', size: 0.26, color: FROST_CORE, intensity: 5 },
+      { shape: 'crystal', size: 0.9, color: FROST, intensity: 2.2, spin: 1.5 },
+      { shape: 'orb', size: 1.2, color: FROST, intensity: 0.4 },
     ],
     body: null,
   },
@@ -464,32 +466,32 @@ export const BEAM_STYLES = {
       minSegments: 6,
       jitter: 0.045,
       jitterMin: 0.05,
-      width: 0.045,
+      width: 0.035,
       color: SHOCK_CORE,
-      intensity: 16,
+      intensity: 10,
       haloWidth: 7,
-      haloIntensity: 1.1,
+      haloIntensity: 0.7,
     },
     arc: {
       segmentLength: 0.45,
       minSegments: 5,
       jitter: 0.08,
       jitterMin: 0.06,
-      width: 0.035,
+      width: 0.03,
       color: SHOCK_CORE,
-      intensity: 13,
+      intensity: 9,
       haloWidth: 6,
-      haloIntensity: 0.9,
+      haloIntensity: 0.6,
     },
     haloColor: [0.3, 0.5, 1],
     rerollRate: 22,
     branches: { count: 3, length: [0.12, 0.3], segments: 5 },
-    muzzleGlow: { shape: 'electric', size: 0.55, color: SHOCK, intensity: 5, spin: 4 },
-    hitGlow: { shape: 'electric', size: 0.9, color: SHOCK, intensity: 4.5, spin: -3 },
+    muzzleGlow: { shape: 'electric', size: 0.11, color: SHOCK, intensity: 3, spin: 4 },
+    hitGlow: { shape: 'electric', size: 0.7, color: SHOCK, intensity: 2.4, spin: -3 },
     hitEffect: 'beam.lightning.hit',
     hitRate: 18,
     arcRate: 8,
-    light: { color: [0.45, 0.62, 1], intensity: 55, range: 7, interval: 0.07, offset: 0.3 },
+    light: { color: [0.45, 0.62, 1], intensity: 40, range: 7, interval: 0.07, offset: 0.3 },
   },
   /** FW-4 Inferno: a roaring particle cone, white-yellow at the nozzle, dark red at the tips. */
   'beam.flame': {
@@ -505,8 +507,8 @@ export const BEAM_STYLES = {
     intensity: 5,
     intensityEnd: 0.35,
     gravity: -0.35,
-    core: { length: 1.4, width: 0.12, widthEnd: 0.34, color: FIRE_CORE, intensity: 5 },
-    nozzleGlow: { shape: 'flame', size: 0.3, color: [1, 0.62, 0.25], intensity: 5, stretch: 0.02, maxStretch: 0.2 },
+    core: { length: 1.4, width: 0.05, widthEnd: 0.3, color: FIRE_CORE, intensity: 3.5 },
+    nozzleGlow: { shape: 'flame', size: 0.08, color: [1, 0.62, 0.25], intensity: 3.5, stretch: 0.01, maxStretch: 0.1 },
     hitEffect: 'beam.flame.hit',
     hitRate: 14,
     light: { color: [1, 0.5, 0.18], intensity: 70, range: 8, interval: 0.06 },
@@ -522,8 +524,8 @@ export const BEAM_STYLES = {
     haloWidth: 0.7,
     haloColor: VOID_DEEP,
     haloIntensity: 0.9,
-    startGlow: { shape: 'void', size: 0.5, color: VOID, intensity: 4, spin: 6 },
-    endGlow: { shape: 'void', size: 1, color: VOID, intensity: 4, spin: -5 },
+    startGlow: { shape: 'void', size: 0.14, color: VOID, intensity: 3, spin: 6 },
+    endGlow: { shape: 'void', size: 0.8, color: VOID, intensity: 2.6, spin: -5 },
     fade: 0.35,
     fadeWidth: 1.8,
     along: { effect: 'beam.void.motes', spacing: 1.4, rate: 12 },
@@ -539,8 +541,8 @@ export const BEAM_STYLES = {
     haloWidth: 0.5,
     haloColor: [0.2, 0.6, 1],
     haloIntensity: 1.2,
-    startGlow: { shape: 'orb', size: 0.6, color: PLASMA_CORE, intensity: 6 },
-    endGlow: { shape: 'ring', size: 1.4, color: PLASMA, intensity: 5 },
+    startGlow: { shape: 'orb', size: 0.16, color: PLASMA_CORE, intensity: 4 },
+    endGlow: { shape: 'ring', size: 1.2, color: PLASMA, intensity: 3 },
     fade: 0.55,
     fadeWidth: 2.4,
     along: { effect: 'beam.rail.sparks', spacing: 1.1, rate: 0 },
@@ -573,8 +575,8 @@ export const CHARGE_STYLES = {
   'charge.rail': {
     color: [0.3, 0.72, 1],
     coreColor: [0.85, 0.96, 1],
-    intensity: 7,
-    size: [0.05, 0.2],
+    intensity: 5,
+    size: [0.04, 0.15],
     swirl: 1,
     readyPulse: 9,
     light: { color: [0.35, 0.7, 1], intensity: 16, range: 4, interval: 0.06, offset: 0.3 },
@@ -609,6 +611,8 @@ export interface FieldVisualDef {
     readonly radiusScale: number;
     readonly maxRadius: number;
     readonly ground: boolean;
+    /** Core discs: normal blended from up towards the camera by this much (never seen edge-on). */
+    readonly tilt?: number;
   } | null;
   /** Glows at the core (field center, lifted to ≥ coreHeight above the floor). */
   readonly glows: readonly GlowLayerDef[];
@@ -635,12 +639,20 @@ export interface FieldVisualDef {
 export const FIELD_VISUALS = {
   /** Singularity: event horizon, photon ring, accretion disc, infalling matter, bent light. */
   'field.pull.void': {
-    disc: { style: 'accretion', color: VOID, intensity: 3.2, radiusScale: 0.55, maxRadius: 2.6, ground: false },
+    disc: {
+      style: 'accretion',
+      color: VOID,
+      intensity: 2,
+      radiusScale: 0.55,
+      maxRadius: 2.6,
+      ground: false,
+      tilt: 0.45,
+    },
     glows: [
       { shape: 'disc', size: 1.05, color: [0, 0, 0], intensity: 1, blend: 'dark' },
-      { shape: 'ring', size: 1.5, color: [0.85, 0.6, 1], intensity: 4 },
-      { shape: 'void', size: 2.1, color: VOID, intensity: 3, spin: 2.5 },
-      { shape: 'swirl', size: 3.6, color: VOID_DEEP, intensity: 1.2, spin: -1.6 },
+      { shape: 'ring', size: 1.42, color: [0.85, 0.6, 1], intensity: 2 },
+      { shape: 'void', size: 2, color: VOID, intensity: 1.6, spin: 2.5 },
+      { shape: 'halo', size: 3.4, color: VOID_DEEP, intensity: 0.8 },
     ],
     coreHeight: 1.2,
     ambient: [{ effect: 'field.void.motes', rate: 14, area: 'disc', height: [0, 1.6], scale: 1 }],
@@ -654,22 +666,22 @@ export const FIELD_VISUALS = {
       intensity: 7,
     },
     lens: { strength: 1, radiusScale: 0.4, maxRadius: 2.2 },
-    light: { color: [0.55, 0.25, 1], intensity: 90, range: 9, interval: 0.09 },
+    light: { color: [0.55, 0.25, 1], intensity: 40, range: 9, interval: 0.09 },
     fadeIn: 0.25,
     fadeOut: 0.35,
   },
   /** Burning pool: licking flames over glowing embers, rising smoke. */
   'field.damage.fire': {
-    disc: { style: 'fire', color: FIRE, intensity: 2.6, radiusScale: 1, maxRadius: 6, ground: true },
+    disc: { style: 'fire', color: FIRE, intensity: 2.4, radiusScale: 1, maxRadius: 6, ground: true },
     glows: [],
     coreHeight: 0,
     ambient: [
-      { effect: 'field.fire.flames', rate: 26, area: 'disc', height: [0, 0.1], scale: 1 },
-      { effect: 'field.fire.smoke', rate: 4, area: 'disc', height: [0.4, 0.9], scale: 1 },
+      { effect: 'field.fire.flames', rate: 70, area: 'disc', height: [0, 0.05], scale: 1 },
+      { effect: 'field.fire.smoke', rate: 5, area: 'disc', height: [0.5, 1.1], scale: 1 },
     ],
     infall: null,
     lens: null,
-    light: { color: [1, 0.45, 0.14], intensity: 60, range: 7, interval: 0.07, offset: 0.6 },
+    light: { color: [1, 0.45, 0.14], intensity: 32, range: 7, interval: 0.07, offset: 0.6 },
     fadeIn: 0.2,
     fadeOut: 0.8,
   },
@@ -795,8 +807,8 @@ export const ARSENAL_VFX = {
   charge: { renderOrder: 51 },
   /** Glow / beam / charge brightness with the reduce-flashing option (lights: VFX.lights). */
   reducedFlashingScale: 0.6,
-  /** Screen-space lenses at once (singularity fields + void orbs). */
-  lenses: 4,
+  /** Screen-space lenses at once (singularity fields + void orbs; ShockwaveEffect slots). */
+  lenses: POSTFX.shockwave.maxLenses,
   /** Dev preview (`fx` console command, vfx/arsenal/arsenalCommands.ts). */
   preview: {
     /** Seconds a previewed beam fires, a field lasts, a charge takes (then it fires a rail shot). */

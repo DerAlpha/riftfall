@@ -6,6 +6,11 @@
  * such as motion blur – and enables that pass only while a wave is running, so it costs nothing
  * otherwise. Volumetrics/particles and the viewmodel are drawn after it and stay undistorted
  * (the fireball sits on top of the rippling background).
+ *
+ * M5 lenses: up to POSTFX.shockwave.maxLenses persistent gravitational lenses (singularity fields,
+ * void orbs) set per frame by the arsenal VFX (setLens). A thin-lens mapping β = θ − θE²/θ bends
+ * the background around each center (an Einstein ring hugging the event horizon drawn on top),
+ * faded out towards the lens radius; the pass stays enabled while a lens is set.
  */
 import * as THREE from 'three';
 import { Effect } from 'postprocessing';
@@ -20,15 +25,31 @@ import {
 } from './shockwaveMath';
 
 const MAX = POSTFX.shockwave.maxWaves;
+const LENSES = POSTFX.shockwave.maxLenses;
 
 const fragmentShader = /* glsl */ `
 uniform vec4 waves[${MAX}];
 uniform vec4 shape[${MAX}];
 uniform int count;
+// Lenses: xy = center (UV), z = influence radius (UV height units), w = Einstein radius.
+uniform vec4 lenses[${LENSES}];
+uniform int lensCount;
 
 void mainUv(inout vec2 uv) {
   vec2 aspectScale = vec2(aspect, 1.0);
   vec2 total = vec2(0.0);
+  for (int i = 0; i < ${LENSES}; i++) {
+    if (i >= lensCount) break;
+    vec4 l = lenses[i];
+    vec2 d = (uv - l.xy) * aspectScale;
+    float dist = length(d);
+    if (dist < l.z && dist > 1e-5) {
+      // Thin lens: sample the background at θ − θE²/θ (clamped near the center, faded to the rim).
+      float bend = min(l.w * l.w / dist, l.w * 1.6);
+      float fade = 1.0 - smoothstep(l.z * 0.45, l.z, dist);
+      total += (d / dist) * bend * fade;
+    }
+  }
   for (int i = 0; i < ${MAX}; i++) {
     if (i >= count) break;
     vec4 w = waves[i];
@@ -45,6 +66,12 @@ void mainUv(inout vec2 uv) {
 }
 `;
 
+interface Lens {
+  strength: number;
+  position: THREE.Vector3;
+  radius: number;
+}
+
 interface Wave {
   active: boolean;
   age: number;
@@ -60,33 +87,55 @@ export class ShockwaveEffect extends Effect {
   private readonly waves: Wave[] = [];
   private readonly waveUniforms: THREE.Vector4[];
   private readonly shapeUniforms: THREE.Vector4[];
+  private readonly lenses: Lens[] = [];
+  private readonly lensUniforms: THREE.Vector4[];
   private _active = 0;
   private next = 0;
 
   constructor(private readonly camera: THREE.PerspectiveCamera) {
     const waves: THREE.Vector4[] = [];
     const shape: THREE.Vector4[] = [];
+    const lenses: THREE.Vector4[] = [];
     for (let i = 0; i < MAX; i++) {
       waves.push(new THREE.Vector4());
       shape.push(new THREE.Vector4(1, 0, 0, 0));
     }
+    for (let i = 0; i < LENSES; i++) lenses.push(new THREE.Vector4());
     super('ShockwaveEffect', fragmentShader, {
       uniforms: new Map<string, THREE.Uniform>([
         ['waves', new THREE.Uniform(waves)],
         ['shape', new THREE.Uniform(shape)],
         ['count', new THREE.Uniform(0)],
+        ['lenses', new THREE.Uniform(lenses)],
+        ['lensCount', new THREE.Uniform(0)],
       ]),
     });
     this.waveUniforms = waves;
     this.shapeUniforms = shape;
+    this.lensUniforms = lenses;
+    for (let i = 0; i < LENSES; i++) this.lenses.push({ strength: 0, position: new THREE.Vector3(), radius: 0 });
     for (let i = 0; i < MAX; i++) {
       this.waves.push({ active: false, age: 0, position: new THREE.Vector3(), radius: 0, strength: 0 });
     }
   }
 
-  /** True while at least one wave is running (the pipeline enables the pass only then). */
+  /** True while at least one wave runs or a lens is set (the pipeline enables the pass only then). */
   get active(): boolean {
-    return this._active > 0;
+    return this._active > 0 || this.lensesActive();
+  }
+
+  /**
+   * Set (strength > 0) or clear lens `slot` (< POSTFX.shockwave.maxLenses): a gravitational lens
+   * at a world position bending the image within `radius` m. It stays until changed or cleared.
+   */
+  setLens(slot: number, position: Vec3Like, radius: number, strength: number): void {
+    const l = this.lenses[slot];
+    if (!l) return;
+    const ok = radius > 0 && strength > 0 && Number.isFinite(position.x + position.y + position.z);
+    l.strength = ok ? Math.min(1, strength) : 0;
+    if (!ok) return;
+    l.position.set(position.x, position.y, position.z);
+    l.radius = radius;
   }
 
   /** Start a wave at a world position growing to `radius` meters; strength scales the displacement. */
@@ -109,8 +158,10 @@ export class ShockwaveEffect extends Effect {
 
   clear(): void {
     for (const w of this.waves) w.active = false;
+    for (const l of this.lenses) l.strength = 0;
     this._active = 0;
     (this.uniforms.get('count') as THREE.Uniform<number>).value = 0;
+    (this.uniforms.get('lensCount') as THREE.Uniform<number>).value = 0;
   }
 
   /**
@@ -145,6 +196,23 @@ export class ShockwaveEffect extends Effect {
     }
     (this.uniforms.get('count') as THREE.Uniform<number>).value = n;
     this._active = this.countActive();
+    let k = 0;
+    for (const l of this.lenses) {
+      if (!(l.strength > 0)) continue;
+      _view.copy(l.position).applyMatrix4(cam.matrixWorldInverse);
+      const depth = -_view.z;
+      if (depth < cfg.minDepth) continue;
+      _ndc.copy(l.position).project(cam);
+      const radiusUv = screenRadius(l.radius, depth, projYY);
+      this.lensUniforms[k]!.set(_ndc.x * 0.5 + 0.5, _ndc.y * 0.5 + 0.5, radiusUv, radiusUv * cfg.lensEinstein * l.strength);
+      k++;
+    }
+    (this.uniforms.get('lensCount') as THREE.Uniform<number>).value = k;
+  }
+
+  private lensesActive(): boolean {
+    for (const l of this.lenses) if (l.strength > 0) return true;
+    return false;
   }
 
   private countActive(): number {

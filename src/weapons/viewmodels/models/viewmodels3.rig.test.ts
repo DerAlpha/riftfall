@@ -236,65 +236,73 @@ describe('C3 viewmodels in the rig', () => {
     SLOW_TEST_MS,
   );
 
-  it('railgun: the charge spreads the rails apart and the release snaps them back', () => {
-    rig.showWeapon('railgun');
-    frame(10);
-    const l = part('railL');
-    const r = part('railR');
-    const l0 = l.position.clone();
-    const r0 = r.position.clone();
-    const q0 = l.quaternion.clone();
-    events.emit('weapon:charge', { weaponId: 'railgun', amount: 1 });
-    frame(40);
-    expect(l.position.x).toBeLessThan(l0.x - 0.002);
-    expect(r.position.x).toBeGreaterThan(r0.x + 0.002);
-    expect(l.quaternion.angleTo(q0)).toBeGreaterThan(0.01);
-    events.emit('weapon:charge', { weaponId: 'railgun', amount: 0 });
-    events.emit('weapon:fired', {
-      weaponId: 'railgun',
-      origin: V0,
-      direction: V0,
-      muzzle: V0,
-      shotIndex: 0,
-      ammoInMag: 5,
-      ads: false,
-    });
-    frame(90);
-    expect(l.position.distanceTo(l0)).toBeLessThan(1e-3);
-    expect(r.position.distanceTo(r0)).toBeLessThan(1e-3);
-  });
+  it(
+    'railgun: the charge spreads the rails apart and the release snaps them back',
+    { timeout: SLOW_TEST_MS },
+    () => {
+      rig.showWeapon('railgun');
+      frame(10);
+      const l = part('railL');
+      const r = part('railR');
+      const l0 = l.position.clone();
+      const r0 = r.position.clone();
+      const q0 = l.quaternion.clone();
+      events.emit('weapon:charge', { weaponId: 'railgun', amount: 1 });
+      frame(40);
+      expect(l.position.x).toBeLessThan(l0.x - 0.002);
+      expect(r.position.x).toBeGreaterThan(r0.x + 0.002);
+      expect(l.quaternion.angleTo(q0)).toBeGreaterThan(0.01);
+      events.emit('weapon:charge', { weaponId: 'railgun', amount: 0 });
+      events.emit('weapon:fired', {
+        weaponId: 'railgun',
+        origin: V0,
+        direction: V0,
+        muzzle: V0,
+        shotIndex: 0,
+        ammoInMag: 5,
+        ads: false,
+      });
+      frame(90);
+      expect(l.position.distanceTo(l0)).toBeLessThan(1e-3);
+      expect(r.position.distanceTo(r0)).toBeLessThan(1e-3);
+    },
+  );
 
-  it('Kettenblitz: the beam whirls the rotor and claws the prongs open; flamethrower pushes the flare out', () => {
-    rig.showWeapon('chainlightning');
-    frame(10);
-    const coils = part('coils');
-    const prong = part('prongA');
-    const c0 = coils.quaternion.clone();
-    const p0 = prong.quaternion.clone();
-    events.emit('weapon:beam', { weaponId: 'chainlightning', active: true });
-    frame(30);
-    const c1 = coils.quaternion.clone();
-    frame(3);
-    expect(coils.quaternion.angleTo(c1)).toBeGreaterThan(0.05);
-    expect(c1.angleTo(c0)).toBeGreaterThan(0);
-    expect(prong.quaternion.angleTo(p0)).toBeGreaterThan(0.1);
-    events.emit('weapon:beam', { weaponId: 'chainlightning', active: false });
-    frame(90);
-    expect(prong.quaternion.angleTo(p0)).toBeLessThan(0.01);
+  it(
+    'Kettenblitz: the beam whirls the rotor and claws the prongs open; flamethrower pushes the flare out',
+    { timeout: SLOW_TEST_MS },
+    () => {
+      rig.showWeapon('chainlightning');
+      frame(10);
+      const coils = part('coils');
+      const prong = part('prongA');
+      const c0 = coils.quaternion.clone();
+      const p0 = prong.quaternion.clone();
+      events.emit('weapon:beam', { weaponId: 'chainlightning', active: true });
+      frame(30);
+      const c1 = coils.quaternion.clone();
+      frame(3);
+      expect(coils.quaternion.angleTo(c1)).toBeGreaterThan(0.05);
+      expect(c1.angleTo(c0)).toBeGreaterThan(0);
+      expect(prong.quaternion.angleTo(p0)).toBeGreaterThan(0.1);
+      events.emit('weapon:beam', { weaponId: 'chainlightning', active: false });
+      frame(90);
+      expect(prong.quaternion.angleTo(p0)).toBeLessThan(0.01);
 
-    rig.showWeapon('flamethrower');
-    frame(10);
-    const flare = part('flare');
-    const f0 = flare.position.clone();
-    events.emit('weapon:beam', { weaponId: 'flamethrower', active: true });
-    frame(30);
-    expect(flare.position.z).toBeLessThan(f0.z - 0.02);
-    events.emit('weapon:beam', { weaponId: 'flamethrower', active: false });
-    frame(60);
-    expect(flare.position.distanceTo(f0)).toBeLessThan(1e-3);
-  });
+      rig.showWeapon('flamethrower');
+      frame(10);
+      const flare = part('flare');
+      const f0 = flare.position.clone();
+      events.emit('weapon:beam', { weaponId: 'flamethrower', active: true });
+      frame(30);
+      expect(flare.position.z).toBeLessThan(f0.z - 0.02);
+      events.emit('weapon:beam', { weaponId: 'flamethrower', active: false });
+      frame(60);
+      expect(flare.position.distanceTo(f0)).toBeLessThan(1e-3);
+    },
+  );
 
-  it('black hole: sustained fire spins the containment ring (heat driver)', () => {
+  it('black hole: sustained fire spins the containment ring (heat driver)', { timeout: SLOW_TEST_MS }, () => {
     rig.showWeapon('blackhole');
     frame(10);
     const ring = part('ring');

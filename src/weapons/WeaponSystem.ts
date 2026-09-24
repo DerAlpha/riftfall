@@ -88,6 +88,7 @@ import {
 } from '../defs/weapons';
 import { Arsenal } from './fire/Arsenal';
 import {
+  TIME_EPS,
   beamAmmoStep,
   chargeDamageFactor,
   chargeStep,
@@ -1724,7 +1725,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     }
     this.beamTickTimer += dt;
     let ticks = 0;
-    while (this.beamTickTimer >= interval && ticks < ARSENAL.beam.maxTicksPerStep) {
+    while (this.beamTickTimer >= interval - TIME_EPS && ticks < ARSENAL.beam.maxTicksPerStep) {
       this.beamTickTimer -= interval;
       this.beamTick(w);
       ticks++;

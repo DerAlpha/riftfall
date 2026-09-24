@@ -441,6 +441,15 @@ export class RenderSystem implements RenderApi {
     this.post.addShockwave(position, radius, strength);
   }
 
+  /**
+   * Gravitational lens `slot` (M5 singularity fields, void orbs): bends the image within `radius`
+   * m of a world position; strength 0 clears the slot. Set every frame by the arsenal VFX.
+   */
+  setLens(slot: number, position: Vec3Like, radius: number, strength: number): void {
+    if (this.disposed) return;
+    this.post.setLens(slot, position, radius, strength);
+  }
+
   setHealthFraction(f: number): void {
     if (!Number.isFinite(f)) return;
     this.healthTarget = clamp01(f);

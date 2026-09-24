@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { ATTACHMENTS } from '../defs/attachments';
+import { forgePaletteId, getForgeLook } from '../defs/forge';
 import { WEAPONS, type WeaponDef, type WeaponUpgradeTier } from '../defs/weapons';
-import { resolveWeapon } from './resolveWeapon';
+import { resolveWeapon, specialAt } from './resolveWeapon';
 
 const tiers: readonly WeaponUpgradeTier[] = [
   { tier: 1, name: 'Stufe I', cost: 5000, mods: { damage: 1.5, magazine: 1.5 } },
@@ -66,5 +68,80 @@ describe('resolveWeapon', () => {
     const tiny = resolveWeapon(WEAPONS.pistol, { mods: [{ magazine: 0.01, extraPellets: -5 }] });
     expect(tiny.magazine).toBe(1);
     expect(tiny.pellets).toBe(1);
+  });
+});
+
+describe('resolveWeapon (M5): tiers, attachments, kind data', () => {
+  it('a tier renames the weapon, brings its special (kept until replaced) and recolors the tracer', () => {
+    const plasma = WEAPONS.plasma as WeaponDef;
+    const t1 = resolveWeapon(plasma, { tier: 1 });
+    expect(t1.name).toBe(plasma.upgrades[0]!.name);
+    expect(t1.special).toEqual(plasma.upgrades[0]!.special);
+    // Tier 1/2 without their own tracer color: the forge look's; tier 3: its own.
+    expect(t1.tracer.color).toBe(getForgeLook(forgePaletteId(plasma, 1))!.tracer);
+    const t3 = resolveWeapon(plasma, { tier: 3 });
+    expect(t3.tracer.color).toBe(plasma.upgrades[2]!.tracerColor);
+    expect(t3.special).toEqual(plasma.upgrades[2]!.special);
+    // A wonder weapon's base special stays until a tier replaces it; `null` removes it.
+    const harp = WEAPONS.aetherharp as WeaponDef;
+    expect(resolveWeapon(harp, { element: 'fire' }).special).toEqual(harp.special);
+    const noSpecial: WeaponDef = {
+      ...harp,
+      upgrades: harp.upgrades.map((u) => (u.tier === 2 ? { ...u, special: null } : u)),
+    };
+    expect(resolveWeapon(noSpecial, { tier: 2 }).special).toBeNull();
+    expect(specialAt(noSpecial, 1)).toEqual(harp.upgrades[0]!.special);
+    expect(resolveWeapon(WEAPONS.rifle, {}).name).toBe(WEAPONS.rifle.name);
+  });
+
+  it('attachments: an optic sets its absolute zoom, handling mods scale ADS / hip / move speed', () => {
+    const r = resolveWeapon(WEAPONS.rifle, { attachments: ['acog', 'tacticallaser', 'drum', 'unknown'] });
+    expect(r.ads.zoom).toBeCloseTo(0.48, 9);
+    const acog = ATTACHMENTS.acog.mods;
+    const drum = ATTACHMENTS.drum.mods;
+    expect(r.ads.inTime).toBeCloseTo(WEAPONS.rifle.ads.inTime * acog.adsTime * drum.adsTime, 9);
+    expect(r.spread.hip).toBeCloseTo(WEAPONS.rifle.spread.hip * acog.hipSpread * ATTACHMENTS.tacticallaser.mods.hipSpread, 9);
+    expect(r.spread.ads).toBeCloseTo(WEAPONS.rifle.spread.ads, 9);
+    expect(r.magazine).toBe(Math.round(WEAPONS.rifle.magazine * drum.magazine));
+    expect(r.ads.moveSpeedMultiplier).toBeCloseTo(WEAPONS.rifle.ads.moveSpeedMultiplier * drum.moveSpeed, 9);
+    expect(r.carrySpeedMultiplier).toBeCloseTo(drum.moveSpeed, 9);
+    const light = resolveWeapon(WEAPONS.shotgun, { attachments: ['shortbarrel'] });
+    expect(light.equipTime).toBeCloseTo(WEAPONS.shotgun.equipTime * 0.9, 9);
+    // Heavy weapons keep their carry speed (× moveSpeed mods).
+    expect(resolveWeapon(WEAPONS.minigun, { tier: 1 }).carrySpeedMultiplier).toBe(WEAPONS.minigun.carrySpeedMultiplier);
+  });
+
+  it('projectile data follows damage, projectileSpeed and blastRadius; an element mod retargets the blast', () => {
+    const gl = WEAPONS.grenadelauncher as WeaponDef;
+    const p = gl.projectile!;
+    const r = resolveWeapon(gl, { mods: [{ damage: 2, projectileSpeed: 1.5, blastRadius: 1.2 }], element: 'fire' });
+    expect(r.projectile!.speed).toBeCloseTo(p.speed * 1.5, 9);
+    expect(r.projectile!.explosion!.damage).toBeCloseTo(p.explosion!.damage * 2, 9);
+    expect(r.projectile!.explosion!.radius).toBeCloseTo(p.explosion!.radius * 1.2, 9);
+    expect(r.projectile!.explosion!.element).toBe('fire');
+    expect(r.projectile!.explosion!.vfx).toBe('explosion.fire');
+    expect(r.projectile!.explosion!.audio).toBe('explosion.fire');
+    // Blasts of another element than the weapon's (and non-convention ids) are kept.
+    const plasma = resolveWeapon(WEAPONS.plasma as WeaponDef, { element: 'ice' });
+    expect(plasma.projectile!.explosion!.element).toBe('ice');
+    expect(plasma.projectile!.explosion!.vfx).toBe('impact.plasma');
+    const bh = WEAPONS.blackhole as WeaponDef;
+    const b2 = resolveWeapon(bh, { mods: [{ damage: 1.5 }] });
+    expect(b2.projectile!.field!.dps).toBeCloseTo(bh.projectile!.field!.dps * 1.5, 9);
+    expect(b2.projectile!.field!.collapse!.damage).toBeCloseTo(bh.projectile!.field!.collapse!.damage * 1.5, 9);
+    expect(b2.projectile!.field!.radius).toBe(bh.projectile!.field!.radius);
+    // The base def is never mutated.
+    expect(gl.projectile!.explosion!.element).toBe('physical');
+  });
+
+  it('beams scale tick and drain rates with rpm and reach with range; charge time with chargeTime', () => {
+    const cl = WEAPONS.chainlightning as WeaponDef;
+    const r = resolveWeapon(cl, { mods: [{ rpm: 1.2, range: 1.5 }] });
+    expect(r.beam!.tickRate).toBeCloseTo(cl.beam!.tickRate * 1.2, 9);
+    expect(r.beam!.ammoPerSecond).toBeCloseTo(cl.beam!.ammoPerSecond * 1.2, 9);
+    expect(r.beam!.range).toBeCloseTo(cl.beam!.range * 1.5, 9);
+    const rail = WEAPONS.railgun as WeaponDef;
+    const t2 = resolveWeapon(rail, { tier: 2 });
+    expect(t2.charge!.time).toBeCloseTo(rail.charge!.time * 0.75, 9);
   });
 });

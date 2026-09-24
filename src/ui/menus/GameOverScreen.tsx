@@ -1,9 +1,10 @@
 /**
  * Game over screen (M3): "DU BIST GEFALLEN", the wave reached, the run's statistics, the points
- * earned (M4 economy) next to the score, "Neu starten" / "Hauptmenü". The stats reveal one after another (CSS delays); the buttons only
- * react after RUN_MENU.gameOver.inputDelayMs, then "Neu starten" takes the focus – a trigger or
- * jump held through the death must not restart by accident. Keyboard: Tab / arrow keys between
- * the buttons, Enter; gamepad: D-pad + A (MenuPadNavigator).
+ * earned (M4 economy) next to the score, "Neu starten" / "Hauptmenü". The stats reveal one after
+ * another (CSS delays); the buttons only react after RUN_MENU.gameOver.inputDelayMs, then "Neu
+ * starten" takes the focus – a trigger or jump held through the death must not restart by
+ * accident. Keyboard: Tab / arrow keys between the buttons, Enter; gamepad: D-pad + A
+ * (MenuPadNavigator).
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { RUN_MENU } from '../../defs/ui';

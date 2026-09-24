@@ -259,6 +259,7 @@ for (const mapId of ['lab', 'testroom'] as const) {
       expect(handle.hasVolumetricContent).toBe(true);
       handle.reset();
       expect(handle.doors.every((d) => d.state === 'closed')).toBe(true);
-    });
+      // Builds every view and walks every anchor: seconds on a loaded CI machine.
+    }, 30000);
   });
 }

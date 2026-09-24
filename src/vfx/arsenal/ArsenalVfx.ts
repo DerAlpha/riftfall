@@ -44,7 +44,7 @@ import { StripBatch } from './StripBatch';
 export type { EffectSpawner, LensSink };
 
 export interface ArsenalVfxDeps {
-  render: Pick<RenderApi, 'scene' | 'setupMaterial'>;
+  render: Pick<RenderApi, 'scene' | 'camera' | 'setupMaterial'>;
   /** Shared particle system (flame streams, infalling streaks); null draws without them. */
   particles?: ParticleSystem | null;
   /** Pooled VFX flash lights (beam / field / charge lights). */
@@ -89,6 +89,7 @@ export class ArsenalVfx implements ArsenalVfxApi {
   private chargeStamp = -1;
   private epoch = 0;
   private readonly sockets: () => VfxSocketSource | null;
+  private readonly camera: THREE.Camera;
   private readonly lens: LensSink | null;
   /** Lens slots fed last frame (turned off once unused). */
   private lensUsed = 0;
@@ -110,6 +111,7 @@ export class ArsenalVfx implements ArsenalVfxApi {
     this.object.name = 'ArsenalVfx';
     this.object.add(dark.mesh, discs.mesh, strips.mesh, glows.mesh, bodies.object);
     this.ctx = {
+      eye: new THREE.Vector3(),
       glows,
       dark,
       strips,
@@ -126,6 +128,7 @@ export class ArsenalVfx implements ArsenalVfxApi {
       lensQueue: createLensQueue(),
       lensCount: 0,
     };
+    this.camera = deps.render.camera;
     this.sockets = deps.sockets ?? (() => null);
     this.lens = deps.lens ?? null;
     this.projectiles = new ArsenalProjectiles(this.ctx);
@@ -197,6 +200,7 @@ export class ArsenalVfx implements ArsenalVfxApi {
     this.time.value += step;
     const ctx = this.ctx;
     ctx.time = this.time.value;
+    this.camera.getWorldPosition(ctx.eye);
     this.preview?.(step);
 
     ctx.glows.begin();

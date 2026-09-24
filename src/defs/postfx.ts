@@ -135,6 +135,12 @@ export const POSTFX = {
     minDepth: 0.25,
     /** Full displacement up to this camera distance, then ∝ 1 / distance (m). */
     fullDistance: 6,
+    /**
+     * M5 gravitational lenses (singularities, ShockwaveEffect.setLens): slots, and the Einstein
+     * radius as a fraction of the lens radius at strength 1.
+     */
+    maxLenses: 4,
+    lensEinstein: 0.34,
   },
   smaaPreset: 'HIGH',
 } as const;

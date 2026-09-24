@@ -326,6 +326,7 @@ export class Game {
       physics,
       events,
       shockwave: (p, r, s) => render.addShockwave(p, r, s),
+      lens: (slot, p, r, s) => render.setLens(slot, p, r, s),
       onClink: audioBridge.onCasingClink,
     });
     const vfxBridge = new VfxBridge({ events, vfx });

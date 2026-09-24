@@ -30,6 +30,7 @@ import type { GameEvents, Vec3Like } from '../core/events';
 import { smoothstep } from '../core/math';
 import { ARSENAL } from '../defs/combat';
 import type { FieldDef, WeaponSpecialDef } from '../defs/weapons';
+import { TIME_EPS } from '../weapons/fire/fireMath';
 import { NULL_ARSENAL_VFX } from '../weapons/fire/nullArsenalVfx';
 import { createSpecialHit, type SpecialsHook } from '../weapons/fire/types';
 
@@ -61,10 +62,10 @@ export class FieldSystem implements FieldApi {
 
   // Pool (structure of arrays).
   private readonly pos: Float64Array;
-  private readonly age: Float32Array;
-  private readonly tick: Float32Array;
-  private readonly areaScale: Float32Array;
-  private readonly buildup: Float32Array;
+  private readonly age: Float64Array;
+  private readonly tick: Float64Array;
+  private readonly areaScale: Float64Array;
+  private readonly buildup: Float64Array;
   private readonly handle: Int32Array;
   private readonly ids: Int32Array;
   private readonly defs: (FieldDef | null)[];
@@ -119,10 +120,10 @@ export class FieldSystem implements FieldApi {
     const n = Math.max(1, Math.floor(deps.capacity ?? ARSENAL.fields.capacity));
     this.capacity = n;
     this.pos = new Float64Array(n * 3);
-    this.age = new Float32Array(n);
-    this.tick = new Float32Array(n);
-    this.areaScale = new Float32Array(n);
-    this.buildup = new Float32Array(n);
+    this.age = new Float64Array(n);
+    this.tick = new Float64Array(n);
+    this.areaScale = new Float64Array(n);
+    this.buildup = new Float64Array(n);
     this.handle = new Int32Array(n);
     this.ids = new Int32Array(n);
     this.defs = new Array<FieldDef | null>(n).fill(null);
@@ -239,12 +240,12 @@ export class FieldSystem implements FieldApi {
       this.age[i] = this.age[i]! + dt;
       if (def.dps > 0 && interval > 0) {
         this.tick[i] = this.tick[i]! + dt;
-        while (this.tick[i]! >= interval) {
+        while (this.tick[i]! >= interval - TIME_EPS) {
           this.tick[i] = this.tick[i]! - interval;
           this.damageTick(i, def, interval);
         }
       }
-      if (this.age[i]! >= def.duration) this.end(k, true);
+      if (this.age[i]! >= def.duration - TIME_EPS) this.end(k, true);
     }
   }
 

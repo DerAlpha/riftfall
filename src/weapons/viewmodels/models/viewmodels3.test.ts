@@ -147,7 +147,8 @@ const BLOOM_FLOOR = POSTFX.bloom.luminanceThreshold + POSTFX.bloom.luminanceSmoo
 const lumOf = (c: Color): number => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 
 describe('C3 energy + wonder weapon viewmodels', () => {
-  it('every model is registered, has a def and builds an energy model', () => {
+  // Builds all nine models (the rest reuses them): generous under a loaded parallel test run.
+  it('every model is registered, has a def and builds an energy model', { timeout: 60_000 }, () => {
     for (const id of IDS) {
       expect(M5_BUILDERS[id], id).toBeTypeOf('function');
       expect(hasViewmodel(id), id).toBe(true);

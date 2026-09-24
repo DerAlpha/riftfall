@@ -120,7 +120,7 @@ void main() {
     // photon ring
     float band = exp(-pow((r - 0.62) / 0.07, 2.0));
     float wob = 0.8 + 0.2 * aNoise(vec2(ang * 3.0 + seed * 7.0, t * 2.0));
-    a = band * wob + exp(-r * r * 7.0) * 0.12;
+    a = band * wob;
     a *= 1.0 - smoothstep(0.85, 1.0, r);
     core = band * 0.35;
   } else if (shape == 3) {
@@ -162,10 +162,14 @@ void main() {
     float lr = log(max(r, 1e-3));
     float arms = 0.5 + 0.5 * cos(ang * 2.0 + lr * 7.0 + seed * 6.28);
     float n = aFbm(vec2(ang * 2.0 + seed * 5.0, lr * 3.0 - t * 0.6));
-    a = pow(arms, 2.5) * (0.35 + n) * smoothstep(0.1, 0.32, r) * (1.0 - smoothstep(0.5, 1.0, r));
+    // Hollow: it swirls around a dark core, never over it.
+    a = pow(arms, 2.5) * (0.35 + n) * smoothstep(0.26, 0.42, r) * (1.0 - smoothstep(0.55, 1.0, r));
   } else if (shape == 8) {
     // dark disc (event horizon): opaque black with a soft edge
     a = 1.0 - smoothstep(0.6, 1.0, r);
+  } else if (shape == 10) {
+    // halo: a hollow glow around a dark core
+    a = smoothstep(0.24, 0.34, r) * exp(-(r - 0.34) * 4.0) * (1.0 - smoothstep(0.8, 1.0, r));
   } else {
     // flame tongue: base at the head, flickering tip trailing behind
     float s = clamp((p.y + vLen) / (2.0 * vLen), 0.0, 1.0);

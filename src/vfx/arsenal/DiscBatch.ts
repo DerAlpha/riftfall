@@ -74,17 +74,17 @@ void main() {
     core = band * heat * heat * n;
     tint = mix(vec3(0.55, 0.35, 1.0), vec3(1.0), heat * 0.5);
   } else if (style == 1) {
-    // burning pool: licking flames over embers, ragged burning edge
-    vec2 q = p * 2.3;
-    float n = aFbm(q + vec2(seed * 7.0, -t * 0.9));
-    float n2 = aFbm(q * 2.1 + vec2(-t * 0.6, seed * 3.0 + t * 0.35));
+    // burning pool: domain-warped burning patches, glowing specks, ragged spreading edge
+    vec2 q = p * 2.6 + seed * 7.0;
+    vec2 warp = vec2(aFbm(q + vec2(0.0, -t * 0.7)), aFbm(q + vec2(5.2, 1.3) - t * 0.5));
+    float n = aFbm(q + warp * 1.7 + vec2(0.0, -t * 1.1));
     float reach = min(1.0, grow);
-    float edge = 1.0 - smoothstep(reach * 0.6, reach, r + (n - 0.5) * 0.35);
-    float flame = smoothstep(0.42, 0.78, n * 0.55 + n2 * 0.6);
-    float embers = 0.25 + 0.75 * smoothstep(0.45, 0.75, n2);
-    a = edge * (0.18 * embers + flame * 1.25);
-    core = edge * flame * flame * 0.8;
-    tint = mix(vec3(0.85, 0.28, 0.12), vec3(1.0, 0.95, 0.7), flame);
+    float edge = 1.0 - smoothstep(reach * 0.55, reach, r + (n - 0.5) * 0.4);
+    float heat = smoothstep(0.38, 0.8, n);
+    float specks = pow(aNoise(p * 16.0 + seed * 3.0 + floor(t * 6.0) * 0.37), 7.0) * 2.5;
+    a = edge * (heat * 1.3 + specks * (1.0 - heat) + 0.04);
+    core = edge * heat * heat * heat;
+    tint = mix(vec3(0.75, 0.16, 0.05), vec3(1.0, 0.9, 0.55), heat * heat);
   } else if (style == 2) {
     // toxic puddle: slow murky swirl, caustic ripples, popping bubbles
     float n = aFbm(p * 2.0 + vec2(seed, t * 0.12));

@@ -97,7 +97,8 @@ describe('mystery box roll curve and pool', () => {
     expect(base.map((e) => e.weapon)).toEqual(B.pool.map((e) => e.weapon).filter(firable));
     for (const id of ['pistol', 'rifle', 'shotgun']) expect(base.map((e) => e.weapon)).toContain(id);
     const wonder = { ...WEAPONS.rifle, id: 'riftcannon', boxOnly: true } as WeaponDef;
-    const launcher = { ...WEAPONS.rifle, id: 'launcher', kind: 'projectile' } as WeaponDef;
+    // A kind the weapon system cannot fire (the implemented kinds grow with M5).
+    const launcher = { ...WEAPONS.rifle, id: 'launcher', kind: 'unfirable' } as unknown as WeaponDef;
     const { pistol, rifle, shotgun } = WEAPONS;
     const defs: Record<string, WeaponDef> = { pistol, rifle, shotgun, riftcannon: wonder, launcher };
     const entries: BoxPoolEntry[] = [

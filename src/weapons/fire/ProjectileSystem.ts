@@ -45,7 +45,7 @@ import type { DamageElement, FleshSurface, GameEvents, HitZone, SurfaceType, Vec
 import { ARSENAL } from '../../defs/combat';
 import type { ExplosionDef, WeaponProjectileDef, WeaponSpecialDef } from '../../defs/weapons';
 import { DEG2RAD } from '../../core/math';
-import { bounceVelocity, convergeWeight, homingScore, turnTowards } from './fireMath';
+import { TIME_EPS, bounceVelocity, convergeWeight, homingScore, turnTowards } from './fireMath';
 import { NULL_ARSENAL_VFX } from './nullArsenalVfx';
 import { createSpecialHit, type SpecialsHook } from './types';
 import { statusBuildupFor } from './WeaponSpecials';
@@ -97,14 +97,14 @@ export class ProjectileSystem implements ProjectileApi {
   private readonly vel: Float64Array;
   private readonly visOff: Float64Array;
   private readonly vis: Float64Array;
-  private readonly age: Float32Array;
-  private readonly blastScale: Float32Array;
-  private readonly areaScale: Float32Array;
-  private readonly damage: Float32Array;
-  private readonly headMul: Float32Array;
-  private readonly weakMul: Float32Array;
-  private readonly buildup: Float32Array;
-  private readonly homingTimer: Float32Array;
+  private readonly age: Float64Array;
+  private readonly blastScale: Float64Array;
+  private readonly areaScale: Float64Array;
+  private readonly damage: Float64Array;
+  private readonly headMul: Float64Array;
+  private readonly weakMul: Float64Array;
+  private readonly buildup: Float64Array;
+  private readonly homingTimer: Float64Array;
   private readonly bounces: Int16Array;
   private readonly pierce: Int16Array;
   private readonly resting: Uint8Array;
@@ -199,14 +199,14 @@ export class ProjectileSystem implements ProjectileApi {
     this.vel = new Float64Array(n * 3);
     this.visOff = new Float64Array(n * 3);
     this.vis = new Float64Array(n * 3);
-    this.age = new Float32Array(n);
-    this.blastScale = new Float32Array(n);
-    this.areaScale = new Float32Array(n);
-    this.damage = new Float32Array(n);
-    this.headMul = new Float32Array(n);
-    this.weakMul = new Float32Array(n);
-    this.buildup = new Float32Array(n);
-    this.homingTimer = new Float32Array(n);
+    this.age = new Float64Array(n);
+    this.blastScale = new Float64Array(n);
+    this.areaScale = new Float64Array(n);
+    this.damage = new Float64Array(n);
+    this.headMul = new Float64Array(n);
+    this.weakMul = new Float64Array(n);
+    this.buildup = new Float64Array(n);
+    this.homingTimer = new Float64Array(n);
     this.bounces = new Int16Array(n);
     this.pierce = new Int16Array(n);
     this.resting = new Uint8Array(n);
@@ -386,12 +386,12 @@ export class ProjectileSystem implements ProjectileApi {
     this.prev[o + 1] = this.pos[o + 1]!;
     this.prev[o + 2] = this.pos[o + 2]!;
     const age = (this.age[i] = this.age[i]! + dt);
-    if (def.fuse > 0 && age >= def.fuse) {
+    if (def.fuse > 0 && age >= def.fuse - TIME_EPS) {
       _c.set(this.pos[o]!, this.pos[o + 1]!, this.pos[o + 2]!);
       this.detonate(i, _c, 0, 1, 0, null);
       return true;
     }
-    if (age >= def.lifetime) {
+    if (age >= def.lifetime - TIME_EPS) {
       _c.set(this.pos[o]!, this.pos[o + 1]!, this.pos[o + 2]!);
       if (def.explosion || def.field) this.detonate(i, _c, 0, 1, 0, null);
       return true;

@@ -7,6 +7,9 @@ import type { Hitbox } from '../../core/contracts';
 import type { Vec3Like } from '../../core/events';
 import type { WeaponChargeDef, WeaponSpinUpDef } from '../../defs/weapons';
 
+/** Accumulated tick times (n × 1/60) land a hair below exact values: counts as reached. */
+export const TIME_EPS = 1e-9;
+
 // ---------------------------------------------------------------------------
 // Charge
 // ---------------------------------------------------------------------------
@@ -15,7 +18,7 @@ import type { WeaponChargeDef, WeaponSpinUpDef } from '../../defs/weapons';
 export function chargeStep(amount: number, dt: number, time: number): number {
   if (!(time > 0)) return 1;
   const next = amount + dt / time;
-  return next >= 1 ? 1 : next > 0 ? next : 0;
+  return next >= 1 - TIME_EPS ? 1 : next > 0 ? next : 0;
 }
 
 /**
@@ -35,8 +38,12 @@ export function chargeDamageFactor(amount: number, def: Pick<WeaponChargeDef, 'm
 
 /** Barrel spin after `dt`: up over `time` while held, down over `spinDown` otherwise (0..1). */
 export function spinStep(spin: number, held: boolean, dt: number, def: Pick<WeaponSpinUpDef, 'time' | 'spinDown'>): number {
-  if (held) return def.time > 0 ? Math.min(1, spin + dt / def.time) : 1;
-  return def.spinDown > 0 ? Math.max(0, spin - dt / def.spinDown) : 0;
+  if (held) {
+    const up = def.time > 0 ? spin + dt / def.time : 1;
+    return up >= 1 - TIME_EPS ? 1 : up;
+  }
+  const down = def.spinDown > 0 ? spin - dt / def.spinDown : 0;
+  return down <= TIME_EPS ? 0 : down;
 }
 
 /** Fire-rate fraction at `spin`: nothing below `startFraction`, then the spin itself (full rpm at 1). */
@@ -160,8 +167,8 @@ export function coneReach(
 export function beamAmmoStep(state: { acc: number }, perSecond: number, dt: number): number {
   if (!(perSecond > 0) || !(dt > 0)) return 0;
   state.acc += perSecond * dt;
-  const take = Math.floor(state.acc);
-  state.acc -= take;
+  const take = Math.floor(state.acc + TIME_EPS);
+  state.acc = Math.max(0, state.acc - take);
   return take;
 }
 

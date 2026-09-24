@@ -3,6 +3,7 @@
  * particle / preset spawning, pooled lights and quality knobs, plus small helpers that turn def
  * data (glow layers, sustained lights) into draw calls. Allocation-free.
  */
+import type * as THREE from 'three';
 import type { PhysicsApi, RaycastOptions } from '../../core/contracts';
 import type { Vec3Like } from '../../core/events';
 import { ARSENAL_VFX, type GlowLayerDef, type SustainLightDef } from '../../defs/arsenalVfx';
@@ -26,6 +27,8 @@ export type EffectSpawner = (effect: string, position: Vec3Like, normal: Vec3Lik
 export type LensSink = (slot: number, position: Vec3Like, radius: number, strength: number) => void;
 
 export interface ArsenalContext {
+  /** World camera position this frame (discs tilt towards it). */
+  readonly eye: THREE.Vector3;
   readonly glows: GlowSprites;
   readonly dark: GlowSprites;
   readonly strips: StripBatch;

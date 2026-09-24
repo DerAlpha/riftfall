@@ -183,7 +183,13 @@ export class ArsenalFields {
       const k = disc.intensity * fade * flash;
       const lift = ARSENAL_VFX.discs.lift;
       const c = disc.ground ? f.floor : f.core;
-      const n = disc.ground ? f.floorNormal : _p.set(0, 1, 0);
+      let n = f.floorNormal;
+      if (!disc.ground) {
+        // Core discs lean towards the viewer: an accretion disc is never seen edge-on.
+        const tilt = disc.tilt ?? 0;
+        _p.subVectors(ctx.eye, f.core).normalize().multiplyScalar(tilt);
+        n = _p.set(_p.x, _p.y + (1 - tilt), _p.z).normalize();
+      }
       ctx.discs.push(
         c.x + n.x * lift,
         c.y + n.y * lift,

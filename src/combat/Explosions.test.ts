@@ -159,14 +159,18 @@ describe('Explosions', () => {
       data: { kind: 'prop', surface: 'metal' },
     });
     physics.step(1 / 60);
+    const vy0 = crate.linvel().y;
     const explosions = new Explosions({ events, combat, physics });
     explosions.explode({ x: 0, y: 0.5, z: 0 }, BLAST, FROM);
     expect(explosions.stats.props).toBe(1);
+    // Halfway out: half the impulse outwards, lifted by propLift of it.
     const v = crate.linvel();
-    expect([v.x, v.y, v.z, crate.mass()]).toEqual([]);
-    expect(v.x).toBeGreaterThan(1);
-    expect(v.y).toBeGreaterThan(0.5);
-    expect(Math.hypot(far.linvel().x, far.linvel().y)).toBeLessThan(1e-6);
+    const mass = crate.mass();
+    expect(v.x * mass).toBeCloseTo(BLAST.propImpulse * 0.5, 0);
+    expect((v.y - vy0) * mass).toBeCloseTo(BLAST.propImpulse * 0.5 * ARSENAL.explosions.propLift, 0);
+    // Out of the radius: only its fall.
+    expect(Math.abs(far.linvel().x)).toBeLessThan(1e-6);
+    expect(far.linvel().y).toBeCloseTo(vy0, 6);
     physics.dispose();
   });
 });

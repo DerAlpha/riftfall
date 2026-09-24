@@ -330,6 +330,11 @@ export class PostFXPipeline {
     this.shockwave.trigger(position, radius, strength);
   }
 
+  /** Set / clear (strength 0) gravitational lens `slot` (M5 singularities, ShockwaveEffect). */
+  setLens(slot: number, position: Vec3Like, radius: number, strength: number): void {
+    this.shockwave.setLens(slot, position, radius, strength);
+  }
+
   /**
    * Tells whether anything besides the level volumetrics draws on RENDER.volumetricLayer this
    * frame (VFX particles/tracers). With level volumetrics off and no such content the volumetric

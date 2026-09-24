@@ -142,6 +142,8 @@ export const ELEMENTS = {
       field: field('damage', 'poison', 2.6, 4, 14, 0),
       /** Poison build-up per cloud damage point (spreads the poison). */
       statusBuildup: 3,
+      /** Death clouds alive at once at most (a dying horde must not fill the field pool). */
+      maxActive: 6,
     },
   },
   voidMark: {

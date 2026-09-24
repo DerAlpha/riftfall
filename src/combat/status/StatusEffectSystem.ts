@@ -178,6 +178,8 @@ export class StatusEffectSystem implements StatusEffectsApi, CombatStatusHook {
 
   // --- per tick ---
   private comboBudget = 0;
+  /** End times of the death clouds alive (ELEMENTS.poisoned.cloud.maxActive). */
+  private readonly cloudEnds = new Float64Array(ELEMENTS.poisoned.cloud.maxActive);
   private vfxBudget = 0;
   private vfxCursor = 0;
 
@@ -393,6 +395,7 @@ export class StatusEffectSystem implements StatusEffectsApi, CombatStatusHook {
 
   reset(): void {
     while (this.count > 0) this.release(this.count - 1);
+    this.cloudEnds.fill(0);
     this.vfxCursor = 0;
   }
 
@@ -880,13 +883,19 @@ export class StatusEffectSystem implements StatusEffectsApi, CombatStatusHook {
     const C = ELEMENTS.poisoned.cloud;
     const i = s * NS + POISONED;
     if (!this.isOn(s, POISONED) || this.stacks[i]! < C.minStacks || !this.fields) return;
+    let free = -1;
+    for (let k = 0; k < this.cloudEnds.length; k++) if (this.cloudEnds[k]! <= this.now) free = k;
+    if (free < 0) return;
     const from = this.area;
     from.weaponId = this.statusWeapon[i]!;
     from.source = this.statusSource[i]!;
     from.statusBuildup = C.statusBuildup;
     from.areaScale = this.toughness[s]!;
     _center.copy(t.boundsCenter);
-    if (this.fields.spawn(_center, C.field, from) > 0) this.stats.clouds++;
+    if (this.fields.spawn(_center, C.field, from) > 0) {
+      this.cloudEnds[free] = this.now + C.field.duration;
+      this.stats.clouds++;
+    }
   }
 
   private spawnParticles(dt: number): void {

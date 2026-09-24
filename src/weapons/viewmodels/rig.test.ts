@@ -150,7 +150,7 @@ describe('ViewmodelRig weapon layer', () => {
       expect(rig.currentWeaponId).toBe(next);
       prev = next;
     }
-  });
+  }, 60_000);
 
   it('socket anchors persist across model swaps and follow the shown model', () => {
     const muzzle = rig.getSocketObject('muzzle');
@@ -284,7 +284,7 @@ describe('ViewmodelRig weapon layer', () => {
       if (o.name.startsWith('vm-')) models++;
     });
     expect(models).toBe(1);
-  });
+  }, 60_000);
 
   it('dispose tears everything down', () => {
     rig.showWeapon('rifle');

@@ -6,8 +6,9 @@
  *   bounds sphere does not shield it, a limb in the blast counts); line of sight from the blast to
  *   that surface point or the aim point (static world only – bodies do not shield each other).
  *   The source's own team is spared ('player' blasts never hit team 'player').
- * - The player (optional `player` hook): player blasts hurt the shooter by `selfDamageScale`,
- *   everything else fully; damage kind 'explosion' (PlayerHealth's explosion stat).
+ * - The player (optional `player` hook): player blasts hurt the shooter by `selfDamageScale` of
+ *   the def's damage (`areaScale` never raises it), everything else fully; damage kind
+ *   'explosion' (PlayerHealth's explosion stat).
  * - Dynamic props within the radius are pushed (Rapier shape query, linear fade, LOS).
  * - Emits combat:explosion (VFX / audio bridges draw and sound it: `vfx`/`audio` from the def) and
  *   camera:shake faded over ARSENAL.explosions.shakeReach radii from the player's eye.
@@ -211,7 +212,9 @@ export class Explosions implements ExplosionApi {
         primary = false;
       }
       list.length = 0;
-      this.damagePlayer(center, def, from, damage);
+      // The shooter's share comes from the def alone: crits and toughness scale the blast for
+      // enemies, never the player's own (like the forge's damage mods, resolveWeapon).
+      this.damagePlayer(center, def, from, from.source === 'player' ? def.damage : damage);
     }
 
     if (def.propImpulse > 0) this.pushProps(center, r, def.propImpulse);

@@ -1,7 +1,8 @@
 /**
  * Weapon feel & balance regressions (M5 review): trigger-rate exploits, forge tier self damage,
- * the suppressor's report and the forged muzzle light on weapon:fired, time-to-kill sanity per
- * wave through the real WeaponSystem + arsenal.
+ * the suppressor's report and the forged muzzle light on weapon:fired, mounts, optics, crit
+ * rhythm, mod changes – through the real WeaponSystem + arsenal – and the roster's forge
+ * progression / time to kill per wave from the effective defs.
  */
 import { Box3 } from 'three';
 import { describe, expect, it } from 'vitest';

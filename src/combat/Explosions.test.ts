@@ -132,6 +132,20 @@ describe('Explosions', () => {
     expect(t.player.hits).toHaveLength(2);
   });
 
+  it('areaScale (crits, toughness) hits enemies harder, never the shooter of a player blast', () => {
+    const t = setup();
+    t.player.position.set(0, 0, 2);
+    t.player.eyePosition.set(0, 1.6, 2);
+    t.explosions.explode({ x: 0, y: 1, z: 0 }, BLAST, FROM);
+    t.explosions.explode({ x: 0, y: 1, z: 0 }, BLAST, { ...FROM, areaScale: 2.5 });
+    expect(t.player.hits).toHaveLength(2);
+    expect(t.player.hits[1]!.amount).toBeCloseTo(t.player.hits[0]!.amount, 6);
+    // Other sources' blasts scale for everybody.
+    t.explosions.explode({ x: 0, y: 1, z: 0 }, BLAST, { ...FROM, source: 'trap' });
+    t.explosions.explode({ x: 0, y: 1, z: 0 }, BLAST, { ...FROM, source: 'trap', areaScale: 2.5 });
+    expect(t.player.hits[3]!.amount).toBeCloseTo(t.player.hits[2]!.amount * 2.5, 6);
+  });
+
   it('emits combat:explosion with the def preset/sound and shakes by distance', () => {
     const t = setup();
     t.player.eyePosition.set(0, 1.6, 6);

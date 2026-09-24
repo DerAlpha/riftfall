@@ -6,6 +6,10 @@
  * - one perk machine per perk at PERK_MACHINES.placements[map] (pinned perks first, then the perk
  *   table order; extra perks without a spot are skipped with a warning),
  * - the Rift-Kiste wandering between MYSTERY_BOX.locations[map].
+ * M7 map kit: perk spots, box locations / start ids and the forge / bench placements come from the
+ * level first (MapLevelInstance fields via maps/kit/levelData), the per-map tables otherwise; with
+ * `power` the perk machines, wall buys, the box and the forge are registered through its gate
+ * (purchases refused during a power outage) and their visuals dim with the power.
  * Everything is registered with the InteractionSystem; solid parts (closed doors, machines, the
  * box) get colliders, bullet blockers and navmesh areas (SolidBlocker). Without `visuals` only the
  * logic is built (tests, headless tools).
@@ -53,6 +57,13 @@ import {
 } from '../defs/interactables';
 import { IMPLEMENTED_WEAPON_KINDS, getWeaponDef, type WeaponDef } from '../defs/weapons';
 import { isMapLevel } from '../maps/types';
+import {
+  resolveBenchPlacement,
+  resolveBoxLocations,
+  resolveBoxStartIds,
+  resolveForgePlacement,
+  resolvePerkSpots,
+} from '../maps/kit/levelData';
 import { Door } from './Door';
 import { MysteryBox, resolveBoxPool, type BoxLocation } from './MysteryBox';
 import { PerkMachine } from './PerkMachine';
@@ -128,6 +139,14 @@ export interface PlaceInteractablesDeps {
   mapId?: string;
   /** M5: Rift Forge + Werkbank (interactables/workshop.ts); null/absent = neither machine. */
   workshop?: WorkshopDeps | null;
+  /**
+   * M7 power outage (maps/kit/PowerGrid): machines are registered through `gate` (purchases refused
+   * while unpowered) and their view objects handed to `addPoweredVisuals` (dimmed). Null = always on.
+   */
+  power?: {
+    gate(i: Interactable): Interactable;
+    addPoweredVisuals(objects: readonly Object3D[]): void;
+  } | null;
 }
 
 export interface InteractablesHandle {
@@ -202,6 +221,14 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
     interactables.push(i);
     deps.interaction.register(i);
   };
+  // M7: machines behind the main power; their view objects are the root children added since `mark`.
+  const power = deps.power ?? null;
+  let mark = root ? root.children.length : 0;
+  const registerPowered = (i: Interactable): void => {
+    register(power ? power.gate(i) : i);
+    if (power && root) power.addPoweredVisuals(root.children.slice(mark));
+    mark = root ? root.children.length : 0;
+  };
 
   // --- doors ---
   const doors: Door[] = [];
@@ -244,6 +271,7 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
       log.warn(`Wall buy "${def.id}": weapon "${def.weapon}" is unknown, box-only or not firable – skipped`);
       continue;
     }
+    mark = root ? root.children.length : 0;
     const n = facingNormal(def.facing);
     const anchor = new Vector3(
       def.position[0] + n.x * WALL_BUYS.anchorOffset,
@@ -272,15 +300,16 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
       { weapons: deps.weapons, economy: deps.economy, prices, view },
     );
     wallBuys.push(wb);
-    register(wb);
+    registerPowered(wb);
   }
 
   // --- perk machines ---
   const perkMachines: PerkMachine[] = [];
   if (deps.perks) {
     const infos = deps.perkInfos ?? defaultPerkMachineInfos();
-    const spots = PERK_MACHINES.placements[mapId] ?? [];
+    const spots = resolvePerkSpots(deps.level, mapId);
     for (const { spot, perk } of assignPerkSpots(spots, infos)) {
+      mark = root ? root.children.length : 0;
       const P = PERK_MACHINES;
       const { width, height, depth } = P.size;
       const n = facingNormal(spot.facing);
@@ -309,30 +338,43 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
         blocker,
       });
       perkMachines.push(machine);
-      register(machine);
+      registerPowered(machine);
     }
   }
 
   // --- M5 workshop: the Rift Forge and the Werkbank ---
+  // M7: the forge is powered (gated, dimmed); the bench stays usable (its menu compares the focus
+  // with itself) – its view objects are skipped by moving the mark past them.
+  const forgePlacement = resolveForgePlacement(deps.level, mapId);
+  mark = root ? root.children.length : 0;
   const workshop = deps.workshop
     ? placeWorkshop(deps.workshop, {
         mapId,
+        forgePlacement,
+        benchPlacement: resolveBenchPlacement(deps.level, mapId),
         events: deps.events,
         economy: deps.economy,
         blockerDeps,
         ctx,
         vfx: deps.vfx ?? null,
         player: deps.player ?? null,
-        register,
+        register: (i) => {
+          if (forgePlacement !== null && i.id === forgePlacement.id) registerPowered(i);
+          else {
+            register(i);
+            mark = root ? root.children.length : 0;
+          }
+        },
       })
     : null;
 
   // --- the Rift-Kiste ---
   let box: MysteryBox | null = null;
-  const locDefs = MYSTERY_BOX.locations[mapId] ?? [];
+  const locDefs = resolveBoxLocations(deps.level, mapId);
   if (locDefs.length > 0) {
+    mark = root ? root.children.length : 0;
     const locations = locDefs.map((d) => boxLocation(d, blockerDeps));
-    const startIds = MYSTERY_BOX.start[mapId] ?? [];
+    const startIds = resolveBoxStartIds(deps.level, mapId);
     const startLocations = startIds.map((id) => locDefs.findIndex((l) => l.id === id)).filter((i) => i >= 0);
     const pool = resolveBoxPool();
     if (holograms) holograms.prewarm(pool.map((e) => e.weapon));
@@ -352,14 +394,14 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
       decals: deps.decals ?? null,
       view,
     });
-    register(box);
+    registerPowered(box);
   }
 
   if (ctx) collectHolo(root, holoMaterials);
   root?.updateMatrixWorld(true);
   log.info(
     `Interactables (${mapId}): ${doors.length} doors, ${wallBuys.length} wall buys, ` +
-      `${perkMachines.length} perk machines, ${box ? MYSTERY_BOX.locations[mapId]!.length : 0} box locations`,
+      `${perkMachines.length} perk machines, ${box ? locDefs.length : 0} box locations`,
   );
 
   let disposed = false;

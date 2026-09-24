@@ -78,6 +78,11 @@ export const METRICS = {
   /** tag powerup */
   powerUp: 'add',
   sealRepaired: 'add',
+  // --- map kit (M7) ---
+  /** The map quest (easter egg) was completed (tag map). */
+  questComplete: 'add',
+  /** An enemy died to a trap (tags map, weapon = `trap:<kind>`). */
+  trapKill: 'add',
   // --- arsenal (M5) ---
   /** tag grenade */
   grenadeThrown: 'add',

@@ -36,6 +36,7 @@ import type {
   Damageable,
   ExplosionApi,
   FieldApi,
+  GravityFieldApi,
   ProjectileApi,
   ProjectileSpawnOptions,
   WeaponCombatApi,
@@ -97,6 +98,8 @@ export class ProjectileSystem implements ProjectileApi {
   private readonly fields: FieldApi;
   private vfx: ArsenalVfxApi;
   private specials: SpecialsHook | null;
+  /** M7 gravity zones / anomalies: scales def.gravity at the projectile each tick (null = 1). */
+  private gravityField: GravityFieldApi | null = null;
 
   // --- pool (structure of arrays) ---
   private readonly pos: Float64Array;
@@ -239,6 +242,11 @@ export class ProjectileSystem implements ProjectileApi {
 
   setVfx(vfx: ArsenalVfxApi | null): void {
     this.vfx = vfx ?? NULL_ARSENAL_VFX;
+  }
+
+  /** M7: gravity zones (low-g anomalies make projectiles and grenades float); null = none. */
+  setGravityField(field: GravityFieldApi | null): void {
+    this.gravityField = field;
   }
 
   setSpecials(specials: SpecialsHook | null): void {
@@ -415,15 +423,16 @@ export class ProjectileSystem implements ProjectileApi {
     if (this.resting[i] === 1) return false;
     if (def.homing > 0) this.home(i, def, dt);
 
-    // Exact constant-gravity step.
+    // Exact constant-gravity step (scaled by the gravity zone at the tick's start).
     const vy = this.vel[o + 1]!;
     _s.set(this.pos[o]!, this.pos[o + 1]!, this.pos[o + 2]!);
+    const gravity = this.gravityField ? def.gravity * this.gravityField.scaleAt(_s.x, _s.y, _s.z) : def.gravity;
     _e.set(
       _s.x + this.vel[o]! * dt,
-      _s.y + vy * dt - 0.5 * def.gravity * dt * dt,
+      _s.y + vy * dt - 0.5 * gravity * dt * dt,
       _s.z + this.vel[o + 2]! * dt,
     );
-    this.vel[o + 1] = vy - def.gravity * dt;
+    this.vel[o + 1] = vy - gravity * dt;
 
     const P = ARSENAL.projectiles;
     let contact = 0;

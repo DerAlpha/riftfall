@@ -29,6 +29,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three';
 import type {
   AdsProvider,
+  GravityFieldApi,
   InputApi,
   PlayerApi,
   RaycastOptions,
@@ -41,6 +42,7 @@ import type { GameEvents, MovementState, SurfaceType, Vec3Like } from '../core/e
 import { createLogger } from '../core/log';
 import { DEG2RAD, clamp, clamp01, damp, lerp } from '../core/math';
 import { CAMERA } from '../defs/camera';
+import { GRAVITY } from '../defs/mapEvents';
 import { MOVEMENT } from '../defs/movement';
 import { COLLISION_FILTER, COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { PLAYER } from '../defs/player';
@@ -251,6 +253,11 @@ export class PlayerController implements PlayerApi {
   private dashMax: number = D.charges;
   private dashRechargeTime: number = D.rechargeTime;
 
+  // --- M7 gravity zones (setGravityField; null = normal gravity everywhere) ---
+  private gravityField: GravityFieldApi | null = null;
+  /** Gravity multiplier sampled at the body this tick (jumps keep their launch speed: higher in low g). */
+  private gravityScale = 1;
+
   constructor(deps: PlayerControllerDeps, spawn: PlayerSpawn, options?: PlayerControllerOptions) {
     this.physics = deps.physics;
     this.input = deps.input;
@@ -316,6 +323,20 @@ export class PlayerController implements PlayerApi {
   /** 0..1 progress of the next charge; 1 when all charges are full. */
   get dashRecharge(): number {
     return this.dashCharge.charges >= this.dashMax ? 1 : this.dashCharge.progress;
+  }
+
+  /**
+   * M7 gravity zones / anomalies: sampled once per tick at the body; gravity (and the terminal fall
+   * speed, × sqrt) scale with it, the jump launch speed does not – low g jumps higher, falls slower.
+   */
+  setGravityField(field: GravityFieldApi | null): void {
+    this.gravityField = field;
+    if (!field) this.gravityScale = 1;
+  }
+
+  /** Current gravity multiplier at the player (1 = normal). */
+  get gravityMultiplier(): number {
+    return this.gravityScale;
   }
 
   /** Gameplay stats (perks, cards). null = defs/movement values. */
@@ -429,6 +450,11 @@ export class PlayerController implements PlayerApi {
   fixedUpdate(dt: number): void {
     if (this.disposed || this.physics.disposed || !(dt > 0)) return;
     this.syncStats();
+    const gf = this.gravityField;
+    if (gf) {
+      const p = this.position;
+      this.gravityScale = gf.scaleAt(p.x, p.y + GRAVITY.sampleHeight, p.z);
+    }
     this.sampleInput();
     this.physics.ensureQueries();
     this.prevFeet.copy(this.position);
@@ -972,7 +998,8 @@ export class PlayerController implements PlayerApi {
   }
 
   private integrateGravity(dt: number, gravity: number): void {
-    integrateVertical(this.velocity.y, gravity, A.terminalVelocity, dt, _vstep);
+    const g = this.gravityScale;
+    integrateVertical(this.velocity.y, gravity * g, A.terminalVelocity * Math.sqrt(g), dt, _vstep);
     this.dy = _vstep.dy;
     this.velocity.y = _vstep.vy;
   }

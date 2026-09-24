@@ -456,6 +456,51 @@ const SECRET: readonly AchievementDef[] = inCategory('secret', [
   }),
 ]);
 
+/**
+ * M7 maps: one hidden quest (easter egg) achievement per map – metric 'questComplete' filtered by
+ * the map id (QuestDef.achievement names it) – and the trap kills. The ids of maps that are not
+ * built yet are reserved here so a map directory never has to edit this file.
+ */
+const MAPS: readonly AchievementDef[] = inCategory('secret', [
+  count(
+    C('quest_lab', 'Protokoll Kepler', 'Entschlüssle das Geheimnis des Forschungslabors.', 'gold', 'flask', true),
+    'questComplete',
+    1,
+    { map: 'lab' },
+  ),
+  count(
+    C('quest_arctic', 'Ewiges Eis', 'Entschlüssle das Geheimnis der Arktis-Station.', 'gold', 'snow', true),
+    'questComplete',
+    1,
+    { map: 'arctic' },
+  ),
+  count(
+    C('quest_biodome', 'Wurzelwerk', 'Entschlüssle das Geheimnis der Biokuppel.', 'gold', 'drop', true),
+    'questComplete',
+    1,
+    { map: 'biodome' },
+  ),
+  count(
+    C('quest_reactor', 'Kernschmelze', 'Entschlüssle das Geheimnis des Reaktorkerns.', 'gold', 'flame', true),
+    'questComplete',
+    1,
+    { map: 'reactor' },
+  ),
+  count(
+    C('quest_orbital', 'Schwerelos', 'Entschlüssle das Geheimnis der Orbitalplattform.', 'gold', 'orbit', true),
+    'questComplete',
+    1,
+    { map: 'orbital' },
+  ),
+  count(
+    C('quest_rift', 'Jenseits des Risses', 'Entschlüssle das Geheimnis der Rift-Dimension.', 'platinum', 'eye', true),
+    'questComplete',
+    1,
+    { map: 'rift' },
+  ),
+  count(C('trap_kills_100', 'Fallensteller', 'Töte 100 Gegner mit Fallen.', 'silver', 'nova'), 'trapKill', 100),
+]);
+
 export const ACHIEVEMENTS: readonly AchievementDef[] = [
   ...COMBAT,
   ...WAVES,
@@ -464,6 +509,7 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   ...ELEMENTS,
   ...PROGRESSION_LIST,
   ...SECRET,
+  ...MAPS,
 ];
 
 const INDEX: ReadonlyMap<string, AchievementDef> = new Map(ACHIEVEMENTS.map((a) => [a.id, a]));

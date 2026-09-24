@@ -5,7 +5,7 @@
  */
 import { Box3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import type { ArsenalVfxApi } from '../../core/contracts';
+import type { ArsenalVfxApi, PlayOptions } from '../../core/contracts';
 import { EventBus } from '../../core/EventBus';
 import type { GameEvents } from '../../core/events';
 import { CombatWorld } from '../../combat/CombatWorld';
@@ -235,11 +235,12 @@ describe('suppressor and forged muzzle light (weapon:fired → VFX / audio)', ()
     const plays: { id: string; volume: number; pitch: number }[] = [];
     const audio: AudioBridgeTarget = {
       unlocked: true,
-      play: (id, o) => void plays.push({ id, volume: o?.volume ?? 1, pitch: o?.pitch ?? 1 }),
+      play: (id: string, o?: PlayOptions) =>
+        void plays.push({ id, volume: o?.volume ?? 1, pitch: o?.pitch ?? 1 }),
       startLoop: () => 1,
       stopLoop: () => {},
       has: () => true,
-    } as unknown as AudioBridgeTarget;
+    };
     const bridge = new AudioEventBridge(
       events,
       audio,

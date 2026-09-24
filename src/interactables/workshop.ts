@@ -31,6 +31,12 @@ export interface WorkshopDeps {
 
 export interface WorkshopContext {
   mapId: string;
+  /**
+   * M7 map kit: the level's own placements (maps/kit/levelData resolves them). `undefined` = the
+   * per-map tables below, null = no machine.
+   */
+  forgePlacement?: WorkshopPlacementDef | null;
+  benchPlacement?: WorkshopPlacementDef | null;
   events: EventBus<GameEvents>;
   /** `points` (optional) colors unaffordable bench entries. */
   economy: Pick<EconomyApi, 'spend' | 'earn'> & { readonly points?: number };
@@ -91,7 +97,8 @@ export function placeWorkshop(deps: WorkshopDeps, w: WorkshopContext): WorkshopH
   let forge: RiftForge | null = null;
   let workbench: Workbench | null = null;
 
-  const forgeDef = RIFT_FORGE_MACHINE.placements[w.mapId]?.[0];
+  const forgeDef =
+    w.forgePlacement !== undefined ? w.forgePlacement : RIFT_FORGE_MACHINE.placements[w.mapId]?.[0];
   if (forgeDef) {
     const F = RIFT_FORGE_MACHINE;
     const m = place(forgeDef, F.size, F.wallGap, F.anchor, F.layout.anvil.z + F.layout.anvil.top[2] / 2);
@@ -108,7 +115,7 @@ export function placeWorkshop(deps: WorkshopDeps, w: WorkshopContext): WorkshopH
     w.register(forge);
   }
 
-  const benchDef = WORKBENCH.placements[w.mapId]?.[0];
+  const benchDef = w.benchPlacement !== undefined ? w.benchPlacement : WORKBENCH.placements[w.mapId]?.[0];
   if (benchDef) {
     const B = WORKBENCH;
     const m = place(benchDef, B.size, B.wallGap, B.anchor);

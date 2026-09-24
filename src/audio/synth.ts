@@ -26,6 +26,7 @@ import { WEAPON_SYNTH_DEFS, weaponSynthAlias } from './weaponSynth';
 import { ENEMY_SYNTH_DEFS, enemySynthAlias } from './enemySynth';
 import { ECONOMY_SYNTH_DEFS } from './economySynth';
 import { ARSENAL_SYNTH_DEFS, m5SynthAlias } from './arsenalSynth';
+import { MAPKIT_SYNTH_DEFS } from '../maps/kit/kitSynth';
 
 const log = createLogger('Synth');
 const S = AUDIO.synth;
@@ -637,6 +638,8 @@ export const SYNTH_DEFS = {
   ...ECONOMY_SYNTH_DEFS,
   // M5 arsenal: weapons, loops, elements, gear (audio/arsenalSynth.ts + energy/element/gear) – rendered last.
   ...ARSENAL_SYNTH_DEFS,
+  // M7 map kit: traps, map events, quest cues (maps/kit/kitSynth.ts).
+  ...MAPKIT_SYNTH_DEFS,
 } as const satisfies Record<string, SynthDef>;
 
 export type SynthId = keyof typeof SYNTH_DEFS;

@@ -10,7 +10,6 @@ import type { UnlockKind } from '../core/events';
 import {
   CAMOS,
   COSMETICS,
-  DEFAULT_COSMETICS,
   getCamoDef,
   getCosmeticDef,
   type CosmeticDef,
@@ -162,9 +161,4 @@ function sourceMet(u: CosmeticUnlock, ctx: CosmeticContext): boolean {
     default:
       return false;
   }
-}
-
-/** The default loadout (fresh profiles, repaired equip slots). */
-export function defaultCosmeticLoadout(): CosmeticLoadout {
-  return { ...DEFAULT_COSMETICS };
 }

@@ -31,7 +31,7 @@ import type { EventBus } from '../core/EventBus';
 import type { ChallengePeriod, GameEvents, UnlockKind, XpSource } from '../core/events';
 import { ACHIEVEMENT_REWARDS, PROGRESSION, PROGRESSION_LIMITS, type MetricId } from '../defs/progression';
 import { CHALLENGE_RULES } from '../defs/challenges';
-import { getCosmeticDef, isAnimatedCamo, type CamoDef } from '../defs/cosmetics';
+import { isAnimatedCamo, type CamoDef } from '../defs/cosmetics';
 import type { AchievementDef } from '../defs/achievements';
 import { getSkillNode } from '../defs/skills';
 import { AchievementTracker } from './AchievementTracker';
@@ -652,9 +652,4 @@ export function waveXp(wave: number): number {
   const W = PROGRESSION.wave;
   const w = Number.isFinite(wave) && wave > 0 ? Math.floor(wave) : 1;
   return Math.min(W.max, W.base + W.perWave * w);
-}
-
-/** Cosmetic display name (toasts, console). */
-export function cosmeticName(id: string): string {
-  return getCosmeticDef(id)?.name ?? id;
 }

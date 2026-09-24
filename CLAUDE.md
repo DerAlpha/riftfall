@@ -53,10 +53,14 @@ src/
   weapons/           WeaponSystem (inventory, state machine, hitscan + penetration, reload, ADS, melee,
                      inspect, switching), recoil/spread/damage/aimAssist math, resolveWeapon (Rift Forge
                      tier, attachments, element → effective def), ViewmodelAnimator (procedural kicks,
-                     reloads, inspect, equip)
-    viewmodels/      procedural weapon models (registry by weapon id, sockets muzzle/ejectPort/sight)
+                     reloads, inspect, equip, state drivers, grenade/ability gestures)
+    fire/            Arsenal (M5): ProjectileSystem (pooled swept-sphere sim, bounces, fuse, pierce,
+                     homing), beam/charge/spin-up fire, WeaponSpecials (forge/wonder specials)
+    viewmodels/      procedural weapon models (registry by weapon id, sockets muzzle/ejectPort/sight,
+                     attachment mounts); models/<id>.ts + defs/viewmodelData/<id>.ts per M5 weapon
   combat/            CombatWorld (hit resolution: BVH static meshes, analytic hitboxes, Rapier props;
-                     damage + combat:* events), hitMath (ray vs sphere/capsule)
+                     damage + combat:* events), hitMath (ray vs sphere/capsule), Explosions (area damage,
+                     LOS, falloff, self damage), FieldSystem (lingering pull/slow/damage fields)
   vfx/               VfxSystem + VfxBridge (event → VFX): GPU instanced particles, decal ring, tracers,
                      casings (cheap CPU physics, raycast bounces), pooled flash lights, muzzle flash,
                      screen-space shockwave effect
@@ -109,13 +113,15 @@ rAF → GameLoop.advance(dt)
   │     player.fixedUpdate (samples input, latches edges once per frame) → interaction (focus, press/
   │     hold: a purchase's give() is handled this tick) → weapons.fixedUpdate (fire, reload, melee: shots
   │     resolve NOW) → targets → waves → enemies.fixedUpdate (AI, nav.update – the crowd steps INSIDE
-  │     the manager –, renderer commitTick) → interactables (doors, box) → powerUps (pickups, timers)
+  │     the manager –, renderer commitTick) → projectiles → fields → interactables (doors, box)
+  │     → powerUps (pickups, timers)
   │     → kill plane → physics.step → health → perks (hook cooldowns) → level → runFlow
   ├─ update (per frame, unpaused): player.update (latches edges of frames without a tick, ADS, eye)
   │     → interaction.update (once-per-frame press latch) → weapons.update (ADS blend, recoil
   │     counter-pull) → playerCamera.update (bob/roll/shake/recoil/FOV incl. ADS zoom/DoF) → viewmodel
   │     (sway, bob, animator) → vfx.update (flashes, casings, tracers at this frame's sockets)
-  │     → interactables/seals/powerUps visuals → render.advanceWorldTime (shockwaves)
+  │     → arsenal.update → weapons.updateVisuals (beams/charge from the shown muzzle)
+  │     → vfx.arsenal.update → interactables/seals/powerUps visuals → render.advanceWorldTime
   │     → level.update → targets.update(alpha) → audio listener + sun probe → HUD (crosshair cone
   │     projected with this frame's FOV)
   └─ render (every frame): physics.syncVisuals(alpha) → render.render → quality.onFrame (unpaused only)
@@ -315,11 +321,8 @@ RenderPass(world)                                 (incl. decals, casings, traini
 ## Known limitations / next steps
 
 - Only verified on SwiftShader (headless); real-GPU frame times on the High preset still need a pass (M12 budget).
-- Weapons are procedural models; unknown viewmodel ids fall back to the placeholder device. Only hitscan
-  fire is implemented: projectile/launcher kinds are refused (M5), so explosions are reachable only via the
-  dev console `explode`. `WeaponSystem.setWeaponMods` (Rift Forge / attachments / elements) is wired to
-  nothing in gameplay yet (M5).
-- `core/Pool.ts` is still unused (M5 projectiles are its first candidate).
+- Weapons are procedural models; unknown viewmodel ids fall back to the placeholder device.
+- `core/Pool.ts` is unused: every pool (projectiles, fields, VFX, enemies) preallocates its own typed records.
 - KTX2 path is implemented but untested with real files (`toktx` not available when fetching); textures ship as JPG.
 - Height-fog sun glow is not shadowed (indoors it relies on low `sunScatterStrength`); shafts come from the level.
 - Tanks share the medium-agent navmesh (may clip corners); no off-mesh links (no leaps onto platforms).

@@ -209,7 +209,7 @@ const SUSTAINED: Partial<Record<InstrumentRecipe, Draw>> = {
       { f: a!, type: 'sawtooth', level: 0.3, pan: -0.6 },
       { f: b!, type: 'sawtooth', level: 0.3, pan: 0 },
       { f: c!, type: 'sawtooth', level: 0.3, pan: 0.6 },
-      { f: gridHz(hz / 2, L), type: 'square', level: 0.14 },
+      { f: gridHz(hz / 2, L), type: 'square', level: 0.07 },
     ]);
     sum.connect(f);
     lb.add(f);
@@ -300,9 +300,9 @@ const SUSTAINED: Partial<Record<InstrumentRecipe, Draw>> = {
     if (p.drive > 0) last = lp.connect(shaper(ctx, 1 + p.drive * 3));
     lb.add(last);
     const sub = sumNode(ctx);
-    oscStack(ctx, sub, t, len, [{ f: gridHz(hz / 2 >= 25 ? hz / 2 : hz, L), type: 'sine', level: 0.35 }]);
+    oscStack(ctx, sub, t, len, [{ f: gridHz(hz / 2 >= 30 ? hz / 2 : hz, L), type: 'sine', level: 0.25 }]);
     lb.add(sub);
-    k.bed(t, len, 'brown', 'lowpass', 260, 0.7, 0.2);
+    k.bed(t, len, 'brown', 'lowpass', 260, 0.7, 0.14);
   },
   'drone.ice': (k, t, hz, len, p) => {
     const L = R.droneLoopSeconds;
@@ -918,8 +918,8 @@ const ONE_SHOT_SECONDS: Partial<Record<InstrumentRecipe, number>> = {
   'scrape.metal': 2.8,
   'stab.brass': 1.6,
   'stab.choir': 2.2,
-  'arp.glass': 2.2,
-  'arp.ring': 1.6,
+  'arp.glass': 1.3,
+  'arp.ring': 1.2,
   'bass.round': 1.4,
 };
 
@@ -1016,7 +1016,7 @@ export async function renderInstrumentSample(spec: InstrumentRenderSpec): Promis
   const buffer = await renderSample({
     channels,
     rate,
-    seconds: bar ? seconds : seconds + 0.6,
+    seconds: bar || spec.recipe in ONE_SHOT_SECONDS ? seconds : seconds + 0.6,
     mode: spec.recipe === 'swell.reverse' ? 'reverse' : bar ? 'exact' : 'oneshot',
     seed: spec.seed,
     draw: (k) => draw(k, 0, spec.hz, seconds, p),

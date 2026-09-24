@@ -88,10 +88,10 @@ export const INSTRUMENT_RECIPES = {
   'pad.breath': { loop: true, pitched: true, stereo: true, dark: true },
   'pad.metal': { loop: true, pitched: true, stereo: true, dark: true },
   'drone.dark': { loop: true, pitched: true, stereo: true, dark: true },
-  'drone.ice': { loop: true, pitched: true, stereo: true, dark: false },
+  'drone.ice': { loop: true, pitched: true, stereo: true, dark: true },
   'drone.organic': { loop: true, pitched: true, stereo: true, dark: true },
   'drone.rift': { loop: true, pitched: true, stereo: true, dark: true },
-  'strings.ensemble': { loop: true, pitched: true, stereo: true, dark: false },
+  'strings.ensemble': { loop: true, pitched: true, stereo: true, dark: true },
   'choir.dark': { loop: true, pitched: true, stereo: true, dark: true },
   'lead.sine': { loop: true, pitched: true, stereo: false, dark: false },
   'lead.saw': { loop: true, pitched: true, stereo: false, dark: false },
@@ -119,7 +119,7 @@ export const INSTRUMENT_RECIPES = {
   'hat.open': { loop: false, pitched: false, stereo: false, dark: false },
   'hat.shaker': { loop: false, pitched: false, stereo: false, dark: false },
   'metal.anvil': { loop: false, pitched: false, stereo: false, dark: false },
-  'metal.pipe': { loop: false, pitched: false, stereo: false, dark: false },
+  'metal.pipe': { loop: false, pitched: false, stereo: false, dark: true },
   'metal.glass': { loop: false, pitched: false, stereo: false, dark: false },
   'metal.wood': { loop: false, pitched: false, stereo: false, dark: false },
   'perc.glitch': { loop: false, pitched: false, stereo: true, dark: false },
@@ -127,11 +127,11 @@ export const INSTRUMENT_RECIPES = {
   'perc.ping': { loop: false, pitched: false, stereo: false, dark: false },
   'tom.floor': { loop: false, pitched: false, stereo: false, dark: true },
   'tom.tribal': { loop: false, pitched: false, stereo: false, dark: true },
-  'crash.impact': { loop: false, pitched: false, stereo: true, dark: false },
+  'crash.impact': { loop: false, pitched: false, stereo: true, dark: true },
   /** Bar-long (rendered at the theme's tempo). */
-  'riser.noise': { loop: false, pitched: false, stereo: true, dark: false, bar: true },
+  'riser.noise': { loop: false, pitched: false, stereo: true, dark: true, bar: true },
   'swell.reverse': { loop: false, pitched: false, stereo: true, dark: true, bar: true },
-  'scrape.metal': { loop: false, pitched: false, stereo: true, dark: false },
+  'scrape.metal': { loop: false, pitched: false, stereo: false, dark: true },
 } as const satisfies Record<
   string,
   { loop: boolean; pitched: boolean; stereo: boolean; dark: boolean; bar?: boolean }
@@ -1053,7 +1053,7 @@ export const MUSIC = {
     contextPoll: 0.25,
   },
   /** Voice limits (preallocated slots): per theme player and for stings. `reserve`: slots only important notes may take. */
-  voices: { perPlayer: 40, stings: 28, reserve: 6 },
+  voices: { perPlayer: 56, stings: 28, reserve: 4 },
 
   /** Offline instrument renders (audio/music/instruments.ts). */
   render: {
@@ -1098,6 +1098,8 @@ export const MUSIC = {
     choir: { attack: 0.8, release: 1.4 },
     lead: { attack: 0.06, release: 0.25 },
     sub: { attack: 0.02, release: 0.12 },
+    /** Sequenced arps ring this long past their gate (the echo carries them further). */
+    arp: { attack: 0.002, release: 0.35 },
     /** One-shots cut before their end (staccato bass, choked hats). */
     cut: 0.03,
   } as const,
@@ -1105,7 +1107,9 @@ export const MUSIC = {
   mix: {
     /** Everything the music system plays (before the engine's music volume and master). */
     master: 0.5,
-    layers: { ambient: 0.9, low: 0.9, mid: 0.85, high: 0.8, peak: 0.85 } satisfies Record<MusicLayer, number>,
+    layers: { ambient: 0.9, low: 0.75, mid: 0.85, high: 0.85, peak: 0.85 } satisfies Record<MusicLayer, number>,
+    /** Rumble below this (Hz) is cut: the sub range belongs to explosions and gunshot bodies. */
+    highpass: 34,
     /** Tempo-synced ping-pong echo per theme (space for arps and leads, no convolver). */
     echo: {
       beats: 0.75,

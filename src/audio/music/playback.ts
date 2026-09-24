@@ -49,8 +49,8 @@ const PRIORITY: Readonly<Record<InstrumentSlot, number>> = {
   scrape: 1,
 };
 
-/** One-shot slots cut at the end of their note (tight bass / chugs); the rest ring out. */
-const GATED_ONE_SHOTS: ReadonlySet<InstrumentSlot> = new Set<InstrumentSlot>(['bass', 'dist']);
+/** One-shot slots cut at the end of their note (tight bass / chugs, sequenced arps); the rest ring out. */
+const GATED_ONE_SHOTS: ReadonlySet<InstrumentSlot> = new Set<InstrumentSlot>(['bass', 'dist', 'arp']);
 
 export function slotPriority(slot: InstrumentSlot): number {
   return PRIORITY[slot] ?? 1;
@@ -70,6 +70,8 @@ export function slotEnvelope(slot: InstrumentSlot): { attack: number; release: n
       return ENV.lead;
     case 'sub':
       return ENV.sub;
+    case 'arp':
+      return ENV.arp;
     default:
       return { attack: ONE_SHOT_ATTACK, release: ENV.cut };
   }
@@ -97,9 +99,16 @@ interface VoiceSlot {
   gain: GainNode;
   dest: AudioNode | null;
   end: number;
+  /** From here on the voice only rings out (release / decay tail): the first to be stolen. */
+  tail: number;
   prio: number;
   mono: InstrumentSlot | null;
 }
+
+/** One-shots count as ringing out this long after their start (s). */
+const ONE_SHOT_BODY = 0.25;
+/** Stealing score offset of voices still in their body (tails go first). */
+const BODY_SCORE = 100;
 
 export class VoicePool {
   private readonly slots: VoiceSlot[] = [];
@@ -111,7 +120,7 @@ export class VoicePool {
     size: number,
   ) {
     for (let k = 0; k < size; k++) {
-      this.slots.push({ src: null, gain: ctx.createGain(), dest: null, end: 0, prio: 0, mono: null });
+      this.slots.push({ src: null, gain: ctx.createGain(), dest: null, end: 0, tail: 0, prio: 0, mono: null });
     }
   }
 
@@ -139,11 +148,18 @@ export class VoicePool {
     }
     if (slot && r.prio <= 1 && free <= V.reserve) slot = null;
     if (!slot) {
+      // Victim: a voice already ringing out (oldest first, any priority), else a lower-priority one.
+      const at = Math.max(now, r.time);
       let victim: VoiceSlot | null = null;
+      let best = Number.POSITIVE_INFINITY;
       for (const s of this.slots) {
-        if (s.prio >= r.prio) continue;
-        if (!victim || s.prio < victim.prio || (s.prio === victim.prio && s.end < victim.end)) victim = s;
+        const score = (s.tail <= at ? 0 : BODY_SCORE) + s.prio + s.tail * 1e-6;
+        if (score < best) {
+          best = score;
+          victim = s;
+        }
       }
+      if (victim && victim.tail > at && victim.prio >= r.prio) victim = null;
       if (!victim) {
         this.dropped++;
         return false;
@@ -181,6 +197,7 @@ export class VoicePool {
       p.setValueAtTime(r.gain, t + hold);
       p.setTargetAtTime(0, t + hold, Math.max(0.005, r.release / 4));
       end = t + hold + r.release * 1.6;
+      slot.tail = t + hold;
     } else {
       p.linearRampToValueAtTime(r.gain, t + ONE_SHOT_ATTACK);
       const minRate = r.glide < 1 ? rate * r.glide : rate;
@@ -192,6 +209,7 @@ export class VoicePool {
       } else {
         end = natural;
       }
+      slot.tail = Math.min(end, t + (r.gate > 0 ? Math.min(r.gate, ONE_SHOT_BODY) : ONE_SHOT_BODY));
     }
     src.connect(g);
     src.start(t);
@@ -225,6 +243,7 @@ export class VoicePool {
       }
     }
     s.end = Math.min(s.end, end);
+    s.tail = Math.min(s.tail, at);
     s.mono = null;
   }
 }
@@ -301,7 +320,11 @@ export class ThemePlayer implements SequencerSink {
     this.routeGame = ctx.createGain();
     this.routeMenu = ctx.createGain();
     this.routeMenu.gain.value = 0;
-    this.filter.connect(this.dropGain).connect(this.fader);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = MIX.highpass;
+    hp.Q.value = 0.6;
+    this.filter.connect(hp).connect(this.dropGain).connect(this.fader);
     this.fader.connect(this.routeGame).connect(outs.game);
     this.fader.connect(this.routeMenu).connect(outs.menu);
 

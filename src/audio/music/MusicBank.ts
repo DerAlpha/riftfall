@@ -7,7 +7,7 @@
  */
 import { createLogger } from '../../core/log';
 import { INSTRUMENT_RECIPES, MUSIC, type InstrumentSlot, type MusicThemeDef } from '../../defs/music';
-import { getThemeDef, rangeOf, stepDuration } from './composer';
+import { droneNoteFor, getThemeDef, rangeOf, stepDuration } from './composer';
 import {
   DEFAULT_PARAMS,
   offlineSupported,
@@ -50,18 +50,18 @@ const VARIANTS: Partial<Record<InstrumentSlot, number>> = {
   kick: 2,
   snare: 2,
   hat: 3,
-  openHat: 1,
-  metal: 2,
   perc: 2,
   fx: 2,
-  scrape: 2,
 };
 
 /** Roots (MIDI) every `spacing` semitones so that every note of [lo, hi] is within spacing / 2. */
 export function rootsFor(lo: number, hi: number, spacing: number = MUSIC.render.rootSpacing): number[] {
   const half = Math.floor(spacing / 2);
   const roots: number[] = [];
-  for (let r = lo + half; r - half <= hi; r += spacing) roots.push(r);
+  for (let r = lo + half; ; r += spacing) {
+    roots.push(r);
+    if (r + half >= hi) break;
+  }
   return roots;
 }
 
@@ -100,7 +100,15 @@ function jobsFor(def: MusicThemeDef): Job[] {
     const key = `${inst.recipe}|${JSON.stringify(inst.params ?? {})}`;
     if (info.pitched) {
       const [lo, hi] = rangeOf(slot);
-      for (const midi of rootsFor(lo, hi)) {
+      // The drone only ever holds the tonic pedal: one sample at exactly that pitch; a pure sub
+      // sine resamples cleanly over its whole register.
+      const roots =
+        slot === 'drone'
+          ? [droneNoteFor(def)]
+          : slot === 'sub'
+            ? [Math.round((lo + hi) / 2)]
+            : rootsFor(lo, hi);
+      for (const midi of roots) {
         jobs.push({
           slot,
           midi,

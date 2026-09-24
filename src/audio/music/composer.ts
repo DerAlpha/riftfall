@@ -101,8 +101,14 @@ export const HELD_SLOTS: ReadonlySet<InstrumentSlot> = new Set<InstrumentSlot>([
   'choir',
 ]);
 
-/** Slots that play one note at a time (a new note cuts the previous one). */
-export const MONO_SLOTS: ReadonlySet<InstrumentSlot> = new Set<InstrumentSlot>(['bass', 'lead', 'sub']);
+/** Slots that play one note at a time (a new note cuts the previous one – drums choke like a drum machine). */
+export const MONO_SLOTS: ReadonlySet<InstrumentSlot> = new Set<InstrumentSlot>([
+  'bass',
+  'lead',
+  'sub',
+  'kick',
+  'snare',
+]);
 
 /** Resolve a map id to its theme (unknown maps: MUSIC.fallbackTheme). */
 export function themeIdForMap(mapId: string | null | undefined): string {
@@ -135,6 +141,11 @@ export function foldAround(note: number, center: number): number {
   while (n < center - 6) n += 12;
   while (n > center + 5) n -= 12;
   return n;
+}
+
+/** The drone's pedal note: the tonic in the drone register (the only note the drone plays). */
+export function droneNoteFor(def: MusicThemeDef): number {
+  return foldAround(def.key, Math.max(rangeOf('drone')[0] + 6, def.key));
 }
 
 // ---------------------------------------------------------------------------
@@ -519,13 +530,12 @@ function composePhrase(
   const [choirLo, choirHi] = rangeOf('choir');
   const [arpLo] = rangeOf('arp');
   const [leadLo, leadHi] = rangeOf('lead');
-  const [droneLo] = rangeOf('drone');
   const padVoices = def.chordColor === 'power' ? 3 : 4;
   let padPrev: number[] | null = null;
   let strPrev: number[] | null = null;
   let stabPrev: number[] | null = null;
   let arpIdx = 0;
-  const droneNote = foldAround(tonic, Math.max(droneLo + 6, tonic - 7));
+  const droneNote = droneNoteFor(def);
 
   // Textures: bars (not the first / last) and on-beat steps, drawn once per phrase.
   const textureBars = new Set<number>();

@@ -24,6 +24,7 @@ const _v = new Vector3();
 const _w = new Vector3();
 const _aim = new Vector3();
 const UP = { x: 0, y: 1, z: 0 } as const;
+const TAU = Math.PI * 2;
 
 /** Optional per-brain filter for attack selection (module-level functions, no closures). */
 export type AttackFilter = (e: Enemy, attack: EnemyAttackDef, index: number, host: AiHost) => boolean;
@@ -40,11 +41,14 @@ export function attackUsable(
   if (!a || !target.alive) return false;
   if (host.time < e.attackReady[index]!) return false;
   if (dist < a.minRange || dist > a.range) return false;
+  // Close-range blows whiff on a target standing on the deck above / the floor below.
+  const reachY = a.melee?.height ?? a.slam?.height;
+  if (reachY !== undefined && Math.abs(target.position.y - e.position.y) > reachY) return false;
   if (a.usesSlot) {
-    const coord = host.coordinator(e.targetSlot);
+    const coord = host.coordinator(e);
     if (!coord.holds(e.id) || !coord.canStartAttack(host.time)) return false;
   }
-  if (a.kind === 'projectile' && !host.canVolley(e.targetSlot)) return false;
+  if (!host.spacingAllows(e.targetSlot, a.kind)) return false;
   if (a.requiresLos && !host.refreshLos(e, ENEMY_AI.perception.losMaxAge)) return false;
   return true;
 }
@@ -154,6 +158,13 @@ function beginStrike(e: Enemy, host: AiHost, a: EnemyAttackDef, target: EnemyTar
       }
       _aim.copy(target.eyePosition);
       _aim.y -= p.aimDrop;
+      if (p.aimError > 0) {
+        // Uniform in the disk: a steady target still sees near misses (splash) now and then.
+        const ang = host.rng.next() * TAU;
+        const r = p.aimError * Math.sqrt(host.rng.next());
+        _aim.x += Math.cos(ang) * r;
+        _aim.z += Math.sin(ang) * r;
+      }
       proj.lob(p.projectile, _v, _aim, target.velocity, p.leadFactor, {
         owner: e,
         source: 'enemy',

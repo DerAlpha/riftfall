@@ -255,7 +255,7 @@ export class EnemyRenderer implements EnemyVisualsApi {
     if (!ts || !this.valid(ts, handle)) return;
     const o = handle * SLOT_STRIDE;
     const s = ts.latest;
-    s[o + SLOT.scale] = Math.max(0.01, finiteOr(pose.scale, 1));
+    s[o + SLOT.scale] = Math.max(ENEMY_RENDER.minInstanceScale, finiteOr(pose.scale, 1));
     s[o + SLOT.locomotion] = finiteOr(pose.locomotion, 0);
     s[o + SLOT.phase] = finiteOr(pose.phase, 0);
     s[o + SLOT.attackId] = finiteOr(pose.attackId, -1);
@@ -707,11 +707,14 @@ export class EnemyRenderer implements EnemyVisualsApi {
       mArr[m + 15] = 1;
       let phase = prev[o + SLOT.phase]! + wrapPi(curr[o + SLOT.phase]! - prev[o + SLOT.phase]!) * alpha;
       phase -= Math.floor(phase / TAU) * TAU;
+      // Attack progress only runs forward: a new attack (other id, or the same one restarted)
+      // starts at its current progress instead of sweeping back through the previous strike.
       const attackId = curr[o + SLOT.attackId]!;
+      const attackNow = curr[o + SLOT.attack]!;
       const attack =
-        prev[o + SLOT.attackId] === attackId
+        prev[o + SLOT.attackId] === attackId && attackNow >= prev[o + SLOT.attack]!
           ? lerpAt(prev, curr, o + SLOT.attack, alpha)
-          : curr[o + SLOT.attack]!;
+          : attackNow;
       const q = k * 4;
       p0[q] = lerpAt(prev, curr, o + SLOT.locomotion, alpha);
       p0[q + 1] = phase;

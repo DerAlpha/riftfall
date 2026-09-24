@@ -5,7 +5,7 @@ import type { GameEvents } from '../core/events';
 import { PROJECTILES, PROJECTILE_POOL } from '../defs/enemies';
 import { FakePlayer } from '../enemies/testFakes';
 import { CombatWorld } from './CombatWorld';
-import { ProjectileSystem, solveLob } from './Projectiles';
+import { ProjectileSystem, maxLobTime, solveLob } from './Projectiles';
 import { FakeTarget, buildTestLevel } from './testFakes';
 
 const DT = 1 / 60;
@@ -56,6 +56,27 @@ describe('solveLob', () => {
     expect(v.y).toBeGreaterThan(0);
   });
 
+  it('flattens the arc under a ceiling, but never beyond the launch speed cap', () => {
+    const o = { x: 0, y: 1.5, z: -20 };
+    const aim = { x: 0, y: 1.2, z: 0 };
+    const still = { x: 0, y: 0, z: 0 };
+    const v = { x: 0, y: 0, z: 0 };
+    const apex = (vy: number): number => o.y + (vy * vy) / (2 * ACID.gravity);
+    solveLob(o, aim, still, 1, ACID, v);
+    expect(apex(v.y)).toBeGreaterThan(4); // free lob: well above a 4 m corridor ceiling
+    const t = solveLob(o, aim, still, 1, ACID, v, 3, 3.6);
+    expect(apex(v.y)).toBeLessThanOrEqual(3.6 + 1e-6);
+    // Still lands on the aim point.
+    expect(o.z + v.z * t).toBeCloseTo(aim.z, 6);
+    expect(o.y + v.y * t - 0.5 * ACID.gravity * t * t).toBeCloseTo(aim.y, 6);
+    // A crawlspace: the horizontal speed stays capped (it hits the ceiling rather than turn hitscan).
+    solveLob(o, aim, still, 1, ACID, v, 3, o.y + 0.05);
+    expect(Math.hypot(v.x, v.z)).toBeLessThanOrEqual(ACID.maxLaunchSpeed + 1e-6);
+    // maxLobTime: no limit without a ceiling; the flattest arc when the target is above it.
+    expect(maxLobTime(0, 0, Number.POSITIVE_INFINITY, 16)).toBe(Number.POSITIVE_INFINITY);
+    expect(maxLobTime(0, 3, 2, 16)).toBeCloseTo(Math.sqrt(6 / 16));
+  });
+
   it('leads a moving target (converged prediction)', () => {
     const v = { x: 0, y: 0, z: 0 };
     const o = { x: 0, y: 1.5, z: -14 };
@@ -97,6 +118,20 @@ describe('ProjectileSystem', () => {
     }
   });
 
+  it('a long lob in a low corridor passes under the ceiling and hits the player', () => {
+    const ceiling = { center: { x: 0, y: 4.25, z: -10 }, size: { x: 6, y: 0.5, z: 30 } };
+    const s = setup([ceiling]);
+    const origin = new Vector3(0, 1.45, -20);
+    const aim = new Vector3(0, s.player.eyePosition.y - 0.45, 0);
+    expect(s.proj.lob('acid.glob', origin, aim, s.player.velocity, 1)).toBe(true);
+    for (let i = 0; i < 180 && s.proj.stats.active > 0; i++) s.proj.fixedUpdate(DT);
+    expect(s.impacts).toHaveLength(1);
+    expect(s.impacts[0]!.normal.y).toBeGreaterThan(-0.5); // not the ceiling
+    expect(s.player.hits.some((h) => Math.abs(h.amount - ACID.damage) < 1e-6)).toBe(true);
+    // The extra splash burst plays at world impacts only (not in the player's face).
+    expect(s.spawned).not.toContain(ACID.impactEffect.effect);
+  });
+
   it('splash falls off with distance and a floor impact leaves a burning puddle', () => {
     const s = setup();
     // Straight down onto the floor 1.2 m from the player.
@@ -110,6 +145,7 @@ describe('ProjectileSystem', () => {
     expect(splash).toBeLessThan(ACID.splash.damage);
     expect(s.proj.stats.puddles).toBe(1);
     expect(s.decals).toContain('slime');
+    expect(s.spawned).toContain(ACID.impactEffect.effect);
 
     // Step into the puddle: damage ticks at the def's interval.
     const P = ACID.puddle;

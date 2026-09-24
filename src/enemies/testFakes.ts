@@ -64,6 +64,8 @@ export class FakeNav implements NavApi {
   walkableCalls = 0;
   teleports = 0;
   updates = 0;
+  /** Agents that do not move (wedged on geometry) until teleported. */
+  readonly frozen = new Set<number>();
   private readonly rng = new Rng('fake-nav');
 
   async build(_sources: readonly Mesh[]): Promise<boolean> {
@@ -146,6 +148,7 @@ export class FakeNav implements NavApi {
       a.pos.set(position.x, this.floorY, position.z);
       a.vel.set(0, 0, 0);
       this.teleports++;
+      this.frozen.delete(id);
     }
   }
 
@@ -161,9 +164,10 @@ export class FakeNav implements NavApi {
 
   update(dt: number): void {
     this.updates++;
-    for (const a of this.agents) {
+    for (let i = 0; i < this.agents.length; i++) {
+      const a = this.agents[i];
       if (!a) continue;
-      if (!a.target) {
+      if (!a.target || this.frozen.has(i)) {
         a.vel.set(0, 0, 0);
         continue;
       }
@@ -191,6 +195,11 @@ export class FakeNav implements NavApi {
 
   liveAgents(): number {
     return this.agents.filter((a) => a !== null).length;
+  }
+
+  /** Live agents except `exclude` (the manager's player stand-in). */
+  enemyAgents(exclude: number): number {
+    return this.agents.filter((a, i) => a !== null && i !== exclude).length;
   }
 }
 

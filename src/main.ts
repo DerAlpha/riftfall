@@ -44,6 +44,15 @@ function hasWebGL2(): boolean {
   }
 }
 
+/** Last selected map (the start screen switches maps with a reload). */
+function readLastMap(): string | null {
+  try {
+    return localStorage.getItem('riftfall.lastMap');
+  } catch {
+    return null;
+  }
+}
+
 async function boot(): Promise<void> {
   if (!hasWebGL2()) {
     showFatal(
@@ -68,6 +77,7 @@ async function boot(): Promise<void> {
       noPointerLock: params.has('nolock'),
       exposeHandle: params.has('smoke') || import.meta.env.DEV,
       forcePreset: PRESET_ORDER.find((p) => p === params.get('preset')) ?? null,
+      mapId: params.get('map') ?? readLastMap(),
     },
     loading,
   );

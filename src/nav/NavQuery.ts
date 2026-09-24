@@ -22,7 +22,10 @@ import {
 } from 'recast-navigation';
 import { Vector3 } from 'three';
 import type { Vec3Like } from '../core/events';
+import { createLogger } from '../core/log';
 import { NAV } from '../defs/nav';
+
+const log = createLogger('nav');
 
 /** detour's raycast reports "reached the end" with t = FLT_MAX. */
 const RAY_CLEAR_T = 1;
@@ -99,6 +102,9 @@ export class NavQuery {
     this.straightRefs.resize(maxPts);
     this.hit = new Raw.Module.dtRaycastHit();
     this.rayPolys = attachRayPath(this.hit, NAV.query.maxRaycastPolys);
+    if (!this.rayPolys) {
+      log.warn('dtRaycastHit layout differs from the expected one – walkable() uses reverse rays');
+    }
     this.heightOut = new Raw.Module.FloatRef();
   }
 
@@ -177,20 +183,26 @@ export class NavQuery {
     // Disk sample, clipped at the first wall on the straight line from the center.
     const angle = this.random() * TWO_PI;
     const dist = r * Math.sqrt(this.random());
-    const tx = cx + Math.cos(angle) * dist;
-    const tz = cz + Math.sin(angle) * dist;
-    let t = 1;
+    let px = cx;
+    let py = cy;
+    let pz = cz;
     if (dist > 0) {
+      const tx = cx + Math.cos(angle) * dist;
+      const tz = cz + Math.sin(angle) * dist;
+      let t = 1;
       const status = this.cast(start, cx, cy, cz, tx, cy, tz);
       if (statusFailed(status)) t = 0;
       else if (this.hit.t < RAY_CLEAR_T) {
         t = Math.max(0, this.hit.t - NAV.query.randomPointWallMargin / dist);
       }
+      if (t > 0) {
+        px = cx + (tx - cx) * t;
+        pz = cz + (tz - cz) * t;
+        // Height on the layer the ray walked (the floor under a deck stays the floor).
+        py = this.rayPathHeight(px, cy, pz);
+        if (Number.isNaN(py)) py = this.nearestXYZ(px, cy, pz) !== 0 ? this.ny : cy;
+      }
     }
-    const px = cx + (tx - cx) * t;
-    const pz = cz + (tz - cz) * t;
-    let py = t > 0 ? this.lastRayHeight(px, cy, pz) : cy;
-    if (Number.isNaN(py)) py = this.nearestXYZ(px, cy, pz) !== 0 ? this.ny : cy;
     out.set(px, py - this.bias, pz);
     return true;
   }
@@ -300,15 +312,7 @@ export class NavQuery {
   }
 
   /** Navmesh raycast into `hit` (t, crossed polygons when recorded); returns the status. */
-  private cast(
-    ref: number,
-    x0: number,
-    y0: number,
-    z0: number,
-    x1: number,
-    y1: number,
-    z1: number,
-  ): number {
+  private cast(ref: number, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): number {
     this.hit.t = 0;
     this.hit.pathCount = 0;
     return this.raw.raycast(
@@ -330,10 +334,18 @@ export class NavQuery {
     return this.hit.get_path(n - 1);
   }
 
-  /** Height at (x, z) of the polygon the previous ray ended in, or NaN. */
-  private lastRayHeight(x: number, y: number, z: number): number {
-    const ref = this.lastRayPoly();
-    return ref === 0 ? Number.NaN : this.polyHeight(ref, x, y, z);
+  /**
+   * Height at (x, z) on the polygons the previous ray crossed (searched from its end: a point
+   * pulled back from a wall may lie in an earlier polygon), or NaN (not on them / not recorded).
+   */
+  private rayPathHeight(x: number, y: number, z: number): number {
+    if (!this.rayPolys) return Number.NaN;
+    const n = Math.min(this.hit.pathCount, NAV.query.maxRaycastPolys);
+    for (let i = n - 1; i >= 0; i--) {
+      const h = this.polyHeight(this.hit.get_path(i), x, y, z);
+      if (!Number.isNaN(h)) return h;
+    }
+    return Number.NaN;
   }
 
   destroy(): void {

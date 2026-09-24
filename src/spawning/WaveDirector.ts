@@ -12,6 +12,10 @@
  * apart. Rifts are chosen by spawnPoints.ts: active zones, distance band, out of view (camera
  * frustum + optional line of sight), not the previous one.
  *
+ * A failed spawn lets the next queued enemy of another type go first (one type's instance slots
+ * may be full), ends the burst and retries after `retryDelay`; only while nothing is alive (no
+ * slot will ever free up) is a spawn dropped after `maxSpawnFailures` tries.
+ *
  * Fixed tick, O(1) per tick (spawn point scoring only when a burst starts), no allocations.
  * `remaining` = queued + living enemies; wave:progress is emitted when it (or the alive count)
  * changes, at most once per tick. The director freezes while the target is dead.
@@ -356,7 +360,12 @@ export class WaveDirector implements WaveDirectorApi {
   private spawnDueMembers(): void {
     const gap = this.mode.cadence.memberGap;
     while (this.burstLeft > 0 && this.memberTimer <= 0 && this.nextIndex < this.orderLength) {
-      if (this.enemies.alive >= this._plan.maxAlive) return;
+      if (this.enemies.alive >= this._plan.maxAlive) {
+        // Full (enemies spawned by others): the rest waits for the next burst and a fresh rift
+        // choice instead of pouring out of this one all at once when room frees.
+        this.burstLeft = 0;
+        return;
+      }
       if (!this.spawnMember()) {
         // Pool / nav exhausted: end the burst and retry soon.
         this.burstLeft = 0;
@@ -371,7 +380,6 @@ export class WaveDirector implements WaveDirectorApi {
   /** Spawn the next queued enemy around the burst origin; false when the spawn failed. */
   private spawnMember(): boolean {
     const plan = this._plan;
-    const type = plan.typeIds[this.order[this.nextIndex]!]!;
     _pos.copy(this.burstCenter);
     if (this.burstMember > 0) {
       const a = this.rng.next() * TAU;
@@ -384,7 +392,12 @@ export class WaveDirector implements WaveDirectorApi {
     o.speedMultiplier = plan.speed;
     o.damageMultiplier = plan.damage;
     o.spawnPoint = this.burstPoint;
-    const id = this.enemies.spawn(type, _pos, o);
+    let id = this.enemies.spawn(plan.typeIds[this.order[this.nextIndex]!]!, _pos, o);
+    // One type's instance slots may be exhausted (dying enemies hold theirs while they dissolve):
+    // let the next queued enemy of another type go first instead of blocking the whole queue.
+    if (id === null && this.promoteOtherType()) {
+      id = this.enemies.spawn(plan.typeIds[this.order[this.nextIndex]!]!, _pos, o);
+    }
     if (id !== null) {
       this.nextIndex++;
       this.burstLeft--;
@@ -392,12 +405,33 @@ export class WaveDirector implements WaveDirectorApi {
       this.failures = 0;
       return true;
     }
+    // Living enemies will free slots / agents: wait. With nobody alive nothing ever will (missing
+    // visuals, no nav agent anywhere): drop the spawn after a few tries so the wave can finish.
+    if (this.enemies.alive > 0) {
+      this.failures = 0;
+      return false;
+    }
     this.failures++;
     if (this.failures >= this.mode.maxSpawnFailures) {
+      const type = plan.typeIds[this.order[this.nextIndex]!]!;
       log.warn(`Wave ${this._wave}: "${type}" failed to spawn ${this.failures}× – dropped`);
       this.failures = 0;
       this.nextIndex++;
       this.burstLeft = Math.max(0, this.burstLeft - 1);
+      return true;
+    }
+    return false;
+  }
+
+  /** Swap the next queued spawn with the first later one of another type; false if there is none. */
+  private promoteOtherType(): boolean {
+    const order = this.order;
+    const i = this.nextIndex;
+    const type = order[i]!;
+    for (let j = i + 1; j < this.orderLength; j++) {
+      if (order[j] === type) continue;
+      order[i] = order[j]!;
+      order[j] = type;
       return true;
     }
     return false;

@@ -43,6 +43,8 @@ export const BOOT_PROGRESS = {
   assets: { start: 0.2, span: 0.25 },
   level: { start: 0.45, span: 0.45 },
   environment: 0.92,
+  /** Waiting for the navmesh worker (usually already done by then). */
+  navigation: 0.96,
 } as const;
 
 /** Dev console command defaults and limits. */

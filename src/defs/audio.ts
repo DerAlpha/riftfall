@@ -310,7 +310,15 @@ export const AUDIO = {
     } as Readonly<Record<string, EnemyAudioBudgetDef>>,
     /** A nearer request must be at least this much nearer (m) to replace a busy voice of equal priority. */
     preemptMargin: 2,
-    /** Rift tears of one burst merge: a spawn within this time (s) and distance (m) of the last spawn sound is silent. */
+    /**
+     * Hit reactions of ONE enemy merge within `seconds` (a shotgun blast is up to nine hits in the
+     * same tick; a rifle burst would chain hurts). `slots`: recently hurt enemies remembered.
+     */
+    hurtMerge: { seconds: 0.16, slots: 8 },
+    /**
+     * Rift tears of one burst merge: a spawn with the same tear sound within this time (s, sliding
+     * with each merged member) and distance (m) of the last one is silent.
+     */
     spawnMerge: { seconds: 0.9, distance: 6 },
     /**
      * The blow of an attack, played when its wind-up ends (enemy:attack `windup`, game time) at the

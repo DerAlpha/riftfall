@@ -2,10 +2,10 @@
  * Enemy pose math shared by the GPU and the CPU.
  *
  * `compileRig()` turns an EnemyVisualDef into ONE packed float table (the "rig"): header, attack
- * timings, bones (pivot + parent + motion range), parts (bone + material zone) and motions
- * (channel/driver code + parameters). The renderer uploads that exact Float32Array as a data
- * texture; the vertex shader (enemyShader.ts, RIG_GLSL) and `evaluateRig()` here interpret the same
- * numbers with the same formulas:
+ * timings, bones (pivot + parent + motion range + driver mask + common-block length), parts
+ * (bone + material zone) and motions (channel/driver code + parameters). The renderer uploads that
+ * exact Float32Array as a data texture; the vertex shader (enemyShader.ts, RIG_GLSL) and
+ * `evaluateRig()` here interpret the same numbers with the same formulas:
  *
  *   drivers   locomotion, phase, attack envelope (eW, eS), stagger, death, 1 - emerge, look, life
  *   motion    value = see motionValue() – summed per bone channel (rot / move / scale)
@@ -53,6 +53,14 @@ function indexMap<T extends string>(list: readonly T[]): Readonly<Record<T, numb
 export const DRIVER_CODE = indexMap<RigDriver>(RIG_DRIVERS);
 export const CHANNEL_CODE = indexMap<RigChannel>(RIG_CHANNELS);
 export const WAVE_CODE = indexMap(GAIT_WAVES);
+
+/**
+ * Drivers that are off most of the time (an alive enemy walking or idling uses none of them).
+ * Each bone stores its motions common-first: while none of these is active, both evaluators stop
+ * after the common block instead of reading every motion.
+ */
+const RARE_DRIVERS: readonly RigDriver[] = ['attack', 'stagger', 'death', 'emerge'];
+export const RARE_DRIVER_MASK = RARE_DRIVERS.reduce((m, d) => m | (1 << DRIVER_CODE[d]), 0);
 
 /** Rotation channels are authored in degrees, compiled to radians. */
 const ROTATION_CHANNELS: ReadonlySet<RigChannel> = new Set(['rx', 'ry', 'rz']);
@@ -103,6 +111,8 @@ export interface CompiledBone {
   readonly pivot: Vec3;
   readonly motionStart: number;
   readonly motionCount: number;
+  /** Leading motions without a RARE_DRIVERS driver. */
+  readonly commonCount: number;
 }
 
 export interface CompiledPart {
@@ -166,6 +176,9 @@ const HEADER_TEXELS = 2;
 const BONE_TEXELS = 2;
 const MOTION_TEXELS = 2;
 
+/** Narrowest smoothstep window: equal edges would turn it into a step that fires at driver 0. */
+const MIN_WINDOW = 1e-3;
+
 /** Name of a mirrored bone's twin (`_L` → `_R`). */
 function mirrorName(name: string): string {
   return name.endsWith('_L') ? `${name.slice(0, -2)}_R` : `${name}_R`;
@@ -203,7 +216,9 @@ function mirrorPart(p: EnemyPartDef): EnemyPartDef {
 }
 
 function mirrorMotion(m: RigMotionDef, phase: number): RigMotionDef {
-  const flip = MIRRORED_CHANNELS.has(m.ch) ? -1 : 1;
+  // Look motions aim at a world direction: both twins turn the same way (never flipped).
+  const look = m.drive === 'lookYaw' || m.drive === 'lookPitch';
+  const flip = !look && MIRRORED_CHANNELS.has(m.ch) ? -1 : 1;
   const shifted = m.drive === 'gait' || (m.freq ?? 0) > 0;
   return {
     ...m,
@@ -220,11 +235,14 @@ interface ExpandedBone {
   motions: RigMotionDef[];
 }
 
-function expandBones(defs: readonly RigBoneDef[]): ExpandedBone[] {
+function expandBones(type: string, defs: readonly RigBoneDef[]): ExpandedBone[] {
   const out: ExpandedBone[] = [];
   for (const b of defs) {
     out.push({ name: b.name, parent: b.parent, pivot: b.pivot, motions: [...(b.motions ?? [])] });
     if (b.mirror) {
+      // Mirrored parts/hitboxes find the twin through the `_L` → `_R` name.
+      if (!b.name.endsWith('_L'))
+        log.warn(`${type}: mirrored bone "${b.name}" should end with "_L" – its parts stay on the left bone`);
       const phase = b.mirrorPhase ?? 0;
       out.push({
         name: mirrorName(b.name),
@@ -283,7 +301,7 @@ function expandHitboxes(defs: readonly EnemyHitboxDef[]): EnemyHitboxDef[] {
 /** Compile a visual def into the packed rig table (+ CPU-side lookups). Never throws on content. */
 export function compileRig(type: string, def: EnemyVisualDef): CompiledRig {
   const R = ENEMY_RENDER;
-  const bones = sortBones(type, expandBones(def.bones));
+  const bones = sortBones(type, expandBones(type, def.bones));
   if (bones.length > R.maxBones) log.warn(`${type}: ${bones.length} bones exceed ENEMY_RENDER.maxBones`);
   const boneIndex = new Map<string, number>();
   bones.forEach((b, i) => boneIndex.set(b.name, i));
@@ -314,14 +332,18 @@ export function compileRig(type: string, def: EnemyVisualDef): CompiledRig {
       log.warn(`${type}: bone "${b.name}" has ${valid.length} motions, only ${R.maxMotionsPerBone} are used`);
       valid.length = R.maxMotionsPerBone;
     }
+    // Common motions first (channel sums do not depend on the order), rare drivers after them.
+    const rare = (m: RigMotionDef): boolean => RARE_DRIVERS.includes(m.drive);
+    const common = valid.filter((m) => !rare(m));
     compiledBones.push({
       name: b.name,
       parent: b.parent === null ? -1 : boneIndex.get(b.parent)!,
       pivot: b.pivot,
       motionStart: motions.length,
       motionCount: valid.length,
+      commonCount: common.length,
     });
-    motions.push(...valid);
+    motions.push(...common, ...valid.filter(rare));
   }
 
   // Parts (mirrored twins right after their original).
@@ -390,8 +412,11 @@ export function compileRig(type: string, def: EnemyVisualDef): CompiledRig {
   put(1, lookYawMax, lookPitchMax, 0, 0);
   def.attacks.forEach((a, i) => put(attackBase + i, a.windup, a.strike, a.glow, 0));
   compiledBones.forEach((b, i) => {
+    // Drivers this bone's motions use: a bone without an active driver keeps its rest transform.
+    let mask = 0;
+    for (let k = 0; k < b.motionCount; k++) mask |= 1 << DRIVER_CODE[motions[b.motionStart + k]!.drive];
     put(boneBase + i * BONE_TEXELS, b.pivot[0], b.pivot[1], b.pivot[2], b.parent);
-    put(boneBase + i * BONE_TEXELS + 1, b.motionStart, b.motionCount, 0, 0);
+    put(boneBase + i * BONE_TEXELS + 1, b.motionStart, b.motionCount, mask, b.commonCount);
   });
   parts.forEach((p, i) => put(partBase + i, p.bone, p.zone, 0, 0));
   motions.forEach((m, i) => {
@@ -405,12 +430,14 @@ export function compileRig(type: string, def: EnemyVisualDef): CompiledRig {
           : 0;
     const amp2 = m.amp2 ?? (m.drive === 'gait' ? m.amp : 0);
     const freq = m.freq ?? (m.drive === 'gait' ? 1 : 0);
-    // Windows live in 0..1: a driver at 0 then always yields exactly 0 (CPU skips such motions).
+    // Ordered windows inside 0..1 (at least MIN_WINDOW wide): a driver at 0 always yields exactly
+    // 0 (both evaluators skip inactive drivers) and a driver at 1 reaches the full amplitude.
     const w = m.window ?? [0, 1];
-    const win = [clamp(w[0], 0, 1), clamp(w[1], 0, 1)] as const;
+    const w0 = clamp(Math.min(w[0], w[1]), 0, 1 - MIN_WINDOW);
+    const w1 = clamp(Math.max(w[0], w[1]), w0 + MIN_WINDOW, 1);
     const t = motionBase + i * MOTION_TEXELS;
     put(t, code, aux, m.amp * toUnit, amp2 * toUnit);
-    put(t + 1, freq, m.offset ?? 0, win[0], win[1]);
+    put(t + 1, freq, m.offset ?? 0, w0, w1);
   });
 
   const motionDrv = new Uint8Array(motions.length);
@@ -497,7 +524,7 @@ function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
-/** GLSL smoothstep (edges ordered; equal edges act as a step). */
+/** GLSL smoothstep (edges ordered; equal edges – never compiled – act as a step). */
 export function smoothWindow(e0: number, e1: number, x: number): number {
   const d = e1 - e0;
   const t = d > 0 ? clamp((x - e0) / d, 0, 1) : x >= e0 ? 1 : 0;
@@ -632,6 +659,27 @@ function bit(code: number, on: boolean): number {
 }
 
 /**
+ * Bit mask (1 << driver code) of the drivers whose motions can be non-zero for `d`; motions of
+ * other drivers are exactly 0 and both evaluators skip them (GPU: rfActive in RIG_GLSL, built with
+ * the same conditions), as well as whole bones whose driver mask misses it (rest transform).
+ */
+export function activeDriverMask(d: RigDrivers): number {
+  const alive = d.life > 0;
+  return (
+    bit(DRIVER_CODE.rest, true) |
+    bit(DRIVER_CODE.idle, alive) |
+    bit(DRIVER_CODE.gait, alive && d.loc > 0) |
+    bit(DRIVER_CODE.loco, alive && d.loc > 0) |
+    bit(DRIVER_CODE.attack, alive && d.attack >= 0) |
+    bit(DRIVER_CODE.stagger, alive && d.stagger > 0) |
+    bit(DRIVER_CODE.death, d.death > 0) |
+    bit(DRIVER_CODE.emerge, d.emergeInv > 0) |
+    bit(DRIVER_CODE.lookYaw, alive && d.lookYaw !== 0) |
+    bit(DRIVER_CODE.lookPitch, alive && d.lookPitch !== 0)
+  );
+}
+
+/**
  * Model-space bone transforms for the slot state at `o` into `out` (BONE_STRIDE floats per bone,
  * 3x4 row-major, starting at `outOffset`). Same math as the vertex shader. `onlyNeeded` skips
  * bones no hitbox/socket depends on (their matrices are left untouched).
@@ -653,19 +701,10 @@ export function evaluateRig(
   const { boneBase, motionBase } = rig.layout;
   const drvOf = rig.motionDrv;
   const chOf = rig.motionCh;
-  // Drivers whose motions are exactly 0 this pose are skipped (the shader computes the same 0).
-  const alive = d.life > 0;
-  const active =
-    bit(DRIVER_CODE.rest, true) |
-    bit(DRIVER_CODE.idle, alive) |
-    bit(DRIVER_CODE.gait, alive && d.loc > 0) |
-    bit(DRIVER_CODE.loco, alive && d.loc > 0) |
-    bit(DRIVER_CODE.attack, alive && d.attack >= 0) |
-    bit(DRIVER_CODE.stagger, alive && d.stagger > 0) |
-    bit(DRIVER_CODE.death, d.death > 0) |
-    bit(DRIVER_CODE.emerge, d.emergeInv > 0) |
-    bit(DRIVER_CODE.lookYaw, alive && d.lookYaw !== 0) |
-    bit(DRIVER_CODE.lookPitch, alive && d.lookPitch !== 0);
+  // Drivers whose motions are exactly 0 this pose are skipped (the shader skips the same ones).
+  const active = activeDriverMask(d);
+  const attack = d.attack;
+  const attackCode = DRIVER_CODE.attack;
   const bones = rig.bones;
   for (let b = 0; b < bones.length; b++) {
     if (skip !== null && skip[b] === 0) continue;
@@ -674,7 +713,9 @@ export function evaluateRig(
     const cy = data[bt + 1]!;
     const cz = data[bt + 2]!;
     const start = data[bt + 4]!;
-    const count = data[bt + 5]!;
+    // No active driver on this bone: rest transform; no rare driver active: common block only.
+    const count =
+      (data[bt + 6]! & active) === 0 ? 0 : (active & RARE_DRIVER_MASK) === 0 ? data[bt + 7]! : data[bt + 5]!;
     let rx = 0;
     let ry = 0;
     let rz = 0;
@@ -686,8 +727,12 @@ export function evaluateRig(
     let sz = 1;
     for (let i = 0; i < count; i++) {
       const mi = start + i;
-      if (((active >> drvOf[mi]!) & 1) === 0) continue;
-      const v = motionValue(data, motionBase + mi * MOTION_TEXELS, d);
+      const drv = drvOf[mi]!;
+      if (((active >> drv) & 1) === 0) continue;
+      const texel = motionBase + mi * MOTION_TEXELS;
+      // Motions of another attack are 0 as well.
+      if (drv === attackCode && Math.abs(data[texel * 4 + 1]! - attack) >= 0.5) continue;
+      const v = motionValue(data, texel, d);
       switch (chOf[mi]) {
         case 0:
           rx += v;

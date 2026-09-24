@@ -758,6 +758,8 @@ export const WEAPON_RULES = {
     default: { slots: 2, weapons: ['pistol'] },
     // The calibration hall lets the player compare all three M2 weapons.
     testroom: { slots: 3, weapons: ['pistol', 'rifle', 'shotgun'] },
+    // M3 vertical slice: no wall buys yet (M4), so the lab starts with rifle + sidearm.
+    lab: { slots: 2, weapons: ['rifle', 'pistol'] },
   } as Readonly<Record<string, LoadoutDef>>,
 } as const;
 

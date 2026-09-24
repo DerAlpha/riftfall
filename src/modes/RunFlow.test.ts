@@ -131,6 +131,33 @@ describe('RunFlow', () => {
     expect(log).toEqual(['player:died']);
   });
 
+  it("kill() takes the player's health first when it can, dying exactly once", () => {
+    const events = new EventBus<GameEvents>();
+    const died: number[] = [];
+    events.on('player:died', () => died.push(1));
+    let hp = 100;
+    const flow = new RunFlow({
+      events,
+      setTimeScale: () => {},
+      killPlayer: () => {
+        hp = 0;
+        events.emit('player:healthChanged', { health: hp, maxHealth: 100, armor: 0, maxArmor: 100 });
+      },
+    });
+    flow.begin('lab');
+    flow.kill();
+    expect(hp).toBe(0);
+    expect(flow.state).toBe('dying');
+    expect(died.length).toBe(1);
+    // God mode: the health stays, the run dies anyway.
+    const flow2 = new RunFlow({ events, setTimeScale: () => {}, killPlayer: () => {} });
+    flow2.begin('lab');
+    flow2.kill();
+    expect(flow2.state).toBe('dying');
+    flow.dispose();
+    flow2.dispose();
+  });
+
   it('dispose restores the time scale and unsubscribes', () => {
     const { flow, scales, health, log } = setup();
     flow.begin('lab');

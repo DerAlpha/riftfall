@@ -124,7 +124,9 @@ describe('buildResearchLab', () => {
       expect(hit!.normal.y, sp.id).toBeGreaterThan(0.99);
       expect(level.zoneAt(p.x, p.z), sp.id).toBe(sp.zone);
       // Headroom for a tank (2.4 m) above the point.
-      const up = physics.raycast({ x: p.x, y: p.y + 0.1, z: p.z }, { x: 0, y: 1, z: 0 }, 2.6, { groups: WORLD_RAY });
+      const up = physics.raycast({ x: p.x, y: p.y + 0.1, z: p.z }, { x: 0, y: 1, z: 0 }, 2.6, {
+        groups: WORLD_RAY,
+      });
       expect(up, sp.id).toBeNull();
     }
   });
@@ -218,6 +220,37 @@ describe('buildResearchLab', () => {
     }
   });
 
+  it('keeps the dynamic crates off the enemy routes (the navmesh does not know them)', () => {
+    const out: THREE.Vector3[] = [];
+    for (let i = 0; i < NAV.query.maxStraightPathPoints; i++) out.push(new THREE.Vector3());
+    const crates = L.dock.crates.filter((c) => c.dynamic);
+    const goals = [level.spawn.position.clone()];
+    for (const s of L.spaces) {
+      const c = rectCenter(s.rects[0]!);
+      const g = new THREE.Vector3();
+      if (nav.closestPoint({ x: c.x, y: 0, z: c.z }, g)) goals.push(g);
+    }
+    const from = new THREE.Vector3();
+    for (const sp of level.spawnPoints ?? []) {
+      expect(nav.closestPoint(sp.position, from), sp.id).toBe(true);
+      for (const goal of goals) {
+        const n = nav.findPath(from, goal, out);
+        for (let i = 1; i < n; i++) {
+          const a = out[i - 1]!;
+          const b = out[i]!;
+          for (const c of crates) {
+            // Crate footprint (any yaw) + a swarmer's radius.
+            const clearance = (c.size * Math.SQRT2) / 2 + 0.35;
+            const d = segmentPointDistanceXZ(a, b, c.position[0], c.position[2]);
+            // Only segments at the crate's level (floor vs. platform) matter.
+            if (Math.abs(Math.min(a.y, b.y) - (c.position[1] - c.size / 2)) > 0.5) continue;
+            expect(d, `${sp.id} → crate @${c.position.join(',')}`).toBeGreaterThan(clearance);
+          }
+        }
+      }
+    }
+  });
+
   it('pulses the tear nearest to a spawned enemy', () => {
     const sp = level.spawnPoints![0]!;
     events.emit('enemy:spawned', { id: 1, type: 'swarmer', position: sp.position, elite: false });
@@ -248,3 +281,11 @@ describe('buildResearchLab', () => {
     expect(level.hasVolumetricContent).toBe(true);
   });
 });
+
+function segmentPointDistanceXZ(a: THREE.Vector3, b: THREE.Vector3, x: number, z: number): number {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const len2 = dx * dx + dz * dz;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / len2)) : 0;
+  return Math.hypot(a.x + dx * t - x, a.z + dz * t - z);
+}

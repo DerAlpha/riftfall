@@ -137,7 +137,8 @@ export const NAV = {
      * Obstacle-avoidance presets (index = dtCrowd avoidance slot). Swarms of fast agents need
      * short horizons and few samples: 'swarm' is cheap and decisive, 'quality' is for few big
      * agents. 60 agents (every 10th a tank) chasing a moving target, retargeted every tick:
-     * ~0.35 ms/tick avg, < 1 ms worst (wasm in node, calibration hall – NavSystem.testroom.test).
+     * ~0.4 ms/tick avg, p99 < 1 ms (wasm in node, calibration hall / research lab –
+     * NavSystem.testroom.test, NavSystem.lab.test).
      */
     avoidance: [
       {

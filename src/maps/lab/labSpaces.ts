@@ -1,14 +1,22 @@
 /**
  * Pure layout geometry of the research lab (no three.js scene objects): wall outlines of the
- * spaces (unions of rects), doorway openings, floor / ceiling pieces, the zone graph and the M4
- * door slots. Used by the builder and by the layout validation tests.
+ * spaces (unions of rects), doorway openings, trim gaps at wall features (tears, vents, shutter),
+ * floor / ceiling pieces, the zone graph and the M4 door slots. Used by the builder and by the
+ * layout validation tests.
  *
  * Walls: every boundary edge of a space gets a wall body of thickness T behind its interior face.
  * At convex corners the walls along X are extended by T (they fill the corner square), at reflex
  * corners the walls along Z are shortened by T, so bodies never overlap or leave holes.
  */
 import type { Facing, RectDef } from '../../defs/level';
-import type { LabDoorwayDef, LabSpaceDef, LabZoneId } from '../../defs/labLayout';
+import {
+  LAB_LAYOUT,
+  RIFT_PORTAL,
+  type LabDoorwayDef,
+  type LabSpaceDef,
+  type LabSpawnPointDef,
+  type LabZoneId,
+} from '../../defs/labLayout';
 import { subtractIntervals, subtractRects, type Rect } from '../../world/kitMath';
 
 const EPS = 1e-4;
@@ -164,7 +172,8 @@ export function edgeOpenings(
   thickness: number,
 ): { doorway: LabDoorwayDef; interval: Interval }[] {
   const out: { doorway: LabDoorwayDef; interval: Interval }[] = [];
-  for (const d of doorways) if (doorwayCutsEdge(d, e, thickness)) out.push({ doorway: d, interval: doorwayInterval(d) });
+  for (const d of doorways)
+    if (doorwayCutsEdge(d, e, thickness)) out.push({ doorway: d, interval: doorwayInterval(d) });
   return out;
 }
 
@@ -178,7 +187,11 @@ export function wallBodySegments(e: WallEdge, openings: readonly Interval[]): [n
 }
 
 /** Face intervals (trims, strips) minus openings widened by `margin` (door frames). */
-export function wallFaceSegments(e: WallEdge, openings: readonly Interval[], margin: number): [number, number][] {
+export function wallFaceSegments(
+  e: WallEdge,
+  openings: readonly Interval[],
+  margin: number,
+): [number, number][] {
   return subtractIntervals(
     e.from,
     e.to,
@@ -232,8 +245,46 @@ export function doorwayFacing(d: LabDoorwayDef, spaces: readonly LabSpaceDef[], 
   return aIsNorth ? 'pz' : 'nz';
 }
 
+/** Wall face point of a wall-mounted spawn (tear / vent), floor level; null for floor tears. */
+export function spawnWallPoint(p: LabSpawnPointDef): { x: number; y: number; z: number } | null {
+  if (!p.wall) return null;
+  const n = facingNormal(p.wall);
+  const d = LAB_LAYOUT.spawnTears.wallDistance;
+  return { x: p.position[0] - n.x * d, y: p.position[1], z: p.position[2] - n.z * d };
+}
+
+/**
+ * Intervals along a wall edge where face trims and light strips stop: wall tears and vents of the
+ * spawn points on this face and the dock shutter (a strip must not run across them).
+ */
+export function wallFeatureGaps(e: WallEdge): Interval[] {
+  const L = LAB_LAYOUT;
+  const margin = L.spawnTears.trimGap;
+  const out: Interval[] = [];
+  const onEdge = (coord: number, along: number): boolean =>
+    Math.abs(coord - e.coord) < EPS && along > e.from - EPS && along < e.to + EPS;
+  for (const p of L.spawnPoints) {
+    if (p.wall !== e.facing) continue;
+    const w = spawnWallPoint(p)!;
+    const coord = e.along === 'x' ? w.z : w.x;
+    const along = e.along === 'x' ? w.x : w.z;
+    if (!onEdge(coord, along)) continue;
+    const half = (p.kind === 'vent' ? L.spawnTears.vent.width : RIFT_PORTAL.small.wall.width) / 2 + margin;
+    out.push({ from: along - half, to: along + half });
+  }
+  const S = L.dock.shutter;
+  if (e.space === 'dock' && e.facing === 'pz' && onEdge(L.dock.platform.minZ, (S.minX + S.maxX) / 2)) {
+    out.push({ from: S.minX - S.frame - margin, to: S.maxX + S.frame + margin });
+  }
+  return out;
+}
+
 /** Undirected adjacency of nodes (spaces or zones) through doorways. */
-export function reachable(start: string, nodes: readonly string[], links: readonly [string, string][]): Set<string> {
+export function reachable(
+  start: string,
+  nodes: readonly string[],
+  links: readonly [string, string][],
+): Set<string> {
   const adj = new Map<string, string[]>();
   for (const n of nodes) adj.set(n, []);
   for (const [a, b] of links) {

@@ -48,6 +48,8 @@ const log = createLogger('projectiles');
 const UP: Vec3Like = { x: 0, y: 1, z: 0 };
 const DOWN: Vec3Like = { x: 0, y: -1, z: 0 };
 const TAU = Math.PI * 2;
+/** Golden-ratio phase offsets (per projectile / puddle slot). */
+const SEED_STEP = 0.6180339887;
 
 type DamageSource = DamageInfo['source'];
 const SOURCES: readonly DamageSource[] = ['player', 'enemy', 'trap', 'environment'];
@@ -76,13 +78,34 @@ export interface FireOptions {
 }
 
 /** Launch parameters `solveLob` needs from a def. */
-export type LobParams = Pick<ProjectileDef, 'lobSpeed' | 'minFlightTime' | 'maxFlightTime' | 'gravity'>;
+export type LobParams = Pick<
+  ProjectileDef,
+  'lobSpeed' | 'minFlightTime' | 'maxFlightTime' | 'gravity' | 'maxLaunchSpeed'
+>;
+
+/**
+ * Longest flight time whose arc from height `oy` to `ay` stays below `apexY` (constant gravity g):
+ * the launch rise vy = dy/t + g·t/2 must not exceed sqrt(2·g·(apexY − oy)). +∞ = no limit. When no
+ * arc fits (target above the clearance), the flattest-apex time sqrt(2·dy/g).
+ */
+export function maxLobTime(oy: number, ay: number, apexY: number, g: number): number {
+  if (!Number.isFinite(apexY) || !(g > 0)) return Number.POSITIVE_INFINITY;
+  const dy = ay - oy;
+  const h = apexY - oy;
+  if (h <= 0) return dy > 0 ? Math.sqrt((2 * dy) / g) : 0;
+  const v = Math.sqrt(2 * g * h);
+  const disc = v * v - 2 * g * dy;
+  if (disc < 0) return Math.sqrt((2 * dy) / g);
+  return (v + Math.sqrt(disc)) / g;
+}
 
 /**
  * Lobbed launch velocity from `origin` to hit `aim` moving with `targetVel` (horizontal lead scaled
  * by `lead` 0..1). Flight time = horizontal distance to the predicted point / lobSpeed (clamped),
- * iterated so the prediction and the flight time agree. Writes the velocity into `out` and returns
- * the flight time. Exact for constant gravity (Projectiles integrates analytically).
+ * iterated so the prediction and the flight time agree; under a ceiling (`maxApexY`) the arc is
+ * flattened (shorter flight), but never faster than `maxLaunchSpeed` horizontally. Writes the
+ * velocity into `out` and returns the flight time. Exact for constant gravity (Projectiles
+ * integrates analytically).
  */
 export function solveLob(
   origin: Vec3Like,
@@ -92,16 +115,20 @@ export function solveLob(
   def: LobParams,
   out: Vec3Like,
   iterations: number = PROJECTILE_POOL.leadIterations,
+  maxApexY: number = Number.POSITIVE_INFINITY,
 ): number {
   const speed = Math.max(1e-3, def.lobSpeed);
   const minT = Math.max(1e-3, def.minFlightTime);
   const maxT = Math.max(minT, def.maxFlightTime);
+  const ceilT = maxLobTime(origin.y, aim.y, maxApexY, def.gravity);
+  const fastest = Math.max(speed, def.maxLaunchSpeed);
   const k = Number.isFinite(lead) ? Math.max(0, lead) : 0;
   const vx = Number.isFinite(targetVel.x) ? targetVel.x * k : 0;
   const vz = Number.isFinite(targetVel.z) ? targetVel.z * k : 0;
-  let t = clamp(Math.hypot(aim.x - origin.x, aim.z - origin.z) / speed, minT, maxT);
+  let t = flightTime(Math.hypot(aim.x - origin.x, aim.z - origin.z), speed, minT, maxT, ceilT, fastest);
   for (let i = 0; i < iterations; i++) {
-    t = clamp(Math.hypot(aim.x + vx * t - origin.x, aim.z + vz * t - origin.z) / speed, minT, maxT);
+    const d = Math.hypot(aim.x + vx * t - origin.x, aim.z + vz * t - origin.z);
+    t = flightTime(d, speed, minT, maxT, ceilT, fastest);
   }
   const px = aim.x + vx * t;
   const pz = aim.z + vz * t;
@@ -109,6 +136,18 @@ export function solveLob(
   out.z = (pz - origin.z) / t;
   out.y = (aim.y - origin.y) / t + 0.5 * def.gravity * t;
   return t;
+}
+
+/** Flight time for horizontal distance d: lobSpeed timing, capped by the ceiling, speed-limited. */
+function flightTime(
+  d: number,
+  speed: number,
+  minT: number,
+  maxT: number,
+  ceilT: number,
+  fastest: number,
+): number {
+  return Math.max(Math.min(clamp(d / speed, minT, maxT), ceilT), d / fastest, 1e-3);
 }
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -306,7 +345,7 @@ export class ProjectileSystem {
     this.age[i] = 0;
     this.trailTimer[i] = 0;
     this.scale[i] = opts?.damageScale ?? 1;
-    this.seed[i] = (this.stats.fired * 0.6180339887) % 1;
+    this.seed[i] = (this.stats.fired * SEED_STEP) % 1;
     this.def[i] = d;
     this.source[i] = Math.max(0, SOURCES.indexOf(opts?.source ?? 'enemy'));
     this.owner[i] = opts?.owner ?? null;
@@ -326,8 +365,36 @@ export class ProjectileSystem {
   ): boolean {
     const d = this.resolve(defId);
     if (d < 0) return false;
-    solveLob(origin, aim, targetVel, lead, this.defs[d]!, _vel);
+    const def = this.defs[d]!;
+    const apex = this.ceilingAbove(def, origin, aim, opts?.owner ?? null) - def.radius - def.ceilingMargin;
+    solveLob(origin, aim, targetVel, lead, def, _vel, PROJECTILE_POOL.leadIterations, apex);
     return this.fire(defId, origin, _vel, opts);
+  }
+
+  /**
+   * Lowest ceiling over the lob (upward probes at PROJECTILE_POOL.ceilingSamples along origin →
+   * aim, from the higher end's height): indoors a long lob must flatten or it splats on the
+   * ceiling. +∞ when nothing is within def.ceilingProbe.
+   */
+  private ceilingAbove(
+    def: ProjectileDef,
+    origin: Vec3Like,
+    aim: Vec3Like,
+    owner: Damageable | null,
+  ): number {
+    if (!(def.ceilingProbe > 0)) return Number.POSITIVE_INFINITY;
+    const y0 = Math.max(origin.y, aim.y);
+    const samples = PROJECTILE_POOL.ceilingSamples;
+    let ceiling = Number.POSITIVE_INFINITY;
+    this.rayOpts.ignore = owner;
+    for (let i = 0; i < samples.length; i++) {
+      const f = samples[i]!;
+      _pos.set(origin.x + (aim.x - origin.x) * f, y0, origin.z + (aim.z - origin.z) * f);
+      const hit = this.combat.raycast(_pos, UP, def.ceilingProbe, this.rayOpts);
+      if (hit && hit.point.y < ceiling) ceiling = hit.point.y;
+    }
+    this.rayOpts.ignore = null;
+    return ceiling;
   }
 
   /** Leave a puddle of `defId` at `position` (floor point). */
@@ -410,16 +477,20 @@ export class ProjectileSystem {
       if (!P) continue;
       const V = d.visual;
       const o = i * 3;
-      const left = P.duration - this.pAge[i]!;
-      const fade = P.fadeTime > 0 ? clamp(left / P.fadeTime, 0, 1) : 1;
+      const age = this.pAge[i]!;
+      const fade = P.fadeTime > 0 ? clamp((P.duration - age) / P.fadeTime, 0, 1) : 1;
       if (fade <= 0) continue;
+      // Splashes out quickly (ease-out), shrinks away at the end, shimmers meanwhile.
+      const g = V.puddleGrowTime > 0 ? clamp(age / V.puddleGrowTime, 0, 1) : 1;
+      const grow = 1 - (1 - g) * (1 - g);
       _pos.set(this.pPos[o]!, this.pPos[o + 1]! + V.puddleLift, this.pPos[o + 2]!);
       _q.identity();
-      const r = P.radius * fade;
+      const r = P.radius * fade * grow;
       _s.set(r, V.puddleThickness, r);
       _m.compose(_pos, _q, _s);
       mesh.setMatrixAt(n, _m);
-      const intensity = V.puddleIntensity * fade;
+      const shimmer = 1 + V.puddlePulseAmount * Math.sin((this.time * V.puddlePulseHz + i * SEED_STEP) * TAU);
+      const intensity = V.puddleIntensity * fade * shimmer;
       col[n * 3] = V.puddleColor[0] * intensity;
       col[n * 3 + 1] = V.puddleColor[1] * intensity;
       col[n * 3 + 2] = V.puddleColor[2] * intensity;
@@ -670,6 +741,13 @@ export class ProjectileSystem {
     e.weaponId = def.weaponId;
     e.decal = kind === IMPACT_WORLD;
     this.events.emit('combat:impact', e);
+    const fx = def.impactEffect;
+    // Not on the player: a burst at the capsule would fill the camera (the HUD shows the hit).
+    if (fx && this.vfx && kind !== IMPACT_PLAYER) {
+      _pos.set(px, py, pz);
+      _hitNormal.set(nx, ny, nz);
+      this.vfx.spawn(fx.effect, _pos, _hitNormal, fx.scale);
+    }
 
     const puddle = def.puddle;
     if (puddle && kind === IMPACT_WORLD) {

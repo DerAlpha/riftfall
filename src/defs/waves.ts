@@ -107,8 +107,10 @@ export interface WaveModeDef {
   readonly specials: readonly WaveSpecialDef[];
   readonly swarm: SwarmWaveDef | null;
   /**
-   * A queued spawn that fails this many times in a row (unknown type, no visual slot, no nav
-   * agent) is dropped so the wave can still finish.
+   * A failed spawn first trades places with the next queued enemy of another type (one type's
+   * instance slots may be full while others are free). A spawn that keeps failing while NO enemy
+   * is alive (nothing will free a slot: missing visuals, no nav agent) is dropped after this many
+   * tries in a row so the wave can still finish; while enemies live it simply waits for room.
    */
   readonly maxSpawnFailures: number;
 }
@@ -156,7 +158,7 @@ export const WAVES = {
       healthMultiplier: 0.75,
       speedMultiplier: 1.12,
     },
-    maxSpawnFailures: 45,
+    maxSpawnFailures: 6,
   },
 } as const satisfies Record<string, WaveModeDef>;
 

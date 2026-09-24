@@ -16,9 +16,11 @@ Keep this file current: update **Milestone status** and **Decisions** whenever a
 | `npm test`                                                                                             | Vitest unit tests                                                                                        |
 | `npm run assets`                                                                                       | Download CC0 assets (Poly Haven) into `public/assets/` (idempotent, optional)                            |
 | `npm run smoke`                                                                                        | Headless Chromium smoke test (build must exist): boots the game, moves, screenshots into `smoke-output/` |
+| `npm run smoke:waves`                                                                                  | Wave scenario on the research lab (build must exist): waves, enemies, kills, wave complete, game over    |
 | `node tools/photo.mjs --preset ultra [--hud] [--spots '[[x,y,z,yaw,pitch]]'] [--exec '["noclip on"]']` | Art-direction screenshots (build must exist)                                                             |
 
-URL parameters (dev/testing): `?autostart` skip start screen, `?nolock` play without pointer lock,
+URL parameters (dev/testing): `?map=lab|testroom` map to build (else the last played / recommended map),
+`?autostart` skip start screen, `?nolock` play without pointer lock,
 `?preset=low|medium|high|ultra` session-only preset, `?smoke` expose `window.__RIFTFALL__` in production builds.
 
 ## Architecture
@@ -58,7 +60,16 @@ src/
   vfx/               VfxSystem + VfxBridge (event → VFX): GPU instanced particles, decal ring, tracers,
                      casings (cheap CPU physics, raycast bounces), pooled flash lights, muzzle flash,
                      screen-space shockwave effect
-  enemies/           M3 contract: enemy visuals/AI (EnemyVisualsApi, pose-driven hitboxes)
+  nav/               NavSystem (NavApi): worker-built tiled recast navmesh, detour crowd (throttled,
+                     round-robin move requests), allocation-free queries, DirectSteering fallback
+  enemies/           EnemyManager (pooled Damageable enemies, AI brains per type, attack-slot tokens,
+                     flanking, spitter cover/LOS, tank charge/slam, knockback, stuck recovery),
+                     render/ EnemyRenderer (one InstancedMesh per type, rig table interpreted by the
+                     vertex shader AND poseMath → hitboxes match the drawn pose), types.ts contract
+  spawning/          WaveDirector (classic wave formula, spawn point scoring, intermissions)
+  modes/             RunFlow (run lifecycle, death sequence, game over), RunStats, death camera
+  maps/              registry (MAP_REGISTRY: testroom, lab), lab/ research lab builder (zones, door and
+                     wall-buy slots for M4, spawn rifts, fog volumes), MapLevelInstance extras
   render/            RenderSystem (renderer, scenes, cameras), QualityManager, Environment, CSM shadows
     postfx/          PostFX pipeline (N8AO, bloom, DoF, motion blur, height fog, shockwave, CA, grading
                      LUT, grain, SMAA)
@@ -86,8 +97,9 @@ rAF → GameLoop.advance(dt)
   │       through the weapon LookModifier: ADS sensitivity, gamepad-only aim assist)
   ├─ fixedUpdate (60 Hz, 0..maxSubSteps times, unpaused) – game/fixedTick.ts:
   │     player.fixedUpdate (samples input, latches edges once per frame) → weapons.fixedUpdate (fire,
-  │     reload, melee: shots resolve NOW) → targets.fixedUpdate (M3: enemies here, after the weapons)
-  │     → kill plane → physics.step → health.fixedUpdate → level.fixedUpdate
+  │     reload, melee: shots resolve NOW) → targets.fixedUpdate → waves.fixedUpdate → enemies.fixedUpdate
+  │     (AI, nav.update – the crowd steps INSIDE the manager –, renderer commitTick)
+  │     → kill plane → physics.step → health.fixedUpdate → level.fixedUpdate → runFlow.fixedUpdate
   ├─ update (per frame, unpaused): player.update (latches edges of frames without a tick, ADS, eye)
   │     → weapons.update (ADS blend, recoil counter-pull) → playerCamera.update (bob/roll/shake/
   │     recoil/FOV incl. ADS zoom/DoF) → viewmodel (sway, bob, animator) → vfx.update (flashes,
@@ -180,7 +192,7 @@ RenderPass(world)                                 (incl. decals, casings, traini
 | --- | --------------------------------------------------------------------------- | ------ |
 | 1   | Setup, renderer, post-FX, test room, FPS controller (full movement)         | done   |
 | 2   | Weapons (3), viewmodel, recoil, hit feedback, decals, particles             | done   |
-| 3   | Enemy AI + navmesh, 3 enemy types, wave spawner, game over → vertical slice | –      |
+| 3   | Enemy AI + navmesh, 3 enemy types, wave spawner, game over → vertical slice | done   |
 | 4   | Economy: points, wall buys, doors, mystery box, perks, power-ups            | –      |
 | 5   | All weapons, attachments, Rift Forge, elemental mods                        | –      |
 | 6   | All enemies, elite affixes, spawn director, bosses                          | –      |
@@ -253,6 +265,19 @@ RenderPass(world)                                 (incl. decals, casings, traini
   confirmation, trauma screen shake (`camera:shake`, scaled by `accessibility.screenShake`) and
   explosion hit pulses (`fx:hitPulse`, scaled by `reduceFlashing`).
 
+- **Maps switch by reload (M3):** every system holds level state (nav, combat, spawn points, targets), so the
+  start screen's map choice is stored (`localStorage riftfall.lastMap`) and applied with `?map=` + reload.
+  Without a choice the recommended map (research lab) boots.
+- **Navigation (M3):** tiled recast navmesh (9.6 m tiles) built in a Web Worker (main-thread fallback),
+  voxel-aligned floor heights, eroded for the medium agent (0.4 m); walkable() = snap tolerance + slope +
+  layer-checked 2D raycast; a rebuild keeps the old navmesh live until the swap; recast fails → DirectSteering.
+- **Enemies (M3):** one InstancedMesh per type from procedural parts; a packed rig table is interpreted
+  identically by the vertex shader and `poseMath` (hitboxes follow the drawn pose); one program for all
+  types compiled in `EnemyRenderer.warmup`. AI: per-target melee token pools (light 3 / heavy 1), per-kind
+  attack spacing, lobbed acid flattens under probed ceilings, the player is a parked crowd agent.
+- **Run flow (M3):** RunFlow owns the run (begin/restart/abandon), the death slow motion (real time) and
+  the game over screen; `run:restart` resets enemies, waves, VFX, health, loadout and position.
+
 ## Known limitations / next steps
 
 - Only verified on SwiftShader (headless); real-GPU frame times on the High preset still need a pass (M12 budget).
@@ -263,5 +288,6 @@ RenderPass(world)                                 (incl. decals, casings, traini
 - `core/Pool.ts` is still unused (M3 enemies/projectiles are its first candidates).
 - KTX2 path is implemented but untested with real files (`toktx` not available when fetching); textures ship as JPG.
 - Height-fog sun glow is not shadowed (indoors it relies on low `sunScatterStrength`); shafts come from the level.
-- Next: **Milestone 3** – enemy AI + navmesh (recast-navigation), 3 enemy types, wave spawner, game over.
-  Enemies tick in `game/fixedTick.ts` after the weapons and register with CombatWorld like the targets.
+- Tanks share the medium-agent navmesh (may clip corners); no off-mesh links (no leaps onto platforms).
+- Doors/wall buys: the lab exposes `doorSlots`/`wallBuySlots`, all doorways are open until M4.
+- Next: **Milestone 4** – economy: points, wall buys, doors (nav poly flags), mystery box, perks, power-ups.

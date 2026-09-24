@@ -13,7 +13,8 @@
  * Everything is additive, depth-tested, never writes depth and lives on RENDER.volumetricLayer:
  * the post chain draws it after AO and height fog (VolumetricPass) and the shaders apply the fog
  * transmittance themselves. pulse(strength) flares a portal (spawn bursts, wave starts); pulses
- * decay exponentially. No allocation after construction.
+ * decay exponentially. setReducedFlashing() scales the visible flare (accessibility). No
+ * allocation after construction.
  */
 import * as THREE from 'three';
 import type { Vec3Like } from '../../core/events';
@@ -86,13 +87,14 @@ uniform vec4 uLight2;  // fringe width, fringe intensity, halo intensity, halo f
 uniform vec2 uPulseK;  // pulse open, pulse intensity
 uniform vec2 uHaloScale;
 uniform float uIntensity;
+uniform float uPulseScale; // reduce flashing
 varying vec2 vP;
 varying vec4 vTear;
 varying float vFog;
 ${NOISE_GLSL}
 void main() {
   float seed = vTear.x * 37.0;
-  float pulse = vTear.y;
+  float pulse = vTear.y * uPulseScale;
   float t = uTime * uShape2.y;
   vec2 p = vP;
   // Domain warp: the whole tear wriggles.
@@ -152,6 +154,7 @@ function tearUniforms(time: TimeUniform, intensity: number): Record<string, THRE
     uPulseK: { value: new THREE.Vector2(t.pulseOpen, t.pulseIntensity) },
     uHaloScale: { value: new THREE.Vector2(t.haloScale[0], t.haloScale[1]) },
     uIntensity: { value: intensity },
+    uPulseScale: { value: 1 },
     fogParams: HEIGHT_FOG_PARAMS,
   };
 }
@@ -181,6 +184,11 @@ function additiveMaterial(
 export function decayPulse(pulse: number, dt: number, rate: number = RIFT_PORTAL.pulse.decay): number {
   const p = pulse * Math.exp(-rate * Math.max(0, dt));
   return p < 1e-3 ? 0 : p;
+}
+
+/** Visible share of a pulse (1, or RIFT_PORTAL.pulse.reducedScale with reduce flashing). */
+export function pulseScale(reduceFlashing: boolean): number {
+  return reduceFlashing ? RIFT_PORTAL.pulse.reducedScale : 1;
 }
 
 /** Combine a new pulse with the current one (strongest wins, clamped). */
@@ -257,7 +265,7 @@ export class RiftPortalField {
     this.pulses = new Float32Array(n);
     this.centers = new Float32Array(n * 3);
     tears.forEach((t, i) => {
-      data[i * 4] = ((t.seed * 0.6180339) % 1 + 1) % 1;
+      data[i * 4] = (((t.seed * 0.6180339) % 1) + 1) % 1;
       data[i * 4 + 1] = 0;
       data[i * 4 + 2] = t.brightness ?? 1;
       data[i * 4 + 3] = 1;
@@ -346,6 +354,11 @@ export class RiftPortalField {
     (this.material.uniforms.uIntensity as THREE.IUniform<number>).value = k;
   }
 
+  /** Accessibility: pulses flare the tears only RIFT_PORTAL.pulse.reducedScale as much. */
+  setReducedFlashing(on: boolean): void {
+    (this.material.uniforms.uPulseScale as THREE.IUniform<number>).value = pulseScale(on);
+  }
+
   dispose(): void {
     this.mesh.removeFromParent();
     this.mesh.geometry.dispose();
@@ -386,6 +399,7 @@ uniform vec3 uFringeOuter;
 uniform vec3 uFringeInner;
 uniform vec4 uVortex;   // intensity, twist, spin, horizon
 uniform vec4 uVortex2;  // ring width, ring intensity, arms, core fraction of the quad
+uniform vec4 uVortex3;  // ring jag, jag noise scale, jag speed, rim share of the ring color
 uniform vec2 uHaloK;    // halo intensity, pulse boost
 varying vec2 vP;
 varying float vFog;
@@ -408,21 +422,29 @@ void main() {
     float n = rpFbm(q * 2.2 + 3.1);
     float a = atan(q.y, q.x);
     float arms = 0.5 + 0.5 * sin(a * uVortex2.z + n * 3.0);
+    // Torn horizon: the ring radius wobbles with noise sampled on the (continuous) direction.
+    vec2 dir = q / max(length(q), 1e-4);
+    float jag = rpFbm(dir * uVortex3.y + vec2(uTime * uVortex3.z, -uTime * uVortex3.z * 0.7)) - 0.5;
+    float rj = r + jag * uVortex3.x;
     float horizon = uVortex.w * (1.0 + 0.25 * uPulse);
-    float hole = smoothstep(horizon, horizon + 0.06, r);
+    float hole = smoothstep(horizon, horizon + 0.06, rj);
     float disc = 1.0 - smoothstep(0.35, 1.0, r);
     float energy = pow(arms * n, 1.5) * 2.2;
     vec3 swirl = mix(uCore, uHot, clamp(energy * 0.8, 0.0, 1.0)) * uVortex.x * (0.25 + energy);
     float rw = uVortex2.x;
-    float ring = exp(-abs(r - horizon - rw) / rw);
-    float ringO = exp(-abs(r - horizon - rw * 2.2) / rw);
-    float ringI = exp(-abs(r - horizon - rw * 0.2) / rw);
+    float ring = exp(-abs(rj - horizon - rw) / rw);
+    float ringO = exp(-abs(rj - horizon - rw * 2.2) / rw);
+    float ringI = exp(-abs(rj - horizon - rw * 0.2) / rw);
+    vec3 ringCol = mix(uHot, uRim, uVortex3.w) * (0.75 + 0.5 * n);
     col += swirl * disc * hole;
-    col += (uRim * ring + uFringeOuter * ringO * 0.5 + uFringeInner * ringI * 0.5) * uVortex2.y * hole;
+    col += (ringCol * ring + uFringeOuter * ringO * 0.5 + uFringeInner * ringI * 0.5) * uVortex2.y * hole;
   }
   gl_FragColor = vec4(col * (1.0 + uHaloK.y * uPulse) * vFog, 1.0);
 }
 `;
+
+/** Largest orbit scale of a particle: `(0.75 + 0.5 * aSeed.y)` in PARTICLE_VERTEX (culling bounds). */
+const PARTICLE_ORBIT_SCALE_MAX = 1.25;
 
 const PARTICLE_VERTEX = /* glsl */ `
 attribute vec4 aSeed;
@@ -484,8 +506,6 @@ export interface RiftPortalOptions {
 }
 
 const _vp = new THREE.Vector4();
-const _up = new THREE.Vector3(0, 1, 0);
-const _q = new THREE.Quaternion();
 
 /** Tiny deterministic PRNG (cosmetic layout only). */
 function mulberry32(seed: number): () => number {
@@ -543,7 +563,10 @@ export class RiftPortal {
       uFringeOuter: { value: color(c.fringeOuter) },
       uFringeInner: { value: color(c.fringeInner) },
       uVortex: { value: new THREE.Vector4(v.intensity, v.twist, v.spin, v.horizon) },
-      uVortex2: { value: new THREE.Vector4(v.ringWidth, v.ringIntensity, v.arms, L.coreRadius / L.haloRadius) },
+      uVortex2: {
+        value: new THREE.Vector4(v.ringWidth, v.ringIntensity, v.arms, L.coreRadius / L.haloRadius),
+      },
+      uVortex3: { value: new THREE.Vector4(v.ringJag, v.ringJagScale, v.ringJagSpeed, v.ringRimShare) },
       uHaloK: { value: new THREE.Vector2(L.haloIntensity, RIFT_PORTAL.tear.pulseIntensity) },
       fogParams: HEIGHT_FOG_PARAMS,
     });
@@ -551,31 +574,37 @@ export class RiftPortal {
     this.vortex.name = 'RiftVortex';
     this.vortex.renderOrder = 13;
     this.vortex.layers.set(RENDER.volumetricLayer);
-    // Billboarded around the world center in the shader (the model matrix is ignored).
-    this.vortex.frustumCulled = false;
+    // Billboarded around the world center in the shader (the model matrix is ignored): the culling
+    // sphere covers the camera-facing quad (half diagonal) around the root.
+    quad.boundingSphere = new THREE.Sphere(new THREE.Vector3(), L.haloRadius * Math.SQRT2);
     this.vortex.matrixAutoUpdate = false;
 
     // Crossed tear planes through the core, rotating as a cluster.
     const rand = mulberry32(opts.seed ?? 7);
     const tears: RiftTearPlacement[] = [];
     // Shards around the core: tangential planes (facing outwards), tilted, at jittered radii.
+    const C = L.cluster;
+    const spread = (k: number): number => 1 + (rand() - 0.5) * k;
     for (let i = 0; i < L.tearCount; i++) {
-      const ang = (i / L.tearCount) * Math.PI * 2 + (rand() - 0.5) * 0.6;
+      const ang = (i / L.tearCount) * Math.PI * 2 + (rand() - 0.5) * C.angleJitter;
       const radial = new THREE.Vector3(Math.sin(ang), 0, Math.cos(ang));
-      const tangent = new THREE.Vector3(Math.cos(ang), 0, -Math.sin(ang));
-      const up = new THREE.Vector3(0, 1, 0).applyAxisAngle(radial, (rand() - 0.5) * 1.2);
-      const normal = radial.clone().applyAxisAngle(up, (rand() - 0.5) * 0.8);
-      const r = L.tearOrbit * (0.8 + 0.4 * rand());
+      const up = new THREE.Vector3(0, 1, 0).applyAxisAngle(radial, (rand() - 0.5) * C.tilt);
+      const normal = radial.clone().applyAxisAngle(up, (rand() - 0.5) * C.twist);
+      const r = L.tearOrbit * spread(C.orbitSpread);
       tears.push({
-        position: { x: radial.x * r + tangent.x * 0, y: (rand() - 0.5) * 1.5, z: radial.z * r },
+        position: { x: radial.x * r, y: (rand() - 0.5) * C.heightSpread, z: radial.z * r },
         normal,
         up,
-        width: L.tearSize[0] * (0.8 + 0.4 * rand()),
-        height: L.tearSize[1] * (0.7 + 0.5 * rand()),
+        width: L.tearSize[0] * spread(C.sizeSpread),
+        height: L.tearSize[1] * spread(C.sizeSpread),
         seed: i + 1 + (opts.seed ?? 0),
       });
     }
-    this.tears = new RiftPortalField(tears, { time: opts.time, intensity: L.tearIntensity, name: 'RiftCluster' });
+    this.tears = new RiftPortalField(tears, {
+      time: opts.time,
+      intensity: L.tearIntensity,
+      name: 'RiftCluster',
+    });
     this.cluster = new THREE.Group();
     this.cluster.name = 'RiftCluster';
     this.cluster.add(this.tears.mesh);
@@ -616,8 +645,12 @@ export class RiftPortal {
     });
     this.particles = new THREE.Points(pg, this.particleMaterial);
     this.particles.name = 'RiftParticles';
-    // Positions come from the shader around the world center (the model matrix is ignored).
-    this.particles.frustumCulled = false;
+    // Positions come from the shader around the world center (the model matrix is ignored); the
+    // culling sphere covers the widest orbit and its vertical spread.
+    pg.boundingSphere = new THREE.Sphere(
+      new THREE.Vector3(),
+      P.radiusMax * PARTICLE_ORBIT_SCALE_MAX * Math.hypot(1, P.height),
+    );
     this.particles.matrixAutoUpdate = false;
     this.particles.renderOrder = 14;
     this.particles.layers.set(RENDER.volumetricLayer);
@@ -651,9 +684,10 @@ export class RiftPortal {
     this.pulseValue = addPulse(this.pulseValue, strength);
   }
 
-  /** Accessibility: pulses brighten the light less, breathing stays slow. */
+  /** Accessibility: pulses flare the vortex, tears, particles and the light less. */
   setReducedFlashing(on: boolean): void {
     this.reduceFlashing = on;
+    this.tears.setReducedFlashing(on);
   }
 
   /** Visible particle fraction (volumetrics quality); 0 hides them. */
@@ -669,8 +703,10 @@ export class RiftPortal {
     this.elapsed += dt;
     this.pulseValue = decayPulse(this.pulseValue, dt);
     const pulse = this.pulseValue;
-    (this.vortexMaterial.uniforms.uPulse as THREE.IUniform<number>).value = pulse;
-    (this.particleMaterial.uniforms.uPulse as THREE.IUniform<number>).value = pulse;
+    const visible = pulse * pulseScale(this.reduceFlashing);
+    (this.vortexMaterial.uniforms.uPulse as THREE.IUniform<number>).value = visible;
+    (this.particleMaterial.uniforms.uPulse as THREE.IUniform<number>).value = visible;
+    // The cluster's own field applies the reduced scale in its shader.
     this.tears.pulseAll(pulse);
     this.tears.update(dt);
     // Slow rotation + wobble of the tear cluster.
@@ -683,7 +719,7 @@ export class RiftPortal {
     if (this.light) {
       const li = L.light;
       const breathe = 1 + li.breathe * Math.sin(t * li.breatheRate * Math.PI * 2);
-      const boost = (this.reduceFlashing ? 0.35 : 1) * li.pulseBoost * pulse;
+      const boost = (this.reduceFlashing ? li.reducedPulseBoost : 1) * li.pulseBoost * pulse;
       this.light.intensity = this.baseLight * breathe * (1 + boost);
     }
   }
@@ -698,15 +734,4 @@ export class RiftPortal {
     this.light?.dispose();
     this.root.clear();
   }
-}
-
-/** Yaw (enemy / three.js convention: local +Z points to (sin yaw, cos yaw)) of a direction. */
-export function yawOf(dir: Vec3Like): number {
-  return Math.atan2(dir.x, dir.z);
-}
-
-/** Up axis helper for floor tears: long axis along `yaw` (unused axis components ignored). */
-export function floorTearUp(yaw: number, out: THREE.Vector3): THREE.Vector3 {
-  _q.setFromAxisAngle(_up, yaw);
-  return out.set(0, 0, 1).applyQuaternion(_q);
 }

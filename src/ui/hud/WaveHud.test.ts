@@ -139,6 +139,25 @@ describe('WaveHud', () => {
     expect(q('.hud-wave__remaining').hidden).toBe(true);
   });
 
+  it("keeps the new run's countdown whatever order the run:restart listeners run in", () => {
+    // The composition root's restart listener was registered first: it restarts the waves.
+    const other = new EventBus<GameEvents>();
+    const layer2 = document.createElement('div');
+    const corner2 = document.createElement('div');
+    layer2.appendChild(corner2);
+    document.body.appendChild(layer2);
+    other.on('run:restart', () => other.emit('wave:intermission', { nextWave: 1, duration: 6 }));
+    const hud2 = new WaveHud(corner2, layer2, other);
+    other.emit('wave:start', { wave: 4, total: 20 });
+    other.emit('run:restart', {});
+    expect(hud2.wave).toBeNull();
+    expect(layer2.querySelector<HTMLElement>('.hud-countdown')!.hidden).toBe(false);
+    expect(layer2.querySelector('.hud-countdown__value')!.textContent).toBe('6');
+    expect(layer2.querySelector<HTMLElement>('.hud-banner')!.hidden).toBe(true);
+    hud2.dispose();
+    layer2.remove();
+  });
+
   it('writes nothing to the DOM while shown values stay the same', async () => {
     events.emit('wave:intermission', { nextWave: 3, duration: 9.5 });
     hud.update(0.2); // 9.3 s → still "10"

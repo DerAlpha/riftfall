@@ -2,7 +2,7 @@
   "name": "riftfall",
   "private": true,
   "version": "0.1.0",
-  "description": "RIFTFALL – browser first-person sci-fi horror wave shooter",
+  "description": "RIFTFALL \u2013 browser first-person sci-fi horror wave shooter",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm run test",
     "assets": "node scripts/fetch-assets.mjs",
-    "smoke": "node tools/smoke.mjs"
+    "smoke": "node tools/smoke.mjs",
+    "smoke:waves": "node tools/waves.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",

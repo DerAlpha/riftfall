@@ -19,6 +19,7 @@ export default defineConfig({
         codeSplitting: {
           groups: [
             { name: 'rapier', test: /node_modules[\\/]@dimforge/ },
+            { name: 'recast', test: /node_modules[\\/](@recast-navigation|recast-navigation)[\\/]/ },
             { name: 'three', test: /node_modules[\\/]three[\\/]/ },
             { name: 'postfx', test: /node_modules[\\/](postprocessing|n8ao)/ },
             { name: 'vendor', test: /node_modules/ },

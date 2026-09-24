@@ -189,6 +189,19 @@ describe('run menus', () => {
       expect(onStart).toHaveBeenLastCalledWith(undefined);
     });
 
+    it('is replaced by the pause menu only after it asked to start (refused pointer lock)', () => {
+      mount();
+      act(() => menus.showStart());
+      act(() => menus.showPause()); // tab switch on the main menu
+      expect(menus.view).toBe('start');
+      act(() => button(root, 'KLICKEN ZUM STARTEN').click());
+      act(() => menus.showPause()); // the lock request was refused: hints + lock-less option
+      expect(menus.view).toBe('pause');
+      act(() => menus.showStart());
+      act(() => menus.showPause());
+      expect(menus.view).toBe('start');
+    });
+
     it('picks the initial map: remembered, else recommended, else first', () => {
       expect(initialMapId(MAPS)).toBe('lab');
       expect(initialMapId(MAPS, 'testroom')).toBe('testroom');
@@ -232,10 +245,19 @@ describe('run menus', () => {
       });
       expect(restart.disabled).toBe(false);
       expect(document.activeElement).toBe(restart);
-      act(() => restart.click());
-      expect(onRestart).toHaveBeenCalledWith(undefined);
       act(() => button(root, G.mainMenu).click());
       expect(onMainMenu).toHaveBeenCalledTimes(1);
+      // "Neu starten" closes the screen first (a refused pointer lock may open the pause menu).
+      let viewDuringRestart: string | null = 'unset';
+      onRestart.mockImplementation(() => {
+        viewDuringRestart = menus.view;
+        menus.showPause();
+      });
+      act(() => restart.click());
+      expect(onRestart).toHaveBeenCalledWith(undefined);
+      expect(viewDuringRestart).toBeNull();
+      expect(menus.view).toBe('pause');
+      expect(menuEvents).toEqual(['gameover:open', 'gameover:close', 'pause:open']);
     });
 
     it('moves between the buttons with the arrow keys and the gamepad', () => {
@@ -265,15 +287,17 @@ describe('run menus', () => {
       act(() => padNav.update(1 / 60));
       pressed.clear();
       expect(document.activeElement).toBe(button(root, G.restart));
-      pressed.add(MENU_GAMEPAD.confirm);
-      act(() => padNav.update(1 / 60));
-      expect(onRestart).toHaveBeenCalledTimes(1);
-      pressed.clear();
       // B has no "back" on the game over screen: the game's onBack decides (and does nothing).
       pressed.add(MENU_GAMEPAD.back);
       act(() => padNav.update(1 / 60));
+      pressed.clear();
       expect(back).toHaveBeenCalledTimes(1);
       expect(menus.view).toBe('gameover');
+      expect(document.activeElement).toBe(button(root, G.restart));
+      pressed.add(MENU_GAMEPAD.confirm);
+      act(() => padNav.update(1 / 60));
+      expect(onRestart).toHaveBeenCalledTimes(1);
+      expect(menus.view).toBeNull();
     });
 
     it('falls back to onStart with the run map and to the start screen', () => {
@@ -284,10 +308,25 @@ describe('run menus', () => {
       });
       act(() => button(root, G.restart).click());
       expect(onStart).toHaveBeenLastCalledWith({ mapId: 'lab' });
+      expect(menus.view).toBeNull();
+      act(() => menus.showGameOver(SUMMARY));
+      act(() => {
+        vi.advanceTimersByTime(G.inputDelayMs + 1);
+      });
       act(() => button(root, G.mainMenu).click());
       expect(menus.view).toBe('start');
       expect(menus.current).toBe('start');
-      expect(menuEvents).toEqual(['gameover:open', 'gameover:close', 'start:open']);
+      expect(menuEvents).toEqual([
+        'gameover:open',
+        'gameover:close',
+        'gameover:open',
+        'gameover:close',
+        'start:open',
+      ]);
+      // Back on the start screen after a run: a tab switch / lost lock must not replace it.
+      act(() => menus.showPause());
+      expect(menus.view).toBe('start');
+      expect(root.querySelector('.pause')).toBeNull();
     });
 
     it('is not replaced by the pause menu and reports no legacy view', () => {

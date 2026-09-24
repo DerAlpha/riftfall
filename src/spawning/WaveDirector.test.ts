@@ -27,12 +27,15 @@ class FakeEnemies implements EnemyManagerApi {
   readonly spawned: Spawned[] = [];
   /** Spawn calls that fail from now on (-1 = forever). */
   failures = 0;
+  /** Types whose spawns always fail (instance slots exhausted). */
+  readonly failTypes = new Set<string>();
   cleared = 0;
   spawnPoints: readonly SpawnPointDef[] | null = null;
   private nextId = 1;
   readonly stats = { alive: 0, byType: {}, aiMs: 0 };
 
   spawn(type: string, position: Vec3Like, opts?: EnemySpawnOptions): number | null {
+    if (this.failTypes.has(type)) return null;
     if (this.failures !== 0) {
       if (this.failures > 0) this.failures--;
       return null;
@@ -256,7 +259,7 @@ describe('WaveDirector', () => {
     expect(enemies.spawned.length).toBeGreaterThan(0);
   });
 
-  it('retries failed spawns and drops them eventually so the wave can finish', () => {
+  it('retries failed spawns and drops them only while nothing is alive', () => {
     const { waves, enemies, tick, last } = setup();
     waves.setWave(1);
     enemies.failures = 3;
@@ -271,12 +274,45 @@ describe('WaveDirector', () => {
     waves.fixedUpdate(DT);
     expect(last('wave:complete').wave).toBe(1);
 
-    // Permanent failure: every queued spawn is dropped after maxSpawnFailures tries.
+    // Failing while enemies live (slots held): the spawn waits, nothing is dropped.
     waves.setWave(1);
+    tick(M.startDelay + 0.1);
+    const alive = enemies.alive;
+    expect(alive).toBeGreaterThan(0);
+    const queued = waves.queued;
     enemies.failures = -1;
+    tick(M.cadence.retryDelay * M.maxSpawnFailures * 20);
+    expect(waves.queued).toBe(queued);
+    expect(enemies.alive).toBe(alive);
+
+    // Nobody alive and still failing (missing content): dropped after maxSpawnFailures tries.
+    enemies.kill();
     for (let i = 0; i < 60 * 60 * 30 && waves.state === 'active'; i++) waves.fixedUpdate(DT);
     expect(waves.state).toBe('intermission');
     expect(last('wave:complete').wave).toBe(1);
+  });
+
+  it('lets another type go first when one type cannot spawn', () => {
+    const { waves, enemies } = setup();
+    waves.setWave(9);
+    const p = waves.plan;
+    const swarmers = p.counts[p.typeIds.indexOf('swarmer')]!;
+    expect(p.counts[p.typeIds.indexOf('spitter')]!).toBeGreaterThan(0);
+    enemies.failTypes.add('swarmer');
+    // The swarmer slots stay "full": the spitters must still come.
+    for (let i = 0; i < 60 * 120 && waves.queued > swarmers; i++) {
+      waves.fixedUpdate(DT);
+      enemies.kill(1);
+    }
+    expect(waves.queued).toBe(swarmers);
+    expect(enemies.spawned.every((s) => s.type !== 'swarmer')).toBe(true);
+    // Slots free up again: the swarmers follow.
+    enemies.failTypes.clear();
+    for (let i = 0; i < 60 * 120 && waves.queued > 0; i++) {
+      waves.fixedUpdate(DT);
+      enemies.kill(1);
+    }
+    expect(enemies.spawned.filter((s) => s.type === 'swarmer').length).toBe(swarmers);
   });
 
   it('never queues unknown types and falls back without spawn points', () => {

@@ -16,6 +16,7 @@ import { GRAPHICS_PRESETS, RENDER } from '../defs/graphics';
 import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { POSTFX } from '../defs/postfx';
 import { TEST_ROOM } from '../defs/maps';
+import { RUN } from '../defs/waves';
 import { SaveSystem } from '../save/SaveSystem';
 import { SettingsStore } from '../save/SettingsStore';
 import type { QualityPreset } from '../save/settingsSchema';
@@ -27,7 +28,6 @@ import { AudioEngine } from '../audio/AudioEngine';
 import { AudioEventBridge } from '../audio/AudioEventBridge';
 import { InputSystem } from '../input/InputSystem';
 import { MaterialLibrary } from '../render/materials/MaterialLibrary';
-import { buildTestRoom } from '../world/TestRoom';
 import { PlayerController } from '../player/PlayerController';
 import { PlayerCamera } from '../player/PlayerCamera';
 import { ViewmodelRig } from '../player/ViewmodelRig';
@@ -47,6 +47,22 @@ import { createVfxCommands } from '../vfx/vfxCommands';
 import { TrainingTargets } from '../world/TrainingTargets';
 import { registerDevCommands } from './devCommands';
 import { runFixedTick } from './fixedTick';
+import { Rng } from '../core/Rng';
+import type { EnemyTargetApi } from '../core/contracts';
+import { getMap, listMaps, type MapEntry } from '../maps/registry';
+import { isMapLevel } from '../maps/types';
+import { NavSystem } from '../nav/NavSystem';
+import { collectNavSources } from '../nav/navGeometry';
+import { createNavCommands } from '../nav/navCommands';
+import { createPhysicsGroundProbe } from '../nav/groundProbe';
+import { EnemyRenderer } from '../enemies/render/EnemyRenderer';
+import { EnemyManager } from '../enemies/EnemyManager';
+import { createEnemyCommands } from '../enemies/enemyCommands';
+import { WaveDirector } from '../spawning/WaveDirector';
+import { createWaveCommands } from '../spawning/waveCommands';
+import { RunFlow } from '../modes/RunFlow';
+import { createRunCommands } from '../modes/runCommands';
+import { deathCameraOffset } from '../modes/deathCamera';
 import { GamePersistence } from './GamePersistence';
 import { MenuPadNavigator } from './MenuPadNavigator';
 import { PauseController } from './PauseController';
@@ -68,7 +84,22 @@ export interface GameOptions {
    * no benchmark, profile flags untouched.
    */
   forcePreset: QualityPreset | null;
+  /** Map to build (`?map=`, else the last played map); unknown ids fall back to the default. */
+  mapId: string | null;
 }
+
+/** Enemy records built up front (no allocation when a wave ramps up). */
+const ENEMY_PREWARM: readonly (readonly [string, number])[] = [
+  ['swarmer', 48],
+  ['spitter', 16],
+  ['tank', 8],
+];
+
+/** localStorage key of the last selected map (the start screen switches maps via a reload). */
+const LAST_MAP_KEY = 'riftfall.lastMap';
+
+/** Death camera offset scratch (re-applied every frame on top of the camera rig). */
+const _deathOff = { drop: 0, roll: 0, pitch: 0 };
 
 function el(id: string): HTMLElement {
   const node = document.getElementById(id);
@@ -104,6 +135,13 @@ export interface GameSystems {
   vfx: VfxSystem;
   vfxBridge: VfxBridge;
   targets: TrainingTargets | null;
+  // M3
+  map: MapEntry;
+  nav: NavSystem;
+  enemyVisuals: EnemyRenderer;
+  enemies: EnemyManager;
+  waves: WaveDirector;
+  runFlow: RunFlow;
 }
 
 export class Game {
@@ -112,6 +150,7 @@ export class Game {
   readonly padNav: MenuPadNavigator;
 
   private time = 0;
+  private runsStarted = 0;
   private benchmarkRunning = false;
   private readonly _yawDir = new THREE.Vector3();
   private readonly _up = new THREE.Vector3(0, 1, 0);
@@ -208,15 +247,17 @@ export class Game {
 
     const A = BOOT_PROGRESS.assets;
     progress(A.start, 'Lade Assets…');
-    await assets.preload(TEST_ROOM.preload, (loaded, total, label) =>
+    // No explicit/remembered map: the recommended one (listMaps sorts it first).
+    const map = opts.mapId ? getMap(opts.mapId) : (listMaps()[0] ?? getMap(null));
+    await assets.preload(map.atmosphere.preload, (loaded, total, label) =>
       progress(A.start + A.span * (total > 0 ? loaded / total : 1), `Lade ${label}…`),
     );
-    await registerAudioAssets(TEST_ROOM.preload, assets, audio);
+    await registerAudioAssets(map.atmosphere.preload, assets, audio);
 
     const L = BOOT_PROGRESS.level;
     progress(L.start, 'Generiere Materialien…');
     const materials = new MaterialLibrary(render, assets, settings, events);
-    const level = await buildTestRoom({
+    const level = await map.build({
       render,
       physics,
       assets,
@@ -226,6 +267,10 @@ export class Game {
       onProgress: (label, fraction) => progress(L.start + L.span * fraction, label),
     });
     render.scene.add(level.root);
+
+    // Navmesh in a worker while VFX, atmosphere and shader warm-up run on the main thread.
+    const nav = new NavSystem({ groundProbe: createPhysicsGroundProbe(physics) });
+    const navBuilt = nav.build(level.navSources ?? collectNavSources(level.root));
 
     // Combat world + VFX before the atmosphere: VFX adds a constant pool of flash lights, and lit
     // materials would compile twice if those lights appeared after applyAtmosphere's warm-up.
@@ -253,8 +298,17 @@ export class Game {
         : null;
     // Particles/tracers and target barriers share the volumetric layer: its pass runs only while
     // they or level volumetrics draw.
+    const enemyVisuals = new EnemyRenderer({
+      scene: render.scene,
+      render,
+      reduceFlashing: settings.current.accessibility.reduceFlashing,
+    });
     render.setVolumetricContentProbe(
-      () => vfx.hasVolumetricContent || (targets?.hasVolumetricContent ?? false),
+      () =>
+        vfx.hasVolumetricContent ||
+        (targets?.hasVolumetricContent ?? false) ||
+        (isMapLevel(level) && level.hasVolumetricContent) ||
+        enemyVisuals.hasVolumetricContent,
     );
 
     progress(BOOT_PROGRESS.environment, 'Kalibriere Umgebung…');
@@ -265,7 +319,7 @@ export class Game {
     audio.setReverbZone(level.atmosphere.reverb);
 
     // Unlocks come from the profile; a movement sandbox (the calibration hall) grants everything.
-    const unlocks = TEST_ROOM.movementSandbox ? { doubleJump: true, dash: true } : saveData.profile.unlocks;
+    const unlocks = map.movementSandbox ? { doubleJump: true, dash: true } : saveData.profile.unlocks;
     const player = new PlayerController({ physics, input, events, settings }, level.spawn, {
       unlocks: { doubleJump: unlocks.doubleJump, dash: unlocks.dash },
     });
@@ -292,6 +346,44 @@ export class Game {
     });
     viewmodel.setAdsSource(weapons);
 
+    // The player as seen by enemies and the wave director.
+    const enemyTarget: EnemyTargetApi = {
+      position: player.position,
+      eyePosition: player.eyePosition,
+      velocity: player.velocity,
+      get alive() {
+        return !health.dead;
+      },
+      get yaw() {
+        return player.yaw;
+      },
+      damage: (amount, direction) => health.damage(amount, direction),
+    };
+    const runSeed = `run:${level.id}:${Date.now()}`;
+    const enemies = new EnemyManager({
+      events,
+      combat,
+      nav,
+      visuals: enemyVisuals,
+      target: enemyTarget,
+      physics,
+      vfx,
+      scene: render.scene,
+      seed: runSeed,
+    });
+    for (const [type, count] of ENEMY_PREWARM) enemies.prewarm(type, count);
+    const waves = new WaveDirector({
+      events,
+      enemies,
+      spawnPoints: level.spawnPoints ?? [],
+      target: enemyTarget,
+      camera: render.camera,
+      rng: new Rng(`waves:${runSeed}`),
+      lineOfSight: (a, b) => combat.lineOfSight(a, b),
+      randomPoint: (c, r, out) => nav.randomPointAround(c, r, out),
+    });
+    audioBridge.setEnemySource(enemies);
+
     const hud = new Hud(el('hud'), events, settings);
     hud.setCamera(render.camera);
     health.announce();
@@ -303,13 +395,26 @@ export class Game {
       settings,
       input,
       events,
-      onStart: (o) => gameRef?.startPlaying(o?.lockless),
+      maps: listMaps(),
+      onStart: (o) => gameRef?.startPlaying(o?.lockless, o?.mapId),
       onResume: (o) => gameRef?.resumeFromMenu(o?.lockless),
+      onRestart: (o) => gameRef?.restartRun(o?.lockless),
+      onMainMenu: () => gameRef?.toMainMenu(),
       getInfo: () => ({
         gpuName: render.quality.gpuName,
         saveBackend: save.backendName,
         version: __APP_VERSION__,
+        mapName: map.name,
       }),
+    });
+    const runFlow = new RunFlow({
+      events,
+      setTimeScale: (scale) => {
+        if (gameRef) gameRef.loop.timeScale = scale;
+      },
+      getPlayerPosition: () => player.position,
+      killPlayer: () => void health.damage(health.health + health.armor),
+      showGameOver: (summary) => gameRef?.showGameOver(summary),
     });
 
     const game = new Game(opts, {
@@ -338,6 +443,12 @@ export class Game {
       vfx,
       vfxBridge,
       targets,
+      map,
+      nav,
+      enemyVisuals,
+      enemies,
+      waves,
+      runFlow,
     });
     gameRef = game;
     game.registerCommands();
@@ -351,7 +462,12 @@ export class Game {
     // through the composer; the world and weapon models are compiled against a render target.
     compileForPostChain(render.renderer, render.scene, render.camera);
     viewmodel.warmupWeapons(render.renderer);
+    enemyVisuals.warmup(render.renderer, render.camera);
     vfx.warmup();
+
+    // Enemies need the navmesh (false = direct steering fallback, already logged).
+    progress(BOOT_PROGRESS.navigation, 'Berechne Navigationsnetz…');
+    await navBuilt;
 
     progress(1, 'Bereit');
     loading.hide();
@@ -376,6 +492,8 @@ export class Game {
     const wasCapturing = input.capturing;
     input.beginFrame(realDt);
     this.pauseState.onFrame(wasCapturing);
+    // No moving, looking, firing or pausing during the death sequence.
+    if (this.sys.runFlow.state === 'dying' && input.enabled) input.enabled = false;
     if (menus.isOpen && !devConsole.open && !wasCapturing && !input.capturing) {
       this.padNav.update(realDt);
     } else {
@@ -393,13 +511,34 @@ export class Game {
   }
 
   private update(dt: number, alpha: number): void {
-    const { player, weapons, playerCamera, viewmodel, vfx, level, targets, render, audio, physics, hud } =
-      this.sys;
+    const {
+      player,
+      weapons,
+      playerCamera,
+      viewmodel,
+      vfx,
+      level,
+      targets,
+      render,
+      audio,
+      physics,
+      hud,
+      enemies,
+      runFlow,
+      audioBridge,
+    } = this.sys;
     this.time += dt;
     player.update(dt, alpha);
     // Weapons before the camera: ADS blend, recoil counter-pull and FOV zoom of this frame.
     weapons.update(dt);
     playerCamera.update(dt);
+    if (runFlow.deathTime > 0) {
+      // The rig re-sets the camera every frame, so the death offset never accumulates.
+      deathCameraOffset(runFlow.deathTime, RUN.death.cameraDropSeconds, _deathOff);
+      render.camera.position.y -= _deathOff.drop;
+      render.camera.rotateZ(_deathOff.roll);
+      render.camera.rotateX(_deathOff.pitch);
+    }
     viewmodel.update(dt);
     // VFX after the viewmodel: muzzle flashes and casings use this frame's socket positions.
     vfx.update(dt);
@@ -407,10 +546,12 @@ export class Game {
     render.advanceWorldTime(dt);
     level.update(dt, this.time);
     targets?.update(dt, alpha);
+    enemies.update(dt, alpha);
 
     const cam = render.camera;
     cam.getWorldDirection(this._yawDir);
     audio.setListener(cam.position, this._yawDir, this._up);
+    audioBridge.update(dt, cam.position);
 
     // Is the eye in direct sunlight? One ray per frame towards the sun (static world only).
     this._toSun.copy(render.sunDirection).negate();
@@ -433,7 +574,11 @@ export class Game {
     physics.syncVisuals(alpha);
     render.render(realDt);
     // Menu frames (backdrop blur, frozen scene) would skew dynamic resolution and the benchmark.
-    if (!this.loop.paused) render.quality.onFrame(realDt);
+    if (!this.loop.paused) {
+      render.quality.onFrame(realDt);
+      // Death slow motion eases on real time.
+      this.sys.runFlow.update(realDt);
+    }
     if (debug.visible) {
       this.debugRate.frames++;
       debug.update(realDt, () => this.debugSnapshot(realDt));
@@ -458,6 +603,21 @@ export class Game {
     });
     for (const c of createVfxCommands({ vfx, events: this.sys.events, physics, camera: render.camera }))
       devConsole.register(c);
+    const { nav, level, enemies, waves, runFlow, player } = this.sys;
+    const commands = [
+      ...createNavCommands({
+        nav,
+        scene: render.scene,
+        sources: () => level.navSources ?? collectNavSources(level.root),
+      }),
+      ...createEnemyCommands({
+        manager: enemies,
+        player: () => ({ position: player.position, yaw: player.yaw }),
+      }),
+      ...createWaveCommands({ waves }),
+      ...createRunCommands({ run: runFlow }),
+    ];
+    for (const c of commands) devConsole.register(c);
   }
 
   // -------------------------------------------------------------------------
@@ -496,6 +656,13 @@ export class Game {
       this.sys.render.addHitPulse(Math.min(1, amount / POSTFX.chromaticAberration.damageForFullPulse));
     });
     this.sys.events.on('fx:hitPulse', ({ strength }) => this.sys.render.addHitPulse(strength));
+    this.sys.events.on('settings:changed', ({ settings, sections }) => {
+      if (sections.includes('accessibility'))
+        this.sys.enemyVisuals.setReducedFlashing(settings.accessibility.reduceFlashing);
+    });
+    this.sys.events.on('player:died', () => this.sys.viewmodel.setVisible(false));
+    // Covers "Neu starten" and the dev console `run restart`.
+    this.sys.events.on('run:restart', () => this.resetRunSystems());
 
     // Only pending settings are written on unload: profile changes are saved when they happen, and
     // an unconditional write would resurrect a wiped save or let a stale tab overwrite newer data.
@@ -509,11 +676,66 @@ export class Game {
    * Start screen activated: a click (pointer lock + audio unlock allowed) or a gamepad press.
    * `lockless`: the menu asks to play without pointer lock (the API is missing or was refused).
    */
-  startPlaying(lockless = false): void {
+  startPlaying(lockless = false, mapId?: string): void {
+    const { map, level, runFlow } = this.sys;
+    if (mapId && getMap(mapId).id !== map.id) {
+      // Maps are switched by rebuilding the whole game (a reload): every system holds level state.
+      this.switchMap(getMap(mapId).id);
+      return;
+    }
     this.saveData.profile.lastPlayedAt = Date.now();
     void this.sys.persistence.saveNow();
+    rememberMap(map.id);
+    if (this.runsStarted > 0) this.resetRunSystems(false);
+    this.runsStarted++;
+    runFlow.begin(level.id);
+    if (map.waves) this.sys.waves.start(1);
     this.pauseState.start(lockless || this.padNav.activating);
     void this.maybeRunBenchmark();
+  }
+
+  /** Game over "Neu starten" (user gesture): same map, fresh run. */
+  restartRun(lockless = false): void {
+    this.sys.runFlow.restart();
+    this.pauseState.resume(lockless || this.padNav.activating);
+  }
+
+  /** Game over "Hauptmenü": abandon the run and show the start screen (map selection). */
+  toMainMenu(): void {
+    this.sys.runFlow.abandon();
+    this.resetRunSystems(false);
+    this.pause('menu');
+    this.sys.menus.showStart();
+  }
+
+  /** RunFlow: the death sequence ended – pause behind the game over screen. */
+  showGameOver(summary: Parameters<MenuController['showGameOver']>[0]): void {
+    this.pause('menu');
+    if (!this.opts.noPointerLock) this.sys.input.exitPointerLock();
+    this.sys.menus.showGameOver(summary);
+  }
+
+  /** Back to a clean run state on the current map; `startWaves` restarts the wave director. */
+  private resetRunSystems(startWaves = true): void {
+    const { enemies, waves, health, player, level, weapons, viewmodel, vfx, map } = this.sys;
+    enemies.clear();
+    waves.reset();
+    vfx.clear();
+    health.reset();
+    player.teleport(level.spawn.position, level.spawn.yaw);
+    const loadout = getLoadout(level.id);
+    weapons.setLoadout(loadout.weapons, loadout.slots);
+    weapons.refillAmmo(true);
+    viewmodel.setVisible(true);
+    this.loop.timeScale = 1;
+    if (startWaves && map.waves) waves.start(1);
+  }
+
+  private switchMap(mapId: string): void {
+    rememberMap(mapId);
+    const url = new URL(location.href);
+    url.searchParams.set('map', mapId);
+    location.assign(url.toString());
   }
 
   /** Pause menu "Fortsetzen" (click, Enter, or gamepad A); `lockless` as in startPlaying. */
@@ -547,7 +769,7 @@ export class Game {
 
   /** True when the current level grants every movement ability regardless of the profile. */
   get movementSandbox(): boolean {
-    return TEST_ROOM.movementSandbox === true;
+    return this.sys.map.movementSandbox === true;
   }
 
   /** First-run benchmark: may downgrade the auto-detected preset once. */
@@ -720,6 +942,14 @@ function compileForPostChain(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   } finally {
     renderer.setRenderTarget(previous);
     target.dispose();
+  }
+}
+
+function rememberMap(mapId: string): void {
+  try {
+    localStorage.setItem(LAST_MAP_KEY, mapId);
+  } catch {
+    /* storage blocked: the URL parameter carries the choice */
   }
 }
 

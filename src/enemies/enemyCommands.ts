@@ -101,7 +101,8 @@ export function createEnemyCommands(deps: EnemyCommandDeps): ConsoleCommand[] {
             const p = m.projectiles?.stats;
             return (
               `Gegner: ${s.alive}/${m.capacity} (${types}), Datensätze ${s.records}\n` +
-              `KI ${s.aiMs.toFixed(3)} ms (Ø ${s.aiMsAvg.toFixed(3)}), LOS-Strahlen ${s.losRays}/${ENEMY_AI.budget.losPerTick}` +
+              `KI ${s.aiMs.toFixed(3)} ms (Ø ${s.aiMsAvg.toFixed(3)}), LOS-Strahlen ${s.losRays}/${ENEMY_AI.budget.losPerTick}\n` +
+              `Festgefahren: ${s.stuckRepaths} neu geplant, ${s.stuckTeleports} versetzt, ${s.relocations} umgesiedelt` +
               (p ? `\nProjektile ${p.active}, Pfützen ${p.puddles}` : '')
             );
           }

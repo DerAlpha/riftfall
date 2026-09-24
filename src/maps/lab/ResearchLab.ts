@@ -3,10 +3,11 @@
  * dimension comes from LAB_LAYOUT (defs/labLayout.ts), materials from defs/materials.ts (+ the
  * tinted LAB_MATERIALS variants), atmosphere from LAB (defs/maps.ts).
  *
- * Budget: static geometry merged per material variant (~50 meshes) + flicker panels, 10 volumetric
- * cones, 1 shaft mesh (16 skylight panes), 1 dust system, 3 fog volumes, 1 instanced draw for all
- * spawn tears, 4 draws for the rift anomaly. Lights: 10 spots (local shadows from the
- * QUALITY_LEVELS budget, staggered refresh) + 4 points + the rift light = 15 (LAB_LAYOUT.maxLights).
+ * Budget (67 draws at 'high', LAB_LAYOUT.maxMeshes): static geometry merged per material variant
+ * (~44 meshes) + flicker panels + static crates, 10 volumetric cones, 1 shaft mesh (16 skylight
+ * panes), 1 dust system, 3 fog volumes, 1 instanced draw for all spawn tears, 3 draws for the rift
+ * anomaly (vortex, tear cluster, particles). Lights: 10 spots (local shadows from the QUALITY_LEVELS
+ * budget, staggered refresh) + 4 points + the rift light = 15 (LAB_LAYOUT.maxLights).
  *
  * Extras for the composition root (MapLevelInstance): zones, M4 door slots and wall-buy slots,
  * spawn points (with a rift tear each), hasVolumetricContent (the portals draw on the volumetric
@@ -22,7 +23,6 @@ import {
   RIFT_PORTAL,
   type LabMaterialId,
   type LabPointDef,
-  type LabSpawnPointDef,
   type LabSpotDef,
 } from '../../defs/labLayout';
 import { DUST, FLICKER, LEVEL_KIT, VOLUMETRIC_CONE, VOLUMETRIC_SHAFT, type Facing } from '../../defs/level';
@@ -45,9 +45,19 @@ import { flickerFactor, reducedFlickerFactor } from '../../world/kitMath';
 import type { DoorSlotDef, LevelZoneDef, MapLevelInstance, WallBuySlotDef } from '../types';
 import { FogVolume } from './fogVolumes';
 import { LabMaterials, isNavIgnoredMaterial } from './labMaterials';
-import { buildAtrium, buildCryo, buildDock, buildLabs, buildPipes, buildReception, buildServer } from './labRooms';
+import {
+  buildAtrium,
+  buildCryo,
+  buildDock,
+  buildLabs,
+  buildPipes,
+  buildReception,
+  buildServer,
+} from './labRooms';
 import { buildShell, themeOf } from './labShell';
-import { doorwayFacing, facingNormal, findSpace, spaceAt } from './labSpaces';
+import { doorwayFacing, facingNormal, findSpace, spaceAt, spawnWallPoint } from './labSpaces';
+
+export { spawnWallPoint };
 
 const log = createLogger('ResearchLab');
 
@@ -118,14 +128,6 @@ function facingYaw(f: Facing): number {
 // Spawn points, door slots, zones (pure data → runtime records; exported for tests)
 // ---------------------------------------------------------------------------
 
-/** Wall face point of a wall-mounted spawn (tear / vent), floor level. */
-export function spawnWallPoint(p: LabSpawnPointDef): { x: number; y: number; z: number } | null {
-  if (!p.wall) return null;
-  const n = facingNormal(p.wall);
-  const d = L.spawnTears.wallDistance;
-  return { x: p.position[0] - n.x * d, y: p.position[1], z: p.position[2] - n.z * d };
-}
-
 export function labSpawnPoints(): SpawnPointDef[] {
   return L.spawnPoints.map((p) => ({
     id: p.id,
@@ -166,7 +168,7 @@ export function labSpawnTears(): RiftTearPlacement[] {
         width: S.vent.height,
         height: S.vent.width,
         seed,
-        brightness: 1.2,
+        brightness: S.ventBrightness,
       };
     }
     return {
@@ -302,9 +304,11 @@ class ResearchLabInstance implements MapLevelInstance {
           this.applyReduceFlashing();
         }
         if (!sections.includes('graphics')) return;
-        if (settings.graphics.shadows !== kit.shadowQuality) kit.applyShadowQuality(settings.graphics.shadows);
+        if (settings.graphics.shadows !== kit.shadowQuality)
+          kit.applyShadowQuality(settings.graphics.shadows);
         this.applyVolumetrics(settings.graphics.volumetrics);
-        if (typeof materials.applyGraphicsSettings === 'function') materials.applyGraphicsSettings(settings.graphics);
+        if (typeof materials.applyGraphicsSettings === 'function')
+          materials.applyGraphicsSettings(settings.graphics);
       }),
       // Spawn bursts flare the tear they come out of; a wave start flares every rift.
       events.on('enemy:spawned', ({ position }) => {
@@ -316,7 +320,7 @@ class ResearchLabInstance implements MapLevelInstance {
       }),
       events.on('wave:start', () => {
         this.parts.rift.pulse(RIFT_PORTAL.large.wavePulse);
-        this.parts.tears.pulseAll(RIFT_PORTAL.small.spawnPulse * 0.5);
+        this.parts.tears.pulseAll(RIFT_PORTAL.small.wavePulse);
       }),
     );
   }
@@ -370,7 +374,8 @@ class ResearchLabInstance implements MapLevelInstance {
         : flickerFactor(time, f.seed, FLICKER, noise1D);
       f.handle.light.intensity = f.handle.baseIntensity * k;
       const panel = f.handle.panel;
-      if (panel) (panel.material as THREE.MeshStandardMaterial).emissiveIntensity = f.handle.panelBaseIntensity * k;
+      if (panel)
+        (panel.material as THREE.MeshStandardMaterial).emissiveIntensity = f.handle.panelBaseIntensity * k;
       f.cone?.setIntensityScale(k);
     }
     const rp = L.lights.reducedPulse;
@@ -381,7 +386,8 @@ class ResearchLabInstance implements MapLevelInstance {
       const k = 1 - depth * (0.5 + 0.5 * Math.sin((time * rate + a.phase) * Math.PI * 2));
       a.handle.light.intensity = a.handle.baseIntensity * k;
       const panel = a.handle.panel;
-      if (panel) (panel.material as THREE.MeshStandardMaterial).emissiveIntensity = a.handle.panelBaseIntensity * k;
+      if (panel)
+        (panel.material as THREE.MeshStandardMaterial).emissiveIntensity = a.handle.panelBaseIntensity * k;
     }
     if (p.flickering.length > 0 && p.dust && p.dust.points.visible) this.syncDustVolumes();
     p.tears.update(dt);
@@ -408,6 +414,7 @@ class ResearchLabInstance implements MapLevelInstance {
   private applyReduceFlashing(): void {
     this.parts.materials.setReducedFlashing(this.reduceFlashing);
     this.parts.rift.setReducedFlashing(this.reduceFlashing);
+    this.parts.tears.setReducedFlashing(this.reduceFlashing);
   }
 
   private applyVolumetrics(level: QualityLevel): void {
@@ -424,16 +431,13 @@ class ResearchLabInstance implements MapLevelInstance {
       this.syncDustVolumes();
     }
     // The anomaly's particles stay (gameplay landmark), thinned out on low settings.
-    p.rift.setParticleFraction(params ? Math.min(1, params.dust) : RIFT_PARTICLES_OFF);
+    p.rift.setParticleFraction(params ? Math.min(1, params.dust) : RIFT_PORTAL.large.particles.offFraction);
   }
 
   private syncDustVolumes(): void {
     this.parts.dust?.setVolumes(this.coneVolumes, this.boxVolumes);
   }
 }
-
-/** Particle fraction of the anomaly with volumetrics off. */
-const RIFT_PARTICLES_OFF = 0.35;
 
 // ---------------------------------------------------------------------------
 // Builder
@@ -443,12 +447,17 @@ export const buildResearchLab: LevelBuilder = async (ctx) => {
   const t0 = performance.now();
   const render = ctx.render as Partial<LevelBuildContext['render']> | undefined;
   const setupMaterial =
-    typeof render?.setupMaterial === 'function' ? (m: THREE.Material) => ctx.render.setupMaterial(m) : undefined;
+    typeof render?.setupMaterial === 'function'
+      ? (m: THREE.Material) => ctx.render.setupMaterial(m)
+      : undefined;
   const materials = new LabMaterials(ctx.materials, setupMaterial);
 
   ctx.onProgress('Generiere Materialien…', 0);
   await materials.preload(labMaterialIds(), (done, total) =>
-    ctx.onProgress('Generiere Materialien…', total > 0 ? (L.progress.materials * done) / total : L.progress.materials),
+    ctx.onProgress(
+      'Generiere Materialien…',
+      total > 0 ? (L.progress.materials * done) / total : L.progress.materials,
+    ),
   );
 
   ctx.onProgress('Baue Forschungslabor…', L.progress.geometry);
@@ -498,15 +507,38 @@ export const buildResearchLab: LevelBuilder = async (ctx) => {
   const pulsing: Pulsing[] = [];
   lights.spots.forEach((s, i) => {
     if (s.def.flicker)
-      flickering.push({ handle: s.handle, cone: cones.find((c) => c.source === i)?.cone ?? null, seed: i + 1 });
+      flickering.push({
+        handle: s.handle,
+        cone: cones.find((c) => c.source === i)?.cone ?? null,
+        seed: i + 1,
+      });
   });
   lights.points.forEach((p, i) => {
     if (p.def.flicker) flickering.push({ handle: p.handle, cone: null, seed: 101 + i });
-    if (p.def.pulse) pulsing.push({ handle: p.handle, rate: p.def.pulse.rate, depth: p.def.pulse.depth, phase: i * 0.37 });
+    if (p.def.pulse)
+      pulsing.push({
+        handle: p.handle,
+        rate: p.def.pulse.rate,
+        depth: p.def.pulse.depth,
+        phase: i * L.lights.pulsePhaseStep,
+      });
   });
 
   const instance = new ResearchLabInstance(
-    { kit, materials, cones: coneList, shafts, dust, fog, tears, rift, flickering, pulsing, time, navSources },
+    {
+      kit,
+      materials,
+      cones: coneList,
+      shafts,
+      dust,
+      fog,
+      tears,
+      rift,
+      flickering,
+      pulsing,
+      time,
+      navSources,
+    },
     ctx,
   );
   kit.root.updateMatrixWorld(true);
@@ -587,7 +619,9 @@ function buildLights(kit: LevelKit): { spots: SpotEntry[]; points: PointEntry[] 
   const spots: SpotEntry[] = L.lights.spots.map((def) => {
     const [x, y, z] = def.position;
     const space = spaceAt(L.spaces, x, z);
-    const panel = space ? themeOf(space).ceilingPanels?.material ?? 'emissive_white#cold' : 'emissive_white#cold';
+    const panel = space
+      ? (themeOf(space).ceilingPanels?.material ?? 'emissive_white#cold')
+      : 'emissive_white#cold';
     const handle = kit.spotFixture({
       position: { x, y, z },
       target: { x: def.target[0], y: def.target[1], z: def.target[2] },
@@ -624,7 +658,7 @@ function buildLights(kit: LevelKit): { spots: SpotEntry[]; points: PointEntry[] 
 function wallBracket(kit: LevelKit, x: number, y: number, z: number, spaceId: string): void {
   const space = findSpace(L.spaces, spaceId);
   if (!space) return;
-  const reach = LIGHT_BRACKET.maxReach;
+  const reach = L.lights.bracket.maxReach;
   let best: { axis: 'x' | 'z'; wall: number; d: number } | null = null;
   for (const r of space.rects) {
     for (const [axis, wall, d] of [
@@ -637,22 +671,33 @@ function wallBracket(kit: LevelKit, x: number, y: number, z: number, spaceId: st
     }
   }
   if (!best) return;
-  const s = LIGHT_BRACKET.size;
+  const s = L.lights.bracket.size;
   const hy = y + LEVEL_KIT.fixture.housingSize[1] / 2;
   if (best.axis === 'x') {
-    kit.box('trim_metal', { x: (x + best.wall) / 2, y: hy, z }, { x: best.d, y: s, z: s }, { collider: false });
+    kit.box(
+      'trim_metal',
+      { x: (x + best.wall) / 2, y: hy, z },
+      { x: best.d, y: s, z: s },
+      { collider: false },
+    );
   } else {
-    kit.box('trim_metal', { x, y: hy, z: (z + best.wall) / 2 }, { x: s, y: s, z: best.d }, { collider: false });
+    kit.box(
+      'trim_metal',
+      { x, y: hy, z: (z + best.wall) / 2 },
+      { x: s, y: s, z: best.d },
+      { collider: false },
+    );
   }
 }
-
-/** Wall arms of wall-mounted fixtures. */
-const LIGHT_BRACKET = { maxReach: 1.6, size: 0.12 } as const;
 
 const _dir = new THREE.Vector3();
 const _color = new THREE.Color();
 
-function buildCones(kit: LevelKit, spots: SpotEntry[], time: TimeUniform): { cone: VolumetricCone; source: number }[] {
+function buildCones(
+  kit: LevelKit,
+  spots: SpotEntry[],
+  time: TimeUniform,
+): { cone: VolumetricCone; source: number }[] {
   const out: { cone: VolumetricCone; source: number }[] = [];
   spots.forEach((s, i) => {
     if (!s.def.volumetric) return;
@@ -700,7 +745,11 @@ function buildShafts(kit: LevelKit, time: TimeUniform): VolumetricShafts | null 
       const z0 = S.minZ + k * pd + m;
       const w = pw - m * 2;
       const d = pd - m * 2;
-      const hit = kit.physics.raycast({ x: x0 + w / 2, y: y - 0.05, z: z0 + d / 2 }, _dir, LEVEL_KIT.volumeRayMaxDistance);
+      const hit = kit.physics.raycast(
+        { x: x0 + w / 2, y: y - 0.05, z: z0 + d / 2 },
+        _dir,
+        LEVEL_KIT.volumeRayMaxDistance,
+      );
       const len = hit ? hit.distance : y / -_dir.y;
       segments.push({
         origin: { x: x0, y, z: z0 },

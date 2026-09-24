@@ -62,6 +62,23 @@ describe('AttackSlotCoordinator', () => {
     expect(c.inUse).toBe(3);
   });
 
+  it('serves higher-priority waiters first, FIFO within a priority', () => {
+    const c = new AttackSlotCoordinator(SLOTS, 16);
+    for (let id = 1; id <= 3; id++) expect(c.request(id, 1, 0)).toBe(true);
+    expect(c.request(4, 1, 0.1)).toBe(false);
+    expect(c.request(5, 1, 0.2, 1)).toBe(false); // later, but more urgent
+    expect(c.request(6, 1, 0.3, 1)).toBe(false);
+    c.release(1, 0.4);
+    expect(c.request(4, 1, 0.41)).toBe(false);
+    expect(c.request(6, 1, 0.42, 1)).toBe(false); // same priority as 5, but younger
+    expect(c.request(5, 1, 0.43, 1)).toBe(true);
+    c.release(2, 0.5);
+    expect(c.request(4, 1, 0.51)).toBe(false);
+    expect(c.request(6, 1, 0.52, 1)).toBe(true);
+    c.release(3, 0.6);
+    expect(c.request(4, 1, 0.61)).toBe(true);
+  });
+
   it('rotates tokens: hold time and attack count expire them, then a re-request delay', () => {
     const c = new AttackSlotCoordinator(SLOTS, 16);
     expect(c.request(1, 1, 0)).toBe(true);

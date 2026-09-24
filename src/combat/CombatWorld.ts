@@ -265,7 +265,7 @@ export class CombatWorld implements WeaponCombatApi {
         else capsuleNormal(hit.point, hb.a, hb.b, hit.normal);
         hit.target = t;
         hit.zone = hb.zone;
-        hit.surface = t.surface;
+        hit.surface = t.surfaceAt?.(hb.zone) ?? t.surface;
         hit.penetrable = false;
         break;
       }

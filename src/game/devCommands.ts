@@ -260,8 +260,6 @@ export function registerDevCommands(game: DevCommandHost): void {
       description,
       run: () => `„${name}“ ist ab Meilenstein ${milestone} verfügbar.`,
     });
-  later('wave', 'wave <n>', 'Welle setzen', 3);
-  later('spawn', 'spawn <gegner> [anzahl]', 'Gegner spawnen', 3);
   const weapons = game.weapons;
   if (weapons) {
     const ids = Object.keys(WEAPONS);

@@ -23,6 +23,7 @@ import {
   normalizeRms,
 } from './dsp';
 import { WEAPON_SYNTH_DEFS, weaponSynthAlias } from './weaponSynth';
+import { ENEMY_SYNTH_DEFS, enemySynthAlias } from './enemySynth';
 
 const log = createLogger('Synth');
 const S = AUDIO.synth;
@@ -623,6 +624,7 @@ export const SYNTH_DEFS = {
   hurt: { variants: 3, duration: 0.34, channels: 1, level: 1, recipe: hurt },
   // Weapons, impacts, casings, hit feedback (audio/weaponSynth.ts) – rendered after movement.
   ...WEAPON_SYNTH_DEFS,
+  ...ENEMY_SYNTH_DEFS,
 } as const satisfies Record<string, SynthDef>;
 
 export type SynthId = keyof typeof SYNTH_DEFS;
@@ -635,7 +637,7 @@ export const SYNTH_IDS = Object.keys(SYNTH_DEFS) as readonly SynthId[];
  */
 export function resolveSynthId(id: string): SynthId | null {
   if (Object.prototype.hasOwnProperty.call(SYNTH_DEFS, id)) return id as SynthId;
-  const alias = weaponSynthAlias(id);
+  const alias = weaponSynthAlias(id) ?? enemySynthAlias(id);
   if (alias) return alias;
   if (id.startsWith('footstep.')) return 'footstep.default';
   return null;

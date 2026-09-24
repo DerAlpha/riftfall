@@ -15,6 +15,7 @@ const argVal = (name, def) => {
   const i = args.indexOf(name);
   return i >= 0 && args[i + 1] ? args[i + 1] : def;
 };
+const map = argVal('--map', 'testroom');
 const preset = argVal('--preset', 'ultra');
 const showHud = args.includes('--hud');
 const prefix = argVal('--prefix', 'photo');
@@ -57,7 +58,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  await page.goto(`${base}?autostart=1&nolock=1&smoke=1&preset=${preset}`);
+  await page.goto(`${base}?autostart=1&nolock=1&smoke=1&map=${map}&preset=${preset}`);
   await page.waitForFunction(() => window.__RIFTFALL__?.ready === true, null, { timeout: 240_000 });
   if (!showHud) await page.addStyleTag({ content: '#hud{display:none!important}' });
   // Fix dynamic resolution at full scale so shots are comparable.

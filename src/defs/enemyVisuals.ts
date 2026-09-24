@@ -18,8 +18,9 @@
  *   scale    = 1 + Σs* (per axis, about the pivot), translation = Σt*
  * Signs: +rx pitches the front (+Z) DOWN, +ry turns towards +X (left), +rz rolls +X up.
  * Drivers: see RIG_DRIVERS. gait/idle/loco/attack/stagger/look fade out with `death`.
- * Mirroring (`mirror: true`) creates the `_R` twin at -X: ry, rz and tx flip sign; the twin's
- * gait/oscillator offsets get `mirrorPhase` added (π = legs in antiphase).
+ * Mirroring (`mirror: true`, bone names end with `_L`) creates the `_R` twin at -X: ry, rz and tx
+ * flip sign (look motions excepted: both twins aim the same way); the twin's gait/oscillator
+ * offsets get `mirrorPhase` added (π = legs in antiphase).
  *
  * Extension points (M6: 13+ types, elites, bosses): add an entry to ENEMY_VISUALS – no code
  * changes. Attack animation ids must match the AI's attack ids (defs/enemies) so
@@ -285,10 +286,20 @@ export const ENEMY_RENDER = {
   /** Surface relief: bump height (m) at zone bump 1, wet film roughness. */
   bumpDepth: 0.006,
   clearcoatRoughness: 0.14,
-  /** Hit flash: white-hot emissive at flash 1 (HDR), fresnel-weighted. */
-  hitFlash: { color: [1, 0.86, 0.72] as Rgb, intensity: 2.4, reducedFlashingScale: 0.4 },
+  /**
+   * Hit flash: white-hot emissive at flash 1 (HDR). Weighted mix(faceOn, 1, fresnel^power): the
+   * silhouette flares while the body stays readable under sustained fire (the AI resets the flash
+   * on every hit).
+   */
+  hitFlash: {
+    color: [1, 0.86, 0.72] as Rgb,
+    intensity: 2.4,
+    faceOn: 0.06,
+    power: 2,
+    reducedFlashingScale: 0.4,
+  },
   /** Elite rim light exponent (fresnel power) and HDR boost. */
-  rim: { power: 2.2, intensity: 3.2 },
+  rim: { power: 3.2, intensity: 4.5 },
   /** Emissive glow left on a dying enemy (fraction at death = 1). */
   deadGlow: 0.12,
   /** Vein pulse: speed (rad/s) and travel along the body (rad/m). */
@@ -315,6 +326,8 @@ export const ENEMY_RENDER = {
   },
   /** Snap instead of interpolating when an instance jumps farther than this in one tick (m). */
   snapDistance: 3,
+  /** Smallest instance scale accepted from a pose (degenerate scales break normals/culling). */
+  minInstanceScale: 0.01,
   /** Warm-up instance distance in front of the camera (m). */
   warmupDistance: 3,
   /** Default rim color when a pose has none (linear). */
@@ -360,7 +373,7 @@ const BONE: EnemyZoneDef = {
  * the headshot zone). Diagonal scuttle gait; bite (rear up, snap) and leap (crouch, pounce).
  */
 const SWARMER: EnemyVisualDef = {
-  capacity: 48,
+  capacity: 60,
   zones: {
     chitin: {
       color: [0.025, 0.024, 0.03],
@@ -1639,13 +1652,14 @@ const TANK: EnemyVisualDef = {
       cells: 0.25,
       scale: 1.8,
     },
+    // Metal: albedo is the specular color (F0) – gunmetal needs ~0.2-0.3 to catch the lights.
     armor: {
-      color: [0.045, 0.045, 0.05],
-      color2: [0.1, 0.09, 0.085],
-      tip: [0.16, 0.14, 0.12],
-      tipAmount: 0.2,
-      roughness: 0.3,
-      metalness: 0.8,
+      color: [0.17, 0.165, 0.17],
+      color2: [0.27, 0.24, 0.22],
+      tip: [0.34, 0.3, 0.26],
+      tipAmount: 0.25,
+      roughness: 0.32,
+      metalness: 0.85,
       clearcoat: 0.3,
       emissive: [1, 0.3, 0.5],
       emissiveIntensity: 1.2,
@@ -1700,9 +1714,9 @@ const TANK: EnemyVisualDef = {
       metalness: 0,
       clearcoat: 1,
       emissive: [1, 0.32, 0.5],
-      emissiveIntensity: 4.2,
+      emissiveIntensity: 7.5,
       glow: 1,
-      pulse: 0.4,
+      pulse: 0.35,
       veins: 0.3,
       bump: 0.5,
       cells: 0.55,

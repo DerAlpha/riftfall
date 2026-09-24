@@ -19,6 +19,9 @@ export type Rgb = readonly [number, number, number];
 
 export type EnemyAttackKind = 'melee' | 'leap' | 'projectile' | 'charge' | 'slam';
 
+/** Melee token pools per target (ENEMY_AI.slots.pools). */
+export type SlotPoolId = 'light' | 'heavy';
+
 /** Behaviour archetypes (ai/brains): M6 types reuse them with other stats. */
 export type EnemyBrainId = 'swarm' | 'ranged' | 'brute';
 
@@ -99,6 +102,8 @@ export interface ProjectileAttackParams {
   readonly aimDrop: number;
   /** 0..1 velocity lead (fairness: < 1 lets strafing players dodge). */
   readonly leadFactor: number;
+  /** Random aim scatter: the aim point lands within this radius around the predicted one (m, XZ). */
+  readonly aimError: number;
 }
 
 export interface EnemyAttackDef {
@@ -162,8 +167,14 @@ export interface RangedBehaviourDef {
   readonly searchArcDeg: number;
   /** ... and jittered by nav.randomPointAround within this radius (m). */
   readonly searchJitter: number;
-  /** Lateral wall probe for the cover score (m). */
+  /**
+   * Cover = a sideways step of this length from the spot breaks the line of sight (m): the
+   * spitter peeks out, spits and ducks back behind it until its next shot is almost ready.
+   */
   readonly coverProbe: number;
+  /** Leave cover this long before the projectile attack is ready again (s); hide at most this long (s). */
+  readonly peekLead: number;
+  readonly hideTimeout: number;
   readonly weights: {
     readonly los: number;
     readonly cover: number;
@@ -190,8 +201,16 @@ export interface RangedBehaviourDef {
 export interface BruteBehaviourDef {
   /** Run instead of walk when the target is farther than this (m). */
   readonly runDistance: number;
-  /** Stops at this distance (m) to swipe/slam. */
+  /** Token holders close in to this distance (m) to swipe / slam. */
   readonly standoff: number;
+  /** Ask for a melee token within this distance of the target (m). */
+  readonly engageDistance: number;
+  /**
+   * Without a token the brute keeps this distance (m, inside the charge range) instead of walling
+   * the player in – closer ones (after a charge) back off; ± waitSlack is close enough (m).
+   */
+  readonly waitRadius: number;
+  readonly waitSlack: number;
   /** Re-check the straight charge lane every N seconds (nav.walkable). */
   readonly laneCheckInterval: number;
 }
@@ -217,8 +236,10 @@ export interface EnemyTypeDef {
   readonly name: string;
   readonly brain: EnemyBrainId;
   readonly health: number;
-  /** Impact VFX/SFX and penetration surface of the whole body. */
+  /** Impact VFX/SFX and penetration surface of the whole body ... */
   readonly surface: FleshSurface;
+  /** ... except these zones (a tank's armored front sparks, its flesh bleeds). */
+  readonly zoneSurfaces: Readonly<Partial<Record<HitZone, FleshSurface>>>;
   readonly movement: {
     readonly walkSpeed: number;
     readonly runSpeed: number;
@@ -274,7 +295,11 @@ export interface EnemyTypeDef {
     readonly dissolve: number;
     readonly burst: DeathBurstDef | null;
   };
-  /** Slot tokens one melee attack of this type takes (big enemies count more). */
+  /**
+   * Melee token pool (ENEMY_AI.slots.pools) and the units one holder takes. Pools are separate
+   * budgets per target: the swarm's bites and a tank's slams do not queue behind each other.
+   */
+  readonly slotPool: SlotPoolId;
   readonly slotCost: number;
   /** M4 economy hooks (points). */
   readonly points: {
@@ -312,6 +337,7 @@ const SWARMER: EnemyTypeDef = {
   brain: 'swarm',
   health: 60,
   surface: 'flesh',
+  zoneSurfaces: {},
   movement: { walkSpeed: 3.2, runSpeed: 7, acceleration: 28, turnRateDeg: 540, stride: 0.9 },
   nav: { radius: 0.35, height: 0.8, separation: 0.5 },
   collider: null,
@@ -383,6 +409,7 @@ const SWARMER: EnemyTypeDef = {
   },
   emergeTime: 0.9,
   death: { collapse: 0.45, linger: 0.5, dissolve: 0.9, burst: null },
+  slotPool: 'light',
   slotCost: 1,
   points: { hit: 10, kill: 60, headshotBonus: 40, weakpointBonus: 40 },
   audio: {
@@ -407,6 +434,7 @@ const SPITTER: EnemyTypeDef = {
   brain: 'ranged',
   health: 110,
   surface: 'slime',
+  zoneSurfaces: {},
   movement: { walkSpeed: 2.2, runSpeed: 4.2, acceleration: 14, turnRateDeg: 300, stride: 1.3 },
   nav: { radius: 0.4, height: 1.6, separation: 0.8 },
   collider: { radius: 0.35, height: 1.5 },
@@ -432,7 +460,7 @@ const SPITTER: EnemyTypeDef = {
       trackTurnRateDeg: 240,
       shake: 0,
       sound: 'enemy.spitter.spit',
-      projectile: { projectile: 'acid.glob', socket: 'mouth', aimDrop: 0.45, leadFactor: 0.8 },
+      projectile: { projectile: 'acid.glob', socket: 'mouth', aimDrop: 0.45, leadFactor: 0.7, aimError: 0.5 },
     },
     {
       id: 'swipe',
@@ -470,6 +498,8 @@ const SPITTER: EnemyTypeDef = {
     searchArcDeg: 110,
     searchJitter: 2.5,
     coverProbe: 1.6,
+    peekLead: 0.6,
+    hideTimeout: 3.5,
     weights: { los: 10, cover: 2.5, travel: 0.25, band: 0.35, crowd: 1.5 },
     crowdRadius: 4,
     repositionTimeout: 7,
@@ -496,6 +526,7 @@ const SPITTER: EnemyTypeDef = {
       shake: 0.25,
     },
   },
+  slotPool: 'light',
   slotCost: 1,
   points: { hit: 10, kill: 90, headshotBonus: 40, weakpointBonus: 60 },
   audio: {
@@ -511,7 +542,8 @@ const SPITTER: EnemyTypeDef = {
 
 /**
  * Tank: hulking armored brute. Slow approach, telegraphed charge (straight dash, staggers itself on
- * walls), ground slam when close. Armored front ('shield' zones ×0.3 + flat armor), glowing
+ * walls), ground slam when close (one tank at a time: heavy token pool; the others hold at the wait
+ * ring and charge). Armored front ('shield' zones ×0.3 + flat armor), glowing
  * weakpoint core in the back (×3): flank it.
  */
 const TANK: EnemyTypeDef = {
@@ -519,7 +551,11 @@ const TANK: EnemyTypeDef = {
   name: 'Koloss',
   brain: 'brute',
   health: 900,
+  // Armored as a whole (bullets do not pass through it), but only the front plates ('shield')
+  // spark and shrug hits off; the biomechanical flesh around them and the glowing back core
+  // bleed – readable feedback for "flank it".
   surface: 'armor',
+  zoneSurfaces: { body: 'flesh', limb: 'flesh', head: 'flesh', weakpoint: 'flesh' },
   movement: { walkSpeed: 2.4, runSpeed: 3.6, acceleration: 10, turnRateDeg: 150, stride: 2.1 },
   nav: { radius: 0.9, height: 2.4, separation: 1 },
   collider: { radius: 0.8, height: 2.3 },
@@ -618,10 +654,18 @@ const TANK: EnemyTypeDef = {
     eyeSocket: 'head',
     eyeHeight: 1.9,
   },
-  brute: { runDistance: 14, standoff: 2, laneCheckInterval: 0.4 },
+  brute: {
+    runDistance: 14,
+    standoff: 2,
+    engageDistance: 9,
+    waitRadius: 7.5,
+    waitSlack: 1,
+    laneCheckInterval: 0.4,
+  },
   emergeTime: 1.6,
   death: { collapse: 1.2, linger: 1.2, dissolve: 1.6, burst: null },
-  slotCost: 2,
+  slotPool: 'heavy',
+  slotCost: 1,
   points: { hit: 10, kill: 250, headshotBonus: 50, weakpointBonus: 100 },
   audio: {
     spawn: 'enemy.tank.spawn',
@@ -701,8 +745,11 @@ export const ENEMY_AI = {
     facingMinSpeed: 0.5,
   },
   slots: {
-    /** Melee tokens around one target (tank swipes cost 2). */
-    maxTokens: 3,
+    /**
+     * Melee token units per target and pool: up to 3 swarm-class biters plus one heavy (tank) at a
+     * time – pressure without unfair burst, and a tank never waits behind a swarm (or starves it).
+     */
+    pools: { light: 3, heavy: 1 } satisfies Record<SlotPoolId, number>,
     /** A token is returned after this long (s) even mid-fight: others rotate in. */
     holdTime: 4,
     /** ... or after this many attacks with it. */
@@ -715,9 +762,21 @@ export const ENEMY_AI = {
     requestTimeout: 0.5,
     /** A released enemy waits this long before asking again (s). */
     rerequestDelay: 1.2,
+    /**
+     * Only ask for a token when the feet are within this height of the target's (m): an enemy on
+     * the floor below the player's deck would hold a token it cannot use.
+     */
+    engageHeight: 2,
   },
-  /** Ranged attacks at one target start at least this far apart (s): no synchronized volleys. */
-  volley: { minSpacing: 0.55 },
+  /**
+   * Per attack kind: attacks of that kind at one target start at least this far apart (s, 0 =
+   * free). No synchronized acid volleys, no two tanks charging at once; melee spacing comes from
+   * the slot coordinator (slots.minAttackSpacing).
+   */
+  attackSpacing: { melee: 0, leap: 0, projectile: 0.9, charge: 2.5, slam: 0 } satisfies Record<
+    EnemyAttackKind,
+    number
+  >,
   surround: {
     /** Angular slots around the target. */
     slotCount: 10,
@@ -747,8 +806,13 @@ export const ENEMY_AI = {
     teleportRadius: 2.5,
     /** Snapped position farther than this from the agent → it was off the mesh (m). */
     offMeshDistance: 0.3,
-    /** Only when the move goal is farther than this (m). */
+    /** Only when the (navmesh-snapped) move goal is farther than this (m). */
     goalSlack: 1,
+    /**
+     * No stuck handling within this distance of the aggro target (m): the crowd around the player
+     * jams by design (detour resolves it); teleporting there would pop enemies in plain view.
+     */
+    nearTarget: 8,
     /** After this many stuck teleports without progress the enemy re-emerges near its target. */
     relocateAfter: 2,
   },
@@ -769,6 +833,14 @@ export const ENEMY_AI = {
     friction: 9,
     minSpeed: 0.35,
     maxSpeed: 12,
+    /**
+     * A tick's accumulated hits must push at least this hard (m/s, after resistance) to start a
+     * knockback: shotgun blasts and melee bashes shove, single bullets only flinch (a rifle stream
+     * would otherwise stun-lock swarmers in place).
+     */
+    startSpeed: 2.5,
+    /** Wall probe height as a fraction of the nav agent height. */
+    probeHeight: 0.5,
   },
   movement: {
     /** Skip nav retargets closer than this to the last one sent (m). */
@@ -784,6 +856,11 @@ export const ENEMY_AI = {
   pose: { hitFlashDecay: 9, flinchPerHealth: 3, flinchMax: 0.35, flinchDecay: 6, staggerRampIn: 0.2 },
   /** Player capsule for enemy hit tests (m). */
   player: { radius: 0.38, hitRadius: 0.42 },
+  /**
+   * The player as a parked crowd agent (enemies steer around it): radius / height (m), teleported
+   * after moving more than moveEpsilon (m); creation is retried this often while it fails (s).
+   */
+  playerAgent: { enabled: true, radius: 0.4, height: 1.8, moveEpsilon: 0.02, retryInterval: 1 },
   elite: {
     scale: 1.12,
     rim: 1,
@@ -797,7 +874,7 @@ export const ENEMY_AI = {
   firstAttackJitter: 0.5,
   /** weaponId in enemy:died / combat events for killAll (nuke power-up, M4). */
   nukeWeaponId: 'nuke',
-  /** Ticks between stats refreshes of `aiMs` averaging. */
+  /** Exponential moving average factor of `stats.aiMsAvg` (per tick). */
   statsSmoothing: 0.1,
 } as const;
 
@@ -830,6 +907,14 @@ export interface ProjectileDef {
   readonly lobSpeed: number;
   readonly minFlightTime: number;
   readonly maxFlightTime: number;
+  /**
+   * Under a low ceiling the arc flattens (shorter flight), but the horizontal speed never exceeds
+   * this (m/s): it stays a dodgeable glob, not a bullet.
+   */
+  readonly maxLaunchSpeed: number;
+  /** Upward ceiling probes before a lob reach this far (m, 0 = none); the apex keeps this gap (m). */
+  readonly ceilingProbe: number;
+  readonly ceilingMargin: number;
   /** Downward acceleration (m/s²). */
   readonly gravity: number;
   readonly radius: number;
@@ -852,6 +937,11 @@ export interface ProjectileDef {
   readonly substep: number;
   readonly directShake: number;
   readonly trail: { readonly effect: string; readonly interval: number; readonly scale: number } | null;
+  /**
+   * Extra burst at the impact (defs/vfx preset × scale) on top of the surface impact that
+   * combat:impact triggers: sells the splash radius (null = none).
+   */
+  readonly impactEffect: { readonly effect: string; readonly scale: number } | null;
   readonly puddle: ProjectilePuddleDef | null;
   readonly visual: {
     /** Linear RGB × intensity (HDR, blooms). */
@@ -864,6 +954,10 @@ export interface ProjectileDef {
     readonly pulseAmount: number;
     readonly puddleColor: Rgb;
     readonly puddleIntensity: number;
+    /** Puddles spread out over this long (s) and shimmer (Hz, ± fraction of the intensity). */
+    readonly puddleGrowTime: number;
+    readonly puddlePulseHz: number;
+    readonly puddlePulseAmount: number;
     /** Flattened blob height (m) and lift above the floor (m). */
     readonly puddleThickness: number;
     readonly puddleLift: number;
@@ -877,18 +971,22 @@ export const PROJECTILES = {
     lobSpeed: 15,
     minFlightTime: 0.4,
     maxFlightTime: 1.5,
+    maxLaunchSpeed: 24,
+    ceilingProbe: 12,
+    ceilingMargin: 0.25,
     gravity: 16,
     radius: 0.14,
     lifetime: 4,
     damage: 14,
-    splash: { radius: 2.2, innerRadius: 0.6, minFactor: 0.35, damage: 10 },
+    splash: { radius: 2, innerRadius: 0.6, minFactor: 0.35, damage: 8 },
     element: 'poison',
     impactSurface: 'slime',
     hitsPlayer: true,
     hitsDamageables: false,
     substep: 0.5,
     directShake: 0.2,
-    trail: { effect: 'acid.trail', interval: 0.06, scale: 0.6 },
+    trail: { effect: 'acid.trail', interval: 0.06, scale: 1 },
+    impactEffect: { effect: 'impact.slime', scale: 2.6 },
     puddle: {
       radius: 1.1,
       height: 0.8,
@@ -909,6 +1007,9 @@ export const PROJECTILES = {
       pulseAmount: 0.12,
       puddleColor: [0.22, 1, 0.08],
       puddleIntensity: 1.8,
+      puddleGrowTime: 0.18,
+      puddlePulseHz: 1.3,
+      puddlePulseAmount: 0.18,
       puddleThickness: 0.035,
       puddleLift: 0.02,
     },
@@ -930,6 +1031,8 @@ export const PROJECTILE_POOL = {
   heightSegments: 8,
   /** Line-of-flight iterations of the lead solver. */
   leadIterations: 3,
+  /** Ceiling probes along a lob (fractions of origin → aim; the arc peaks around the middle). */
+  ceilingSamples: [0.25, 0.5, 0.75],
   /** Continue a ray past a damageable the projectile ignores at most this often. */
   maxPassThrough: 4,
   /** Nudge past a surface when continuing a ray (m). */

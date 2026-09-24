@@ -20,6 +20,9 @@ function recorder(calls: string[]): FixedTickSystems {
     },
     weapons: step('weapons'),
     targets: step('targets'),
+    waves: step('waves'),
+    enemies: step('enemies'),
+    runFlow: step('runFlow'),
     physics: { step: () => void calls.push('physics') },
     health: step('health'),
     level: {
@@ -59,16 +62,29 @@ function box(d: Damageable, zone: HitZone): Hitbox {
 }
 
 describe('runFixedTick', () => {
-  it('steps player → weapons → targets → physics → health → level', () => {
+  it('steps player → weapons → targets → waves → enemies → physics → health → level → runFlow', () => {
     const calls: string[] = [];
     runFixedTick(recorder(calls), DT);
-    expect(calls).toEqual(['player', 'weapons', 'targets', 'physics', 'health', 'level']);
+    expect(calls).toEqual([
+      'player',
+      'weapons',
+      'targets',
+      'waves',
+      'enemies',
+      'physics',
+      'health',
+      'level',
+      'runFlow',
+    ]);
   });
 
   it('runs without targets and returns a player below the kill plane to spawn before the step', () => {
     const calls: string[] = [];
     const s = recorder(calls);
     s.targets = null;
+    s.waves = null;
+    s.enemies = null;
+    s.runFlow = null;
     s.player.position.y = PHYSICS.killPlaneY - 1;
     runFixedTick(s, DT);
     expect(calls).toEqual(['player', 'weapons', 'teleport', 'physics', 'health', 'level']);

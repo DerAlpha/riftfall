@@ -6,7 +6,7 @@
 import type { Vector3 } from 'three';
 import type { CombatWorldApi, EnemyTargetApi, NavApi, VfxApi } from '../../core/contracts';
 import type { Rng } from '../../core/Rng';
-import type { EnemyAttackDef } from '../../defs/enemies';
+import type { EnemyAttackDef, EnemyAttackKind } from '../../defs/enemies';
 import type { ProjectileSystem } from '../../combat/Projectiles';
 import type { Enemy } from '../Enemy';
 import type { AttackSlotCoordinator } from './AttackSlotCoordinator';
@@ -29,13 +29,14 @@ export interface AiHost {
   target(e: Enemy): EnemyTargetApi | null;
   /** World bearing (atan2(z, x)) the target of slot `slot` is facing – flankers avoid it. */
   targetFacing(slot: number): number;
-  coordinator(slot: number): AttackSlotCoordinator;
+  /** Melee token coordinator of the enemy's pool at its current target. */
+  coordinator(e: Enemy): AttackSlotCoordinator;
   surround(slot: number): SurroundSlots;
   /**
-   * Ranged volley limiter: may a projectile attack at the target of `slot` start now (spacing
-   * ENEMY_AI.volley.minSpacing between ranged attack starts)?
+   * Per-kind attack spacing at the target of `slot` (ENEMY_AI.attackSpacing): may an attack of
+   * `kind` start now? (No synchronized acid volleys, no simultaneous charges.)
    */
-  canVolley(slot: number): boolean;
+  spacingAllows(slot: number, kind: EnemyAttackKind): boolean;
 
   /** Spend nav path queries / static spot rays of this tick's budget (false: try next tick). */
   takePaths(n: number): boolean;

@@ -6,7 +6,8 @@
  * borders) in a few steps and blends premultiplied: glow = color · a, the scene behind is dimmed
  * by a · absorption. Like the skylight shafts it shades the entry faces from outside and the exit
  * faces from inside; objects inside a volume are hazed by its full chord (no scene depth here),
- * which reads as mist around them.
+ * which reads as mist around them. The proxy box is inset by FOG_VOLUME.faceInset so its faces
+ * never z-fight with the floor / walls / platform tops a volume ends at.
  */
 import * as THREE from 'three';
 import { RENDER } from '../../defs/graphics';
@@ -37,6 +38,7 @@ uniform vec3 uNoise; // scale, speed, amount
 uniform float uTime;
 uniform float uMaxAlpha;
 uniform float uIntensity;
+uniform float uInset;
 varying vec3 vWorldPos;
 ${HEIGHT_FOG_GLSL}
 float fvHash(vec3 p3) {
@@ -61,7 +63,8 @@ void main() {
   vec3 seg = vWorldPos - ro;
   float segLen = length(seg);
   vec3 rd = seg / max(segLen, 1e-4);
-  bool inside = all(greaterThan(ro, uMin)) && all(lessThan(ro, uMax));
+  // Inside the (inset) proxy box: its back faces shade, from outside its front faces.
+  bool inside = all(greaterThan(ro, uMin + uInset)) && all(lessThan(ro, uMax - uInset));
   if (gl_FrontFacing == inside) discard;
   float tn;
   float tf;
@@ -119,7 +122,12 @@ export class FogVolume {
     const min = new THREE.Vector3(def.min[0], def.min[1], def.min[2]);
     const max = new THREE.Vector3(def.max[0], def.max[1], def.max[2]);
     const size = max.clone().sub(min);
-    const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
+    const inset = FOG_VOLUME.faceInset;
+    const geo = new THREE.BoxGeometry(
+      Math.max(size.x - 2 * inset, inset),
+      Math.max(size.y - 2 * inset, inset),
+      Math.max(size.z - 2 * inset, inset),
+    );
     for (const name of Object.keys(geo.attributes)) if (name !== 'position') geo.deleteAttribute(name);
     this.material = new THREE.ShaderMaterial({
       name: `FogVolume:${def.id}`,
@@ -132,7 +140,12 @@ export class FogVolume {
         uDensity: { value: def.density },
         uFalloff: { value: def.falloff },
         uColor: {
-          value: new THREE.Color().setRGB(def.color[0], def.color[1], def.color[2], THREE.LinearSRGBColorSpace),
+          value: new THREE.Color().setRGB(
+            def.color[0],
+            def.color[1],
+            def.color[2],
+            THREE.LinearSRGBColorSpace,
+          ),
         },
         uAbsorption: { value: def.absorption },
         uEdge: { value: def.edgeSoftness },
@@ -140,6 +153,7 @@ export class FogVolume {
         uTime: time,
         uMaxAlpha: { value: FOG_VOLUME.maxAlpha },
         uIntensity: { value: 1 },
+        uInset: { value: inset },
         fogParams: HEIGHT_FOG_PARAMS,
       },
       transparent: true,

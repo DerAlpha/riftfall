@@ -7,8 +7,10 @@ import {
   CHANNEL_CODE,
   CODE_STRIDE,
   DRIVER_CODE,
+  RARE_DRIVER_MASK,
   SLOT,
   SLOT_STRIDE,
+  activeDriverMask,
   attackEnvelope,
   boneScale,
   boneTransformPoint,
@@ -197,6 +199,125 @@ describe('compileRig', () => {
     const mats = new Float32Array(rig.bones.length * BONE_STRIDE);
     expect(() => evaluateRig(rig, slot({ locomotion: 1 }), 0, 0, 0, mats)).not.toThrow();
     expect(mats.every(Number.isFinite)).toBe(true);
+  });
+});
+
+describe('compileRig: driver masks, windows, mirroring', () => {
+  const base = ENEMY_VISUALS.swarmer;
+  const minimal = (bones: EnemyVisualDef['bones']): EnemyVisualDef => ({
+    ...base,
+    bones,
+    parts: [
+      { shape: 'ellipsoid', bone: bones[0]!.name, zone: 'flesh', center: [0, 1, 0], radii: [0.2, 0.2, 0.2] },
+    ],
+    hitboxes: [],
+    sockets: {},
+  });
+
+  it("packs each bone's driver mask (the OR of its motions' drivers)", () => {
+    for (const rig of Object.values(RIGS)) {
+      rig.bones.forEach((b, i) => {
+        let mask = 0;
+        for (let k = 0; k < b.motionCount; k++) mask |= 1 << rig.motionDrv[b.motionStart + k]!;
+        expect(rig.data[(rig.layout.boneBase + i * 2 + 1) * 4 + 2], b.name).toBe(mask);
+      });
+    }
+  });
+
+  it('stores each bone common motions first; the rare block holds attack/stagger/death/emerge', () => {
+    for (const rig of Object.values(RIGS)) {
+      rig.bones.forEach((b, i) => {
+        const t1 = (rig.layout.boneBase + i * 2 + 1) * 4;
+        expect(rig.data[t1 + 3], b.name).toBe(b.commonCount);
+        for (let k = 0; k < b.motionCount; k++) {
+          const rare = ((1 << rig.motionDrv[b.motionStart + k]!) & RARE_DRIVER_MASK) !== 0;
+          expect(rare, `${b.name}#${k}`).toBe(k >= b.commonCount);
+        }
+      });
+    }
+    for (const d of ['attack', 'stagger', 'death', 'emerge'] as const)
+      expect(RARE_DRIVER_MASK & (1 << DRIVER_CODE[d])).not.toBe(0);
+    expect(RARE_DRIVER_MASK & ((1 << DRIVER_CODE.gait) | (1 << DRIVER_CODE.idle))).toBe(0);
+  });
+
+  it('active driver mask: only drivers that can move anything this pose', () => {
+    const rig = RIGS.swarmer;
+    const d = createDrivers();
+    const mask = (init: PoseInit): number => {
+      computeDrivers(rig, slot(init), 0, 0, 0, d);
+      return activeDriverMask(d);
+    };
+    const bit = (k: keyof typeof DRIVER_CODE): number => 1 << DRIVER_CODE[k];
+    expect(mask({})).toBe(bit('rest') | bit('idle'));
+    expect(mask({ locomotion: 1, lookYaw: 0.2, attackId: 0 })).toBe(
+      bit('rest') | bit('idle') | bit('gait') | bit('loco') | bit('lookYaw') | bit('attack'),
+    );
+    // Dying: only death (and emergence / rest) still move bones.
+    expect(mask({ death: 1, locomotion: 2, stagger: 1, lookYaw: 1 })).toBe(bit('rest') | bit('death'));
+    expect(mask({ emerge: 0.5 })).toBe(bit('rest') | bit('idle') | bit('emerge'));
+  });
+
+  it('normalizes windows: ordered, never degenerate, a driver at 0 yields 0 and at 1 the full amplitude', () => {
+    const def = minimal([
+      {
+        name: 'root',
+        parent: null,
+        pivot: [0, 1, 0],
+        motions: [
+          { ch: 'ty', drive: 'death', amp: 1, window: [0, 0] },
+          { ch: 'ty', drive: 'stagger', amp: 1, window: [1, 1] },
+          { ch: 'ty', drive: 'emerge', amp: 1, window: [0.8, 0.2] },
+        ],
+      },
+    ]);
+    const rig = compileRig('win', def);
+    const d = createDrivers();
+    for (let k = 0; k < 3; k++) {
+      const t = rig.layout.motionBase + k * 2;
+      const w0 = rig.data[(t + 1) * 4 + 2]!;
+      const w1 = rig.data[(t + 1) * 4 + 3]!;
+      expect(w0).toBeGreaterThanOrEqual(0);
+      expect(w1).toBeLessThanOrEqual(1);
+      expect(w1 - w0).toBeGreaterThan(0);
+      for (const [v, want] of [
+        [0, 0],
+        [1, 1],
+      ] as const) {
+        computeDrivers(rig, slot({ death: v, stagger: v, emerge: 1 - v }), 0, 0, 0, d);
+        // Stagger fades with death: test it alive.
+        if (k === 1) computeDrivers(rig, slot({ stagger: v }), 0, 0, 0, d);
+        expect(motionValue(rig.data, t, d), `motion ${k} at ${v}`).toBeCloseTo(want, 6);
+      }
+    }
+  });
+
+  it('mirrored twins flip swings but look the same way; mirrored bones must be named _L', () => {
+    const def = minimal([
+      { name: 'root', parent: null, pivot: [0, 1, 0] },
+      {
+        name: 'eye_L',
+        parent: 'root',
+        pivot: [0.1, 1.2, 0.2],
+        mirror: true,
+        motions: [
+          { ch: 'ry', drive: 'lookYaw', amp: 1 },
+          { ch: 'ry', drive: 'gait', amp: 10 },
+        ],
+      },
+    ]);
+    const rig = compileRig('eyes', def);
+    const l = rig.bones[rig.boneIndex.get('eye_L')!]!;
+    const r = rig.bones[rig.boneIndex.get('eye_R')!]!;
+    const amp = (b: typeof l, k: number): number =>
+      rig.data[(rig.layout.motionBase + (b.motionStart + k) * 2) * 4 + 2]!;
+    expect(amp(r, 0)).toBeCloseTo(amp(l, 0), 6);
+    expect(amp(r, 1)).toBeCloseTo(-amp(l, 1), 6);
+
+    const warnings: string[] = [];
+    const off = onLog((e) => e.level === 'warn' && warnings.push(e.message));
+    compileRig('badmirror', minimal([{ name: 'root', parent: null, pivot: [0, 1, 0], mirror: true }]));
+    off();
+    expect(warnings.some((w) => w.includes('_L'))).toBe(true);
   });
 });
 

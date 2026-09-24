@@ -537,6 +537,39 @@ export const VFX_EFFECTS = {
       { ...IMPACT_GLOW, color: SLIME, intensity: 3, size: [0.14, 0.2] },
     ],
   },
+  /** Enemy acid glob in flight (combat/Projectiles, every ~0.06 s per glob): a fading glow + drip. */
+  'acid.trail': {
+    emitters: [
+      {
+        blend: 'add',
+        sprite: 'glow',
+        count: [1, 1],
+        life: [0.18, 0.26],
+        speed: [0, 0.2],
+        spread: 180,
+        size: [0.16, 0.22],
+        sizeEnd: 0.3,
+        color: SLIME,
+        intensity: 2.5,
+        intensityEnd: 0.6,
+      },
+      {
+        blend: 'add',
+        sprite: 'droplet',
+        count: [0, 1],
+        life: [0.3, 0.5],
+        speed: [0.2, 0.8],
+        axis: 'down',
+        spread: 35,
+        size: [0.012, 0.02],
+        color: SLIME,
+        intensity: 3,
+        intensityEnd: 1,
+        gravity: 1,
+        stretch: 0.012,
+      },
+    ],
+  },
   'impact.shield': {
     emitters: [
       {

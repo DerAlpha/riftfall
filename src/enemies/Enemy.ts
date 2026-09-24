@@ -12,7 +12,7 @@ import { Color, Vector3 } from 'three';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import type { DamageInfo, DamageResult, Damageable, Hitbox } from '../core/contracts';
 import type { DamageElement, FleshSurface, HitZone } from '../core/events';
-import { ENEMY_AI, type EnemyTypeDef } from '../defs/enemies';
+import { ENEMY_AI, type EnemyTypeDef, type SlotPoolId } from '../defs/enemies';
 import type { StuckState } from './ai/StuckMonitor';
 import { createEnemyPose, type EnemyInstanceHandle, type EnemyPose } from './types';
 
@@ -32,6 +32,9 @@ export interface EnemyOwner {
   /** Damage was applied (inside CombatWorld.dealDamage – record only, no side effects). */
   onEnemyDamaged(e: Enemy, info: Readonly<DamageInfo>, applied: number, killed: boolean): void;
 }
+
+/** Melee token pools in index order (ENEMY_AI.slots.pools). */
+export const SLOT_POOLS = Object.keys(ENEMY_AI.slots.pools) as SlotPoolId[];
 
 const NO_DAMAGE: DamageResult = Object.freeze({ applied: 0, killed: false });
 /**
@@ -83,6 +86,8 @@ export class Enemy implements Damageable {
   // --- identity / setup ---
   readonly type: string;
   readonly def: EnemyTypeDef;
+  /** Index of def.slotPool in SLOT_POOLS (melee token pool). */
+  readonly poolIndex: number;
   handle: EnemyInstanceHandle = -1;
   agent = -1;
   elite = false;
@@ -163,6 +168,11 @@ export class Enemy implements Damageable {
   spotBest = Number.NEGATIVE_INFINITY;
   readonly spotCandidate = new Vector3();
   searchIndex = 0;
+  /** Ranged: the side (+1 left / −1 right of the line of fire) a step hides the spot, 0 = none. */
+  coverSide = 0;
+  /** Ranged: duck into cover after the current shot; where to. */
+  hideAfterShot = false;
+  readonly hidePoint = new Vector3();
   strafeSign = 1;
   nextActionTime = 0;
   laneClear = false;
@@ -194,11 +204,16 @@ export class Enemy implements Damageable {
   ) {
     this.type = def.id;
     this.def = def;
+    this.poolIndex = Math.max(0, SLOT_POOLS.indexOf(def.slotPool));
     this.surface = def.surface;
     this.threat = threatRow;
     this.attackReady = new Float64Array(def.attacks.length);
     const E = ENEMY_AI.elite;
     this.pose = createEnemyPose(new Color(E.rimColor[0], E.rimColor[1], E.rimColor[2]));
+  }
+
+  surfaceAt(zone: HitZone): FleshSurface {
+    return this.def.zoneSurfaces[zone] ?? this.surface;
   }
 
   get attacking(): boolean {

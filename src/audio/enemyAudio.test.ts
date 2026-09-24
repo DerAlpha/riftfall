@@ -365,6 +365,16 @@ describe('AudioEventBridge – enemies', () => {
       ENEMIES.tank.audio.spawn,
       ENEMIES.swarmer.audio.spawn,
     ]);
+    // A long burst stays one tear (the window slides with its members) ...
+    audio.clear();
+    for (let i = 0; i < 6; i++) {
+      advance(E.spawnMerge.seconds * 0.6);
+      spawned(events, 10 + i, 'swarmer', 10, 0.3 * i);
+    }
+    expect(audio.plays.length).toBe(0);
+    // ... but the tank emerging from the same rift gets its own, larger tear.
+    spawned(events, 20, 'tank', 10.5, 0);
+    expect(audio.ids()).toEqual([ENEMIES.tank.audio.spawn]);
   });
 
   it('keeps a voice budget per type and lets the nearest be heard', () => {
@@ -474,6 +484,36 @@ describe('AudioEventBridge – enemies', () => {
     const enemySounds = audio.plays.filter((p) => p.id.startsWith('enemy.'));
     expect(enemySounds.map((p) => p.id)).toEqual([ENEMIES.spitter.audio.hurt]);
     expect(enemySounds[0]!.opts.position).toEqual({ x: 3, y: 1, z: 0 });
+  });
+
+  it('merges the hits of one blast on one enemy into one hurt sound', () => {
+    const { events, audio, advance } = setup();
+    spawned(events, 5, 'swarmer', 3, 0);
+    spawned(events, 6, 'swarmer', 4, 0);
+    const pellet = (targetId: number): void =>
+      events.emit('combat:damage', {
+        targetId,
+        amount: 8,
+        zone: 'body',
+        point: { x: 3, y: 0.4, z: 0 },
+        killed: false,
+        weaponId: 'shotgun',
+        element: 'physical',
+        source: 'player',
+      });
+    const hurts = (): number => audio.ids().filter((id) => id === ENEMIES.swarmer.audio.hurt).length;
+    audio.clear();
+    // Nine pellets over two enemies in one tick: one hurt each.
+    for (let i = 0; i < 9; i++) pellet(i % 3 === 0 ? 6 : 5);
+    expect(hurts()).toBe(2);
+    // A stagger right after the hit still sounds (the bigger reaction), later pellets merge into it.
+    events.emit('enemy:staggered', { id: 5, type: 'swarmer', position: { x: 3, y: 0, z: 0 } });
+    pellet(5);
+    expect(hurts()).toBe(3);
+    // The next blast reacts again.
+    advance(E.hurtMerge.seconds + 0.01);
+    pellet(5);
+    expect(hurts()).toBe(4);
   });
 
   it('replaces the surface impact of an acid glob with the splash', () => {

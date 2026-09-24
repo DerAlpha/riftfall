@@ -10,6 +10,7 @@ import {
 } from './enemies';
 import { NAV } from './nav';
 import { getEnemyVisualDef } from './enemyVisuals';
+import { getEffectPreset } from './vfx';
 import { getBrain } from '../enemies/ai/brains';
 
 const types = Object.values(ENEMIES) as EnemyTypeDef[];
@@ -97,7 +98,7 @@ describe('ENEMIES defs', () => {
       expect(def.movement.walkSpeed).toBeLessThanOrEqual(def.movement.runSpeed);
       expect(def.knockbackResistance).toBeGreaterThanOrEqual(0);
       expect(def.knockbackResistance).toBeLessThanOrEqual(1);
-      expect(def.slotCost).toBeLessThanOrEqual(ENEMY_AI.slots.maxTokens);
+      expect(def.slotCost).toBeLessThanOrEqual(ENEMY_AI.slots.pools[def.slotPool]);
       if (def.ranged) {
         const R = def.ranged;
         expect(R.bandMin).toBeLessThan(R.bandPreferred);
@@ -113,6 +114,35 @@ describe('ENEMIES defs', () => {
       expect(p.splash.innerRadius).toBeLessThanOrEqual(p.splash.radius);
       // Blobs are HDR emissive (bloom threshold ~1).
       expect(Math.max(...p.visual.color) * p.visual.intensity).toBeGreaterThan(1.5);
+      // Flattened lobs stay dodgeable globs.
+      expect(p.maxLaunchSpeed).toBeGreaterThanOrEqual(p.lobSpeed);
+      if (p.impactEffect) expect(getEffectPreset(p.impactEffect.effect), p.id).toBeDefined();
+      if (p.trail) expect(getEffectPreset(p.trail.effect), p.id).toBeDefined();
+    }
+  });
+
+  it('behaviour data is consistent with the attacks it drives', () => {
+    for (const def of types) {
+      // Tanks waiting for a melee token keep to a ring they can charge from.
+      const charge = def.attacks.find((a) => a.kind === 'charge');
+      if (def.brute && charge) {
+        const B = def.brute;
+        expect(B.waitRadius - B.waitSlack, def.id).toBeGreaterThanOrEqual(charge.minRange);
+        expect(B.waitRadius + B.waitSlack, def.id).toBeLessThanOrEqual(charge.range);
+        expect(B.engageDistance, def.id).toBeGreaterThan(B.waitRadius + B.waitSlack);
+      }
+      // Token holders reach their attacks from where they stop.
+      const melee = def.attacks.filter((a) => a.usesSlot && a.kind !== 'leap');
+      const standoff = def.swarm?.standoff ?? def.brute?.standoff;
+      if (standoff !== undefined && melee.length > 0) {
+        expect(Math.max(...melee.map((a) => a.range)), def.id).toBeGreaterThan(standoff);
+      }
+      for (const z of Object.keys(def.zoneSurfaces)) {
+        expect(['head', 'body', 'limb', 'weakpoint', 'shield'], def.id).toContain(z);
+      }
+    }
+    for (const kind of ['melee', 'leap', 'projectile', 'charge', 'slam'] as const) {
+      expect(ENEMY_AI.attackSpacing[kind]).toBeGreaterThanOrEqual(0);
     }
   });
 });

@@ -78,7 +78,8 @@ export interface MenuDeps {
   maps?: readonly MapChoice[];
   /**
    * Game over "Neu starten" (user gesture, like onResume: request pointer lock unless lock-less).
-   * Default: onStart with the finished run's map.
+   * The game over screen is already closed when it runs, so a refused lock can open the pause
+   * menu. Default: onStart with the finished run's map.
    */
   onRestart?(opts?: PlayOptions): void;
   /** Game over "Hauptmenü". Default: the start screen is shown. */

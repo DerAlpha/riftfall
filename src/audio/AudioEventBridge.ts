@@ -291,7 +291,11 @@ export class AudioEventBridge {
   private readonly strikeType: string[] = new Array<string>(E.maxPendingStrikes).fill('');
   private strikeNext = 0;
   private readonly strikeAt = { x: 0, y: 0, z: 0 };
-  private readonly lastSpawn = { x: 0, y: 0, z: 0, time: Number.NEGATIVE_INFINITY };
+  /** Recently hurt enemies (ring): id and wall-clock time of their last hit reaction. */
+  private readonly hurtId = new Int32Array(E.hurtMerge.slots);
+  private readonly hurtAt = new Float64Array(E.hurtMerge.slots).fill(Number.NEGATIVE_INFINITY);
+  private hurtNext = 0;
+  private readonly lastSpawn = { x: 0, y: 0, z: 0, time: Number.NEGATIVE_INFINITY, id: '' };
 
   /**
    * Casing bounce hook with the VFX ClinkCallback signature (position, sound id, impact speed) –
@@ -416,17 +420,23 @@ export class AudioEventBridge {
         this.trackType(e.id, e.type);
         const def = getEnemyDef(e.type);
         if (!def) return;
-        // One rift tear per burst: members emerge from the same rift a moment apart.
+        // One rift tear per burst: members emerge from the same rift a moment apart (the window
+        // slides with them). A different tear (the tank's large one) always sounds.
         const now = this.now();
         const L = this.lastSpawn;
+        const id = def.audio.spawn;
         const near =
           Math.hypot(e.position.x - L.x, e.position.y - L.y, e.position.z - L.z) < E.spawnMerge.distance;
-        if (near && now - L.time < E.spawnMerge.seconds) return;
-        if (this.playEnemy('spawn', e.type, def.audio.spawn, e.position)) {
+        if (near && id === L.id && now - L.time < E.spawnMerge.seconds) {
+          L.time = now;
+          return;
+        }
+        if (this.playEnemy('spawn', e.type, id, e.position)) {
           L.x = e.position.x;
           L.y = e.position.y;
           L.z = e.position.z;
           L.time = now;
+          L.id = id;
         }
       }),
       events.on('enemy:alert', (e) => {
@@ -441,6 +451,8 @@ export class AudioEventBridge {
       }),
       events.on('enemy:staggered', (e) => {
         this.cancelStrikes(e.id);
+        // The bigger reaction always sounds; hits right after it merge into it.
+        this.noteHurt(e.id, this.now());
         const def = getEnemyDef(e.type);
         if (def) this.playEnemy('stagger', e.type, def.audio.hurt, e.position);
       }),
@@ -456,7 +468,8 @@ export class AudioEventBridge {
         const type = this.typeById.get(e.targetId) ?? this.lookupType(e.targetId);
         if (type === null) return;
         const def = getEnemyDef(type);
-        if (def) this.playEnemy('hurt', type, def.audio.hurt, e.point);
+        if (!def || this.hurtMerged(e.targetId)) return;
+        this.playEnemy('hurt', type, def.audio.hurt, e.point);
       }),
       events.on('wave:start', (e) => {
         const s = ST.waveStart;
@@ -509,6 +522,29 @@ export class AudioEventBridge {
       this.budgets.set(key, b);
     }
     return b;
+  }
+
+  /** Did enemy `id` just react to a hit (merge window)? Otherwise it is remembered now. */
+  private hurtMerged(id: number): boolean {
+    const now = this.now();
+    for (let i = 0; i < this.hurtId.length; i++) {
+      if (this.hurtId[i] === id && now - this.hurtAt[i]! < E.hurtMerge.seconds) return true;
+    }
+    this.noteHurt(id, now);
+    return false;
+  }
+
+  private noteHurt(id: number, now: number): void {
+    for (let i = 0; i < this.hurtId.length; i++) {
+      if (this.hurtId[i] === id) {
+        this.hurtAt[i] = now;
+        return;
+      }
+    }
+    const i = this.hurtNext;
+    this.hurtNext = (i + 1) % this.hurtId.length;
+    this.hurtId[i] = id;
+    this.hurtAt[i] = now;
   }
 
   private trackType(id: number, type: string): void {
@@ -638,6 +674,7 @@ export class AudioEventBridge {
     this.typeById.clear();
     for (const [id] of this.voiceStates) this.releaseState(id);
     this.strikeDue.fill(Number.POSITIVE_INFINITY);
+    this.hurtAt.fill(Number.NEGATIVE_INFINITY);
     for (const b of this.budgets.values()) {
       b.voice.reset();
       b.step.reset();

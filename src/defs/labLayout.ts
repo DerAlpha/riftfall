@@ -22,7 +22,15 @@
  * Zones (M4 door gating, spawn point zones) are groups of spaces.
  */
 import type { MaterialId } from './materials';
-import type { DustRegionDef, Facing, PointLightDef, RectDef, SpotLightDef, Vec2Tuple, Vec3Tuple } from './level';
+import type {
+  DustRegionDef,
+  Facing,
+  PointLightDef,
+  RectDef,
+  SpotLightDef,
+  Vec2Tuple,
+  Vec3Tuple,
+} from './level';
 
 // ---------------------------------------------------------------------------
 // Material variants (tinted clones of MATERIALS; src/maps/lab/labMaterials.ts)
@@ -169,7 +177,11 @@ export interface LabThemeDef {
   readonly bands: readonly { readonly material: LabMaterialId; readonly top: number }[];
   readonly baseTrim: LabMaterialId;
   /** Emissive strip along the walls (housing + glowing inset). */
-  readonly strip: { readonly material: LabMaterialId; readonly housing: LabMaterialId; readonly y: number } | null;
+  readonly strip: {
+    readonly material: LabMaterialId;
+    readonly housing: LabMaterialId;
+    readonly y: number;
+  } | null;
   /** Flush emissive panels on the ceiling in a grid (fake light fixtures, bloom). */
   readonly ceilingPanels: {
     readonly material: LabMaterialId;
@@ -196,7 +208,10 @@ export interface LabSpawnPointDef {
    * LAB_LAYOUT.spawnTears.wallDistance behind `position`. Floor tears: null.
    */
   readonly wall: Facing | null;
-  /** Floor tears: direction enemies face when emerging (degrees, enemy yaw: 0 = +Z). */
+  /**
+   * Floor tears: direction enemies face when emerging, into the room (degrees, enemy yaw:
+   * 0 = +Z, 90 = +X). Wall tears / vents face along their wall's interior normal.
+   */
   readonly yawDeg?: number;
   /** Extra distance of the tear in front of the wall face (m), e.g. in front of the dock shutter. */
   readonly tearOffset?: number;
@@ -302,18 +317,24 @@ export const RIFT_PORTAL = {
     pulseOpen: 0.7,
     pulseIntensity: 2.2,
   },
-  /** Pulses decay exponentially (1/s); strengths are clamped to `max`. */
-  pulse: { decay: 1.8, max: 2 },
+  /**
+   * Pulses decay exponentially (1/s); strengths are clamped to `max`. Reduce flashing: the visible
+   * flare (brightness, opening) of every tear, the vortex and the particles is scaled by
+   * `reducedScale` (the anomaly's light has its own `large.light.reducedPulseBoost`).
+   */
+  pulse: { decay: 1.8, max: 2, reducedScale: 0.3 },
   /** Spawn tears (small). */
   small: {
     wall: { width: 1.3, height: 2.6, bottom: 0.12 },
     floor: { width: 1.1, length: 2.4, lift: 0.025 },
     vent: { width: 1.0, height: 0.6 },
-    /** Idle brightness (spawn bursts pulse above it). */
+    /** Idle brightness (spawn bursts pulse above it); vent slits glow brighter behind the louvers. */
     intensity: 1,
-    /** Pulse of the tear nearest to a spawned enemy (within `pulseRadius` m). */
+    ventBrightness: 1.2,
+    /** Pulse of the tear nearest to a spawned enemy (within `pulseRadius` m); every tear on a wave start. */
     spawnPulse: 1,
     pulseRadius: 5,
+    wavePulse: 0.5,
   },
   /** The atrium anomaly (large). */
   large: {
@@ -321,12 +342,24 @@ export const RIFT_PORTAL = {
     coreRadius: 3,
     /** Soft halo billboard (radius, m). */
     haloRadius: 7,
-    haloIntensity: 0.16,
+    haloIntensity: 0.11,
     /** Tear shards orbiting the core (size m, count, orbit radius m). */
     tearSize: [1.5, 5.5] as Vec2Tuple,
     tearCount: 5,
     tearOrbit: 3.4,
     tearIntensity: 0.7,
+    /**
+     * Cluster layout jitter (seeded): orbit angle (rad), long-axis tilt (rad), plane twist (rad),
+     * relative orbit radius / size spread, vertical spread (m).
+     */
+    cluster: {
+      angleJitter: 0.6,
+      tilt: 1.2,
+      twist: 0.8,
+      orbitSpread: 0.4,
+      sizeSpread: 0.45,
+      heightSpread: 1.5,
+    },
     /** Rotation of the tear cluster (rad/s) and wobble of the planes. */
     rotationSpeed: 0.1,
     wobble: 0.12,
@@ -337,9 +370,17 @@ export const RIFT_PORTAL = {
       twist: 2.6,
       spin: 0.45,
       /** Dark event horizon radius (fraction of the core) and the bright ring width. */
-      horizon: 0.3,
-      ringWidth: 0.1,
-      ringIntensity: 2.4,
+      horizon: 0.26,
+      ringWidth: 0.09,
+      ringIntensity: 1.5,
+      /**
+       * Torn ring: radius wobble (fraction of the core), noise scale and drift (1/s); share of the
+       * cyan-white rim color in the (otherwise hot cyan) ring.
+       */
+      ringJag: 0.16,
+      ringJagScale: 2.2,
+      ringJagSpeed: 0.18,
+      ringRimShare: 0.25,
       arms: 3,
     },
     particles: {
@@ -356,6 +397,8 @@ export const RIFT_PORTAL = {
       minPixelSize: 1.5,
       maxPixelSize: 9,
       intensity: 2.2,
+      /** Visible fraction with volumetrics off (a gameplay landmark, only thinned out). */
+      offFraction: 0.35,
     },
     light: {
       color: [0.62, 0.22, 1.0] as Vec3Tuple,
@@ -366,6 +409,8 @@ export const RIFT_PORTAL = {
       breathe: 0.18,
       breatheRate: 0.37,
       pulseBoost: 1.6,
+      /** Reduce flashing: pulses brighten the light only this fraction as much. */
+      reducedPulseBoost: 0.35,
     },
     /** Pulse applied by a wave start. */
     wavePulse: 1.5,
@@ -378,6 +423,17 @@ export const FOG_VOLUME = {
   steps: 6,
   /** Max opacity of one volume (keeps the scene readable through dense fog). */
   maxAlpha: 0.85,
+  /**
+   * The proxy box is this much smaller than the volume on every side (m): volumes that end at a
+   * floor, wall or platform top would otherwise z-fight with it (the density integral still uses
+   * the full extent).
+   */
+  faceInset: 0.03,
+  /**
+   * Min. vertical distance (m) between a volume's horizontal faces and the standing eye on the
+   * floors inside it: the camera must not cross a face through head bob (see LAB_LAYOUT.fogVolumes).
+   */
+  eyeClearance: 0.25,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -405,9 +461,28 @@ export const LAB_LAYOUT = {
   ] as readonly LabZoneDef[],
 
   spaces: [
-    { id: 'reception', zone: 'reception', theme: 'clinical', ceiling: 5.2, rects: [{ minX: -10, maxX: 10, minZ: 19, maxZ: 30 }] },
-    { id: 'hallN', zone: 'atrium', theme: 'clinical', ceiling: 5.0, rects: [{ minX: -3, maxX: 3, minZ: 12.6, maxZ: 18.4 }] },
-    { id: 'atrium', zone: 'atrium', theme: 'atrium', ceiling: 15, customCeiling: true, rects: [{ minX: -14, maxX: 14, minZ: -14, maxZ: 12 }] },
+    {
+      id: 'reception',
+      zone: 'reception',
+      theme: 'clinical',
+      ceiling: 5.2,
+      rects: [{ minX: -10, maxX: 10, minZ: 19, maxZ: 30 }],
+    },
+    {
+      id: 'hallN',
+      zone: 'atrium',
+      theme: 'clinical',
+      ceiling: 5.0,
+      rects: [{ minX: -3, maxX: 3, minZ: 12.6, maxZ: 18.4 }],
+    },
+    {
+      id: 'atrium',
+      zone: 'atrium',
+      theme: 'atrium',
+      ceiling: 15,
+      customCeiling: true,
+      rects: [{ minX: -14, maxX: 14, minZ: -14, maxZ: 12 }],
+    },
     {
       id: 'corrW',
       zone: 'labs',
@@ -418,8 +493,20 @@ export const LAB_LAYOUT = {
         { minX: -29.4, maxX: -25, minZ: 10.6, maxZ: 25.2 },
       ],
     },
-    { id: 'labs', zone: 'labs', theme: 'clinical', ceiling: 4.8, rects: [{ minX: -35, maxX: -19, minZ: -26, maxZ: 10 }] },
-    { id: 'corrAL', zone: 'labs', theme: 'corridor', ceiling: 4.2, rects: [{ minX: -18.4, maxX: -14.6, minZ: -3.4, maxZ: 1.4 }] },
+    {
+      id: 'labs',
+      zone: 'labs',
+      theme: 'clinical',
+      ceiling: 4.8,
+      rects: [{ minX: -35, maxX: -19, minZ: -26, maxZ: 10 }],
+    },
+    {
+      id: 'corrAL',
+      zone: 'labs',
+      theme: 'corridor',
+      ceiling: 4.2,
+      rects: [{ minX: -18.4, maxX: -14.6, minZ: -3.4, maxZ: 1.4 }],
+    },
     {
       id: 'corrE',
       zone: 'server',
@@ -430,35 +517,282 @@ export const LAB_LAYOUT = {
         { minX: 25, maxX: 29.4, minZ: 12.6, maxZ: 25.2 },
       ],
     },
-    { id: 'server', zone: 'server', theme: 'server', ceiling: 4.8, rects: [{ minX: 19, maxX: 35, minZ: -6, maxZ: 12 }] },
-    { id: 'corrAS', zone: 'server', theme: 'corridor', ceiling: 4.2, rects: [{ minX: 14.6, maxX: 18.4, minZ: -3.4, maxZ: 1.4 }] },
-    { id: 'cryo', zone: 'cryo', theme: 'cryo', ceiling: 5.5, rects: [{ minX: 19, maxX: 35, minZ: -28, maxZ: -10.6 }] },
-    { id: 'corrCS', zone: 'cryo', theme: 'corridor', ceiling: 4.2, rects: [{ minX: 25, maxX: 29.4, minZ: -10, maxZ: -6.6 }] },
-    { id: 'hallS', zone: 'dock', theme: 'corridor', ceiling: 5.4, rects: [{ minX: -4, maxX: 4, minZ: -18, maxZ: -14.6 }] },
-    { id: 'dock', zone: 'dock', theme: 'industrial', ceiling: 9, rects: [{ minX: -15, maxX: 15, minZ: -30, maxZ: -18.6 }] },
-    { id: 'corrDL', zone: 'dock', theme: 'corridor', ceiling: 4.2, rects: [{ minX: -18.4, maxX: -15.6, minZ: -24.4, maxZ: -19.6 }] },
-    { id: 'corrDC', zone: 'dock', theme: 'corridor', ceiling: 4.2, rects: [{ minX: 15.6, maxX: 18.4, minZ: -24.4, maxZ: -19.6 }] },
+    {
+      id: 'server',
+      zone: 'server',
+      theme: 'server',
+      ceiling: 4.8,
+      rects: [{ minX: 19, maxX: 35, minZ: -6, maxZ: 12 }],
+    },
+    {
+      id: 'corrAS',
+      zone: 'server',
+      theme: 'corridor',
+      ceiling: 4.2,
+      rects: [{ minX: 14.6, maxX: 18.4, minZ: -3.4, maxZ: 1.4 }],
+    },
+    {
+      id: 'cryo',
+      zone: 'cryo',
+      theme: 'cryo',
+      ceiling: 5.5,
+      rects: [{ minX: 19, maxX: 35, minZ: -28, maxZ: -10.6 }],
+    },
+    {
+      id: 'corrCS',
+      zone: 'cryo',
+      theme: 'corridor',
+      ceiling: 4.2,
+      rects: [{ minX: 25, maxX: 29.4, minZ: -10, maxZ: -6.6 }],
+    },
+    {
+      id: 'hallS',
+      zone: 'dock',
+      theme: 'corridor',
+      ceiling: 5.4,
+      rects: [{ minX: -4, maxX: 4, minZ: -18, maxZ: -14.6 }],
+    },
+    {
+      id: 'dock',
+      zone: 'dock',
+      theme: 'industrial',
+      ceiling: 9,
+      rects: [{ minX: -15, maxX: 15, minZ: -30, maxZ: -18.6 }],
+    },
+    {
+      id: 'corrDL',
+      zone: 'dock',
+      theme: 'corridor',
+      ceiling: 4.2,
+      rects: [{ minX: -18.4, maxX: -15.6, minZ: -24.4, maxZ: -19.6 }],
+    },
+    {
+      id: 'corrDC',
+      zone: 'dock',
+      theme: 'corridor',
+      ceiling: 4.2,
+      rects: [{ minX: 15.6, maxX: 18.4, minZ: -24.4, maxZ: -19.6 }],
+    },
   ] as readonly LabSpaceDef[],
 
   doorways: [
-    { id: 'door_reception_atrium', a: 'reception', b: 'hallN', x: 0, z: 18.7, axis: 'z', width: 3.6, height: 4.0, slot: true, costHint: 750 },
-    { id: 'arch_hall_atrium', a: 'hallN', b: 'atrium', x: 0, z: 12.3, axis: 'z', width: 5.0, height: 4.2, slot: false, costHint: 0 },
-    { id: 'door_reception_labs', a: 'reception', b: 'corrW', x: -10.3, z: 23, axis: 'x', width: 3.0, height: 3.4, slot: true, costHint: 750 },
-    { id: 'arch_corrw_labs', a: 'corrW', b: 'labs', x: -27.2, z: 10.3, axis: 'z', width: 3.4, height: 3.4, slot: false, costHint: 0 },
-    { id: 'door_reception_server', a: 'reception', b: 'corrE', x: 10.3, z: 23, axis: 'x', width: 3.0, height: 3.4, slot: true, costHint: 750 },
-    { id: 'arch_corre_server', a: 'corrE', b: 'server', x: 27.2, z: 12.3, axis: 'z', width: 3.4, height: 3.4, slot: false, costHint: 0 },
-    { id: 'door_atrium_labs', a: 'atrium', b: 'corrAL', x: -14.3, z: -1, axis: 'x', width: 3.2, height: 3.4, slot: true, costHint: 1000 },
-    { id: 'arch_corral_labs', a: 'corrAL', b: 'labs', x: -18.7, z: -1, axis: 'x', width: 3.2, height: 3.4, slot: false, costHint: 0 },
-    { id: 'door_atrium_server', a: 'atrium', b: 'corrAS', x: 14.3, z: -1, axis: 'x', width: 3.2, height: 3.4, slot: true, costHint: 1000 },
-    { id: 'arch_corras_server', a: 'corrAS', b: 'server', x: 18.7, z: -1, axis: 'x', width: 3.2, height: 3.4, slot: false, costHint: 0 },
-    { id: 'door_atrium_dock', a: 'atrium', b: 'hallS', x: 0, z: -14.3, axis: 'z', width: 4.4, height: 4.0, slot: true, costHint: 1250, blast: true },
-    { id: 'arch_halls_dock', a: 'hallS', b: 'dock', x: 0, z: -18.3, axis: 'z', width: 5.6, height: 4.8, slot: false, costHint: 0 },
-    { id: 'door_dock_labs', a: 'corrDL', b: 'labs', x: -18.7, z: -22, axis: 'x', width: 3.0, height: 3.4, slot: true, costHint: 1000 },
-    { id: 'arch_dock_corrdl', a: 'dock', b: 'corrDL', x: -15.3, z: -22, axis: 'x', width: 3.0, height: 3.4, slot: false, costHint: 0 },
-    { id: 'door_dock_cryo', a: 'corrDC', b: 'cryo', x: 18.7, z: -22, axis: 'x', width: 3.0, height: 3.4, slot: true, costHint: 1250 },
-    { id: 'arch_dock_corrdc', a: 'dock', b: 'corrDC', x: 15.3, z: -22, axis: 'x', width: 3.0, height: 3.4, slot: false, costHint: 0 },
-    { id: 'arch_cryo_corrcs', a: 'cryo', b: 'corrCS', x: 27.2, z: -10.3, axis: 'z', width: 3.4, height: 3.4, slot: false, costHint: 0 },
-    { id: 'door_cryo_server', a: 'corrCS', b: 'server', x: 27.2, z: -6.3, axis: 'z', width: 3.2, height: 3.4, slot: true, costHint: 1000 },
+    {
+      id: 'door_reception_atrium',
+      a: 'reception',
+      b: 'hallN',
+      x: 0,
+      z: 18.7,
+      axis: 'z',
+      width: 3.6,
+      height: 4.0,
+      slot: true,
+      costHint: 750,
+    },
+    {
+      id: 'arch_hall_atrium',
+      a: 'hallN',
+      b: 'atrium',
+      x: 0,
+      z: 12.3,
+      axis: 'z',
+      width: 5.0,
+      height: 4.2,
+      slot: false,
+      costHint: 0,
+    },
+    {
+      id: 'door_reception_labs',
+      a: 'reception',
+      b: 'corrW',
+      x: -10.3,
+      z: 23,
+      axis: 'x',
+      width: 3.0,
+      height: 3.4,
+      slot: true,
+      costHint: 750,
+    },
+    {
+      id: 'arch_corrw_labs',
+      a: 'corrW',
+      b: 'labs',
+      x: -27.2,
+      z: 10.3,
+      axis: 'z',
+      width: 3.4,
+      height: 3.4,
+      slot: false,
+      costHint: 0,
+    },
+    {
+      id: 'door_reception_server',
+      a: 'reception',
+      b: 'corrE',
+      x: 10.3,
+      z: 23,
+      axis: 'x',
+      width: 3.0,
+      height: 3.4,
+      slot: true,
+      costHint: 750,
+    },
+    {
+      id: 'arch_corre_server',
+      a: 'corrE',
+      b: 'server',
+      x: 27.2,
+      z: 12.3,
+      axis: 'z',
+      width: 3.4,
+      height: 3.4,
+      slot: false,
+      costHint: 0,
+    },
+    {
+      id: 'door_atrium_labs',
+      a: 'atrium',
+      b: 'corrAL',
+      x: -14.3,
+      z: -1,
+      axis: 'x',
+      width: 3.2,
+      height: 3.4,
+      slot: true,
+      costHint: 1000,
+    },
+    {
+      id: 'arch_corral_labs',
+      a: 'corrAL',
+      b: 'labs',
+      x: -18.7,
+      z: -1,
+      axis: 'x',
+      width: 3.2,
+      height: 3.4,
+      slot: false,
+      costHint: 0,
+    },
+    {
+      id: 'door_atrium_server',
+      a: 'atrium',
+      b: 'corrAS',
+      x: 14.3,
+      z: -1,
+      axis: 'x',
+      width: 3.2,
+      height: 3.4,
+      slot: true,
+      costHint: 1000,
+    },
+    {
+      id: 'arch_corras_server',
+      a: 'corrAS',
+      b: 'server',
+      x: 18.7,
+      z: -1,
+      axis: 'x',
+      width: 3.2,
+      height: 3.4,
+      slot: false,
+      costHint: 0,
+    },
+    {
+      id: 'door_atrium_dock',
+      a: 'atrium',
+      b: 'hallS',
+      x: 0,
+      z: -14.3,
+      axis: 'z',
+      width: 4.4,
+      height: 4.0,
+      slot: true,
+      costHint: 1250,
+      blast: true,
+    },
+    {
+      id: 'arch_halls_dock',
+      a: 'hallS',
+      b: 'dock',
+      x: 0,
+      z: -18.3,
+      axis: 'z',
+      width: 5.6,
+      height: 4.8,
+      slot: false,
+      costHint: 0,
+    },
+    {
+      id: 'door_dock_labs',
+      a: 'corrDL',
+      b: 'labs',
+      x: -18.7,
+      z: -22,
+      axis: 'x',
+      width: 3.0,
+      height: 3.4,
+      slot: true,
+      costHint: 1000,
+    },
+    {
+      id: 'arch_dock_corrdl',
+      a: 'dock',
+      b: 'corrDL',
+      x: -15.3,
+      z: -22,
+      axis: 'x',
+      width: 3.0,
+      height: 3.4,
+      slot: false,
+      costHint: 0,
+    },
+    {
+      id: 'door_dock_cryo',
+      a: 'corrDC',
+      b: 'cryo',
+      x: 18.7,
+      z: -22,
+      axis: 'x',
+      width: 3.0,
+      height: 3.4,
+      slot: true,
+      costHint: 1250,
+    },
+    {
+      id: 'arch_dock_corrdc',
+      a: 'dock',
+      b: 'corrDC',
+      x: 15.3,
+      z: -22,
+      axis: 'x',
+      width: 3.0,
+      height: 3.4,
+      slot: false,
+      costHint: 0,
+    },
+    {
+      id: 'arch_cryo_corrcs',
+      a: 'cryo',
+      b: 'corrCS',
+      x: 27.2,
+      z: -10.3,
+      axis: 'z',
+      width: 3.4,
+      height: 3.4,
+      slot: false,
+      costHint: 0,
+    },
+    {
+      id: 'door_cryo_server',
+      a: 'corrCS',
+      b: 'server',
+      x: 27.2,
+      z: -6.3,
+      axis: 'z',
+      width: 3.2,
+      height: 3.4,
+      slot: true,
+      costHint: 1000,
+    },
   ] as readonly LabDoorwayDef[],
 
   /** Doorway frames (both sides of every passage). */
@@ -485,7 +819,13 @@ export const LAB_LAYOUT = {
       ],
       baseTrim: 'trim_metal',
       strip: { material: 'emissive_cyan', housing: 'trim_metal', y: 2.9 },
-      ceilingPanels: { material: 'emissive_white#cold', size: [1.8, 0.3], spacing: [3.4, 3.2], margin: 1.2, dead: 0.55 },
+      ceilingPanels: {
+        material: 'emissive_white#cold',
+        size: [1.8, 0.3],
+        spacing: [3.4, 3.2],
+        margin: 1.2,
+        dead: 0.55,
+      },
       doorFrame: 'trim_metal',
     },
     corridor: {
@@ -498,7 +838,13 @@ export const LAB_LAYOUT = {
       baseTrim: 'trim_metal',
       // Low red emergency strip: the corridors are running on emergency power.
       strip: { material: 'emissive_red', housing: 'trim_metal', y: 0.32 },
-      ceilingPanels: { material: 'emissive_red#dim', size: [0.9, 0.16], spacing: [5, 99], margin: 1.4, dead: 0.2 },
+      ceilingPanels: {
+        material: 'emissive_red#dim',
+        size: [0.9, 0.16],
+        spacing: [5, 99],
+        margin: 1.4,
+        dead: 0.2,
+      },
       doorFrame: 'trim_metal',
     },
     atrium: {
@@ -520,7 +866,13 @@ export const LAB_LAYOUT = {
       bands: [{ material: 'wall_panel_dark', top: 99 }],
       baseTrim: 'trim_metal',
       strip: { material: 'emissive_cyan', housing: 'trim_metal', y: 0.26 },
-      ceilingPanels: { material: 'emissive_white#cold', size: [0.2, 3.2], spacing: [8.2, 4.6], margin: 2.2, dead: 0.35 },
+      ceilingPanels: {
+        material: 'emissive_white#cold',
+        size: [0.2, 3.2],
+        spacing: [8.2, 4.6],
+        margin: 2.2,
+        dead: 0.35,
+      },
       doorFrame: 'trim_metal',
     },
     cryo: {
@@ -532,7 +884,13 @@ export const LAB_LAYOUT = {
       ],
       baseTrim: 'trim_metal',
       strip: { material: 'emissive_cyan', housing: 'trim_metal', y: 3.4 },
-      ceilingPanels: { material: 'emissive_white#cold', size: [0.3, 2.2], spacing: [3, 5], margin: 1.6, dead: 0.3 },
+      ceilingPanels: {
+        material: 'emissive_white#cold',
+        size: [0.3, 2.2],
+        spacing: [3, 5],
+        margin: 1.6,
+        dead: 0.3,
+      },
       doorFrame: 'trim_metal',
     },
     industrial: {
@@ -549,7 +907,12 @@ export const LAB_LAYOUT = {
     },
   } as Readonly<Record<LabThemeId, LabThemeDef>>,
 
-  spawn: { position: [0, 0, 27] as Vec3Tuple, yawDeg: 0 },
+  /**
+   * Player spawn: south of the reception center, facing the atrium door (the anomaly glows at the
+   * end of the hall). Every reception spawn point lies beyond SPAWN_POINTS.minDistance from here:
+   * with the M4 doors closed the reception is the only active zone.
+   */
+  spawn: { position: [0, 0, 24] as Vec3Tuple, yawDeg: 0 },
 
   // --- reception ------------------------------------------------------------------------------
   reception: {
@@ -558,11 +921,11 @@ export const LAB_LAYOUT = {
     deskGlow: { height: 0.04, drop: 0.08 },
     planters: [
       { minX: 3.6, maxX: 6.4, minZ: 21.2, maxZ: 22.4, height: 0.9 },
-      { minX: 6.6, maxX: 8.2, minZ: 27.4, maxZ: 28.8, height: 0.9 },
+      { minX: 5.8, maxX: 7.2, minZ: 27.6, maxZ: 29.0, height: 0.9 },
     ] as readonly LabBoxDef[],
-    /** Planter greenery: emissive-free dark foliage blocks sitting in the planters. */
+    /** Planters: soil bed inset from the rim, green grow-light bed (inset, height) on the soil. */
     foliageInset: 0.12,
-    foliageHeight: 0.35,
+    growLight: { inset: 0.24, height: 0.04 },
     screens: [
       { position: [4.6, 2.3, 19], facing: 'pz', width: 2.4, height: 1.3 },
       { position: [-5.8, 2.2, 30], facing: 'nz', width: 3.2, height: 1.6 },
@@ -661,6 +1024,11 @@ export const LAB_LAYOUT = {
       headSize: [0.55, 1.6, 0.55] as Vec3Tuple,
       headTiltDeg: 32,
       bands: [0.9, 2.4] as readonly number[],
+      /** Base cap / glow band overhang (m), glowing emitter tip (height m, fraction of the head). */
+      capExtra: 0.12,
+      bandExtra: 0.02,
+      tipHeight: 0.18,
+      tipScale: 0.6,
     },
     /** Roof opening with a raised glass lantern and a steel mullion grid (sun shafts per pane). */
     skylight: {
@@ -671,6 +1039,8 @@ export const LAB_LAYOUT = {
       panes: [4, 4] as Vec2Tuple,
       mullion: 0.28,
       mullionDepth: 0.45,
+      /** Roof ribs over the lantern glass (fraction of the mullion size). */
+      ribScale: 0.6,
       lanternHeight: 2.2,
       glassThickness: 0.04,
       /** Shaft brightness relative to VOLUMETRIC_SHAFT.intensity × sun (the opening is large). */
@@ -708,7 +1078,15 @@ export const LAB_LAYOUT = {
       mullionSpacing: 1.6,
       mullionWidth: 0.07,
       glassThickness: 0.03,
+      /** Mullions / header trim stand proud of the partition, the sill a little more (m). */
+      mullionExtra: 0.02,
+      sillExtra: 0.04,
+      /** Cyan status strip above the opening: lift above the glass top, height. */
+      statusLift: 0.25,
+      statusHeight: 0.06,
     },
+    /** Glowing guide line down the aisle: half width, distance from the south / north wall. */
+    aisleLine: { halfWidth: 0.04, startMargin: 1.5, endMargin: 0.4 },
     tanks: [
       { x: -33.6, z: -17.8, radius: 0.55, height: 2.7 },
       { x: -33.6, z: -12.2, radius: 0.55, height: 2.7 },
@@ -728,6 +1106,8 @@ export const LAB_LAYOUT = {
       rimExtra: 0.09,
       fluidInset: 0.05,
       fluidTopGap: 0.25,
+      /** Fluid starts this far above the base (no z-fighting with the base cap). */
+      fluidLift: 0.02,
       /** Dark specimen silhouette inside (fraction of the radius / fluid height). */
       specimenRadius: 0.38,
       specimenHeight: 0.55,
@@ -739,15 +1119,16 @@ export const LAB_LAYOUT = {
       { minX: -19.8, maxX: -19, minZ: -12.7, maxZ: -10.3, height: 0.95 },
       { minX: -24.2, maxX: -21.8, minZ: -25.6, maxZ: -24.8, height: 0.95 },
     ] as readonly LabBoxDef[],
-    benchScreen: { width: 0.9, height: 0.5, lift: 0.3 },
+    benchScreen: { width: 0.9, height: 0.5, lift: 0.3, depth: 0.04 },
   },
 
   // --- server ---------------------------------------------------------------------------------
   server: {
     rows: [-4, 1.8, 6.4] as readonly number[],
+    /** Rack blocks along X; the aisles beside them (walls included) stay enemy-walkable (≥ 1.2 m). */
     blocks: [
       [20.5, 25.2],
-      [29.2, 34],
+      [29.2, 33.5],
     ] as readonly Vec2Tuple[],
     rackDepth: 0.8,
     rackHeight: 2.3,
@@ -755,6 +1136,13 @@ export const LAB_LAYOUT = {
     /** LED strips on both rack faces: count per cabinet, strip size (m). */
     ledStrips: [0.7, 1.15, 1.6] as readonly number[],
     ledHeight: 0.07,
+    /** LED strips stop this far before the rack ends; cabinet dividers; top cap overhang (m). */
+    ledMargin: 0.05,
+    dividerWidth: 0.04,
+    capOverhang: 0.03,
+    /** Cable-tray hangers: inset from the rack ends, bar size (m). */
+    hangerInset: 0.3,
+    hangerSize: 0.04,
     /** Cable trays over the rows. */
     trayY: 3.4,
     trayWidth: 0.5,
@@ -772,6 +1160,8 @@ export const LAB_LAYOUT = {
       capHeight: 0.25,
       rimExtra: 0.08,
       glowHeight: 0.05,
+      /** Glow ring radius beyond the pod glass (m). */
+      glowExtra: 0.05,
       /** Frozen occupant silhouette. */
       bodyRadius: 0.26,
       bodyHeight: 1.75,
@@ -782,7 +1172,7 @@ export const LAB_LAYOUT = {
   // --- dock -----------------------------------------------------------------------------------
   dock: {
     /** Raised loading platform along the north wall (mantle-able), with a ramp for enemies. */
-    platform: { minX: -12, maxX: 12, minZ: -30, maxZ: -26.5, height: 1.2 },
+    platform: { minX: -12, maxX: 12, minZ: -30, maxZ: -26.5, height: 1.2, hazardDepth: 0.3 },
     ramp: { minX: 9, maxX: 12, slopeDeg: 20 },
     shutter: {
       minX: -5,
@@ -792,6 +1182,8 @@ export const LAB_LAYOUT = {
       gap: 0.04,
       depth: 0.1,
       frame: 0.35,
+      /** Red warning light over the frame: size, gap above the frame, depth from the wall. */
+      alarm: { size: [1.2, 0.12, 0.1] as Vec3Tuple, lift: 0.15, offset: 0.08 },
     },
     crates: [
       { position: [-8.5, 0.75, -21.4], size: 1.5, yawDeg: 0, dynamic: false },
@@ -801,10 +1193,12 @@ export const LAB_LAYOUT = {
       { position: [7.4, 0.6, -24.6], size: 1.2, yawDeg: 0, dynamic: false },
       { position: [-9.6, 1.8, -28.6], size: 1.2, yawDeg: 0, dynamic: false },
       { position: [-10.9, 1.8, -28.4], size: 1.2, yawDeg: 8, dynamic: false },
-      { position: [-4, 0.5, -22.4], size: 1.0, yawDeg: 18, dynamic: true },
-      { position: [3.4, 0.4, -20.6], size: 0.8, yawDeg: -12, dynamic: true },
-      { position: [-2.2, 1.6, -28], size: 0.8, yawDeg: 25, dynamic: true },
-      { position: [4.6, 1.7, -28.4], size: 1.0, yawDeg: -8, dynamic: true },
+      // Dynamic crates (shots push them) stay off the enemy routes: the navmesh does not know
+      // where they end up, so enemies would walk through them.
+      { position: [-12.9, 0.5, -19.5], size: 1.0, yawDeg: 18, dynamic: true },
+      { position: [12.9, 0.4, -19.4], size: 0.8, yawDeg: -12, dynamic: true },
+      { position: [-7.9, 1.6, -29.2], size: 0.8, yawDeg: 25, dynamic: true },
+      { position: [6.8, 1.7, -24.6], size: 1.0, yawDeg: -8, dynamic: true },
     ] as readonly { position: Vec3Tuple; size: number; yawDeg: number; dynamic: boolean }[],
     /** Overhead crane girders (visual silhouettes). */
     crane: { y: 7.6, beams: [-26, -21.5] as readonly number[], size: [0.5, 0.7] as Vec2Tuple },
@@ -812,6 +1206,7 @@ export const LAB_LAYOUT = {
       [-12.6, -26.2],
       [12.6, -26.2],
     ] as readonly Vec2Tuple[],
+    bollard: { height: 1, radius: 0.18 },
   },
 
   /** Wall-mounted pipes (per space side) for silhouettes. */
@@ -827,23 +1222,47 @@ export const LAB_LAYOUT = {
 
   spawnPoints: [
     { id: 'rift_reception_east', zone: 'reception', kind: 'rift', position: [8.8, 0, 27.5], wall: 'nx' },
-    { id: 'vent_reception_south', zone: 'reception', kind: 'vent', position: [-7, 0, 28.8], wall: 'nz' },
+    { id: 'vent_reception_south', zone: 'reception', kind: 'vent', position: [-8.4, 0, 28.8], wall: 'nz' },
     { id: 'rift_atrium_west', zone: 'atrium', kind: 'rift', position: [-12.8, 0, 6.5], wall: 'px' },
     { id: 'rift_atrium_east', zone: 'atrium', kind: 'rift', position: [12.8, 0, -6.5], wall: 'nx' },
     { id: 'vent_atrium_north', zone: 'atrium', kind: 'vent', position: [-8, 0, -12.8], wall: 'pz' },
-    { id: 'floor_atrium_ne', zone: 'atrium', kind: 'floor', position: [5.2, 0, -9.4], wall: null, yawDeg: 180 },
+    {
+      id: 'floor_atrium_ne',
+      zone: 'atrium',
+      kind: 'floor',
+      position: [5.2, 0, -9.4],
+      wall: null,
+      // Facing the dais (atrium center).
+      yawDeg: -32,
+    },
     { id: 'rift_labs_north', zone: 'labs', kind: 'rift', position: [-27.2, 0, -24.8], wall: 'pz' },
     { id: 'rift_labs_west', zone: 'labs', kind: 'rift', position: [-33.8, 0, 6.5], wall: 'px' },
-    { id: 'floor_labs_east', zone: 'labs', kind: 'floor', position: [-21.6, 0, -20.2], wall: null, yawDeg: 180 },
+    {
+      id: 'floor_labs_east',
+      zone: 'labs',
+      kind: 'floor',
+      position: [-21.6, 0, -20.2],
+      wall: null,
+      // Facing down the cubicle aisle.
+      yawDeg: -35,
+    },
     { id: 'vent_corridor_west', zone: 'labs', kind: 'vent', position: [-19, 0, 24], wall: 'nz' },
     { id: 'rift_server_east', zone: 'server', kind: 'rift', position: [33.8, 0, 9.4], wall: 'nx' },
     { id: 'vent_server_west', zone: 'server', kind: 'vent', position: [20.2, 0, 4.1], wall: 'px' },
     { id: 'vent_corridor_east', zone: 'server', kind: 'vent', position: [19, 0, 22], wall: 'pz' },
     { id: 'rift_cryo_east', zone: 'cryo', kind: 'rift', position: [33.8, 0, -19.5], wall: 'nx' },
     { id: 'vent_cryo_north', zone: 'cryo', kind: 'vent', position: [33, 0, -26.8], wall: 'pz' },
-    { id: 'rift_dock_shutter', zone: 'dock', kind: 'rift', position: [0, 1.2, -28.8], wall: 'pz', tearOffset: 0.14 },
+    {
+      id: 'rift_dock_shutter',
+      zone: 'dock',
+      kind: 'rift',
+      position: [0, 1.2, -28.8],
+      wall: 'pz',
+      tearOffset: 0.14,
+    },
     { id: 'vent_dock_west', zone: 'dock', kind: 'vent', position: [-13.8, 0, -27.5], wall: 'px' },
-    { id: 'floor_dock_east', zone: 'dock', kind: 'floor', position: [9, 0, -21], wall: null, yawDeg: 180 },
+    // Facing across the dock floor.
+    { id: 'floor_dock_east', zone: 'dock', kind: 'floor', position: [9, 0, -21], wall: null, yawDeg: -90 },
   ] as readonly LabSpawnPointDef[],
 
   /** Spawn tear placement relative to the spawn point. */
@@ -852,6 +1271,8 @@ export const LAB_LAYOUT = {
     wallDistance: 1.2,
     /** Tear quad in front of the wall face (m). */
     faceOffset: 0.035,
+    /** Wall trims and light strips stop this far beside a tear / vent / the dock shutter (m). */
+    trimGap: 0.25,
     /** Vent grate: center height, width, slit layout. */
     vent: { y: 0.55, width: 1.3, slits: 4, slitHeight: 0.1, spacing: 0.2 },
   },
@@ -1010,8 +1431,22 @@ export const LAB_LAYOUT = {
       },
     ] as readonly LabSpotDef[],
     points: [
-      { id: 'server_glow', position: [22, 3, 4.1], color: [0.3, 0.8, 1], intensity: 22, distance: 10, flicker: false },
-      { id: 'cryo_glow', position: [31, 3.4, -12.6], color: [0.4, 0.9, 1], intensity: 20, distance: 10, flicker: false },
+      {
+        id: 'server_glow',
+        position: [22, 3, 4.1],
+        color: [0.3, 0.8, 1],
+        intensity: 22,
+        distance: 10,
+        flicker: false,
+      },
+      {
+        id: 'cryo_glow',
+        position: [31, 3.4, -12.6],
+        color: [0.4, 0.9, 1],
+        intensity: 20,
+        distance: 10,
+        flicker: false,
+      },
       {
         id: 'corridor_west_alarm',
         position: [-20, 3.7, 23],
@@ -1033,6 +1468,10 @@ export const LAB_LAYOUT = {
     ] as readonly LabPointDef[],
     /** Reduce flashing: alarm pulses only dim this much, this slowly. */
     reducedPulse: { rate: 0.12, depth: 0.2 },
+    /** Phase offset between consecutive pulsing lights (cycles): alarms do not blink in sync. */
+    pulsePhaseStep: 0.37,
+    /** Arm from a wall-mounted fixture back to the nearest wall (fixtures closer than maxReach). */
+    bracket: { maxReach: 1.6, size: 0.12 },
   },
 
   dust: [
@@ -1043,16 +1482,23 @@ export const LAB_LAYOUT = {
     { min: [19.5, 0.3, -27.5], max: [34.5, 5.2, -11], share: 0.14 },
   ] as readonly DustRegionDef[],
 
+  /**
+   * Local fog volumes. Their horizontal faces stay clear of the standing eye height on the floor,
+   * the dais and the dock platform (FOG_VOLUME.eyeClearance): the shader shades a volume from
+   * inside and from outside differently, so head bob must never flip the camera across a face.
+   * Without scene depth an object inside a volume is hazed by the whole chord behind it (seen from
+   * outside): volumes enemies walk through stay thin, or their legs turn ghostly.
+   */
   fogVolumes: [
     {
       id: 'cryo_mist',
       shape: 'box',
       min: [19, 0, -28],
-      max: [35, 1.6, -10.6],
-      density: 0.28,
-      falloff: 3.4,
-      color: [0.1, 0.19, 0.28],
-      absorption: 0.55,
+      max: [35, 1.2, -10.6],
+      density: 0.4,
+      falloff: 3,
+      color: [0.14, 0.23, 0.32],
+      absorption: 0.4,
       edgeSoftness: 0.12,
       noiseScale: 0.45,
       noiseSpeed: 0.12,
@@ -1062,11 +1508,11 @@ export const LAB_LAYOUT = {
     {
       id: 'rift_haze',
       shape: 'ellipsoid',
-      min: [-9, 1.5, -10],
-      max: [9, 13.5, 8],
-      density: 0.07,
+      min: [-9, 2.3, -10],
+      max: [9, 14, 8],
+      density: 0.055,
       falloff: 1.6,
-      color: [0.34, 0.1, 0.7],
+      color: [0.28, 0.07, 0.6],
       absorption: 0.12,
       edgeSoftness: 0.2,
       noiseScale: 0.28,
@@ -1079,10 +1525,10 @@ export const LAB_LAYOUT = {
       shape: 'box',
       min: [-15, 0, -30],
       max: [15, 1.2, -18.6],
-      density: 0.35,
-      falloff: 1.8,
+      density: 0.13,
+      falloff: 2.4,
       color: [0.22, 0.16, 0.11],
-      absorption: 0.45,
+      absorption: 0.35,
       edgeSoftness: 0.1,
       noiseScale: 0.35,
       noiseSpeed: 0.1,

@@ -64,6 +64,11 @@ export interface RunFlowDeps {
   showGameOver?(summary: RunSummary): void;
   /** Player feet for the player:died payload. */
   getPlayerPosition?(): Vec3Like;
+  /**
+   * `kill()` (dev console `run kill`): drive the player's health to 0 so everything that watches
+   * it (wave director freeze, enemy aggro) sees the death too. Without it only the run dies.
+   */
+  killPlayer?(): void;
   /** Shared stats (default: the flow creates and owns one). */
   stats?: RunStats;
   /** Real-time scheduler (default setTimeout); tests use fake timers. */
@@ -145,8 +150,11 @@ export class RunFlow {
     this._state = 'running';
   }
 
-  /** Kill the run now (dev console `kill`): same sequence as a real death. */
+  /** Kill the run now (dev console `run kill`): same sequence as a real death. */
   kill(): void {
+    if (this._state !== 'running') return;
+    // Health reaching 0 starts the sequence through player:healthChanged (god mode may refuse).
+    this.deps.killPlayer?.();
     if (this._state === 'running') this.die(true);
   }
 

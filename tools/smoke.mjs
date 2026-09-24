@@ -18,6 +18,7 @@ const argVal = (name, def) => {
   const i = args.indexOf(name);
   return i >= 0 && args[i + 1] ? args[i + 1] : def;
 };
+const map = argVal('--map', 'testroom');
 const width = Number(argVal('--width', 1280));
 const height = Number(argVal('--height', 720));
 const port = useDev ? 5199 : 4199;
@@ -76,7 +77,7 @@ try {
   page.on('pageerror', (err) => report.pageErrors.push(String(err?.stack || err)));
 
   const t0 = Date.now();
-  await page.goto(`${base}?autostart=1&nolock=1&smoke=1`, { waitUntil: 'load' });
+  await page.goto(`${base}?autostart=1&nolock=1&smoke=1&map=${map}`, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__RIFTFALL__?.ready === true, null, { timeout: 180_000 });
   report.bootMs = Date.now() - t0;
   // Record movement events in-page: SwiftShader runs at a few FPS, so single snapshots can miss
@@ -132,9 +133,24 @@ try {
   await sleep(600);
   await page.keyboard.down('ShiftLeft');
   await page.keyboard.down('KeyW');
-  await sleep(1200);
+  // Sprint until the sim actually reached slide speed (SwiftShader stalls while shaders compile).
+  await page
+    .waitForFunction(
+      () => {
+        const p = window.__RIFTFALL__.game.sys.player;
+        return p.sprinting && Math.hypot(p.velocity.x, p.velocity.z) > 8;
+      },
+      null,
+      { timeout: 20_000, polling: 100 },
+    )
+    .catch(() => {});
   await page.keyboard.down('KeyC');
-  await sleep(500);
+  await page
+    .waitForFunction(() => window.__RIFTFALL__.snapshot().state === 'slide', null, {
+      timeout: 5000,
+      polling: 50,
+    })
+    .catch(() => {});
   const slide = await page.evaluate(() => window.__RIFTFALL__.snapshot());
   report.steps.push({ name: 'slide-probe', ...slide });
   await page.keyboard.up('KeyC');

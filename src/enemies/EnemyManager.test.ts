@@ -3,6 +3,7 @@ import { Vector3 } from 'three';
 import type { DamageInfo } from '../core/contracts';
 import { ENEMIES, ENEMY_AI } from '../defs/enemies';
 import { enemyDamageAmount, type Enemy } from './Enemy';
+import { RANGED_HIDE, RANGED_HOLD } from './ai/brains/ranged';
 import { DT, FakePlayer, createEnemyHarness } from './testFakes';
 
 function info(amount: number, zone: DamageInfo['zone'] = 'body', weaponId = 'rifle'): DamageInfo {
@@ -43,6 +44,28 @@ describe('enemyDamageAmount (zone multipliers on top of the weapon, armor, resis
     expect(enemyDamageAmount(ENEMIES.tank, 'body', 28, 'physical')).toBeCloseTo(28);
   });
 
+  it('impact surface per zone: the tank front sparks (armor), its flesh and back core bleed', () => {
+    const h = createEnemyHarness();
+    const e = enemyById(h, h.manager.spawn('tank', { x: 0, y: 0, z: -8 })!);
+    h.tick(2);
+    const seen = new Map<string, string>();
+    const dir = new Vector3();
+    const from = new Vector3();
+    for (const hb of e.hitboxes) {
+      // From 4 m outside the body, through the hitbox center.
+      dir.set(hb.a.x - e.position.x, 0, hb.a.z - e.position.z);
+      if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+      dir.normalize();
+      from.copy(hb.a).addScaledVector(dir, 4);
+      dir.negate();
+      const hit = h.combat.raycast(from, dir, 8);
+      if (hit?.target === e && hit.zone) seen.set(hit.zone, hit.surface);
+    }
+    expect(seen.get('shield')).toBe('armor');
+    expect(seen.get('weakpoint')).toBe('flesh');
+    expect(e.surface).toBe('armor'); // penetration still sees an armored body
+  });
+
   it('element resistances and garbage input', () => {
     expect(enemyDamageAmount(ENEMIES.spitter, 'body', 40, 'poison')).toBeCloseTo(10);
     expect(enemyDamageAmount(ENEMIES.spitter, 'body', Number.NaN, 'physical')).toBe(0);
@@ -58,7 +81,7 @@ describe('EnemyManager lifecycle', () => {
     expect(h.manager.alive).toBe(1);
     expect(h.manager.stats.byType.swarmer).toBe(1);
     expect(h.visuals.acquired).toBe(1);
-    expect(h.nav.liveAgents()).toBe(1);
+    expect(h.nav.enemyAgents(h.manager.playerAgentId)).toBe(1);
     expect(h.byType('enemy:spawned')).toHaveLength(1);
     const e = enemyById(h, id!);
     expect(h.combat.targets).toContain(e);
@@ -78,7 +101,7 @@ describe('EnemyManager lifecycle', () => {
     expect(died).toHaveLength(1);
     expect(died[0]).toMatchObject({ id, weaponId: 'pistol', zone: 'head', source: 'player' });
     expect(h.combat.targets).not.toContain(e);
-    expect(h.nav.liveAgents()).toBe(0);
+    expect(h.nav.enemyAgents(h.manager.playerAgentId)).toBe(0);
     expect(e.state).toBe('dying');
 
     const D = ENEMIES.swarmer.death;
@@ -104,7 +127,7 @@ describe('EnemyManager lifecycle', () => {
     h.manager.clear();
     expect(h.manager.alive).toBe(0);
     expect(h.visuals.released).toBe(3);
-    expect(h.nav.liveAgents()).toBe(0);
+    expect(h.nav.enemyAgents(h.manager.playerAgentId)).toBe(0);
     expect(h.combat.targets).toHaveLength(0);
     expect(h.manager.spawn('tank', { x: 0, y: 0, z: -8 })).not.toBeNull();
   });
@@ -204,11 +227,11 @@ describe('EnemyManager group behaviour', () => {
         if (e.state === 'attack' && e.def.attacks[e.attackIndex]!.usesSlot) busy++;
       }
       maxSlotAttackers = Math.max(maxSlotAttackers, busy);
-      maxTokens = Math.max(maxTokens, h.manager.coordinator(0).inUse);
+      maxTokens = Math.max(maxTokens, h.manager.coordinatorAt(0).inUse);
     });
-    expect(maxTokens).toBeLessThanOrEqual(ENEMY_AI.slots.maxTokens);
-    expect(maxSlotAttackers).toBeLessThanOrEqual(ENEMY_AI.slots.maxTokens);
-    expect(attackers.size).toBeGreaterThan(ENEMY_AI.slots.maxTokens);
+    expect(maxTokens).toBeLessThanOrEqual(ENEMY_AI.slots.pools.light);
+    expect(maxSlotAttackers).toBeLessThanOrEqual(ENEMY_AI.slots.pools.light);
+    expect(attackers.size).toBeGreaterThan(ENEMY_AI.slots.pools.light);
     for (let i = 1; i < starts.length; i++) {
       expect(starts[i]! - starts[i - 1]!).toBeGreaterThanOrEqual(ENEMY_AI.slots.minAttackSpacing - 1e-9);
     }
@@ -223,7 +246,7 @@ describe('EnemyManager group behaviour', () => {
     h.player.yaw = 0; // looks down −Z
     for (let i = 0; i < 6; i++) h.manager.spawn('swarmer', { x: -3 + i * 1.2, y: 0, z: -14 });
     // Freeze the token pool so everybody waits on the ring.
-    h.manager.coordinator(0).maxTokens = 0;
+    h.manager.coordinatorAt(0).maxTokens = 0;
     h.tick(seconds(6));
     const bearings = h.manager.enemies.map((e) => Math.atan2(e.position.z, e.position.x));
     const inFront = h.manager.enemies.filter((e) => e.position.z < -2 && Math.abs(e.position.x) < 2).length;
@@ -266,6 +289,41 @@ describe('Spitter positioning', () => {
     expect(d).toBeLessThan(R.bandMax + 2);
   });
 
+  it('peeks out of cover to spit, then ducks back behind it until the next shot', () => {
+    // Pillar to the spitter's left (+1 side of its line of fire to the player at the origin).
+    const pillar = { center: { x: -1.75, y: 2, z: -11.6 }, size: { x: 1.5, y: 4, z: 0.8 } };
+    const h = createEnemyHarness({ boxes: [pillar] });
+    const e = enemyById(h, h.manager.spawn('spitter', { x: 0, y: 0, z: -13 })!);
+    h.tick(seconds(ENEMIES.spitter.emergeTime) + 1);
+    const spitIdx = ENEMIES.spitter.attacks.findIndex((a) => a.kind === 'projectile');
+    const reset = (): void => {
+      e.mode = RANGED_HOLD;
+      e.canSee = true;
+      e.losTime = h.manager.time;
+      e.lastSeenTime = h.manager.time;
+      e.spot.copy(e.position);
+      e.spotValid = true;
+      e.coverSide = 1;
+      e.attackReady[spitIdx] = 0;
+    };
+    reset();
+    const spits: number[] = [];
+    h.events.on('enemy:attack', (a) => {
+      if (a.attack === 'spit') spits.push(h.manager.time);
+    });
+    const mouth = new Vector3();
+    let hiddenWhileHiding = 0;
+    h.tick(seconds(8), () => {
+      if (e.mode !== RANGED_HIDE) return;
+      h.visuals.computeSocket('spitter', e.handle, 'mouth', mouth);
+      if (!h.combat.lineOfSight(mouth, h.player.eyePosition)) hiddenWhileHiding++;
+    });
+    expect(spits.length).toBeGreaterThanOrEqual(2);
+    expect(hiddenWhileHiding).toBeGreaterThan(seconds(0.3));
+    // It came back out: the spitter ends near its firing spot, not stuck behind the pillar.
+    expect(spits[1]! - spits[0]!).toBeLessThan(ENEMIES.spitter.attacks[spitIdx]!.cooldown + 2);
+  });
+
   it('spaces the volleys of many spitters', () => {
     const h = createEnemyHarness();
     for (let i = 0; i < 8; i++) {
@@ -280,7 +338,7 @@ describe('Spitter positioning', () => {
     h.tick(seconds(10), (t) => (now = t));
     expect(starts.length).toBeGreaterThan(4);
     for (let i = 1; i < starts.length; i++) {
-      expect(starts[i]! - starts[i - 1]!).toBeGreaterThanOrEqual(ENEMY_AI.volley.minSpacing - 1e-9);
+      expect(starts[i]! - starts[i - 1]!).toBeGreaterThanOrEqual(ENEMY_AI.attackSpacing.projectile - 1e-9);
     }
   });
 
@@ -491,5 +549,170 @@ describe('Perception and aggro', () => {
     h.tick(300);
     expect(h.manager.enemies.length).toBe(30);
     for (const e of h.manager.enemies) expect(before).toContain(e);
+  });
+});
+
+describe('Knockback threshold', () => {
+  it('single bullets only flinch; a shotgun-sized shove knocks back', () => {
+    const h = createEnemyHarness();
+    const e = enemyById(h, h.manager.spawn('swarmer', { x: 0, y: 0, z: -10 })!);
+    h.tick(seconds(ENEMIES.swarmer.emergeTime) + 2);
+    h.manager.aiEnabled = false;
+    h.tick(2);
+    const z0 = e.position.z;
+    const K = ENEMY_AI.knockback;
+    const resist = 1 - ENEMIES.swarmer.knockbackResistance;
+    // A rifle bullet's impulse stays below the start threshold (after resistance).
+    const bullet = { ...info(1, 'body'), impulse: (K.startSpeed * 0.8) / resist };
+    for (let i = 0; i < 6; i++) {
+      h.combat.dealDamage(e, bullet);
+      h.tick(6);
+    }
+    expect(e.override).toBe('none');
+    expect(Math.abs(e.position.z - z0)).toBeLessThan(0.05);
+    expect(e.flinch + e.pose.hitFlash).toBeGreaterThan(0);
+    // Several pellets in the same tick add up.
+    const pellet = { ...info(1, 'body'), impulse: (K.startSpeed * 0.5) / resist };
+    for (let i = 0; i < 3; i++) h.combat.dealDamage(e, pellet);
+    h.tick(1);
+    expect(e.override).toBe('knockback');
+    h.tick(seconds(1));
+    expect(e.override).toBe('none');
+    expect(z0 - e.position.z).toBeGreaterThan(0.1);
+  });
+});
+
+describe('Deaths mid-move', () => {
+  it('a swarmer killed mid-pounce drops to the floor', () => {
+    const h = createEnemyHarness();
+    const e = enemyById(h, h.manager.spawn('swarmer', { x: 0, y: 0, z: -6 })!);
+    let t = 0;
+    while (!(e.override === 'leap' && e.position.y > 0.3) && t < 15) {
+      h.tick(1);
+      t += DT;
+    }
+    expect(e.override).toBe('leap');
+    h.combat.dealDamage(e, info(500, 'body'));
+    h.tick(1);
+    expect(e.state).toBe('dying');
+    expect(e.position.y).toBeCloseTo(0, 3);
+  });
+
+  it('one killed while emerging collapses half in the rift (no pop-out)', () => {
+    const h = createEnemyHarness();
+    const e = enemyById(h, h.manager.spawn('tank', { x: 0, y: 0, z: -10 })!);
+    h.tick(seconds(ENEMIES.tank.emergeTime * 0.4));
+    const emerge = e.pose.emerge;
+    expect(emerge).toBeLessThan(1);
+    h.combat.dealDamage(e, info(5000, 'weakpoint'));
+    h.tick(1);
+    expect(e.state).toBe('dying');
+    expect(e.pose.emerge).toBeCloseTo(emerge, 6);
+  });
+});
+
+describe('Knockback into walls', () => {
+  it('stops at a wall even when the nav reports every line walkable (no navmesh yet)', () => {
+    const wall = { center: { x: 0, y: 2, z: -12 }, size: { x: 8, y: 4, z: 0.4 } };
+    const h = createEnemyHarness({ boxes: [wall] });
+    const e = enemyById(h, h.manager.spawn('swarmer', { x: 0, y: 0, z: -10.8 })!);
+    h.tick(seconds(ENEMIES.swarmer.emergeTime) + 2);
+    h.manager.aiEnabled = false;
+    h.tick(2);
+    const shove = { ...info(1, 'body'), impulse: 40, direction: { x: 0, y: 0, z: -1 } };
+    h.combat.dealDamage(e, shove);
+    h.tick(seconds(1));
+    // Wall face at z = −11.8; the body (nav radius) stays in front of it.
+    expect(e.position.z).toBeGreaterThan(-11.8 + ENEMIES.swarmer.nav.radius * 0.5);
+    expect(e.override).toBe('none');
+  });
+});
+
+describe('Death processing', () => {
+  it('a chain of sac bursts resolves in the same tick, whatever the list order', () => {
+    const h = createEnemyHarness();
+    // B is earlier in the active list than A: A's burst kills B after B was already visited.
+    const b = enemyById(h, h.manager.spawn('spitter', { x: 1.5, y: 0, z: -8 })!);
+    const a = enemyById(h, h.manager.spawn('spitter', { x: 0, y: 0, z: -8 })!);
+    h.tick(seconds(ENEMIES.spitter.emergeTime) + 2);
+    b.health = 1;
+    h.combat.dealDamage(a, info(1000, 'body'));
+    h.tick(1);
+    const died = h.byType('enemy:died') as { id: number; source: string }[];
+    expect(died.map((d) => d.id).sort()).toEqual([a.id, b.id].sort());
+    expect(died.every((d) => d.source === 'player')).toBe(true);
+    expect(b.state).toBe('dying');
+  });
+});
+
+describe('Token pools and attack spacing', () => {
+  it('one tank in melee at a time, the others hold at the wait ring; the swarm keeps biting', () => {
+    const h = createEnemyHarness();
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      h.manager.spawn('tank', { x: Math.cos(a) * 12, y: 0, z: Math.sin(a) * 12 });
+    }
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.3;
+      h.manager.spawn('swarmer', { x: Math.cos(a) * 9, y: 0, z: Math.sin(a) * 9 });
+    }
+    const heavy = h.manager.coordinatorAt(0, 1);
+    const light = h.manager.coordinatorAt(0, 0);
+    let maxHeavy = 0;
+    let maxHeavyMelee = 0;
+    let waitDist = 0;
+    let waitSamples = 0;
+    const attacks: Record<string, number> = {};
+    const charges: number[] = [];
+    let now = 0;
+    h.events.on('enemy:attack', (e) => {
+      attacks[`${e.type}.${e.attack}`] = (attacks[`${e.type}.${e.attack}`] ?? 0) + 1;
+      if (e.attack === 'charge') charges.push(now);
+    });
+    h.tick(seconds(20), (t) => {
+      now = t;
+      maxHeavy = Math.max(maxHeavy, heavy.inUse);
+      let melee = 0;
+      for (const e of h.manager.enemies) {
+        if (e.type === 'tank' && e.state === 'attack' && e.def.attacks[e.attackIndex]!.usesSlot) melee++;
+      }
+      maxHeavyMelee = Math.max(maxHeavyMelee, melee);
+      expect(light.inUse).toBeLessThanOrEqual(ENEMY_AI.slots.pools.light);
+      if (t < seconds(6) * DT) return;
+      for (const e of h.manager.enemies) {
+        if (e.type !== 'tank' || e.state !== 'active' || heavy.holds(e.id)) continue;
+        waitDist += Math.hypot(e.position.x, e.position.z);
+        waitSamples++;
+      }
+    });
+    expect(maxHeavy).toBe(ENEMY_AI.slots.pools.heavy);
+    expect(maxHeavyMelee).toBeLessThanOrEqual(ENEMY_AI.slots.pools.heavy);
+    expect((attacks['tank.slam'] ?? 0) + (attacks['tank.swipe'] ?? 0)).toBeGreaterThan(0);
+    expect(attacks['swarmer.bite'] ?? 0).toBeGreaterThan(0);
+    // Charges of different tanks never start together.
+    for (let i = 1; i < charges.length; i++) {
+      expect(charges[i]! - charges[i - 1]!).toBeGreaterThanOrEqual(ENEMY_AI.attackSpacing.charge - 1e-9);
+    }
+    // Tanks without a token keep to the wait ring instead of walling the player in.
+    expect(waitSamples).toBeGreaterThan(0);
+    expect(waitDist / waitSamples).toBeGreaterThan(ENEMIES.tank.brute!.standoff + 2);
+  });
+});
+
+describe('Stuck handling', () => {
+  it('re-paths, then teleports a wedged enemy far from the player, but leaves the crowd near it alone', () => {
+    const h = createEnemyHarness();
+    const far = enemyById(h, h.manager.spawn('spitter', { x: 0, y: 0, z: -30 })!);
+    const near = enemyById(h, h.manager.spawn('tank', { x: 4, y: 0, z: 0 })!);
+    h.tick(seconds(ENEMIES.tank.emergeTime) + 2);
+    h.nav.frozen.add(far.agent);
+    h.nav.frozen.add(near.agent);
+    const S = ENEMY_AI.stuck;
+    h.tick(seconds(S.interval * (S.teleportAfter + 1)));
+    expect(h.manager.stats.stuckRepaths).toBeGreaterThan(0);
+    expect(h.manager.stats.stuckTeleports).toBe(1);
+    expect(h.nav.frozen.has(far.agent)).toBe(false); // the teleport freed it
+    expect(h.nav.frozen.has(near.agent)).toBe(true); // never touched
+    expect(h.manager.stats.relocations).toBe(0);
   });
 });

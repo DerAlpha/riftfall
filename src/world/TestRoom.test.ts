@@ -22,6 +22,9 @@ import {
 } from '../save/settingsSchema';
 import { FLICKER, TEST_ROOM_LAYOUT as L } from '../defs/level';
 import { isMaterialId } from '../defs/materials';
+import { NAV } from '../defs/nav';
+import { collectNavSources } from '../nav/navGeometry';
+import { NavSystem } from '../nav/NavSystem';
 import { buildTestRoom, corridorRampBottomZ, southStairs } from './TestRoom';
 
 const down = { x: 0, y: -1, z: 0 };
@@ -100,6 +103,49 @@ describe('buildTestRoom', () => {
     expect(hit!.data?.surface).toBe('concrete');
     expect(level.spawn.yaw).toBe(0);
   });
+
+  it('exposes enemy spawn points on open floor with headroom, facing the arena', () => {
+    const points = level.spawnPoints ?? [];
+    expect(points.length).toBe(L.enemySpawns.points.length);
+    expect(new Set(points.map((p) => p.id)).size).toBe(points.length);
+    for (const sp of points) {
+      const p = sp.position;
+      const hit = physics.raycast({ x: p.x, y: p.y + 1.5, z: p.z }, down, 4);
+      expect(hit, sp.id).not.toBeNull();
+      expect(hit!.point.y, sp.id).toBeCloseTo(0, 3);
+      expect(hit!.normal.y, sp.id).toBeGreaterThan(0.99);
+      // Headroom for a tank and elbow room for a charge on every side.
+      expect(physics.raycast({ x: p.x, y: 0.1, z: p.z }, { x: 0, y: 1, z: 0 }, 2.6), sp.id).toBeNull();
+      for (const [dx, dz] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        expect(physics.raycast({ x: p.x, y: 0.5, z: p.z }, { x: dx, y: 0, z: dz }, 1.5), sp.id).toBeNull();
+      }
+      // Emerging enemies face the arena center (enemy yaw: forward = (sin, cos)).
+      const toCenter = Math.hypot(p.x, p.z);
+      expect(Math.sin(sp.yaw) * -p.x + Math.cos(sp.yaw) * -p.z, sp.id).toBeCloseTo(toCenter, 3);
+      expect(sp.zone).toBe(L.enemySpawns.zone);
+    }
+  });
+
+  it('connects every enemy spawn point to the player spawn on the navmesh', async () => {
+    const nav = new NavSystem({ createWorker: null });
+    try {
+      expect(await nav.build(level.navSources ?? collectNavSources(level.root))).toBe(true);
+      const out: THREE.Vector3[] = [];
+      for (let i = 0; i < NAV.query.maxStraightPathPoints; i++) out.push(new THREE.Vector3());
+      for (const sp of level.spawnPoints ?? []) {
+        const n = nav.findPath(sp.position, level.spawn.position, out);
+        expect(n, sp.id).toBeGreaterThanOrEqual(2);
+        expect(out[n - 1]!.distanceTo(level.spawn.position), sp.id).toBeLessThan(0.4);
+      }
+    } finally {
+      nav.dispose();
+    }
+  }, 60000);
 
   it('has solid mantle ledges and double-jump platforms at their heights', () => {
     for (const l of L.mantle.ledges) {

@@ -27,16 +27,24 @@ export interface FixedTickSystems {
   weapons: Pick<WeaponSystemApi, 'fixedUpdate'>;
   /** Moving damageables (calibration-hall targets); null on maps without them. */
   targets: TickStep | null;
+  /** M3: wave director (spawns this tick get their first enemy tick right away). */
+  waves: TickStep | null;
+  /** M3: enemies (AI + crowd step + renderer commit) – after the weapons, before physics.step. */
+  enemies: TickStep | null;
+  /** M3: run flow (survival time). */
+  runFlow: TickStep | null;
   physics: Pick<PhysicsApi, 'step'>;
   health: TickStep;
   level: Pick<LevelInstance, 'spawn' | 'fixedUpdate'>;
 }
 
 export function runFixedTick(s: FixedTickSystems, dt: number): void {
-  const { player, weapons, targets, physics, health, level } = s;
+  const { player, weapons, targets, waves, enemies, runFlow, physics, health, level } = s;
   player.fixedUpdate(dt);
   weapons.fixedUpdate(dt);
   targets?.fixedUpdate(dt);
+  waves?.fixedUpdate(dt);
+  enemies?.fixedUpdate(dt);
   if (!player.noclip && player.position.y < PHYSICS.killPlaneY) {
     // Fell out of the world (tp/noclip outside the hall, or a collision bug): back to spawn.
     log.warn(`Player below kill plane (y ${player.position.y.toFixed(1)}) – respawn`);
@@ -45,4 +53,5 @@ export function runFixedTick(s: FixedTickSystems, dt: number): void {
   physics.step(dt);
   health.fixedUpdate(dt);
   level.fixedUpdate?.(dt);
+  runFlow?.fixedUpdate(dt);
 }

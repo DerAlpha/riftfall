@@ -361,6 +361,22 @@ export const TEST_ROOM_LAYOUT = {
     sky: 'emissive_white' as MaterialId,
   },
   spawn: { position: [0, 0, 25] as Vec3Tuple, yawDeg: 0 },
+  /**
+   * Enemy spawn points for testing (M3): floor tears on open floor around the arena, outside the
+   * mezzanine ring; enemies emerge facing the arena center. The hall is a single zone.
+   */
+  enemySpawns: {
+    zone: 'hall',
+    points: [
+      { id: 'hall_east', position: [19.5, 0, -6] },
+      { id: 'hall_southeast', position: [19.5, 0, 8] },
+      { id: 'hall_west', position: [-20.5, 0, -2] },
+      { id: 'hall_northwest', position: [-16, 0, -20] },
+      { id: 'hall_northeast', position: [16, 0, -20] },
+      { id: 'hall_southwest', position: [-18, 0, 22] },
+      { id: 'hall_south', position: [18, 0, 22] },
+    ] as readonly { id: string; position: Vec3Tuple }[],
+  },
   arena: {
     rect: { minX: -12, maxX: 12, minZ: -12, maxZ: 12 } as RectDef,
     borderWidth: 0.3,

@@ -5,7 +5,8 @@
  * generates a tiled navmesh and transfers the serialized bytes → importNavMesh here → NavQuery
  * (allocation-free queries) + NavCrowd (agents). Without a Worker (node/tests), or when it fails
  * or times out, the navmesh is generated on the main thread. build() never rejects: on failure it
- * logs, returns false and the agents keep running on DirectSteering.
+ * logs, returns false and the agents keep running on DirectSteering. A rebuild keeps the current
+ * navmesh active until the new one is ready (agents then migrate from crowd to crowd).
  *
  * Agent ids are NavSystem slots, stable across backend swaps: agents added before the navmesh is
  * ready (or while a rebuild runs) are migrated with their position, params and goal.
@@ -13,8 +14,9 @@
  * Fallback queries (no navmesh): closestPoint / randomPointAround return the point itself
  * (dropped onto the ground probe when one is given), findPath returns [from, to], walkable true.
  *
- * Tick: call update(dt) once per fixed tick (targets set during the previous tick are sent and
- * the crowd steps); positions read afterwards are this tick's.
+ * Tick: call update(dt) once per fixed tick (EnemyManager does, after its movement requests): move
+ * targets set since the last update are sent (round-robin budget), then the crowd steps; positions
+ * read afterwards are this tick's.
  */
 import { Mesh, MeshBasicMaterial, Vector3, type BufferGeometry, type Object3D } from 'three';
 import { importNavMesh, setRandomSeed, type NavMesh } from 'recast-navigation';
@@ -172,38 +174,48 @@ export class NavSystem implements NavApi {
     if (this.disposed) return false;
     const id = ++this.buildId;
     const t0 = performance.now();
+    // A newer build supersedes the running one; its worker is ended right away.
     this.cancelWorker?.();
+    let pending: NavMesh | null = null;
     try {
-      this.releaseNavMesh();
+      // The current navmesh (if any) keeps serving queries and the crowd until the new one is
+      // ready: a rebuild (dev console, M4 doors) never drops the agents to direct steering.
       const geo = gatherNavGeometry(sources);
       if (geo.triangles === 0) {
         log.warn('Navmesh: no source triangles – enemies use direct steering');
+        this.releaseNavMesh();
         return false;
       }
-      if (!(await ensureRecast())) return false;
-      if (this.seed !== null) setRandomSeed(this.seed);
+      const config = createGeneratorConfig();
+      // The worker loads its own recast copy: start it before the main thread's init (parallel).
+      const fromWorker = this.generateInWorker(id, geo, config);
+      if (!(await ensureRecast())) {
+        if (id === this.buildId) {
+          this.cancelWorker?.();
+          this.releaseNavMesh();
+        }
+        return false;
+      }
+      const bytes = await fromWorker;
       if (id !== this.buildId || this.disposed) return false;
 
-      const config = createGeneratorConfig();
-      let navMesh: NavMesh | null = null;
       let builtIn: NavStats['builtIn'] = 'main';
-      const bytes = await this.generateInWorker(id, geo, config);
-      if (id !== this.buildId || this.disposed) return false;
       if (bytes) {
-        navMesh = this.importBytes(bytes);
-        if (navMesh) builtIn = 'worker';
+        pending = this.importBytes(bytes);
+        if (pending) builtIn = 'worker';
       }
-      if (!navMesh) {
+      if (!pending) {
         const result = generateNavMesh(geo.positions, geo.indices, config);
         if (!result.navMesh) {
           log.error(`Navmesh build failed (${result.error}) – enemies use direct steering`);
+          this.releaseNavMesh();
           return false;
         }
-        navMesh = result.navMesh;
+        pending = result.navMesh;
       }
 
-      const { polys, tiles } = countNavMeshPolys(navMesh);
-      this.activate(navMesh);
+      const { polys, tiles } = countNavMeshPolys(pending);
+      this.activate(pending);
       this.stats.polys = polys;
       this.stats.tiles = tiles;
       this.stats.builtIn = builtIn;
@@ -215,6 +227,14 @@ export class NavSystem implements NavApi {
       return true;
     } catch (err) {
       log.error('Navmesh build crashed – enemies use direct steering', err);
+      if (pending && pending !== this.navMesh) pending.destroy();
+      if (id === this.buildId && !this.disposed) {
+        try {
+          this.releaseNavMesh();
+        } catch (releaseErr) {
+          log.error('Navmesh release failed', releaseErr);
+        }
+      }
       return false;
     }
   }
@@ -306,14 +326,31 @@ export class NavSystem implements NavApi {
     return null;
   }
 
+  /**
+   * Switch to `navMesh`: new query + crowd, agents migrate from the current backend (the old crowd
+   * or direct steering), then the old navmesh is freed.
+   */
   private activate(navMesh: NavMesh): void {
     const query = new NavQuery(navMesh, this.random);
-    const crowd = new NavCrowd(navMesh, query, this.capacity);
+    let crowd: NavCrowd;
+    try {
+      crowd = new NavCrowd(navMesh, query, this.capacity);
+    } catch (err) {
+      query.destroy();
+      throw err;
+    }
+    const oldQuery = this.query;
+    const oldNavMesh = this.navMesh;
+    this.disposeDebug();
+    // Reads the positions from the old backend (still alive), then disposes it.
+    this.swapBackend(crowd);
     this.navMesh = navMesh;
     this.query = query;
+    oldQuery?.destroy();
+    oldNavMesh?.destroy();
     if (this.seed !== null) setRandomSeed(this.seed);
-    this.swapBackend(crowd);
     this.stats.mode = 'navmesh';
+    this.stats.pendingTargets = crowd.pendingCount;
     if (this.debugWanted) void this.createDebug();
   }
 

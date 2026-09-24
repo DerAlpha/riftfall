@@ -2,8 +2,9 @@
  * Melee attack tokens around one target – Left-4-Dead-style pressure without unfair burst damage.
  *
  * - At most `maxTokens` token units are held at once (a tank's swing costs 2, a swarmer's bite 1).
- * - Waiting enemies are served first come, first served (strict FIFO, so a big enemy waiting for two
- *   units is not starved by small ones). A request is a heartbeat: waiters that stop asking for
+ * - Waiting enemies are served by priority, then first come, first served (strict order: a big
+ *   enemy waiting for two units is not starved by small ones, and a tank next to the player does not
+ *   queue behind a whole swarm). A request is a heartbeat: waiters that stop asking for
  *   `requestTimeout` seconds drop out of the queue.
  * - Tokens rotate: after `holdTime` seconds or `attacksPerToken` attacks the holder gives it back
  *   at its next request and waits `rerequestDelay` before asking again, so others move in.
@@ -36,6 +37,7 @@ export class AttackSlotCoordinator {
   private readonly waitId: Int32Array;
   private readonly waitSince: Float64Array;
   private readonly waitSeen: Float64Array;
+  private readonly waitPriority: Float64Array;
   private waitCount = 0;
 
   /** Recently released holders and when they may ask again. */
@@ -58,6 +60,7 @@ export class AttackSlotCoordinator {
     this.waitId = new Int32Array(n);
     this.waitSince = new Float64Array(n);
     this.waitSeen = new Float64Array(n);
+    this.waitPriority = new Float64Array(n);
     this.blockId = new Int32Array(n);
     this.blockUntil = new Float64Array(n);
   }
@@ -81,9 +84,10 @@ export class AttackSlotCoordinator {
 
   /**
    * Keep or obtain a token (call every think while engaging). Returns true while `id` holds one.
-   * An expired token (hold time / attack count) is returned here and false is reported.
+   * An expired token (hold time / attack count) is returned here and false is reported. Higher
+   * `priority` waiters are served first.
    */
-  request(id: number, cost: number, now: number): boolean {
+  request(id: number, cost: number, now: number, priority = 0): boolean {
     const units = Math.max(1, Math.round(cost));
     const h = this.holderIndex(id);
     if (h >= 0) {
@@ -106,8 +110,9 @@ export class AttackSlotCoordinator {
       this.waitSince[w] = now;
     }
     this.waitSeen[w] = now;
-    // Strict FIFO: only the oldest waiter may take free tokens.
-    if (this.oldestWaiter() !== w) return false;
+    this.waitPriority[w] = Number.isFinite(priority) ? priority : 0;
+    // Strict order: only the head waiter (highest priority, then oldest) may take free tokens.
+    if (this.headWaiter() !== w) return false;
     if (this.maxTokens - this.used < units || this.holderCount >= this.capacity) return false;
     this.removeWaiter(w);
     const i = this.holderCount++;
@@ -201,12 +206,16 @@ export class AttackSlotCoordinator {
     this.blockUntil[b] = until;
   }
 
-  private oldestWaiter(): number {
+  private headWaiter(): number {
     let best = -1;
+    let prio = Number.NEGATIVE_INFINITY;
     let since = Number.POSITIVE_INFINITY;
     for (let i = 0; i < this.waitCount; i++) {
-      if (this.waitSince[i]! < since) {
-        since = this.waitSince[i]!;
+      const p = this.waitPriority[i]!;
+      const t = this.waitSince[i]!;
+      if (p > prio || (p === prio && t < since)) {
+        prio = p;
+        since = t;
         best = i;
       }
     }
@@ -234,6 +243,7 @@ export class AttackSlotCoordinator {
     this.waitId[i] = this.waitId[last]!;
     this.waitSince[i] = this.waitSince[last]!;
     this.waitSeen[i] = this.waitSeen[last]!;
+    this.waitPriority[i] = this.waitPriority[last]!;
   }
 
   private removeBlock(i: number): void {

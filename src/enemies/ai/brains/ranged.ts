@@ -1,12 +1,15 @@
 /**
  * Ranged brain (spitter): keeps a distance band, fires only with line of sight (from its mouth
- * socket to the player's eye), repositions when it lost sight or left the band, strafes between
- * shots, swipes when cornered.
+ * socket to the player's eye), repositions when it lost sight or left the band, uses cover and
+ * strafes between shots, swipes when cornered.
  *
  * Spot search (spread over ticks by the host's spot-ray budget): candidates around the target at
  * `bandPreferred`, spread over ±searchArc around the current bearing and jittered with
- * nav.randomPointAround; each costs 3 static rays (LOS to the target eye + two lateral cover probes)
- * and is scored by rangedPositioning.scoreSpot (sight, cover, band, travel, crowding).
+ * nav.randomPointAround; each costs up to 3 static rays (LOS to the target eye, then two sideways
+ * cover probes) and is scored by rangedPositioning.scoreSpot (sight, cover, band, travel,
+ * crowding). Cover is peek cover: a sideways step of `coverProbe` from the spot breaks the line
+ * of sight. From such a spot the spitter spits, ducks behind the cover (HIDE) and steps back out
+ * (MOVE) when its next shot is almost ready; without cover it strafes between shots.
  */
 import { Vector3 } from 'three';
 import type { EnemyTargetApi } from '../../../core/contracts';
@@ -23,8 +26,9 @@ export const RANGED_HOLD = 0;
 export const RANGED_SEARCH = 1;
 export const RANGED_MOVE = 2;
 export const RANGED_STRAFE = 3;
+export const RANGED_HIDE = 4;
 
-/** Rays one candidate costs (LOS + 2 cover probes). */
+/** Rays one candidate may cost (LOS + 2 cover probes). */
 const RAYS_PER_SPOT = 3;
 
 const _c = new Vector3();
@@ -42,6 +46,28 @@ function startSearch(e: Enemy, host: AiHost): void {
   e.searchIndex = 0;
   e.spotBest = Number.NEGATIVE_INFINITY;
   e.spotValid = false;
+  e.coverSide = 0;
+  e.hideAfterShot = false;
+}
+
+/**
+ * Peek cover of a spot whose eye point is `eye`: +1 / −1 when a sideways step of `step` to the left
+ * / right of the line of fire (unit direction dx, dz towards the target) breaks the line of sight
+ * to `targetEye`, else 0.
+ */
+function coverSideAt(
+  host: AiHost,
+  eye: Vector3,
+  dx: number,
+  dz: number,
+  step: number,
+  targetEye: Vector3,
+): number {
+  for (let side = 1; side >= -1; side -= 2) {
+    _probe.set(eye.x - dz * step * side, eye.y, eye.z + dx * step * side);
+    if (!host.combat.lineOfSight(_probe, targetEye)) return side;
+  }
+  return 0;
 }
 
 /** Evaluate candidates while the spot-ray budget lasts. True when the search is complete. */
@@ -65,20 +91,16 @@ function stepSearch(e: Enemy, host: AiHost, target: EnemyTargetApi): boolean {
     const cand = e.spotCandidate;
     _eye.set(cand.x, cand.y + eyeH, cand.z);
     _spot.los = host.combat.lineOfSight(_eye, target.eyePosition);
-    // Cover: walls right next to the spot, perpendicular to the line of fire.
     let dx = target.position.x - cand.x;
     let dz = target.position.z - cand.z;
     const len = Math.hypot(dx, dz);
-    let cover = 0;
-    if (len > 1e-3) {
+    let side = 0;
+    if (_spot.los && len > 1e-3) {
       dx /= len;
       dz /= len;
-      _probe.set(_eye.x - dz * R.coverProbe, _eye.y, _eye.z + dx * R.coverProbe);
-      if (!host.combat.lineOfSight(_eye, _probe)) cover += 0.5;
-      _probe.set(_eye.x + dz * R.coverProbe, _eye.y, _eye.z - dx * R.coverProbe);
-      if (!host.combat.lineOfSight(_eye, _probe)) cover += 0.5;
+      side = coverSideAt(host, _eye, dx, dz, R.coverProbe, target.eyePosition);
     }
-    _spot.cover = cover;
+    _spot.cover = side !== 0 ? 1 : 0;
     _spot.travel = distXZ(e.position, cand);
     _spot.distance = len;
     _spot.crowd = crowdAt(e, host, cand, R.crowdRadius);
@@ -87,6 +109,7 @@ function stepSearch(e: Enemy, host: AiHost, target: EnemyTargetApi): boolean {
       e.spotBest = score;
       e.spot.copy(cand);
       e.spotValid = true;
+      e.coverSide = side;
     }
   }
   return true;
@@ -108,6 +131,40 @@ function crowdAt(e: Enemy, host: AiHost, p: Vector3, radius: number): number {
   return n;
 }
 
+/** When the enemy's first projectile attack may start again (+∞ without one). */
+function projectileReadyAt(e: Enemy): number {
+  const attacks = e.def.attacks;
+  for (let i = 0; i < attacks.length; i++) {
+    if (attacks[i]!.kind === 'projectile') return e.attackReady[i]!;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Duck behind the spot's cover: the sideways step must be walkable and (re-checked now, the target
+ * may have moved) break the line of sight. The current position becomes the spot to peek from.
+ */
+function tryHide(e: Enemy, host: AiHost, target: EnemyTargetApi): boolean {
+  const R = e.def.ranged!;
+  let dx = target.position.x - e.position.x;
+  let dz = target.position.z - e.position.z;
+  const len = Math.hypot(dx, dz);
+  if (e.coverSide === 0 || len < 1e-3) return false;
+  dx /= len;
+  dz /= len;
+  const s = e.coverSide * R.coverProbe;
+  _c.set(e.position.x - dz * s, e.position.y, e.position.z + dx * s);
+  if (!host.nav.walkable(e.position, _c) || !host.nav.closestPoint(_c, e.hidePoint)) return false;
+  if (!host.takeSpotRays(1)) return false;
+  _eye.set(e.hidePoint.x, e.hidePoint.y + e.def.perception.eyeHeight * e.pose.scale, e.hidePoint.z);
+  if (host.combat.lineOfSight(_eye, target.eyePosition)) return false;
+  e.spot.copy(e.position);
+  e.spotValid = true;
+  setMode(e, RANGED_HIDE, host);
+  host.moveTo(e, e.hidePoint, e.def.movement.walkSpeed);
+  return true;
+}
+
 export const rangedBrain: EnemyBrain = {
   think(e: Enemy, host: AiHost, target: EnemyTargetApi): void {
     const R = e.def.ranged;
@@ -119,8 +176,9 @@ export const rangedBrain: EnemyBrain = {
     if (idx >= 0) {
       host.beginAttack(e, idx);
       if (e.def.attacks[idx]!.kind === 'projectile') {
-        // Strafe soon after the shot.
+        // Strafe soon after the shot – or duck back behind the spot's cover.
         e.nextActionTime = now + e.def.attacks[idx]!.recover;
+        e.hideAfterShot = e.coverSide !== 0;
       }
       return;
     }
@@ -130,13 +188,12 @@ export const rangedBrain: EnemyBrain = {
     switch (e.mode) {
       case RANGED_SEARCH: {
         if (stepSearch(e, host, target)) {
-          if (e.spotValid) setMode(e, RANGED_MOVE, host);
-          else {
+          if (!e.spotValid) {
             // Nothing usable (no navmesh around the target?): close in along the path.
             e.spot.copy(target.position);
             e.spotValid = true;
-            setMode(e, RANGED_MOVE, host);
           }
+          setMode(e, RANGED_MOVE, host);
         } else if (lostSight) {
           // Keep moving towards where it last knew the target while the search runs.
           host.moveTo(e, e.lastKnown, e.def.movement.runSpeed);
@@ -167,11 +224,33 @@ export const rangedBrain: EnemyBrain = {
         host.moveTo(e, e.spot, e.def.movement.walkSpeed);
         return;
       }
+      case RANGED_HIDE: {
+        // Out of sight on purpose: lost sight does not trigger a search here.
+        e.faceTarget = true;
+        if (outOfBand) {
+          startSearch(e, host);
+          return;
+        }
+        if (now >= projectileReadyAt(e) - R.peekLead || now - e.modeTime > R.hideTimeout) {
+          setMode(e, RANGED_MOVE, host); // peek: back to the spot
+          return;
+        }
+        if (distXZ(e.position, e.hidePoint) > R.arriveDistance) {
+          host.moveTo(e, e.hidePoint, e.def.movement.walkSpeed);
+        } else {
+          host.stopMoving(e);
+        }
+        return;
+      }
       default: {
         e.faceTarget = true;
         if (lostSight || outOfBand) {
           startSearch(e, host);
           return;
+        }
+        if (e.hideAfterShot) {
+          e.hideAfterShot = false;
+          if (tryHide(e, host, target)) return;
         }
         if (now >= e.nextActionTime) {
           e.nextActionTime = now + host.rng.range(R.strafeInterval[0], R.strafeInterval[1]);
@@ -189,6 +268,8 @@ export const rangedBrain: EnemyBrain = {
             );
             if (host.nav.walkable(e.position, _c) && host.nav.closestPoint(_c, e.spot)) {
               e.spotValid = true;
+              // A strafe off a cover spot leaves its cover behind.
+              e.coverSide = 0;
               setMode(e, RANGED_STRAFE, host);
               host.moveTo(e, e.spot, e.def.movement.walkSpeed);
               return;
@@ -204,5 +285,7 @@ export const rangedBrain: EnemyBrain = {
 
   release(e: Enemy): void {
     e.spotValid = false;
+    e.coverSide = 0;
+    e.hideAfterShot = false;
   },
 };

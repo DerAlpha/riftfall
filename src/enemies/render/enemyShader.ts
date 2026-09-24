@@ -33,12 +33,19 @@ import {
   patchDissolveFragment,
   type DissolveUniforms,
 } from '../../render/materials/dissolve';
-import { CODE_STRIDE, DRIVER_CODE, MIN_SCALE, WAVE_CODE, type CompiledRig } from './poseMath';
+import {
+  CODE_STRIDE,
+  DRIVER_CODE,
+  MIN_SCALE,
+  RARE_DRIVER_MASK,
+  WAVE_CODE,
+  type CompiledRig,
+} from './poseMath';
 
 const log = createLogger('EnemyShader');
 
 /** Bump when the injected GLSL changes (program cache keys). */
-export const ENEMY_SHADER_KEY = 'rf-enemy-1';
+export const ENEMY_SHADER_KEY = 'rf-enemy-2';
 
 /** vec4 entries per material zone in `rfZones`. */
 export const ZONE_VEC4 = 6;
@@ -62,6 +69,7 @@ export function rigDefines(): string {
     `#define RF_RIG_WIDTH ${R.rigTextureWidth}`,
     `#define RF_CODE_STRIDE ${CODE_STRIDE}`,
     `#define RF_MIN_SCALE ${glslFloat(MIN_SCALE)}`,
+    `#define RF_RARE_MASK ${RARE_DRIVER_MASK}`,
   ];
   for (const d of RIG_DRIVERS) lines.push(`#define RF_DRV_${d.toUpperCase()} ${DRIVER_CODE[d]}`);
   for (const w of GAIT_WAVES) lines.push(`#define RF_WAVE_${w.toUpperCase()} ${WAVE_CODE[w]}`);
@@ -99,6 +107,7 @@ float rfSeed;
 float rfLife;
 float rfGlowBoost;
 float rfZone;
+int rfActive;
 
 vec4 rfTex( int i ) {
 	return texelFetch( rfRig, ivec2( i - ( i / RF_RIG_WIDTH ) * RF_RIG_WIDTH, i / RF_RIG_WIDTH ), 0 );
@@ -147,6 +156,17 @@ void rfSetup() {
 	rfLookPitch = clamp( rfPose2.z, -rfLook.y, rfLook.y );
 	rfSeed = rfPose2.w;
 	rfLife = 1.0 - rfDeath;
+	// Same conditions as poseMath.activeDriverMask: motions of other drivers are exactly 0.
+	bool alive = rfLife > 0.0;
+	rfActive = 1 << RF_DRV_REST;
+	if ( alive ) rfActive |= 1 << RF_DRV_IDLE;
+	if ( alive && rfLoc > 0.0 ) rfActive |= ( 1 << RF_DRV_GAIT ) | ( 1 << RF_DRV_LOCO );
+	if ( alive && rfAttack >= 0.0 ) rfActive |= 1 << RF_DRV_ATTACK;
+	if ( alive && rfStagger > 0.0 ) rfActive |= 1 << RF_DRV_STAGGER;
+	if ( rfDeath > 0.0 ) rfActive |= 1 << RF_DRV_DEATH;
+	if ( rfEmergeInv > 0.0 ) rfActive |= 1 << RF_DRV_EMERGE;
+	if ( alive && rfLookYaw != 0.0 ) rfActive |= 1 << RF_DRV_LOOKYAW;
+	if ( alive && rfLookPitch != 0.0 ) rfActive |= 1 << RF_DRV_LOOKPITCH;
 }
 
 float rfMotion( vec4 m0, vec4 m1, int drv ) {
@@ -184,8 +204,12 @@ int rfApplyBone( int b, inout vec3 p, inout vec3 n ) {
 	int bt = rfLayout.y + b * 2;
 	vec4 h0 = rfTex( bt );
 	vec4 h1 = rfTex( bt + 1 );
+	int parent = int( floor( h0.w + 0.5 ) );
+	// No active driver on this bone: rest transform (identity).
+	if ( ( int( h1.z + 0.5 ) & rfActive ) == 0 ) return parent;
 	int start = int( h1.x + 0.5 );
-	int count = int( h1.y + 0.5 );
+	// No rare driver (attack, stagger, death, emerge) active: only the leading common block.
+	int count = int( ( ( rfActive & RF_RARE_MASK ) == 0 ? h1.w : h1.y ) + 0.5 );
 	vec3 rot = vec3( 0.0 );
 	vec3 mov = vec3( 0.0 );
 	vec3 scl = vec3( 1.0 );
@@ -193,9 +217,12 @@ int rfApplyBone( int b, inout vec3 p, inout vec3 n ) {
 		if ( i >= count ) break;
 		int mt = rfLayout.w + ( start + i ) * 2;
 		vec4 m0 = rfTex( mt );
-		vec4 m1 = rfTex( mt + 1 );
 		int code = int( m0.x + 0.5 );
 		int drv = code / RF_CODE_STRIDE;
+		// Inactive drivers and other attacks contribute exactly 0 (poseMath.evaluateRig skips them too).
+		if ( ( ( rfActive >> drv ) & 1 ) == 0 ) continue;
+		if ( drv == RF_DRV_ATTACK && abs( m0.y - rfAttack ) >= 0.5 ) continue;
+		vec4 m1 = rfTex( mt + 1 );
 		int ch = code - drv * RF_CODE_STRIDE;
 		float v = rfMotion( m0, m1, drv );
 		if ( ch == 0 ) rot.x += v;
@@ -224,7 +251,7 @@ int rfApplyBone( int b, inout vec3 p, inout vec3 n ) {
 	vec3 c = h0.xyz;
 	p = R * ( ( p - c ) * scl ) + c + mov;
 	n = R * ( n / scl );
-	return int( floor( h0.w + 0.5 ) );
+	return parent;
 }
 
 void rfDeform( vec3 pos, vec3 nrm, out vec3 outPos, out vec3 outNrm ) {
@@ -303,6 +330,7 @@ uniform sampler2D rfNoise;
 uniform vec4 rfZones[ ${R.maxZones * ZONE_VEC4} ];
 uniform float rfTime;
 uniform vec4 rfFlash; // rgb × intensity (reduce-flashing scaled), bump depth (m)
+uniform vec2 rfFlashShape; // face-on share, fresnel power
 uniform vec4 rfRimParams; // fresnel power, rim intensity, glow left when dead, emerge charge
 uniform vec4 rfSeam; // rgb × intensity, band height (m)
 uniform vec4 rfPulse; // vein speed, vein travel, vein pulse depth, glow pulse speed
@@ -384,6 +412,7 @@ vec3 rfPerturbNormal( vec3 surfPos, vec3 surfNorm, vec2 dHdxy, float faceDir ) {
 	return dot( n, n ) > 1e-20 ? normalize( n ) : surfNorm;
 }
 
+// N: the geometric normal (three's nonPerturbedNormal) – fresnel rims follow the silhouette, not the bump.
 vec3 rfEmissive( RfSurface s, vec3 N ) {
 	vec3 V = normalize( vViewPosition );
 	float ndv = clamp( dot( N, V ), 0.0, 1.0 );
@@ -404,7 +433,7 @@ vec3 rfEmissive( RfSurface s, vec3 N ) {
 		float fade = smoothstep( 0.0, 0.15, emergeInv );
 		e += rfSeam.rgb * fade * ( band * ( 0.55 + 0.45 * s.veinMask ) + rfRimParams.w * emergeInv * fres );
 	}
-	e += rfFlash.rgb * vRfFx.x * ( 0.25 + 0.75 * fres );
+	e += rfFlash.rgb * vRfFx.x * mix( rfFlashShape.x, 1.0, pow( fres, rfFlashShape.y ) );
 	e += vRfInst.rgb * ( vRfFx.y * rfRimParams.y * pow( fres, rfRimParams.x ) );
 	return e;
 }
@@ -451,7 +480,11 @@ export function patchEnemyFragment(src: string): string | null {
     NORMAL_MAPS_FRAGMENT,
     'normal = rfPerturbNormal( - vViewPosition, normal, rfS.dHdxy, faceDirection );',
   );
-  out = injectAfter(out, EMISSIVE_FRAGMENT, 'totalEmissiveRadiance += rfEmissive( rfS, normal );');
+  out = injectAfter(
+    out,
+    EMISSIVE_FRAGMENT,
+    'totalEmissiveRadiance += rfEmissive( rfS, nonPerturbedNormal );',
+  );
   out = injectAfter(
     out,
     LIGHTS_PHYSICAL_FRAGMENT,
@@ -476,6 +509,7 @@ export interface EnemySharedUniforms {
   readonly rfTime: { value: number };
   readonly rfNoise: { value: Texture | null };
   readonly rfFlash: { value: Vector4 };
+  readonly rfFlashShape: { value: Vector2 };
   readonly rfRimParams: { value: Vector4 };
   readonly rfPulse: { value: Vector4 };
 }
@@ -493,6 +527,7 @@ export function createSharedUniforms(noise: Texture | null): EnemySharedUniforms
         R.bumpDepth,
       ),
     },
+    rfFlashShape: { value: new Vector2(F.faceOn, F.power) },
     rfRimParams: { value: new Vector4(R.rim.power, R.rim.intensity, R.deadGlow, R.emerge.charge) },
     rfPulse: {
       value: new Vector4(R.veinPulse.speed, R.veinPulse.travel, R.veinPulse.sharpness, R.glowPulse.speed),

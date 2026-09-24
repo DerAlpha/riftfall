@@ -14,7 +14,7 @@ import {
   rigDefines,
   setFlashScale,
 } from './enemyShader';
-import { CODE_STRIDE, DRIVER_CODE, MIN_SCALE, WAVE_CODE, compileRig } from './poseMath';
+import { CODE_STRIDE, DRIVER_CODE, MIN_SCALE, RARE_DRIVER_MASK, WAVE_CODE, compileRig } from './poseMath';
 
 describe('enemy shader ↔ CPU pose math consistency', () => {
   it('generates the driver / wave codes from the tables the CPU evaluator uses', () => {
@@ -37,6 +37,32 @@ describe('enemy shader ↔ CPU pose math consistency', () => {
         expect(body, d).toMatch(new RegExp(`drv == RF_DRV_${d.toUpperCase()}\\b`));
       }
     }
+  });
+
+  it('skips inactive drivers, other attacks and idle bones like poseMath.evaluateRig', () => {
+    const setup = RIG_GLSL.slice(RIG_GLSL.indexOf('void rfSetup()'), RIG_GLSL.indexOf('float rfMotion('));
+    // Every driver can switch on (rest always), with the same conditions as activeDriverMask.
+    expect(setup).toContain('rfActive = 1 << RF_DRV_REST;');
+    for (const d of RIG_DRIVERS) {
+      if (d === 'rest') continue;
+      expect(setup, d).toMatch(new RegExp(`1 << RF_DRV_${d.toUpperCase()}\\b`));
+    }
+    for (const cond of [
+      'rfLoc > 0.0',
+      'rfAttack >= 0.0',
+      'rfStagger > 0.0',
+      'rfDeath > 0.0',
+      'rfEmergeInv > 0.0',
+    ])
+      expect(setup, cond).toContain(cond);
+    const bone = RIG_GLSL.slice(RIG_GLSL.indexOf('int rfApplyBone('));
+    expect(bone).toContain('( int( h1.z + 0.5 ) & rfActive ) == 0');
+    expect(bone).toContain('( ( rfActive >> drv ) & 1 ) == 0');
+    expect(bone).toContain('drv == RF_DRV_ATTACK && abs( m0.y - rfAttack ) >= 0.5');
+    expect(bone).toContain('( ( rfActive & RF_RARE_MASK ) == 0 ? h1.w : h1.y )');
+    expect(rigDefines()).toContain(`#define RF_RARE_MASK ${RARE_DRIVER_MASK}`);
+    // The second motion texel is only fetched for motions that contribute.
+    expect(bone.indexOf('vec4 m1 = rfTex( mt + 1 )')).toBeGreaterThan(bone.indexOf('continue;'));
   });
 
   it('binds the CPU rig table itself as the GPU rig texture, with matching layout uniforms', () => {
@@ -110,7 +136,7 @@ describe('shader patches (three r186 chunks)', () => {
       'roughnessFactor = rfS.roughness',
       'metalnessFactor = rfS.metalness',
       'rfPerturbNormal(',
-      'rfEmissive( rfS, normal )',
+      'rfEmissive( rfS, nonPerturbedNormal )',
       'material.clearcoat = saturate( rfS.clearcoat )',
     ]) {
       expect(src, s).toContain(s);

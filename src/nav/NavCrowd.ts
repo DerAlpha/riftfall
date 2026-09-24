@@ -4,7 +4,8 @@
  * Move targets are throttled and staggered: `setAgentTarget` only marks a request pending when
  * the goal moved noticeably (NAV.crowd.retarget*), and `update` sends at most
  * NAV.crowd.maxTargetRequestsPerTick requests round-robin before stepping the crowd – AI may call
- * setAgentTarget every tick for every enemy without an A* search per call.
+ * setAgentTarget every tick for every enemy without an A* search per call. A goal whose request
+ * detour reported as failed is not throttled (the next setAgentTarget resends it).
  */
 import { Crowd, Raw, type NavMesh, type RawModule } from 'recast-navigation';
 import type { Vector3 } from 'three';
@@ -42,6 +43,8 @@ export class NavCrowd implements SteeringBackend {
   private readonly goal: Float32Array;
   private readonly sentGoal: Float32Array;
   private readonly bias = NAV.query.heightBias;
+  /** dtCrowdAgent.targetState after a path request detour could not serve. */
+  private readonly targetFailed: number = Raw.Module.DT_CROWDAGENT_TARGET_FAILED;
   private cursor = 0;
   private count = 0;
   private disposed = false;
@@ -150,11 +153,12 @@ export class NavCrowd implements SteeringBackend {
     this.goal[o + 1] = target.y;
     this.goal[o + 2] = target.z;
     this.hasGoal[index] = 1;
-    if (this.sent[index]) {
+    const agent = this.agents[index]!;
+    // A request detour failed (no path from a stale corridor) is resent even for the same goal.
+    if (this.sent[index] && agent.targetState !== this.targetFailed) {
       const dx = target.x - this.sentGoal[o]!;
       const dy = target.y - this.sentGoal[o + 1]!;
       const dz = target.z - this.sentGoal[o + 2]!;
-      const agent = this.agents[index]!;
       const dist = Math.hypot(
         target.x - agent.get_npos(0),
         target.y - agent.get_npos(1),

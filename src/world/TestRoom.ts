@@ -7,7 +7,7 @@
  * QUALITY_LEVELS.shadows) + 5 points, staggered shadow refresh.
  */
 import * as THREE from 'three';
-import type { LevelBuildContext, LevelBuilder, LevelInstance } from '../core/contracts';
+import type { LevelBuildContext, LevelBuilder, LevelInstance, SpawnPointDef } from '../core/contracts';
 import { createLogger } from '../core/log';
 import { DEG2RAD, noise1D } from '../core/math';
 import { QUALITY_LEVELS } from '../defs/graphics';
@@ -100,6 +100,21 @@ export function testRoomSolidFootprints(): Rect[] {
   return out;
 }
 
+/** Enemy spawn points (M3 testing): floor tears facing the arena center (enemy yaw: 0 = +Z). */
+export function testRoomSpawnPoints(): SpawnPointDef[] {
+  const E = L.enemySpawns;
+  const a = L.arena.rect;
+  const cx = (a.minX + a.maxX) / 2;
+  const cz = (a.minZ + a.maxZ) / 2;
+  return E.points.map((p) => ({
+    id: p.id,
+    position: new THREE.Vector3(p.position[0], p.position[1], p.position[2]),
+    yaw: Math.atan2(cx - p.position[0], cz - p.position[2]),
+    zone: E.zone,
+    kind: 'floor',
+  }));
+}
+
 const _dir = new THREE.Vector3();
 const _color = new THREE.Color();
 const _up = new THREE.Vector3(0, 1, 0);
@@ -128,6 +143,7 @@ class TestRoomInstance implements LevelInstance {
   readonly atmosphere: MapAtmosphereDef = TEST_ROOM;
   readonly root: THREE.Object3D;
   readonly spawn: { position: THREE.Vector3; yaw: number };
+  readonly spawnPoints: readonly SpawnPointDef[] = testRoomSpawnPoints();
   private readonly unsubscribe: (() => void)[] = [];
   private volumetricsLevel: QualityLevel | null = null;
   /** Accessibility "reduce flashing": faulty lights only dim gently instead of strobing. */

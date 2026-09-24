@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { DEG2RAD } from '../../core/math';
 import { LAB_LAYOUT, type LabBoxDef, type LabCubicleDef, type LabTankDef } from '../../defs/labLayout';
 import { LEVEL_KIT, type Facing } from '../../defs/level';
-import { LevelKit, WallFrame } from '../../world/LevelKit';
+import { WallFrame, type LevelKit } from '../../world/LevelKit';
 import { runForSlope, stairsLayout, subtractIntervals, subtractRects } from '../../world/kitMath';
 import { expandRect } from './labSpaces';
 
@@ -69,8 +69,10 @@ function furnitureBlock(
   for (const face of glow.faces) {
     const alongX = face === 'pz' || face === 'nz';
     const len = (alongX ? b.maxX - b.minX : b.maxZ - b.minZ) - TRIM.stripInset * 4;
-    const x = face === 'px' ? b.maxX + DECAL.offset : face === 'nx' ? b.minX - DECAL.offset : (b.minX + b.maxX) / 2;
-    const z = face === 'pz' ? b.maxZ + DECAL.offset : face === 'nz' ? b.minZ - DECAL.offset : (b.minZ + b.maxZ) / 2;
+    const x =
+      face === 'px' ? b.maxX + DECAL.offset : face === 'nx' ? b.minX - DECAL.offset : (b.minX + b.maxX) / 2;
+    const z =
+      face === 'pz' ? b.maxZ + DECAL.offset : face === 'nz' ? b.minZ - DECAL.offset : (b.minZ + b.maxZ) / 2;
     kit.box(
       glow.material,
       { x, y, z },
@@ -128,11 +130,11 @@ function planter(kit: LevelKit, p: LabBoxDef): void {
     { x: p.maxX - i, y: p.height + DECAL.thickness, z: p.maxZ - i },
     { collider: false, castShadow: false },
   );
-  const fh = L.reception.foliageHeight;
+  const g = L.reception.growLight;
   kit.boxMinMax(
     'emissive_cyan#fluid',
-    { x: p.minX + i * 2, y: p.height, z: p.minZ + i * 2 },
-    { x: p.maxX - i * 2, y: p.height + fh * 0.12, z: p.maxZ - i * 2 },
+    { x: p.minX + g.inset, y: p.height, z: p.minZ + g.inset },
+    { x: p.maxX - g.inset, y: p.height + g.height, z: p.maxZ - g.inset },
     { collider: false, castShadow: false },
   );
 }
@@ -145,12 +147,22 @@ function wallBuyBoard(kit: LevelKit): void {
   kit.box('wall_panel_dark', f.point(0, 0, d / 2), f.size(W.width, W.height, d), { collider: false });
   const fr = W.frame;
   for (const side of [-1, 1]) {
-    kit.box('trim_metal', f.point(side * (W.width / 2 + fr / 2), 0, d / 2 + fr / 4), f.size(fr, W.height + fr * 2, d + fr / 2), {
-      collider: false,
-    });
-    kit.box('trim_metal', f.point(0, side * (W.height / 2 + fr / 2), d / 2 + fr / 4), f.size(W.width, fr, d + fr / 2), {
-      collider: false,
-    });
+    kit.box(
+      'trim_metal',
+      f.point(side * (W.width / 2 + fr / 2), 0, d / 2 + fr / 4),
+      f.size(fr, W.height + fr * 2, d + fr / 2),
+      {
+        collider: false,
+      },
+    );
+    kit.box(
+      'trim_metal',
+      f.point(0, side * (W.height / 2 + fr / 2), d / 2 + fr / 4),
+      f.size(W.width, fr, d + fr / 2),
+      {
+        collider: false,
+      },
+    );
   }
   const o = d + DECAL.offset;
   const ln = W.line;
@@ -167,7 +179,12 @@ function wallBuyBoard(kit: LevelKit): void {
     kit.box('emissive_cyan', f.point(cx * iw, cy * ih, o), f.size(sw * iw, sh * ih, DECAL.thickness), glow);
   }
   const pp = W.pricePlate;
-  kit.box('emissive_orange', f.point(0, pp.offsetY * W.height, o), f.size(pp.width, pp.height, DECAL.thickness), glow);
+  kit.box(
+    'emissive_orange',
+    f.point(0, pp.offsetY * W.height, o),
+    f.size(pp.width, pp.height, DECAL.thickness),
+    glow,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +244,9 @@ function buildRing(kit: LevelKit): void {
   ];
   for (const e of edges) {
     const f = new WallFrame({ x: e.x, y: top, z: e.z }, e.facing);
-    kit.box('trim_metal', f.point(0, -fh / 2 + DECAL.offset, fd / 2), f.size(e.len + fd * 2, fh, fd), { collider: false });
+    kit.box('trim_metal', f.point(0, -fh / 2 + DECAL.offset, fd / 2), f.size(e.len + fd * 2, fh, fd), {
+      collider: false,
+    });
     kit.box(
       'emissive_cyan',
       f.point(0, -fh + R.underglow.height, fd + DECAL.offset),
@@ -239,9 +258,14 @@ function buildRing(kit: LevelKit): void {
   for (const [x, z] of R.supports) {
     kit.box('pillar_metal', { x, y: bottom / 2, z }, { x: R.supportSize, y: bottom, z: R.supportSize });
     const cs = R.supportSize + R.supportCap.extra * 2;
-    kit.box('trim_metal', { x, y: bottom - R.supportCap.height / 2, z }, { x: cs, y: R.supportCap.height, z: cs }, {
-      collider: false,
-    });
+    kit.box(
+      'trim_metal',
+      { x, y: bottom - R.supportCap.height / 2, z },
+      { x: cs, y: R.supportCap.height, z: cs },
+      {
+        collider: false,
+      },
+    );
   }
 
   // Inner railings with gaps where the stairs and the ramp arrive.
@@ -335,14 +359,26 @@ function buildDais(kit: LevelKit): void {
   for (const [x, z] of P.positions) {
     const s = P.size;
     kit.box('pillar_metal', { x, y: y + P.height / 2, z }, { x: s, y: P.height, z: s });
-    kit.box('trim_metal', { x, y: y + TRIM.capHeight, z }, { x: s + 0.12, y: TRIM.capHeight * 2, z: s + 0.12 }, {
-      collider: false,
-    });
-    for (const by of P.bands) {
-      kit.box('emissive_red#violet', { x, y: y + by, z }, { x: s + 0.02, y: LEVEL_KIT.pillar.bandHeight, z: s + 0.02 }, {
+    const cap = s + P.capExtra;
+    kit.box(
+      'trim_metal',
+      { x, y: y + TRIM.capHeight, z },
+      { x: cap, y: TRIM.capHeight * 2, z: cap },
+      {
         collider: false,
-        castShadow: false,
-      });
+      },
+    );
+    const band = s + P.bandExtra;
+    for (const by of P.bands) {
+      kit.box(
+        'emissive_red#violet',
+        { x, y: y + by, z },
+        { x: band, y: LEVEL_KIT.pillar.bandHeight, z: band },
+        {
+          collider: false,
+          castShadow: false,
+        },
+      );
     }
     const topY = y + P.height;
     const hx = rift[0] - x;
@@ -358,11 +394,11 @@ function buildDais(kit: LevelKit): void {
       { x: hsx, y: hsy, z: hsz },
       { rotation: q.clone(), collider: false },
     );
-    const tip = 0.18;
+    const tip = P.tipHeight;
     kit.box(
       'emissive_red#violet',
       { x: x + dir.x * (hsy + tip / 2), y: topY + dir.y * (hsy + tip / 2), z: z + dir.z * (hsy + tip / 2) },
-      { x: hsx * 0.6, y: tip, z: hsz * 0.6 },
+      { x: hsx * P.tipScale, y: tip, z: hsz * P.tipScale },
       { rotation: q.clone(), collider: false, castShadow: false },
     );
   }
@@ -385,11 +421,21 @@ function buildRoof(kit: LevelKit): void {
   const pd = (S.maxZ - S.minZ) / S.panes[1];
   for (let i = 0; i <= S.panes[0]; i++) {
     const x = S.minX + i * pw;
-    kit.box('pillar_metal', { x, y: h + md / 2, z: (S.minZ + S.maxZ) / 2 }, { x: m, y: md, z: S.maxZ - S.minZ }, { collider: false });
+    kit.box(
+      'pillar_metal',
+      { x, y: h + md / 2, z: (S.minZ + S.maxZ) / 2 },
+      { x: m, y: md, z: S.maxZ - S.minZ },
+      { collider: false },
+    );
   }
   for (let k = 0; k <= S.panes[1]; k++) {
     const z = S.minZ + k * pd;
-    kit.box('pillar_metal', { x: (S.minX + S.maxX) / 2, y: h + md / 2, z }, { x: S.maxX - S.minX, y: md, z: m }, { collider: false });
+    kit.box(
+      'pillar_metal',
+      { x: (S.minX + S.maxX) / 2, y: h + md / 2, z },
+      { x: S.maxX - S.minX, y: md, z: m },
+      { collider: false },
+    );
   }
   // Glass lantern: vertical glazing around the opening, a glass top and corner posts.
   const y0 = h + rt;
@@ -410,11 +456,22 @@ function buildRoof(kit: LevelKit): void {
       kit.box('pillar_metal', { x: px, y: y0 + lh / 2, z: pz }, { x: m, y: lh, z: m }, { collider: false });
     }
   }
+  const rib = m * S.ribScale;
   for (let i = 0; i <= S.panes[0]; i++) {
-    kit.box('trim_metal', { x: S.minX + i * pw, y: y0 + lh + gt, z: cz }, { x: m * 0.6, y: m * 0.6, z: d }, { collider: false });
+    kit.box(
+      'trim_metal',
+      { x: S.minX + i * pw, y: y0 + lh + gt, z: cz },
+      { x: rib, y: rib, z: d },
+      { collider: false },
+    );
   }
   for (let k = 0; k <= S.panes[1]; k++) {
-    kit.box('trim_metal', { x: cx, y: y0 + lh + gt, z: S.minZ + k * pd }, { x: w, y: m * 0.6, z: m * 0.6 }, { collider: false });
+    kit.box(
+      'trim_metal',
+      { x: cx, y: y0 + lh + gt, z: S.minZ + k * pd },
+      { x: w, y: rib, z: rib },
+      { collider: false },
+    );
   }
   // Night sky glow above the lantern (never casts: it would block the sun shafts).
   const sm = S.skyMargin;
@@ -473,14 +530,22 @@ export function buildLabs(kit: LevelKit): void {
     kit.box(
       'screen',
       { x: cx, y: b.height + sc.lift + sc.height / 2, z: cz },
-      alongX ? { x: sc.width, y: sc.height, z: 0.04 } : { x: 0.04, y: sc.height, z: sc.width },
+      alongX ? { x: sc.width, y: sc.height, z: sc.depth } : { x: sc.depth, y: sc.height, z: sc.width },
       { collider: false, uv: 'face' },
     );
   }
   // Glowing guide line down the aisle.
   const labs = L.spaces.find((s) => s.id === 'labs')!.rects[0]!;
   const aisleX = (L.labs.cubicles[0]!.maxX + L.labs.cubicles[2]!.minX) / 2;
-  kit.marking('emissive_cyan', aisleX - 0.04, labs.minZ + 1.5, aisleX + 0.04, labs.maxZ - 0.4, 0);
+  const A = B.aisleLine;
+  kit.marking(
+    'emissive_cyan',
+    aisleX - A.halfWidth,
+    labs.minZ + A.startMargin,
+    aisleX + A.halfWidth,
+    labs.maxZ - A.endMargin,
+    0,
+  );
 }
 
 function cubicle(kit: LevelKit, c: LabCubicleDef, h: number): void {
@@ -497,33 +562,54 @@ function cubicle(kit: LevelKit, c: LabCubicleDef, h: number): void {
   for (const [z0, z1] of subtractIntervals(c.minZ - t, c.maxZ + t, [open])) {
     const zl = z1 - z0;
     const zc = (z0 + z1) / 2;
-    kit.box('wall_panel_dark#clinical', { x: xc, y: P.glassBottom / 2, z: zc }, { x: t, y: P.glassBottom, z: zl }, { collider: false });
-    kit.box('glass', { x: xc, y: (P.glassBottom + P.glassTop) / 2, z: zc }, { x: P.glassThickness, y: P.glassTop - P.glassBottom, z: zl }, {
-      collider: false,
-    });
+    kit.box(
+      'wall_panel_dark#clinical',
+      { x: xc, y: P.glassBottom / 2, z: zc },
+      { x: t, y: P.glassBottom, z: zl },
+      { collider: false },
+    );
+    kit.box(
+      'glass',
+      { x: xc, y: (P.glassBottom + P.glassTop) / 2, z: zc },
+      { x: P.glassThickness, y: P.glassTop - P.glassBottom, z: zl },
+      {
+        collider: false,
+      },
+    );
     kit.staticBox({ x: xc, y: P.glassTop / 2, z: zc }, { x: t, y: P.glassTop, z: zl }, undefined, 'glass');
     const n = Math.max(1, Math.round(zl / P.mullionSpacing));
     for (let i = 0; i <= n; i++) {
       kit.box(
         'trim_metal',
         { x: xc, y: (P.glassBottom + P.glassTop) / 2, z: z0 + (zl * i) / n },
-        { x: t + 0.02, y: P.glassTop - P.glassBottom, z: P.mullionWidth },
+        { x: t + P.mullionExtra, y: P.glassTop - P.glassBottom, z: P.mullionWidth },
         { collider: false },
       );
     }
-    kit.box('trim_metal', { x: xc, y: P.glassBottom, z: zc }, { x: t + 0.04, y: TRIM.capHeight, z: zl }, { collider: false });
+    kit.box(
+      'trim_metal',
+      { x: xc, y: P.glassBottom, z: zc },
+      { x: t + P.sillExtra, y: TRIM.capHeight, z: zl },
+      { collider: false },
+    );
   }
   // Header above the glass (and the opening) up to the ceiling.
   kit.boxMinMax('wall_panel#white', { x: x0, y: P.glassTop, z: c.minZ - t }, { x: x1, y: h, z: c.maxZ + t });
-  kit.boxMinMax('trim_metal', { x: x0 - 0.02, y: P.glassTop - TRIM.capHeight, z: c.minZ - t }, { x: x1 + 0.02, y: P.glassTop, z: c.maxZ + t }, {
-    collider: false,
-  });
+  const me = P.mullionExtra;
+  kit.boxMinMax(
+    'trim_metal',
+    { x: x0 - me, y: P.glassTop - TRIM.capHeight, z: c.minZ - t },
+    { x: x1 + me, y: P.glassTop, z: c.maxZ + t },
+    {
+      collider: false,
+    },
+  );
   // Cyan status strip over the opening.
   const sx = c.front === 'px' ? x1 + DECAL.offset : x0 - DECAL.offset;
   kit.box(
     'emissive_cyan',
-    { x: sx, y: P.glassTop + 0.25, z: c.opening },
-    { x: DECAL.thickness, y: 0.06, z: c.openingWidth },
+    { x: sx, y: P.glassTop + P.statusLift, z: c.opening },
+    { x: DECAL.thickness, y: P.statusHeight, z: c.openingWidth },
     { collider: false, castShadow: false },
   );
 }
@@ -534,10 +620,19 @@ function tank(kit: LevelKit, t: LabTankDef, ceiling: number): void {
   const r = t.radius;
   const at = (y: number): { x: number; y: number; z: number } => ({ x: t.x, y, z: t.z });
   kit.cylinder('trim_metal', at(0), at(K.baseHeight), r + K.rimExtra, { collider: true });
-  kit.cylinder('glass#tank', at(K.baseHeight), at(t.height - K.capHeight), r, { collider: true, castShadow: false });
-  kit.cylinder('emissive_cyan#fluid', at(K.baseHeight + 0.02), at(t.height - K.capHeight - K.fluidTopGap), r - K.fluidInset, {
+  kit.cylinder('glass#tank', at(K.baseHeight), at(t.height - K.capHeight), r, {
+    collider: true,
     castShadow: false,
   });
+  kit.cylinder(
+    'emissive_cyan#fluid',
+    at(K.baseHeight + K.fluidLift),
+    at(t.height - K.capHeight - K.fluidTopGap),
+    r - K.fluidInset,
+    {
+      castShadow: false,
+    },
+  );
   kit.cylinder('trim_metal', at(t.height - K.capHeight), at(t.height), r + K.rimExtra);
   kit.cylinder('pipe', at(t.height), at(ceiling), K.pipeRadius);
 }
@@ -552,11 +647,16 @@ export function buildServer(kit: LevelKit): void {
   const d = S.rackDepth;
   for (const z of S.rows) {
     for (const [x0, x1] of S.blocks) {
-      kit.boxMinMax('wall_panel_dark', { x: x0, y: 0, z: z - d / 2 }, { x: x1, y: S.rackHeight, z: z + d / 2 });
+      kit.boxMinMax(
+        'wall_panel_dark',
+        { x: x0, y: 0, z: z - d / 2 },
+        { x: x1, y: S.rackHeight, z: z + d / 2 },
+      );
+      const co = S.capOverhang;
       kit.boxMinMax(
         'trim_metal',
-        { x: x0 - 0.03, y: S.rackHeight, z: z - d / 2 - 0.03 },
-        { x: x1 + 0.03, y: S.rackHeight + TRIM.capHeight, z: z + d / 2 + 0.03 },
+        { x: x0 - co, y: S.rackHeight, z: z - d / 2 - co },
+        { x: x1 + co, y: S.rackHeight + TRIM.capHeight, z: z + d / 2 + co },
         { collider: false },
       );
       const n = Math.max(1, Math.round((x1 - x0) / S.cabinetWidth));
@@ -564,15 +664,20 @@ export function buildServer(kit: LevelKit): void {
       for (const side of [-1, 1]) {
         const zf = z + side * (d / 2 + DECAL.offset);
         for (let i = 0; i <= n; i++) {
-          kit.box('trim_metal', { x: x0 + i * cw, y: S.rackHeight / 2, z: zf }, { x: 0.04, y: S.rackHeight, z: DECAL.thickness * 2 }, {
-            collider: false,
-          });
+          kit.box(
+            'trim_metal',
+            { x: x0 + i * cw, y: S.rackHeight / 2, z: zf },
+            { x: S.dividerWidth, y: S.rackHeight, z: DECAL.thickness * 2 },
+            {
+              collider: false,
+            },
+          );
         }
         for (const y of S.ledStrips) {
           kit.box(
             'emissive_cyan#led',
             { x: (x0 + x1) / 2, y, z: zf },
-            { x: x1 - x0 - 0.1, y: S.ledHeight, z: DECAL.thickness },
+            { x: x1 - x0 - S.ledMargin * 2, y: S.ledHeight, z: DECAL.thickness },
             { collider: false, castShadow: false },
           );
         }
@@ -584,8 +689,15 @@ export function buildServer(kit: LevelKit): void {
         { x: x1 - x0, y: S.trayHeight, z: S.trayWidth },
         { collider: false },
       );
-      for (const hx of [x0 + 0.3, x1 - 0.3]) {
-        kit.box('trim_metal', { x: hx, y: (S.trayY + h) / 2, z }, { x: 0.04, y: h - S.trayY, z: 0.04 }, { collider: false });
+      for (const hx of [x0 + S.hangerInset, x1 - S.hangerInset]) {
+        kit.box(
+          'trim_metal',
+          { x: hx, y: (S.trayY + h) / 2, z },
+          { x: S.hangerSize, y: h - S.trayY, z: S.hangerSize },
+          {
+            collider: false,
+          },
+        );
       }
     }
   }
@@ -603,15 +715,26 @@ export function buildCryo(kit: LevelKit): void {
     for (const z of C.podZ) {
       const at = (y: number): { x: number; y: number; z: number } => ({ x, y, z });
       kit.cylinder('trim_metal', at(0), at(P.baseHeight), P.radius + P.rimExtra, { collider: true });
-      kit.cylinder('emissive_cyan', at(P.baseHeight), at(P.baseHeight + P.glowHeight), P.radius + P.rimExtra * 0.6, {
-        castShadow: false,
-      });
+      kit.cylinder(
+        'emissive_cyan',
+        at(P.baseHeight),
+        at(P.baseHeight + P.glowHeight),
+        P.radius + P.glowExtra,
+        {
+          castShadow: false,
+        },
+      );
       kit.cylinder('glass#frost', at(P.baseHeight + P.glowHeight), at(P.height - P.capHeight), P.radius, {
         collider: true,
         castShadow: false,
       });
       // Frozen occupant (dark silhouette behind the frost).
-      kit.cylinder('wall_panel_dark', at(P.baseHeight + P.glowHeight), at(P.baseHeight + P.bodyHeight), P.bodyRadius);
+      kit.cylinder(
+        'wall_panel_dark',
+        at(P.baseHeight + P.glowHeight),
+        at(P.baseHeight + P.bodyHeight),
+        P.bodyRadius,
+      );
       kit.cylinder('trim_metal', at(P.height - P.capHeight), at(P.height), P.radius + P.rimExtra);
       kit.cylinder('pipe', at(P.height), at(h), P.pipeRadius);
     }
@@ -635,7 +758,7 @@ export function buildDock(kit: LevelKit): void {
     topMaterial: 'diamond_plate',
     edgeStrip: { material: 'emissive_orange', faces: ['pz'], drop: 0.06, height: 0.05 },
   });
-  kit.marking('painted_hazard', P.minX, P.maxZ, D.ramp.minX, P.maxZ + 0.3, 0);
+  kit.marking('painted_hazard', P.minX, P.maxZ, D.ramp.minX, P.maxZ + P.hazardDepth, 0);
   const run = dockRampRun();
   kit.ramp({
     material: 'diamond_plate',
@@ -657,9 +780,19 @@ export function buildDock(kit: LevelKit): void {
   const cx = (S.minX + S.maxX) / 2;
   for (let i = 0; i < n; i++) {
     const y = bottom + i * pitch + S.slat / 2;
-    kit.box('trim_metal', { x: cx, y, z: face + S.depth / 2 }, { x: w, y: S.slat, z: S.depth }, { collider: false });
+    kit.box(
+      'trim_metal',
+      { x: cx, y, z: face + S.depth / 2 },
+      { x: w, y: S.slat, z: S.depth },
+      { collider: false },
+    );
   }
-  kit.staticBox({ x: cx, y: (bottom + S.top) / 2, z: face + S.depth / 2 }, { x: w, y: S.top - bottom, z: S.depth }, undefined, 'metal');
+  kit.staticBox(
+    { x: cx, y: (bottom + S.top) / 2, z: face + S.depth / 2 },
+    { x: w, y: S.top - bottom, z: S.depth },
+    undefined,
+    'metal',
+  );
   for (const side of [-1, 1]) {
     kit.box(
       'painted_hazard',
@@ -667,11 +800,18 @@ export function buildDock(kit: LevelKit): void {
       { x: S.frame, y: S.top + S.frame - bottom, z: S.depth * 2 },
     );
   }
-  kit.box('painted_hazard', { x: cx, y: S.top + S.frame / 2, z: face + S.depth }, { x: w + S.frame * 2, y: S.frame, z: S.depth * 2 });
-  kit.box('emissive_red', { x: cx, y: S.top + S.frame + 0.15, z: face + 0.08 }, { x: 1.2, y: 0.12, z: 0.1 }, {
-    collider: false,
-    castShadow: false,
-  });
+  kit.box(
+    'painted_hazard',
+    { x: cx, y: S.top + S.frame / 2, z: face + S.depth },
+    { x: w + S.frame * 2, y: S.frame, z: S.depth * 2 },
+  );
+  const al = S.alarm;
+  kit.box(
+    'emissive_red',
+    { x: cx, y: S.top + S.frame + al.lift + al.size[1] / 2, z: face + al.offset },
+    { x: al.size[0], y: al.size[1], z: al.size[2] },
+    { collider: false, castShadow: false },
+  );
 
   for (const c of D.crates) {
     kit.crate({
@@ -685,12 +825,19 @@ export function buildDock(kit: LevelKit): void {
   const dock = L.spaces.find((s) => s.id === 'dock')!.rects[0]!;
   const [bw, bh] = D.crane.size;
   for (const z of D.crane.beams) {
-    kit.box('pillar_metal', { x: (dock.minX + dock.maxX) / 2, y: D.crane.y, z }, { x: dock.maxX - dock.minX, y: bh, z: bw }, {
-      collider: false,
-    });
+    kit.box(
+      'pillar_metal',
+      { x: (dock.minX + dock.maxX) / 2, y: D.crane.y, z },
+      { x: dock.maxX - dock.minX, y: bh, z: bw },
+      {
+        collider: false,
+      },
+    );
   }
   for (const [x, z] of D.bollards) {
-    kit.cylinder('painted_hazard', { x, y: 0, z }, { x, y: 1.0, z }, 0.18, { collider: true });
+    kit.cylinder('painted_hazard', { x, y: 0, z }, { x, y: D.bollard.height, z }, D.bollard.radius, {
+      collider: true,
+    });
   }
 }
 

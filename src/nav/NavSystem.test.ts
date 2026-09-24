@@ -4,7 +4,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { exportNavMesh } from 'recast-navigation';
+import { exportNavMesh, Raw } from 'recast-navigation';
 import type { NavAgentParams } from '../core/contracts';
 import { NAV } from '../defs/nav';
 import {
@@ -189,6 +189,21 @@ describe('NavSystem (main-thread build)', () => {
     }
   });
 
+  it('keeps random points on the center layer (floor under a deck)', () => {
+    const d = TEST_LEVEL.deckD;
+    const out = new THREE.Vector3();
+    for (const r of [0, 0.3]) {
+      for (let i = 0; i < 20; i++) {
+        // A ray along the deck right before must not leak its layer into the next sample.
+        expect(nav.walkable(v(d.x - 2, d.top, d.z), v(d.x + 2, d.top, d.z))).toBe(true);
+        expect(nav.randomPointAround(v(d.x, 0, d.z), r, out)).toBe(true);
+        expect(Math.abs(out.y)).toBeLessThan(HEIGHT_TOL);
+        expect(nav.randomPointAround(v(d.x, d.top, d.z), r, out)).toBe(true);
+        expect(Math.abs(out.y - d.top)).toBeLessThan(HEIGHT_TOL);
+      }
+    }
+  });
+
   it('draws the same random points for the same seed', () => {
     const sample = (seed: string | number): number[] => {
       nav.setRandomSeed(seed);
@@ -292,6 +307,31 @@ describe('NavSystem (main-thread build)', () => {
     nav.setAgentTarget(id, goal);
     run(nav, 1);
     expect(crowd.requestsSent - before).toBe(2);
+    nav.removeAgent(id);
+  });
+
+  it('resends a goal detour failed to path to, even when it did not move', () => {
+    const id = nav.addAgent(v(-8, 0, -3), AGENT);
+    const internals = nav as unknown as {
+      backend: { requestsSent: number; agents: { targetState: number }[] };
+      slotIndex: Int32Array;
+    };
+    const crowd = internals.backend;
+    const agent = crowd.agents[internals.slotIndex[id]!]!;
+    const goal = v(8, 0, -3);
+    nav.setAgentTarget(id, goal);
+    run(nav, 2);
+    const before = crowd.requestsSent;
+    nav.setAgentTarget(id, goal);
+    run(nav, 1);
+    expect(crowd.requestsSent).toBe(before);
+    // Detour gave up on the request (e.g. a stale corridor): the same goal goes out again.
+    agent.targetState = Raw.Module.DT_CROWDAGENT_TARGET_FAILED;
+    nav.setAgentTarget(id, goal);
+    run(nav, 1);
+    expect(crowd.requestsSent).toBe(before + 1);
+    run(nav, 240);
+    expect(nav.getAgentPosition(id, new THREE.Vector3()).distanceTo(goal)).toBeLessThan(1);
     nav.removeAgent(id);
   });
 
@@ -435,6 +475,89 @@ describe('NavSystem lifecycle', () => {
     expect(worker.terminated).toBe(true);
     const out: THREE.Vector3[] = [];
     expect(nav.findPath(v(0, 0, -4), v(0, 0, 4), out)).toBeGreaterThanOrEqual(3);
+    nav.dispose();
+    disposeMeshes(meshes);
+  });
+
+  it('keeps the current navmesh live while a rebuild runs, then swaps crowd to crowd', async () => {
+    await ensureRecast();
+    const meshes = buildTestLevelMeshes();
+    /** Worker stand-in that answers only when released (a slow rebuild). */
+    let release: (() => void) | null = null;
+    const workers: { terminated: boolean }[] = [];
+    const makeWorker = (): Worker => {
+      const w = {
+        onmessage: null as ((e: MessageEvent<NavBuildResponse>) => void) | null,
+        onerror: null,
+        onmessageerror: null,
+        terminated: false,
+        postMessage(req: NavBuildRequest): void {
+          release = () => {
+            const res = generateNavMesh(req.positions, req.indices, req.config);
+            if (!res.navMesh) throw new Error(res.error);
+            const data = exportNavMesh(res.navMesh);
+            res.navMesh.destroy();
+            w.onmessage?.({ data: { id: req.id, ok: true, data, ms: 1 } } as MessageEvent<NavBuildResponse>);
+          };
+        },
+        terminate(): void {
+          w.terminated = true;
+        },
+      };
+      workers.push(w);
+      return w as unknown as Worker;
+    };
+    const nav = new NavSystem({ createWorker: makeWorker });
+    const first = nav.build(meshes);
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    release!();
+    expect(await first).toBe(true);
+    const id = nav.addAgent(v(0, 0, -4), AGENT);
+    nav.setAgentTarget(id, v(0, 0, 4));
+    run(nav, 30);
+
+    // Rebuild: the old navmesh keeps steering (walls stay walls) until the new one arrives.
+    release = null;
+    const rebuild = nav.build(meshes);
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    expect(nav.ready).toBe(true);
+    expect(nav.stats.mode).toBe('navmesh');
+    const p = new THREE.Vector3();
+    let crossedWall = false;
+    const watchWall = (): void => {
+      nav.getAgentPosition(id, p);
+      if (Math.abs(p.z) < 0.2 && Math.abs(p.x) < TEST_LEVEL.wallHalfLength) crossedWall = true;
+    };
+    run(nav, 120, watchWall);
+    expect(nav.findPath(v(0, 0, -4), v(0, 0, 4), [])).toBeGreaterThanOrEqual(3);
+    release!();
+    expect(await rebuild).toBe(true);
+    expect(nav.stats.builtIn).toBe('worker');
+    expect(nav.stats.agents).toBe(1);
+    // Same id, same goal: the agent carries on around the wall on the new crowd.
+    run(nav, 600, watchWall);
+    expect(p.distanceTo(v(0, 0, 4))).toBeLessThan(0.6);
+    expect(crossedWall).toBe(false);
+
+    // A newer build supersedes a running one: its worker ends at once and it reports false.
+    release = null;
+    const stale = nav.build(meshes);
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    const staleWorker = workers[workers.length - 1]!;
+    release = null;
+    const fresh = nav.build(meshes);
+    expect(staleWorker.terminated).toBe(true);
+    expect(await stale).toBe(false);
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    release!();
+    expect(await fresh).toBe(true);
+
+    // A failed rebuild (nothing to build) drops to direct steering; the agent keeps its id.
+    expect(await nav.build([])).toBe(false);
+    expect(nav.ready).toBe(false);
+    expect(nav.stats.mode).toBe('direct');
+    expect(nav.stats.agents).toBe(1);
+    expect(Number.isFinite(nav.getAgentPosition(id, p).x)).toBe(true);
     nav.dispose();
     disposeMeshes(meshes);
   });

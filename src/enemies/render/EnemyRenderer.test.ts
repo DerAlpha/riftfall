@@ -43,10 +43,10 @@ describe('EnemyRenderer: instances', () => {
     expect(scene.children).not.toContain(r.root);
   });
 
-  it('hands out unique handles up to the default capacities (swarmer 48, spitter 16, tank 8)', () => {
+  it('hands out unique handles up to the default capacities (swarmer 60, spitter 16, tank 8)', () => {
     const { r } = make();
     for (const [type, cap] of [
-      ['swarmer', 48],
+      ['swarmer', 60],
       ['spitter', 16],
       ['tank', 8],
     ] as const) {
@@ -136,6 +136,31 @@ describe('EnemyRenderer: instances', () => {
     const p0 = mesh(r, 'swarmer').geometry.getAttribute('rfPose0');
     const phase = p0.getY(0);
     expect(phase < 0.01 || phase > Math.PI * 2 - 0.01).toBe(true);
+    r.dispose();
+  });
+
+  it('attack progress interpolates forward only (a restarted attack does not replay the strike)', () => {
+    const { r } = make();
+    const h = r.acquire('swarmer');
+    const p0 = (): number => mesh(r, 'swarmer').geometry.getAttribute('rfPose0').getW(0);
+    r.setPose('swarmer', h, pose({ attackId: 0, attack: 0.2 }));
+    r.commitTick();
+    r.setPose('swarmer', h, pose({ attackId: 0, attack: 0.4 }));
+    r.commitTick();
+    r.update(0.016, 0.5);
+    expect(p0()).toBeCloseTo(0.3, 5);
+    // Finished and restarted within one tick: start at the new progress, no sweep back from 1.
+    r.setPose('swarmer', h, pose({ attackId: 0, attack: 0.95 }));
+    r.commitTick();
+    r.setPose('swarmer', h, pose({ attackId: 0, attack: 0.05 }));
+    r.commitTick();
+    r.update(0.016, 0.5);
+    expect(p0()).toBeCloseTo(0.05, 5);
+    // A different attack also starts at its own progress.
+    r.setPose('swarmer', h, pose({ attackId: 1, attack: 0.1 }));
+    r.commitTick();
+    r.update(0.016, 0.5);
+    expect(p0()).toBeCloseTo(0.1, 5);
     r.dispose();
   });
 

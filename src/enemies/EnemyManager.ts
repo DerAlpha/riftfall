@@ -6,8 +6,9 @@
  *   2. perception: aggro target selection, gunshot hearing, horde sense, round-robin LOS rays
  *      (ENEMY_AI.budget.losPerTick) + alerts
  *   3. think: emerge → brain (attack choice / movement goal) → attack phases → stagger → death anim
- *   4. movement requests to the nav crowd (deduped), nav.update(dt) (stepNav), read positions;
- *      AI overrides (leap, charge, knockback) move the enemy directly while its agent is parked
+ *   4. movement requests to the nav crowd (deduped), the player's parked stand-in agent (the horde
+ *      steers around the player), nav.update(dt) (stepNav), read positions; AI overrides (leap,
+ *      charge, knockback) move the enemy directly while its agent is parked
  *   5. stuck detection, leash, player push-out, facing, pose, visuals transform/pose, hitboxes /
  *      bounds / aim point for combat, kinematic player-blocker bodies → visuals.commitTick()
  *   6. projectiles (when owned)
@@ -39,11 +40,18 @@ import { createLogger } from '../core/log';
 import { DEG2RAD } from '../core/math';
 import { Pool } from '../core/Pool';
 import { Rng } from '../core/Rng';
-import { ENEMIES, ENEMY_AI, getEnemyDef, type EnemyAttackDef, type EnemyTypeDef } from '../defs/enemies';
+import {
+  ENEMIES,
+  ENEMY_AI,
+  getEnemyDef,
+  type EnemyAttackDef,
+  type EnemyAttackKind,
+  type EnemyTypeDef,
+} from '../defs/enemies';
 import { attackAnimIndex, getEnemyVisualDef } from '../defs/enemyVisuals';
 import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { ProjectileSystem } from '../combat/Projectiles';
-import { Enemy, PHASE_STRIKE, type EnemyOwner } from './Enemy';
+import { Enemy, PHASE_STRIKE, SLOT_POOLS, type EnemyOwner } from './Enemy';
 import { AttackSlotCoordinator } from './ai/AttackSlotCoordinator';
 import {
   aoeFactor,
@@ -68,6 +76,16 @@ const log = createLogger('enemies');
 
 const TAU = Math.PI * 2;
 const UP: Vec3Like = { x: 0, y: 1, z: 0 };
+/** The player's stand-in crowd agent: it never steers itself. */
+const PLAYER_AGENT_PARAMS: NavAgentParams = {
+  radius: ENEMY_AI.playerAgent.radius,
+  height: ENEMY_AI.playerAgent.height,
+  maxSpeed: 0,
+  maxAcceleration: 0,
+  separationWeight: 0,
+};
+/** Index order of the per-kind attack spacing table. */
+const ATTACK_KINDS = Object.keys(ENEMY_AI.attackSpacing) as EnemyAttackKind[];
 /** Enemy blocker bodies: ENEMY members that only touch the player. */
 const BLOCKER_GROUPS = interactionGroups(COLLISION_GROUP.ENEMY, COLLISION_GROUP.PLAYER);
 
@@ -101,6 +119,7 @@ interface PhysicsExtras {
     parent: RAPIER.RigidBody | null,
     data: ColliderData,
   ): RAPIER.Collider;
+  setColliderData?(collider: RAPIER.Collider, data: ColliderData): void;
 }
 
 interface TypeRuntime {
@@ -130,12 +149,17 @@ export interface EnemyManagerStats {
   /** Records in use (living + dying) and LOS rays cast in the last tick. */
   records: number;
   losRays: number;
+  /** Cumulative stuck recoveries (re-path / nav teleport) and relocations (stuck or leashed). */
+  stuckRepaths: number;
+  stuckTeleports: number;
+  relocations: number;
 }
 
 // Scratch.
 const _v = new Vector3();
 const _w = new Vector3();
 const _eye = new Vector3();
+const _probe = new Vector3();
 const _prev = new Vector3();
 const _kin = { x: 0, y: 0, z: 0 };
 const _dir = { x: 0, y: 0, z: 0 };
@@ -166,8 +190,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   private readonly coordinators: AttackSlotCoordinator[] = [];
   private readonly surrounds: SurroundSlots[] = [];
   private readonly facing: Float64Array;
-  /** Last ranged attack start per aggro target (volley spacing). */
-  private readonly lastVolley: Float64Array;
+  /** Last attack start per aggro target × attack kind (ENEMY_AI.attackSpacing). */
+  private readonly lastStart: Float64Array;
   private readonly shotDir = new Vector3();
   private shotTime = Number.NEGATIVE_INFINITY;
   private spawnPoints: readonly SpawnPointDef[] = [];
@@ -179,6 +203,10 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   private losCursor = 0;
   private nextAlertTime = 0;
   private disposed = false;
+  /** Crowd agent standing in for the player (enemies steer around it), -1 = none yet. */
+  private playerAgent = -1;
+  private playerAgentRetryAt = 0;
+  private readonly playerAgentAt = new Vector3(Number.NaN, 0, 0);
   private suppressBursts = false;
   private readonly warned = new Set<string>();
   private readonly unsubscribe: (() => void)[] = [];
@@ -261,16 +289,31 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
 
     this.threat = new ThreatTable(ENEMY_AI.aggro);
     for (let i = 0; i < this.threat.maxTargets; i++) {
-      this.coordinators.push(new AttackSlotCoordinator(ENEMY_AI.slots, this._capacity));
+      for (const pool of SLOT_POOLS) {
+        const cfg = { ...ENEMY_AI.slots, maxTokens: ENEMY_AI.slots.pools[pool] };
+        this.coordinators.push(new AttackSlotCoordinator(cfg, this._capacity));
+      }
       this.surrounds.push(new SurroundSlots(ENEMY_AI.surround));
     }
     this.facing = new Float64Array(this.threat.maxTargets);
-    this.lastVolley = new Float64Array(this.threat.maxTargets).fill(Number.NEGATIVE_INFINITY);
+    this.lastStart = new Float64Array(this.threat.maxTargets * ATTACK_KINDS.length).fill(
+      Number.NEGATIVE_INFINITY,
+    );
     this.primarySlot = this.threat.register(deps.target, ENEMY_AI.aggro.playerBias);
 
     const byType: Record<string, number> = {};
     for (const id of Object.keys(ENEMIES)) byType[id] = 0;
-    this.stats = { alive: 0, byType, aiMs: 0, aiMsAvg: 0, records: 0, losRays: 0 };
+    this.stats = {
+      alive: 0,
+      byType,
+      aiMs: 0,
+      aiMsAvg: 0,
+      records: 0,
+      losRays: 0,
+      stuckRepaths: 0,
+      stuckTeleports: 0,
+      relocations: 0,
+    };
 
     this.unsubscribe.push(
       this.events.on('weapon:fired', (e) => {
@@ -300,6 +343,11 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   /** Living and dying enemies (read-only). */
   get enemies(): readonly Enemy[] {
     return this.active;
+  }
+
+  /** Nav agent standing in for the player (ENEMY_AI.playerAgent), -1 while there is none. */
+  get playerAgentId(): number {
+    return this.playerAgent;
   }
 
   /**
@@ -410,7 +458,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     this.stats.alive = 0;
     for (const c of this.coordinators) c.reset();
     for (const s of this.surrounds) s.reset();
-    this.lastVolley.fill(Number.NEGATIVE_INFINITY);
+    this.lastStart.fill(Number.NEGATIVE_INFINITY);
     this.projectiles?.clear();
   }
 
@@ -451,6 +499,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     if (this.aiEnabled) this.perceive(dt);
     for (let i = 0; i < this.active.length; i++) this.think(this.active[i]!, dt);
     this.pushMoves();
+    this.syncPlayerAgent();
     if (this.stepNav) this.nav.update(dt);
     for (let i = 0; i < this.active.length; i++) this.integrate(this.active[i]!, dt);
     this.visuals.commitTick();
@@ -481,6 +530,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     }
     this.types.clear();
     if (this.ownsProjectiles) this.projectiles?.dispose();
+    if (this.playerAgent >= 0) this.nav.removeAgent(this.playerAgent);
+    this.playerAgent = -1;
     this.threat.clear();
     this.disposed = true;
   }
@@ -515,16 +566,24 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     return this.facing[slot] ?? 0;
   }
 
-  coordinator(slot: number): AttackSlotCoordinator {
-    return this.coordinators[slot] ?? this.coordinators[0]!;
+  coordinator(e: Enemy): AttackSlotCoordinator {
+    return this.coordinatorAt(e.targetSlot, e.poolIndex);
+  }
+
+  /** Token coordinator of aggro target `slot` and pool `pool` (index into SLOT_POOLS). */
+  coordinatorAt(slot: number, pool = 0): AttackSlotCoordinator {
+    return this.coordinators[slot * SLOT_POOLS.length + pool] ?? this.coordinators[0]!;
   }
 
   surround(slot: number): SurroundSlots {
     return this.surrounds[slot] ?? this.surrounds[0]!;
   }
 
-  canVolley(slot: number): boolean {
-    return this._time - (this.lastVolley[slot] ?? Number.NEGATIVE_INFINITY) >= ENEMY_AI.volley.minSpacing;
+  spacingAllows(slot: number, kind: EnemyAttackKind): boolean {
+    const spacing = ENEMY_AI.attackSpacing[kind];
+    if (!(spacing > 0)) return true;
+    const last = this.lastStart[slot * ATTACK_KINDS.length + ATTACK_KINDS.indexOf(kind)];
+    return last === undefined || this._time - last >= spacing;
   }
 
   takePaths(n: number): boolean {
@@ -569,9 +628,9 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.phaseTime = 0;
     e.attackHit = false;
     e.attackReady[index] = this._time + a.cooldown;
-    if (a.usesSlot) this.coordinator(e.targetSlot).noteAttack(e.id, this._time);
-    if (a.kind === 'projectile' && e.targetSlot < this.lastVolley.length)
-      this.lastVolley[e.targetSlot] = this._time;
+    if (a.usesSlot) this.coordinator(e).noteAttack(e.id, this._time);
+    const k = e.targetSlot * ATTACK_KINDS.length + ATTACK_KINDS.indexOf(a.kind);
+    if (k >= 0 && k < this.lastStart.length) this.lastStart[k] = this._time;
     e.hasMove = false;
     e.pose.attackId = rt.animIndex[index]!;
     e.pose.attack = 0;
@@ -633,10 +692,17 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   // Tick stages
   // -------------------------------------------------------------------------
 
+  /** Until none is left: a sac burst may kill enemies earlier in the list (chain reactions). */
   private processDeaths(): void {
-    for (let i = 0; i < this.active.length; i++) {
-      const e = this.active[i]!;
-      if (e.deathPending) this.die(e);
+    let pending = true;
+    while (pending) {
+      pending = false;
+      for (let i = 0; i < this.active.length; i++) {
+        const e = this.active[i]!;
+        if (!e.deathPending) continue;
+        this.die(e);
+        pending = true;
+      }
     }
   }
 
@@ -770,7 +836,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   private switchTarget(e: Enemy, slot: number): void {
     const rt = this.types.get(e.type);
     rt?.brain.release(e, this);
-    this.coordinator(e.targetSlot).cancel(e.id);
+    this.coordinator(e).cancel(e.id);
     e.targetSlot = slot;
     rt?.brain.resume(e, this);
   }
@@ -863,7 +929,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
 
   private enterStagger(e: Enemy, duration: number): void {
     if (e.state === 'attack') cancelAttack(e, this);
-    this.coordinator(e.targetSlot).release(e.id, this._time);
+    this.coordinator(e).release(e.id, this._time);
     e.state = 'stagger';
     e.stateTime = 0;
     e.staggerDuration = duration;
@@ -874,6 +940,28 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     p.type = e.type;
     copyVec(e.position, p.position);
     this.events.emit('enemy:staggered', p);
+  }
+
+  /**
+   * The player as a parked crowd agent at its feet: detour's avoidance and separation steer the
+   * horde around the player instead of into it (the visible push-out stays as a safety net).
+   * Created lazily (the crowd refuses off-mesh positions), moved by teleport when the player moved.
+   */
+  private syncPlayerAgent(): void {
+    const P = ENEMY_AI.playerAgent;
+    const t = this.primary;
+    if (!P.enabled || !t.alive) return;
+    const p = t.position;
+    if (this.playerAgent < 0) {
+      if (this._time < this.playerAgentRetryAt) return;
+      this.playerAgentRetryAt = this._time + P.retryInterval;
+      this.playerAgent = this.nav.addAgent(p, PLAYER_AGENT_PARAMS);
+      if (this.playerAgent >= 0) this.playerAgentAt.copy(p);
+      return;
+    }
+    if (this.playerAgentAt.distanceToSquared(p) < P.moveEpsilon * P.moveEpsilon) return;
+    this.playerAgentAt.copy(p);
+    this.nav.teleportAgent(this.playerAgent, p);
   }
 
   /** Movement requests → nav crowd (deduped; agents of overridden enemies stay parked). */
@@ -911,7 +999,9 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     if (e.state === 'free') return;
     _prev.copy(e.position);
     const K = ENEMY_AI.knockback;
-    const hasKnock = e.knock.x * e.knock.x + e.knock.z * e.knock.z >= K.minSpeed * K.minSpeed;
+    // Starting needs a real shove; a running knockback continues down to minSpeed.
+    const keep = e.override === 'knockback' ? K.minSpeed : K.startSpeed;
+    const hasKnock = e.knock.x * e.knock.x + e.knock.z * e.knock.z >= keep * keep;
     if (hasKnock && e.override === 'none') {
       e.override = 'knockback';
       if (e.agent >= 0 && !e.agentStopped) {
@@ -941,7 +1031,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
         break;
       case 'knockback': {
         _v.copy(e.position).addScaledVector(e.knock, dt);
-        if (this.nav.walkable(e.position, _v)) {
+        if (this.knockClear(e, _v)) {
           if (this.nav.closestPoint(_v, _w)) _v.y = _w.y;
           e.position.copy(_v);
         } else {
@@ -961,7 +1051,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     if (e.alive && target) {
       this.pushOutOfPlayer(e, target);
       if (e.state === 'active' && e.override === 'none' && e.agent >= 0) {
-        this.checkStuck(e);
+        this.checkStuck(e, target);
         this.checkLeash(e, target);
       }
     }
@@ -969,6 +1059,24 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     this.updatePose(e, target, dt);
     this.syncVisual(e);
     this.syncBlocker(e);
+  }
+
+  /**
+   * A knockback step stays on walkable navmesh and out of walls: a static ray at body height looks
+   * a body radius beyond the step (the fallback steering without a navmesh calls every line
+   * walkable).
+   */
+  private knockClear(e: Enemy, to: Vector3): boolean {
+    if (!this.nav.walkable(e.position, to)) return false;
+    const dx = to.x - e.position.x;
+    const dz = to.z - e.position.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-6) return true;
+    const h = e.def.nav.height * ENEMY_AI.knockback.probeHeight * e.pose.scale;
+    const r = (e.def.nav.radius * e.pose.scale) / len;
+    _eye.set(e.position.x, e.position.y + h, e.position.z);
+    _probe.set(to.x + dx * r, to.y + h, to.z + dz * r);
+    return this.combat.lineOfSight(_eye, _probe);
   }
 
   private pushOutOfPlayer(e: Enemy, target: EnemyTargetApi): void {
@@ -989,20 +1097,26 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     }
   }
 
-  private checkStuck(e: Enemy): void {
+  private checkStuck(e: Enemy, target: EnemyTargetApi): void {
     const S = ENEMY_AI.stuck;
-    const wants = e.hasMove && distXZ(e.position, e.moveTarget) > S.goalSlack;
-    const checkedBefore = e.stuck.next;
+    if (this._time < e.stuck.next) return;
+    // Wants to move: a goal it has not reached (snapped like the crowd snaps it: a slot point
+    // inside a wall is reached at the wall), away from the crowd around the target.
+    let wants = e.hasMove && distXZ(e.position, target.position) > S.nearTarget;
+    if (wants) {
+      const goal = this.nav.closestPoint(e.moveTarget, _w) ? _w : e.moveTarget;
+      wants = distXZ(e.position, goal) > S.goalSlack;
+    }
     const act = updateStuck(e.stuck, e.position.x, e.position.z, this._time, wants, S);
-    if (act === STUCK_NONE && e.stuck.next !== checkedBefore && e.stuck.fails === 0) e.stuckTeleports = 0;
+    if (act === STUCK_NONE && e.stuck.fails === 0) e.stuckTeleports = 0;
     if (act === STUCK_TELEPORT && ++e.stuckTeleports >= S.relocateAfter) {
       // Teleporting around did not help (unreachable pocket): re-emerge near the target.
       e.stuckTeleports = 0;
-      const target = this.target(e);
-      if (target) this.relocate(e, target);
+      this.relocate(e, target);
       return;
     }
     if (act === STUCK_REPATH) {
+      this.stats.stuckRepaths++;
       this.nav.stopAgent(e.agent);
       e.agentStopped = true;
       e.sentValid = false;
@@ -1012,6 +1126,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       let ok = this.nav.closestPoint(e.position, _v) && _v.distanceTo(e.position) > S.offMeshDistance;
       if (!ok) ok = this.nav.randomPointAround(e.position, S.teleportRadius, _v);
       if (ok) {
+        this.stats.stuckTeleports++;
         e.position.copy(_v);
         this.nav.teleportAgent(e.agent, _v);
         e.sentValid = false;
@@ -1047,9 +1162,10 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       ? this.nav.closestPoint(best.position, _v)
       : this.nav.randomPointAround(target.position, L.fallbackRadius, _v);
     if (!ok || distXZ(_v, target.position) < L.minRelocateDistance * L.fallbackMinFraction) return;
+    this.stats.relocations++;
     const rt = this.types.get(e.type);
     rt?.brain.release(e, this);
-    this.coordinator(e.targetSlot).cancel(e.id);
+    this.coordinator(e).cancel(e.id);
     e.position.copy(_v);
     this.nav.teleportAgent(e.agent, _v);
     e.sentValid = false;
@@ -1210,6 +1326,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.spotValid = false;
     e.spotBest = Number.NEGATIVE_INFINITY;
     e.searchIndex = 0;
+    e.coverSide = 0;
+    e.hideAfterShot = false;
     e.strafeSign = this.rng.chance(0.5) ? 1 : -1;
     e.nextActionTime = now;
     e.laneClear = false;
@@ -1238,10 +1356,14 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   private die(e: Enemy): void {
     e.deathPending = false;
     const rt = this.types.get(e.type);
+    if (e.override === 'leap' && this.nav.closestPoint(e.position, _w)) {
+      // Killed mid-pounce: the corpse drops to the floor instead of collapsing in mid-air.
+      e.position.y = _w.y;
+    }
     if (e.state === 'attack') cancelAttack(e, this);
     if (e.override === 'leap' || e.override === 'charge') e.override = 'none';
     rt?.brain.release(e, this);
-    this.coordinator(e.targetSlot).cancel(e.id);
+    this.coordinator(e).cancel(e.id);
     if (e.agent >= 0) {
       this.nav.removeAgent(e.agent);
       e.agent = -1;
@@ -1254,7 +1376,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.pose.attackId = -1;
     e.pose.attack = 0;
     e.pose.stagger = 0;
-    e.pose.emerge = 1;
+    // pose.emerge stays: one killed while crawling out collapses half in the rift instead of
+    // popping out of the floor (the renderer closes the tear once death > 0).
 
     const p = this.diedPayload;
     p.id = e.id;
@@ -1322,7 +1445,9 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       }
       list.length = 0;
     }
-    if (b.puddle && this.projectiles) this.projectiles.spawnPuddle(b.puddle, e.position, { source: 'enemy' });
+    if (b.puddle && this.projectiles) {
+      this.projectiles.spawnPuddle(b.puddle, e.position, { source: 'enemy', damageScale: e.damageMult });
+    }
   }
 
   /** Return everything the enemy holds and put the record back into its pool. */
@@ -1334,7 +1459,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       this.noteKilled(e);
     }
     rt?.brain.release(e, this);
-    this.coordinator(e.targetSlot).cancel(e.id);
+    this.coordinator(e).cancel(e.id);
     if (e.agent >= 0) {
       this.nav.removeAgent(e.agent);
       e.agent = -1;
@@ -1390,7 +1515,12 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   private ensureBody(e: Enemy): void {
     const ph = this.physics;
     const c = e.def.collider;
-    if (!ph || !c || e.body) return;
+    if (!ph || !c) return;
+    if (e.body) {
+      // A pooled record keeps its body: the collider metadata follows the new Damageable id.
+      if (e.collider) ph.setColliderData?.(e.collider, { kind: 'enemy', surface: 'default', entityId: e.id });
+      return;
+    }
     try {
       const R = ph.rapier;
       const half = Math.max(0.01, c.height / 2 - c.radius);

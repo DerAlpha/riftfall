@@ -502,6 +502,8 @@ export interface Damageable {
   readonly hitboxes: readonly Hitbox[];
   /** Point aim assist pulls towards (usually upper chest). */
   readonly aimPoint: THREE.Vector3;
+  /** Optional per-zone impact surface (armor plates vs. flesh); `surface` when absent. */
+  surfaceAt?(zone: HitZone): FleshSurface;
   applyDamage(info: DamageInfo): DamageResult;
 }
 

@@ -1,11 +1,12 @@
 /**
  * Perf smoke: 60 active enemies (40 swarmers, 14 spitters, 6 tanks) × 600 ticks chasing a moving
- * player – AI + perception rays + projectiles (+ the real detour crowd in the second case). Logs the
- * measured ms/tick; the assertion is a generous regression guard for CI machines (the budget on a
- * mid-range desktop is 2.5 ms/tick incl. nav, see ENEMY_AI.budget).
+ * player – AI + perception rays + projectiles (+ the real detour crowd and the real EnemyRenderer's
+ * CPU pose / hitboxes in the second case). Logs the measured ms/tick; the assertion is a generous
+ * regression guard for CI machines (the budget on a mid-range desktop is 2.5 ms/tick incl. nav, see
+ * ENEMY_AI.budget).
  */
 import { describe, expect, it } from 'vitest';
-import { Group, type Mesh } from 'three';
+import { Group, Scene, type Mesh } from 'three';
 import { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/events';
 import { CombatWorld } from '../combat/CombatWorld';
@@ -13,7 +14,8 @@ import { NavSystem } from '../nav/NavSystem';
 import { buildTestLevelMeshes, disposeMeshes } from '../nav/testLevel';
 import { ensureBvhPatched } from '../world/LevelKit';
 import { EnemyManager } from './EnemyManager';
-import { DT, FakePlayer, FakeVisuals, createEnemyHarness } from './testFakes';
+import { EnemyRenderer } from './render/EnemyRenderer';
+import { DT, FakePlayer, createEnemyHarness } from './testFakes';
 
 const MIX: readonly [string, number][] = [
   ['swarmer', 40],
@@ -70,7 +72,7 @@ describe('EnemyManager perf smoke', () => {
     expect(r.avg).toBeLessThan(GUARD_MS);
   });
 
-  it('60 enemies × 600 ticks on the recast crowd (nav test level)', async () => {
+  it('60 enemies × 600 ticks on the recast crowd with the real renderer rig (nav test level)', async () => {
     ensureBvhPatched();
     const meshes: Mesh[] = buildTestLevelMeshes();
     for (const m of meshes) {
@@ -85,7 +87,11 @@ describe('EnemyManager perf smoke', () => {
     for (const m of meshes) root.add(m);
     combat.setLevel(root);
     const player = new FakePlayer(0, 0, 5);
-    const visuals = new FakeVisuals();
+    const visuals = new EnemyRenderer({
+      scene: new Scene(),
+      render: { setupMaterial() {} },
+      surfaceTexture: false,
+    });
     const manager = new EnemyManager({ events, combat, nav, visuals, target: player, seed: 'perf' });
     let spawned = 0;
     for (const [type, count] of MIX) {
@@ -110,11 +116,12 @@ describe('EnemyManager perf smoke', () => {
         navTimes.push(nav.stats.updateMs);
       }
     }
-    const r = report('recast crowd (AI + nav)', times);
+    const r = report('recast crowd + renderer rig (AI + nav + hitboxes)', times);
     report('  of which nav.update', navTimes);
     expect(manager.alive).toBe(60);
     expect(r.avg).toBeLessThan(GUARD_MS);
     manager.dispose();
+    visuals.dispose();
     nav.dispose();
     disposeMeshes(meshes);
   });

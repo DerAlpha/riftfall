@@ -80,6 +80,18 @@ const FLUID_FRAGMENT = /* glsl */ `
 }
 `;
 
+/** Bit mask of the texture maps a material has (program-relevant). */
+export function mapMask(m: THREE.MeshStandardMaterial): number {
+  return (
+    (m.map ? 1 : 0) |
+    (m.normalMap ? 2 : 0) |
+    (m.aoMap ? 4 : 0) |
+    (m.roughnessMap ? 8 : 0) |
+    (m.metalnessMap ? 16 : 0) |
+    (m.emissiveMap ? 32 : 0)
+  );
+}
+
 interface Variant {
   id: string;
   base: THREE.MeshStandardMaterial;
@@ -142,14 +154,15 @@ export class LabMaterials implements MaterialLibraryApi {
         m.emissiveMap === b.emissiveMap
       )
         continue;
-      const hadMaps = m.map !== null || m.normalMap !== null;
+      // A map appearing / disappearing changes the program (USE_*MAP defines): recompile.
+      const had = mapMask(m);
       m.map = b.map;
       m.normalMap = b.normalMap;
       m.aoMap = b.aoMap;
       m.roughnessMap = b.roughnessMap;
       m.metalnessMap = b.metalnessMap;
       m.emissiveMap = b.emissiveMap;
-      if (hadMaps !== (m.map !== null || m.normalMap !== null)) m.needsUpdate = true;
+      if (mapMask(m) !== had) m.needsUpdate = true;
     }
   }
 
@@ -173,7 +186,10 @@ export class LabMaterials implements MaterialLibraryApi {
     // clone() copies maps and parameters but not the CSM hooks: the copy is registered below.
     const m = baseMat.clone();
     m.name = id;
-    if (def.tint) m.color.multiply(new THREE.Color().setRGB(def.tint[0], def.tint[1], def.tint[2], THREE.LinearSRGBColorSpace));
+    if (def.tint)
+      m.color.multiply(
+        new THREE.Color().setRGB(def.tint[0], def.tint[1], def.tint[2], THREE.LinearSRGBColorSpace),
+      );
     if (def.roughness !== undefined) m.roughness = Math.min(1, baseMat.roughness * def.roughness);
     if (def.metalness !== undefined) m.metalness = Math.min(1, baseMat.metalness * def.metalness);
     if (def.envMapIntensity !== undefined) m.envMapIntensity = def.envMapIntensity;
@@ -208,7 +224,9 @@ export class LabMaterials implements MaterialLibraryApi {
             uLedOff: { value: L.offLevel },
             uLedBackground: { value: L.background },
             uLedPalette: {
-              value: L.palette.map((c) => new THREE.Color().setRGB(c[0], c[1], c[2], THREE.LinearSRGBColorSpace)),
+              value: L.palette.map((c) =>
+                new THREE.Color().setRGB(c[0], c[1], c[2], THREE.LinearSRGBColorSpace),
+              ),
             },
           }
         : {

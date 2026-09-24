@@ -5,7 +5,7 @@
  */
 import { LAB_LAYOUT, type LabDoorwayDef, type LabSpaceDef, type LabThemeDef } from '../../defs/labLayout';
 import { LEVEL_KIT, type Facing } from '../../defs/level';
-import { LevelKit, WallFrame } from '../../world/LevelKit';
+import { WallFrame, type LevelKit } from '../../world/LevelKit';
 import {
   ceilingPieces,
   doorwayInterval,
@@ -15,6 +15,7 @@ import {
   spaceWallEdges,
   wallBodySegments,
   wallFaceSegments,
+  wallFeatureGaps,
   type WallEdge,
 } from './labSpaces';
 
@@ -43,7 +44,11 @@ function edgePoint(e: WallEdge, along: number): { x: number; y: number; z: numbe
   return e.along === 'x' ? { x: along, y: 0, z: e.coord } : { x: e.coord, y: 0, z: along };
 }
 
-function segmentEnds(e: WallEdge, s0: number, s1: number): [readonly [number, number], readonly [number, number]] {
+function segmentEnds(
+  e: WallEdge,
+  s0: number,
+  s1: number,
+): [readonly [number, number], readonly [number, number]] {
   return e.along === 'x'
     ? [
         [s0, e.coord],
@@ -94,15 +99,24 @@ function buildWalls(kit: LevelKit, space: LabSpaceDef): void {
         bands: bandsFrom(theme, doorway.height),
       });
     }
-    // Face trims and the light strip, interrupted by the door frames.
-    for (const [s0, s1] of wallFaceSegments(e, intervals, frameMargin)) {
+    // Face trims and the light strip, interrupted by the door frames, wall tears, vents, shutter.
+    const gaps = [
+      ...intervals.map((iv) => ({ from: iv.from - frameMargin, to: iv.to + frameMargin })),
+      ...wallFeatureGaps(e),
+    ];
+    for (const [s0, s1] of wallFaceSegments(e, gaps, 0)) {
       const len = s1 - s0;
       if (len < TRIM.stripInset * 4) continue;
       const mid = (s0 + s1) / 2;
       const f = new WallFrame(edgePoint(e, mid), e.facing);
-      kit.box(theme.baseTrim, f.point(0, TRIM.baseHeight / 2, TRIM.baseDepth / 2), f.size(len, TRIM.baseHeight, TRIM.baseDepth), {
-        collider: false,
-      });
+      kit.box(
+        theme.baseTrim,
+        f.point(0, TRIM.baseHeight / 2, TRIM.baseDepth / 2),
+        f.size(len, TRIM.baseHeight, TRIM.baseDepth),
+        {
+          collider: false,
+        },
+      );
       const s = theme.strip;
       if (s && s.y < h - TRIM.stripHousingHeight) {
         kit.box(
@@ -121,9 +135,14 @@ function buildWalls(kit: LevelKit, space: LabSpaceDef): void {
       // Band seam above the wainscot.
       const seam = theme.bands[0];
       if (seam && seam.top < h) {
-        kit.box(theme.baseTrim, f.point(0, seam.top, TRIM.capHeight / 2), f.size(len, TRIM.capHeight, TRIM.capHeight), {
-          collider: false,
-        });
+        kit.box(
+          theme.baseTrim,
+          f.point(0, seam.top, TRIM.capHeight / 2),
+          f.size(len, TRIM.capHeight, TRIM.capHeight),
+          {
+            collider: false,
+          },
+        );
       }
     }
   }
@@ -168,7 +187,9 @@ function buildCeiling(kit: LevelKit, space: LabSpaceDef): void {
 }
 
 /** Interior faces of a doorway (both sides of the passage) and their facings. */
-export function doorwayFaces(d: LabDoorwayDef): { origin: { x: number; y: number; z: number }; facing: Facing }[] {
+export function doorwayFaces(
+  d: LabDoorwayDef,
+): { origin: { x: number; y: number; z: number }; facing: Facing }[] {
   if (d.axis === 'x') {
     return [
       { origin: { x: d.x - T, y: 0, z: d.z }, facing: 'nx' },
@@ -196,9 +217,14 @@ function buildDoorway(kit: LevelKit, d: LabDoorwayDef): void {
     const f = new WallFrame(face.origin, face.facing);
     const frameMat = d.blast ? 'painted_hazard' : 'trim_metal';
     for (const side of [-1, 1]) {
-      kit.box(frameMat, f.point(side * (w / 2 + pw / 2), (h + F.lintelHeight) / 2, F.depth / 2), f.size(pw, h + F.lintelHeight, F.depth), {
-        collider: true,
-      });
+      kit.box(
+        frameMat,
+        f.point(side * (w / 2 + pw / 2), (h + F.lintelHeight) / 2, F.depth / 2),
+        f.size(pw, h + F.lintelHeight, F.depth),
+        {
+          collider: true,
+        },
+      );
       kit.box(
         'painted_hazard',
         f.point(side * (w / 2 + F.hazardWidth / 2), h / 2, F.depth + DECAL.offset),
@@ -206,16 +232,26 @@ function buildDoorway(kit: LevelKit, d: LabDoorwayDef): void {
         { collider: false, castShadow: false },
       );
     }
-    kit.box(frameMat, f.point(0, h + F.lintelHeight / 2, F.depth / 2), f.size(w + pw * 2, F.lintelHeight, F.depth), {
-      collider: true,
-    });
+    kit.box(
+      frameMat,
+      f.point(0, h + F.lintelHeight / 2, F.depth / 2),
+      f.size(w + pw * 2, F.lintelHeight, F.depth),
+      {
+        collider: true,
+      },
+    );
     if (d.slot) {
       // M4 door slot marker: amber status light over the frame.
       const s = F.statusLight;
-      kit.box('emissive_orange', f.point(0, h + F.lintelHeight + F.statusGap + s[1] / 2, s[2] / 2), f.size(s[0], s[1], s[2]), {
-        collider: false,
-        castShadow: false,
-      });
+      kit.box(
+        'emissive_orange',
+        f.point(0, h + F.lintelHeight + F.statusGap + s[1] / 2, s[2] / 2),
+        f.size(s[0], s[1], s[2]),
+        {
+          collider: false,
+          castShadow: false,
+        },
+      );
     }
   }
 }

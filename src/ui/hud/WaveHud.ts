@@ -112,7 +112,9 @@ export class WaveHud {
         this.stopCountdown();
         this.hideBanner();
       }),
-      events.on('run:restart', () => this.reset()),
+      // run:over already stopped the countdown; a restart handler that starts the next run's
+      // intermission may run before this one (listener order), so its countdown is kept.
+      events.on('run:restart', () => this.resetRun()),
     );
   }
 
@@ -163,8 +165,14 @@ export class WaveHud {
     }
   }
 
+  /** Everything back to the placeholder state. */
   reset(): void {
     this.stopCountdown();
+    this.resetRun();
+  }
+
+  /** New run: wave counter, remaining enemies and banner reset; a running countdown stays. */
+  resetRun(): void {
     this.hideBanner();
     this.setRemaining(-1);
     this.setWave(null);

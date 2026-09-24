@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { RUN_MENU } from '../../defs/ui';
-import { usePointerLockProblem, type GameOverStats, type MenuDeps } from './context';
+import { usePointerLockProblem, type GameOverStats, type MenuDeps, type PlayOptions } from './context';
 import './menus-run.css';
 
 const G = RUN_MENU.gameOver;
@@ -66,10 +66,13 @@ function statRows(s: GameOverStats): StatRow[] {
 export function GameOverScreen({
   deps,
   stats,
+  onRestart,
   onMainMenu,
 }: {
   deps: MenuDeps;
   stats: GameOverStats;
+  /** "Neu starten" (the controller closes the screen, then calls deps.onRestart or deps.onStart). */
+  onRestart: (opts?: PlayOptions) => void;
   /** "Hauptmenü" (the controller routes it to deps.onMainMenu or the start screen). */
   onMainMenu: () => void;
 }) {
@@ -93,12 +96,8 @@ export function GameOverScreen({
   const sub = [mapName, modeLabel].filter((v): v is string => !!v).join(' · ');
   const rows = statRows(stats);
 
-  const restart = (): void => {
-    // Without the API a lock request can only fail: restart lock-less right away.
-    const opts = lockProblem === 'unsupported' ? { lockless: true } : undefined;
-    if (deps.onRestart) deps.onRestart(opts);
-    else deps.onStart(stats.mapId ? { ...opts, mapId: stats.mapId } : opts);
-  };
+  // Without the API a lock request can only fail: restart lock-less right away.
+  const restart = (): void => onRestart(lockProblem === 'unsupported' ? { lockless: true } : undefined);
 
   const onNavKey = (e: KeyboardEvent): void => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;

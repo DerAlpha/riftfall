@@ -89,12 +89,13 @@ export const swarmBrain: EnemyBrain = {
     if (!S) return;
     const now = host.time;
     const dist = distXZ(e.position, target.position);
-    const coord = host.coordinator(e.targetSlot);
+    const coord = host.coordinator(e);
 
     // Ask within engageDistance; a holder keeps (and refreshes) its token up to releaseDistance.
     let holds = false;
     const holding = coord.holds(e.id);
-    if (dist <= S.engageDistance || (holding && dist <= ENEMY_AI.slots.releaseDistance)) {
+    const level = Math.abs(target.position.y - e.position.y) <= ENEMY_AI.slots.engageHeight;
+    if (level && (dist <= S.engageDistance || (holding && dist <= ENEMY_AI.slots.releaseDistance))) {
       holds = coord.request(e.id, e.def.slotCost, now);
     } else if (holding) {
       coord.release(e.id, now);

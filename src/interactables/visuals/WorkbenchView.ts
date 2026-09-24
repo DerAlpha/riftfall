@@ -52,7 +52,7 @@ export class WorkbenchView implements WorkbenchViewApi {
     this.lamp = createGlowMaterial(ctx, B.lampColor, B.lampIntensity, 'bench-lamp');
     this.accent = createGlowMaterial(ctx, B.accentColor, B.accentIntensity, 'bench-accent');
 
-    const { width: w, depth: d, height: h } = B.size;
+    const { width: w, depth: d } = B.size;
     const T = L.top;
     const topY = T.y;
     const back = -d / 2;

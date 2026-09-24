@@ -24,6 +24,7 @@ import type { SynthDef } from './synth';
 const A = AUDIO.arsenal.synth;
 const FV = A.fireVariants;
 const SV = A.semiFireVariants;
+const HV = A.heavyFireVariants;
 const LD = LOOP_DURATION;
 
 // ---------------------------------------------------------------------------
@@ -209,8 +210,11 @@ const railFire: Recipe = (g, t) => {
 const railCharge: Recipe = (g, t) => {
   const k = kitOf(g);
   const tonal = k.loopBus(t);
-  tonal.drone(t, LD, 330, 0.18, { detune: 5, tremolo: { rate: 8, depth: 0.2 } });
-  tonal.drone(t, LD, 660, 0.12, { detune: 3, tremolo: { rate: 8, depth: 0.25 } });
+  // Beating pairs split left / right: a wide, shimmering whine.
+  tonal.drone(t, LD, 330, 0.09, { tremolo: { rate: 8, depth: 0.2 }, pan: -0.55 });
+  tonal.drone(t, LD, 330.5, 0.09, { tremolo: { rate: 8, depth: 0.2 }, pan: 0.55 });
+  tonal.drone(t, LD, 660, 0.06, { tremolo: { rate: 8, depth: 0.25 }, pan: 0.4 });
+  tonal.drone(t, LD, 659.5, 0.06, { tremolo: { rate: 8, depth: 0.25 }, pan: -0.4 });
   tonal.drone(t, LD, 990, 0.05);
   tonal.drone(t, LD, 1980, 0.03, { vibrato: { rate: 6, depth: 12 } });
   tonal.drone(t, LD, 110, 0.15, { type: 'sawtooth', lowpass: 700 });
@@ -517,7 +521,7 @@ function harpFire(chord: readonly number[]): Recipe {
   };
 }
 
-const HARP_FIRE_SECONDS = 1;
+const HARP_FIRE_SECONDS = 0.85;
 
 /**
  * The bank renders variant v at t = v × (duration + AUDIO.synth.variantGap) of one offline pass,
@@ -649,7 +653,8 @@ const minigunSpin: Recipe = (g, t) => {
   tonal.drone(t, LD, 240, 0.18, { type: 'sawtooth', lowpass: 1800, detune: 12 });
   tonal.drone(t, LD, 960, 0.1);
   tonal.drone(t, LD, 1440, 0.05);
-  k.bed(t, LD, 'pink', 'bandpass', 1100, 1.5, 0.7, { gainLfo: { rate: 36, depth: 0.8 } });
+  k.bed(t, LD, 'pink', 'bandpass', 1100, 1.5, 0.5, { gainLfo: { rate: 36, depth: 0.8 }, pan: -0.45 });
+  k.bed(t, LD, 'pink', 'bandpass', 1250, 1.5, 0.5, { gainLfo: { rate: 36, depth: 0.8 }, pan: 0.45 });
   k.bed(t, LD, 'brown', 'lowpass', 150, 0.7, 0.25, { gainLfo: { rate: 18, depth: 0.3 } });
   k.crackle(t, LD, 60, 3500, 4, 0.12, 0.5);
   k.bed(t, LD, 'white', 'highpass', 5000, 0.7, 0.03);
@@ -663,8 +668,9 @@ function fire(duration: number, recipe: Recipe, variants: number = FV, level = 1
   return { variants, duration, channels: 2, level, recipe };
 }
 
+/** Mechanical layers: two variants for the quick ones, one for long slow recharges. */
 function mech(duration: number, recipe: Recipe, level = 0.6): SynthDef {
-  return { variants: 2, duration, channels: 2, level, recipe };
+  return { variants: duration > 0.3 ? 1 : 2, duration, channels: 2, level, recipe };
 }
 
 function step(duration: number, recipe: Recipe, level = 0.85): SynthDef {
@@ -692,7 +698,7 @@ export const ENERGY_WEAPON_SYNTH_DEFS = {
   'weapon.chainlightning.magIn': step(0.45, cellIn({ seat: 200, ring: 1200, chirp: 600, hum: 100 }), 0.9),
   'weapon.chainlightning.boltRelease': step(0.35, lightningProngs, 0.85),
   // --- RG-9 „Lanze“ ---
-  'weapon.railgun.fire': fire(1.1, railFire, SV),
+  'weapon.railgun.fire': fire(1.1, railFire, HV),
   'weapon.railgun.mech': mech(0.7, railMech, 0.55),
   'weapon.railgun.charge': loop(railCharge, 0.8),
   'weapon.railgun.equip': step(0.85, railEquip, 0.75),
@@ -714,14 +720,14 @@ export const ENERGY_WEAPON_SYNTH_DEFS = {
   'weapon.grenadelauncher.shellIn': { variants: 3, duration: 0.2, channels: 1, level: 0.85, recipe: launcherShellIn },
   'weapon.grenadelauncher.pump': step(0.5, launcherWind, 0.95),
   // --- SX-0 „Ereignishorizont“ ---
-  'weapon.blackhole.fire': fire(1.3, blackholeFire, SV),
+  'weapon.blackhole.fire': { ...fire(1.3, blackholeFire, HV), rate: AUDIO.synth.darkRate },
   'weapon.blackhole.mech': mech(0.65, blackholeMech, 0.5),
   'weapon.blackhole.equip': step(0.85, blackholeEquip, 0.75),
   'weapon.blackhole.magOut': step(0.45, blackholeCellOut),
   'weapon.blackhole.magIn': step(0.5, blackholeCellIn, 0.9),
   'weapon.blackhole.boltRelease': step(0.5, blackholeSpinUp, 0.85),
   // --- „Riss-Zerreißer“ ---
-  'weapon.riftripper.fire': fire(0.8, riftFire, SV),
+  'weapon.riftripper.fire': fire(0.8, riftFire, HV),
   'weapon.riftripper.mech': mech(0.5, riftMech, 0.5),
   'weapon.riftripper.equip': step(0.7, riftEquip, 0.75),
   'weapon.riftripper.magOut': step(0.42, blackholeCellOut),
@@ -735,7 +741,7 @@ export const ENERGY_WEAPON_SYNTH_DEFS = {
   'weapon.aetherharp.magIn': step(0.5, harpCellIn, 0.85),
   'weapon.aetherharp.boltRelease': step(0.9, harpStrum, 0.8),
   // --- „Kryo-Nova“ ---
-  'weapon.cryonova.fire': fire(0.9, cryoFire, SV),
+  'weapon.cryonova.fire': fire(0.9, cryoFire, HV),
   'weapon.cryonova.mech': mech(0.45, cryoMech, 0.45),
   'weapon.cryonova.equip': step(0.8, cryoEquip, 0.72),
   'weapon.cryonova.magOut': step(0.45, cryoCanisterOut),

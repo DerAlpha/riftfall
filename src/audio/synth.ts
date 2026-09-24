@@ -264,6 +264,12 @@ export interface SynthDef {
   /** Relative peak level after normalization. */
   readonly level: number;
   readonly loop?: boolean;
+  /**
+   * Render at this fraction of the bank's sample rate (at least AUDIO.synth.minRenderRate): dark
+   * sounds (tails, explosions, rumbling loops) lose nothing below the lower Nyquist, and take half
+   * the memory and render time. Playback resamples to the context rate. Default 1.
+   */
+  readonly rate?: number;
   readonly recipe: Recipe;
 }
 
@@ -694,9 +700,11 @@ async function renderDef(
   sampleRate: number,
   noise: () => NoiseTables,
 ): Promise<AudioBuffer[]> {
+  const scale = def.rate !== undefined && def.rate > 0 ? Math.min(1, def.rate) : 1;
+  const rate = scale < 1 ? Math.max(S.minRenderRate, Math.round(sampleRate * scale)) : sampleRate;
   const slot = def.duration + S.variantGap;
-  const slotSamples = Math.ceil(slot * sampleRate);
-  const ctx = new OfflineAudioContext(def.channels, slotSamples * def.variants, sampleRate);
+  const slotSamples = Math.ceil(slot * rate);
+  const ctx = new OfflineAudioContext(def.channels, slotSamples * def.variants, rate);
   const bus = ctx.createGain();
   bus.connect(ctx.destination);
   const tables = noise();
@@ -712,19 +720,19 @@ async function renderDef(
       chans.push(
         rendered
           .getChannelData(c)
-          .slice(v * slotSamples, v * slotSamples + Math.ceil(def.duration * sampleRate)),
+          .slice(v * slotSamples, v * slotSamples + Math.ceil(def.duration * rate)),
       );
     }
     if (def.loop) {
-      chans = makeLoopable(chans, Math.round(S.slideLoopCrossfade * sampleRate));
+      chans = makeLoopable(chans, Math.round(S.slideLoopCrossfade * rate));
     } else {
       const len = audibleLength(chans, S.trimThreshold);
       chans = chans.map((ch) => ch.slice(0, len));
-      fadeOutTail(chans, Math.round(S.endFade * sampleRate));
+      fadeOutTail(chans, Math.round(S.endFade * rate));
     }
     normalizeChannels(chans, S.normalizePeak * def.level);
     const first = chans[0] as Float32Array<ArrayBuffer>;
-    const buf = ctx.createBuffer(def.channels, first.length, sampleRate);
+    const buf = ctx.createBuffer(def.channels, first.length, rate);
     chans.forEach((ch, c) => buf.copyToChannel(ch, c));
     buffers.push(buf);
   }

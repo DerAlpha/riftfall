@@ -1,16 +1,15 @@
 /* ------------------------------------------------------------------------------------------ */
-/* Arsenal HUD (M5, ArsenalHud.ts): ability cooldown ring + grenade chip (bottom left, right  */
-/* of the vitals) and the full-screen overlays of running abilities. Per frame the widget     */
+/* Arsenal HUD (M5, ArsenalHud.ts): ability cooldown ring + grenade chip (bottom left, below  */
+/* the perk row) and the full-screen overlays of running abilities. Per frame the widget      */
 /* only writes the ring's dash offset and the wind-up bar's transform; everything else        */
 /* animates here. Paired keyframes (-a / -b) let the widget restart an animation.             */
 /* ------------------------------------------------------------------------------------------ */
 .hud-arsenal {
-  position: absolute;
-  left: calc(100% + 26px);
-  bottom: 0;
+  position: relative;
   display: flex;
-  align-items: flex-end;
-  gap: 16px;
+  align-items: center;
+  gap: 18px;
+  margin: 0 0 14px 2px;
   pointer-events: none;
 }
 

@@ -514,18 +514,18 @@ export const BEAM_STYLES = {
   /** FW-4 Inferno: a roaring particle cone, white-yellow at the nozzle, dark red at the tips. */
   'beam.flame': {
     kind: 'flame',
-    rate: 170,
-    life: [0.28, 0.46],
-    reach: [0.3, 1],
+    rate: 360,
+    life: [0.32, 0.52],
+    reach: [0.35, 1],
     spreadDeg: 9,
-    drag: 1.6,
+    drag: 1.3,
     size: [0.07, 0.11],
-    sizeEnd: 9,
+    sizeEnd: 11,
     stretch: 0.018,
     color: [1, 0.72, 0.34],
     colorEnd: [0.72, 0.1, 0.02],
-    intensity: 3.6,
-    intensityEnd: 0.7,
+    intensity: 3.2,
+    intensityEnd: 1.1,
     gravity: -0.35,
     core: { length: 1.4, width: 0.05, widthEnd: 0.3, color: FIRE_CORE, intensity: 3.5 },
     nozzleGlow: {
@@ -831,6 +831,8 @@ export const ARSENAL_VFX = {
     channels: 24,
     /** Beams that may hold a pooled light at once (the pool has VFX.lights.count). */
     lights: 2,
+    /** Flame particles one beam may launch per frame (long frames). */
+    maxFlameSpawnsPerFrame: 40,
     /** Chain arcs per beam. */
     maxArcs: 8,
     /** Vertices of one bolt (main beam). */

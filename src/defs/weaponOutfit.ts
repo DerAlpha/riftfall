@@ -43,7 +43,7 @@ export const OUTFIT_RIG = {
    * The weapon handed to the Rift Forge: lowered along its holster pose (plus `drop`) over
    * `lowerTime`, raised again over `raiseTime` when the machine hands it back.
    */
-  stow: { lowerTime: 0.32, raiseTime: 0.42, drop: 0.12 },
+  stow: { lowerTime: 0.32, raiseTime: 0.42, drop: 0.25 },
   /** The accent light follows the animator's driver boost (charge, beam, spin): intensity × (1 + boost × this). */
   accentLightBoost: 0.3,
 } as const;

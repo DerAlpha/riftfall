@@ -183,7 +183,10 @@ describe('AbilitySystem', () => {
     t.a.use();
     t.a.setStartAbility('chronofeld');
     const order: string[] = [];
-    const step = (name: string) => ({ reset: () => void order.push(name), clear: () => void order.push(name) });
+    const step = (name: string) => ({
+      reset: () => void order.push(name),
+      clear: () => void order.push(name),
+    });
     const sys: RunResetSystems = {
       enemies: { clear: () => void order.push('enemies'), timeScale: 1, instakill: false },
       waves: { reset: () => void order.push('waves'), start: () => void order.push('waves.start') },

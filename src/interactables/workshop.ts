@@ -32,7 +32,8 @@ export interface WorkshopDeps {
 export interface WorkshopContext {
   mapId: string;
   events: EventBus<GameEvents>;
-  economy: Pick<EconomyApi, 'spend' | 'earn' | 'points'>;
+  /** `points` (optional) colors unaffordable bench entries. */
+  economy: Pick<EconomyApi, 'spend' | 'earn'> & { readonly points?: number };
   blockerDeps: SolidBlockerDeps;
   /** Null: logic only. */
   ctx: VisualContext | null;

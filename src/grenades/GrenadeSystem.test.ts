@@ -116,7 +116,11 @@ describe('GrenadeSystem counts', () => {
     expect(t.g.count('brand')).toBe(0);
     // Other power-ups do nothing.
     t.g.throwNow();
-    t.events.emit('powerup:collected', { type: 'doublePoints', position: { x: 0, y: 0, z: 0 }, duration: 30 });
+    t.events.emit('powerup:collected', {
+      type: 'doublePoints',
+      position: { x: 0, y: 0, z: 0 },
+      duration: 30,
+    });
     expect(t.g.count('frag')).toBe(3);
   });
 
@@ -209,7 +213,11 @@ describe('GrenadeSystem throwing', () => {
     t.player.yaw = Math.PI; // looks down +Z
     t.g.throwNow(1);
     const s = t.spawned[0]!;
-    expect(s.inherit).toEqual({ x: 3 * GRENADE_RULES.inheritVelocity, y: 0, z: -5 * GRENADE_RULES.inheritVelocity });
+    expect(s.inherit).toEqual({
+      x: 3 * GRENADE_RULES.inheritVelocity,
+      y: 0,
+      z: -5 * GRENADE_RULES.inheritVelocity,
+    });
     expect(s.dir.z).toBeGreaterThan(0.9);
     expect(s.dir.y).toBeGreaterThan(0);
   });
@@ -293,10 +301,25 @@ describe('GrenadeSystem detonation status', () => {
     });
     const ds = GRENADES.kryo.detonationStatus!;
     const at = { x: 0, y: 0.1, z: 0 };
-    t.events.emit('projectile:impact', { weaponId: 'grenade.kryo', position: at, normal: at, detonated: true });
+    t.events.emit('projectile:impact', {
+      weaponId: 'grenade.kryo',
+      position: at,
+      normal: at,
+      detonated: true,
+    });
     // Bounces and other weapons do nothing.
-    t.events.emit('projectile:impact', { weaponId: 'grenade.kryo', position: at, normal: at, detonated: false });
-    t.events.emit('projectile:impact', { weaponId: 'grenade.frag', position: at, normal: at, detonated: true });
+    t.events.emit('projectile:impact', {
+      weaponId: 'grenade.kryo',
+      position: at,
+      normal: at,
+      detonated: false,
+    });
+    t.events.emit('projectile:impact', {
+      weaponId: 'grenade.frag',
+      position: at,
+      normal: at,
+      detonated: true,
+    });
     expect(applied).toHaveLength(0);
     t.frame();
     expect(applied).toEqual([[1, ds.element, ds.amount, 'grenade.kryo']]);

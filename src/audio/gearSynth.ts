@@ -9,6 +9,7 @@
  * (0.55 / 1.05 / 1.55 s), then a rift choir chord blooming at ~2 s (peak ~2.2 s) over a sub impact.
  * Frequencies, levels and times inside the recipes are sound-design constants.
  */
+import { AUDIO } from '../defs/audio';
 import { kitOf, midi, type Kit, type Recipe } from './arsenalKit';
 import type { SynthDef } from './synth';
 
@@ -240,11 +241,12 @@ export const GEAR_SYNTH_DEFS = {
   'grenade.bounce': mono(0.3, grenadeBounce, 3, 0.85),
   'ability.schockwelle': stereo(1.3, abilityShockwave, 1, 1),
   'ability.phasenbarriere': stereo(1.1, abilityBarrier, 1, 0.9),
-  'ability.ueberladung': stereo(1.3, abilityOverdrive, 1, 0.9),
-  'ability.chronofeld': stereo(1.8, abilityChrono, 1, 0.95),
-  'ability.generic': stereo(0.8, abilityGeneric, 1, 0.9),
+  'ability.ueberladung': mono(1.3, abilityOverdrive, 1, 0.9),
+  'ability.chronofeld': { ...mono(1.8, abilityChrono, 1, 0.95), rate: AUDIO.synth.darkRate },
+  // Centered cues are mono (2D playback puts them in both ears; no memory for a copy).
+  'ability.generic': mono(0.8, abilityGeneric, 1, 0.9),
   'ability.ready': stereo(0.6, abilityReady, 1, 0.7),
-  'ability.end': stereo(0.6, abilityEnd, 1, 0.7),
+  'ability.end': mono(0.6, abilityEnd, 1, 0.7),
   'forge.upgrade': stereo(3.4, forgeUpgrade, 1, 1),
   'forge.deny': stereo(0.65, forgeDeny, 1, 0.85),
   'bench.open': stereo(0.4, benchOpen, 1, 0.7),

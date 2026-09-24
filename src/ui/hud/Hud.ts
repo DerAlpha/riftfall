@@ -224,7 +224,7 @@ export class Hud {
       events,
       settings,
     );
-    // --- M5 arsenal: ability ring + grenade chip right of the vitals, ability overlays ---
+    // --- M5 arsenal: ability ring + grenade chip below the perk row, ability overlays ---
     this.arsenal = new ArsenalHud(bl, this.el, events, settings);
 
     // --- bottom center: movement readout ---

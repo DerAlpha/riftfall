@@ -27,9 +27,11 @@ export const ABILITY_GLYPHS = {
   shockwave:
     'M12.8 7.5 10.2 12.3H13.8L11.2 17 M7.6 7.2A6.8 6.8 0 0 0 7.6 16.8 M16.4 7.2A6.8 6.8 0 0 1 16.4 16.8 M4.2 4.6A10.6 10.6 0 0 0 4.2 19.4 M19.8 4.6A10.6 10.6 0 0 1 19.8 19.4',
   /** Phasenbarriere: nested hexagonal shield cells. */
-  barrier: 'M12 2.5 20.2 7.25V16.75L12 21.5 3.8 16.75V7.25Z M12 7 15.9 9.25V13.75L12 16 8.1 13.75V9.25Z M12 2.5V7 M20.2 16.75 15.9 13.75 M3.8 16.75 8.1 13.75',
+  barrier:
+    'M12 2.5 20.2 7.25V16.75L12 21.5 3.8 16.75V7.25Z M12 7 15.9 9.25V13.75L12 16 8.1 13.75V9.25Z M12 2.5V7 M20.2 16.75 15.9 13.75 M3.8 16.75 8.1 13.75',
   /** Überladung: a lightning bolt with rising chevrons. */
-  overcharge: 'M13.5 2.5 6.5 13H11.2L10.2 21.5 17.5 10.5H12.8Z M18.5 17.5 20.5 15.5 22.5 17.5 M1.5 8.5 3.5 6.5 5.5 8.5',
+  overcharge:
+    'M13.5 2.5 6.5 13H11.2L10.2 21.5 17.5 10.5H12.8Z M18.5 17.5 20.5 15.5 22.5 17.5 M1.5 8.5 3.5 6.5 5.5 8.5',
   /** Chronofeld: a clock face in a field ring. */
   chrono:
     'M12 5A7 7 0 1 0 12 19 7 7 0 1 0 12 5 M12 8.2V12L14.8 13.6 M3.2 9.2A9.3 9.3 0 0 0 3.2 14.8 M20.8 9.2A9.3 9.3 0 0 1 20.8 14.8 M12 2.2V3.4 M12 20.6V21.8',
@@ -181,7 +183,12 @@ export const ABILITIES = {
 export type AbilityId = keyof typeof ABILITIES;
 
 /** Every ability, in display order. */
-export const ABILITY_IDS: readonly AbilityId[] = ['schockwelle', 'phasenbarriere', 'ueberladung', 'chronofeld'];
+export const ABILITY_IDS: readonly AbilityId[] = [
+  'schockwelle',
+  'phasenbarriere',
+  'ueberladung',
+  'chronofeld',
+];
 
 export function getAbilityDef(id: string): AbilityDef | undefined {
   return Object.prototype.hasOwnProperty.call(ABILITIES, id)

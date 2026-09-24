@@ -147,6 +147,10 @@ export const AUDIO = {
      * plays the resampled pre-rendered sounds meanwhile.
      */
     prewarmSampleRate: 48000,
+    /** Lowest sample rate of half-rate renders (SynthDef.rate: tails, explosions, rumbling loops). */
+    minRenderRate: 22050,
+    /** Render-rate fraction of dark sounds (content below ~10 kHz). */
+    darkRate: 0.5,
     /** Variants per gunshot id (full-auto needs more to avoid the machine-gun effect) and per impact. */
     weaponFireVariants: 5,
     impactVariants: 4,
@@ -464,8 +468,10 @@ export const AUDIO = {
     /** Procedural loops: body length (s, + AUDIO.synth.slideLoopCrossfade); whole cycles on a 1/loopSeconds Hz grid. */
     synth: {
       loopSeconds: 2,
-      fireVariants: 4,
+      /** Variants per gunshot: automatics, semi-automatics, and the big slow ones (long renders). */
+      fireVariants: 3,
       semiFireVariants: 3,
+      heavyFireVariants: 2,
       /** Noise tables of the arsenal kit: long enough for the loops, seamless at the wrap (crossfade s). */
       noiseSeconds: 3,
       noiseLoopCrossfade: 0.05,

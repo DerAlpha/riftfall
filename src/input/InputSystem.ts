@@ -308,6 +308,16 @@ export class InputSystem implements InputApi {
     return this._enabled && i !== undefined && this.pressedEdge[i] === 1;
   }
 
+  /**
+   * Swallow this frame's press of `action` (M5: the Werkbank menu took the wheel / D-pad step):
+   * pressed() reads false for the rest of the frame, held state is untouched. Call it before the
+   * ticks (beginFrame) so no system saw the edge yet.
+   */
+  consume(action: Action): void {
+    const i = ACTION_INDEX.get(action);
+    if (i !== undefined) this.pressedEdge[i] = 0;
+  }
+
   released(action: Action): boolean {
     const i = ACTION_INDEX.get(action);
     return this._enabled && i !== undefined && this.releasedEdge[i] === 1;

@@ -29,6 +29,9 @@ import type { SynthDef } from './synth';
 const A = AUDIO.arsenal.synth;
 const FV = A.fireVariants;
 const SV = A.semiFireVariants;
+const HV = A.heavyFireVariants;
+/** Half-rate renders for dark sounds (SynthDef.rate). */
+const DARK = AUDIO.synth.darkRate;
 
 // ---------------------------------------------------------------------------
 // Gunshots
@@ -1089,8 +1092,8 @@ const chargeFizzle: Recipe = (g, t) => {
 
 type Def = SynthDef;
 
-function fireDef(duration: number, recipe: Recipe, variants: number = FV, level = 1): Def {
-  return { variants, duration, channels: 2, level, recipe };
+function fireDef(duration: number, recipe: Recipe, variants: number = FV, level = 1, rate = 1): Def {
+  return { variants, duration, channels: 2, level, rate, recipe };
 }
 
 function mechDef(duration: number, recipe: Recipe, level = 0.68): Def {
@@ -1158,15 +1161,16 @@ const BALLISTIC_DEFS = {
   'weapon.battlerifle.magIn': step(0.26, magIn(H.battlerifle), 1),
   'weapon.battlerifle.boltRelease': step(0.34, chargingHandle(H.battlerifle, 0.12), 1),
   // --- AS-20 „Mahlstrom“ ---
-  'weapon.autoshotgun.fire': fireDef(0.5, gunshot(GUN.autoshotgun), FV),
+  // Shotguns and the sniper low-pass at ≤ 11 kHz: half-rate renders lose nothing audible.
+  'weapon.autoshotgun.fire': fireDef(0.5, gunshot(GUN.autoshotgun), FV, 1, DARK),
   'weapon.autoshotgun.mech': mechDef(0.2, cycle(CYCLE.autoshotgun), 0.72),
   'weapon.autoshotgun.equip': equip(0.5, autoshotgunEquip),
   'weapon.autoshotgun.magOut': step(0.3, drumOut, 0.9),
   'weapon.autoshotgun.magIn': step(0.3, drumIn, 1),
   'weapon.autoshotgun.boltRelease': step(0.36, chargingHandle(H.autoshotgun, 0.13), 1),
   // --- DB-2 „Zwilling“ ---
-  'weapon.doublebarrel.fire': fireDef(0.8, gunshot(GUN.doublebarrel), SV),
-  'weapon.doublebarrel.mech': mechDef(0.5, doubleBarrelMech, 0.55),
+  'weapon.doublebarrel.fire': fireDef(0.8, gunshot(GUN.doublebarrel), HV, 1, DARK),
+  'weapon.doublebarrel.mech': { variants: 1, duration: 0.5, channels: 2, level: 0.55, recipe: doubleBarrelMech },
   'weapon.doublebarrel.equip': equip(0.5, doublebarrelEquip),
   'weapon.doublebarrel.magOut': step(0.5, doublebarrelOpen, 0.9),
   'weapon.doublebarrel.magIn': step(0.3, doublebarrelLoad, 0.85),
@@ -1186,9 +1190,9 @@ const BALLISTIC_DEFS = {
   'weapon.minigun.magIn': step(0.55, minigunMagIn, 0.95),
   'weapon.minigun.boltRelease': step(0.45, minigunPowerOn, 0.85),
   // --- HX-50 „Richtfeuer“ ---
-  'weapon.sniper.fire': fireDef(1.3, gunshot(GUN.sniper), SV),
-  'weapon.sniper.mech': mechDef(0.4, sniperMech, 0.5),
-  'weapon.sniper.pump': { variants: 2, duration: 0.75, channels: 2, level: 0.85, recipe: boltAction(0.3, 0.2) },
+  'weapon.sniper.fire': fireDef(1.3, gunshot(GUN.sniper), HV, 1, DARK),
+  'weapon.sniper.mech': { variants: 1, duration: 0.4, channels: 2, level: 0.5, recipe: sniperMech },
+  'weapon.sniper.pump': { variants: 1, duration: 0.7, channels: 2, level: 0.85, recipe: boltAction(0.3, 0.2) },
   'weapon.sniper.equip': equip(0.65, sniperEquip),
   'weapon.sniper.magOut': step(0.26, magOut(H.sniper), 0.85),
   'weapon.sniper.magIn': step(0.26, magIn(H.sniper), 0.95),
@@ -1201,8 +1205,8 @@ const BALLISTIC_DEFS = {
   'weapon.marksman.magIn': step(0.26, magIn(H.marksman), 0.95),
   'weapon.marksman.boltRelease': step(0.3, chargingHandle(H.marksman, 0.09), 1),
   // --- shared ---
-  'weapon.tail.energy': { variants: 2, duration: 0.9, channels: 2, level: 0.72, recipe: tailEnergy },
-  'weapon.tail.explosive': { variants: 2, duration: 1, channels: 2, level: 0.8, recipe: tailExplosive },
+  'weapon.tail.energy': { variants: 2, duration: 0.9, channels: 2, level: 0.72, rate: DARK, recipe: tailEnergy },
+  'weapon.tail.explosive': { variants: 1, duration: 1, channels: 2, level: 0.8, rate: DARK, recipe: tailExplosive },
   'weapon.energy.dry': { variants: 2, duration: 0.12, channels: 1, level: 0.75, recipe: energyDry },
   'weapon.charge.full': { variants: 1, duration: 0.32, channels: 2, level: 0.7, recipe: chargeFull },
   'weapon.charge.fizzle': { variants: 2, duration: 0.45, channels: 2, level: 0.7, recipe: chargeFizzle },

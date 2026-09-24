@@ -13,12 +13,14 @@
  * Loops follow arsenalKit's rules (loopBus + LOOP_HZ grid for tonal layers).
  */
 import type { StatusId } from '../core/events';
+import { AUDIO } from '../defs/audio';
 import type { ComboId } from '../defs/elements';
 import { LOOP_DURATION, LOOP_SECONDS, LOOP_XF, kitOf, loopHz, midi, type Kit, type Recipe } from './arsenalKit';
 import { iceCascade } from './energySynth';
 import type { SynthDef } from './synth';
 
 const LD = LOOP_DURATION;
+const DARK = AUDIO.synth.darkRate;
 
 // ---------------------------------------------------------------------------
 // Shared bits
@@ -519,12 +521,13 @@ const impactVoid: Recipe = (g, t) => {
 // Registry
 // ---------------------------------------------------------------------------
 
-function blast(duration: number, recipe: Recipe, variants = 2, level = 1): SynthDef {
-  return { variants, duration, channels: 1, level, recipe };
+/** Blasts are dark (bus low-passes ≤ 9 kHz) except ice / shock: those keep the full rate. */
+function blast(duration: number, recipe: Recipe, variants = 1, level = 1, rate: number = DARK): SynthDef {
+  return { variants, duration, channels: 1, level, rate, recipe };
 }
 
-function monoLoop(recipe: Recipe, level = 0.85): SynthDef {
-  return { variants: 1, duration: LD, channels: 1, level, loop: true, recipe };
+function monoLoop(recipe: Recipe, level = 0.85, rate = 1): SynthDef {
+  return { variants: 1, duration: LD, channels: 1, level, loop: true, rate, recipe };
 }
 
 function cue(duration: number, recipe: Recipe, variants = 2, level = 0.85): SynthDef {
@@ -541,38 +544,38 @@ const STATUS_DEFS = {
 } as const satisfies Record<`status.${StatusId}`, SynthDef>;
 
 const COMBO_DEFS = {
-  'combo.thermoshock': cue(1.1, comboThermoshock, 2, 1),
-  'combo.neurotoxin': cue(1, comboNeurotoxin, 2, 1),
-  'combo.toxicblaze': cue(1.1, comboToxicblaze, 2, 1),
-  'combo.superconductor': cue(0.9, comboSuperconductor, 2, 1),
-  'combo.voidrupture': cue(1.1, comboVoidrupture, 2, 1),
+  'combo.thermoshock': cue(1.1, comboThermoshock, 1, 1),
+  'combo.neurotoxin': cue(1, comboNeurotoxin, 1, 1),
+  'combo.toxicblaze': { ...cue(1.1, comboToxicblaze, 1, 1), rate: DARK },
+  'combo.superconductor': cue(0.9, comboSuperconductor, 1, 1),
+  'combo.voidrupture': { ...cue(1.1, comboVoidrupture, 1, 1), rate: DARK },
 } as const satisfies Record<`combo.${ComboId}`, SynthDef>;
 
 export const ELEMENT_SYNTH_DEFS = {
   // --- explosions (mono → HRTF) ---
-  'explosion.physical': blast(2, explosionPhysical),
+  'explosion.physical': blast(2, explosionPhysical, 2),
   'explosion.physical.small': blast(0.7, explosionPhysicalSmall, 3, 0.95),
-  'explosion.fire': blast(1.8, explosionFire),
-  'explosion.fire.small': blast(0.8, explosionFireSmall, 3, 0.95),
-  'explosion.shock': blast(1.5, explosionShock),
-  'explosion.shock.small': blast(0.6, explosionShockSmall, 3, 0.95),
+  'explosion.fire': blast(1.8, explosionFire, 2),
+  'explosion.fire.small': blast(0.8, explosionFireSmall, 2, 0.95),
+  'explosion.shock': blast(1.5, explosionShock, 1, 1, 1),
+  'explosion.shock.small': blast(0.6, explosionShockSmall, 2, 0.95, 1),
   'explosion.poison': blast(1.5, explosionPoison),
-  'explosion.poison.small': blast(0.7, explosionPoisonSmall, 3, 0.95),
-  'explosion.ice': blast(1.6, explosionIce),
-  'explosion.ice.small': blast(0.7, explosionIceSmall, 3, 0.95),
+  'explosion.poison.small': blast(0.7, explosionPoisonSmall, 2, 0.95),
+  'explosion.ice': blast(1.6, explosionIce, 1, 1, 1),
+  'explosion.ice.small': blast(0.7, explosionIceSmall, 2, 0.95, 1),
   'explosion.void': blast(2, explosionVoid),
-  'explosion.void.small': blast(0.9, explosionVoidSmall, 3, 0.95),
+  'explosion.void.small': blast(0.9, explosionVoidSmall, 2, 0.95),
   // --- fields (mono loops) ---
-  'field.pull.void': monoLoop(fieldPullVoid, 0.9),
-  'field.damage.fire': monoLoop(fieldDamageFire),
+  'field.pull.void': monoLoop(fieldPullVoid, 0.9, DARK),
+  'field.damage.fire': monoLoop(fieldDamageFire, 0.85, DARK),
   'field.damage.poison': monoLoop(fieldDamagePoison),
   'field.damage.shock': monoLoop(fieldDamageShock),
   'field.slow.ice': monoLoop(fieldSlowIce),
   'field.slow.void': monoLoop(fieldSlowVoid),
   // --- projectile flight (mono loops) ---
   'projectile.plasma.flight': monoLoop(flightPlasma, 0.7),
-  'projectile.grenade.flight': monoLoop(flightGrenade, 0.6),
-  'projectile.voidorb.flight': monoLoop(flightVoid, 0.85),
+  'projectile.grenade.flight': monoLoop(flightGrenade, 0.6, DARK),
+  'projectile.voidorb.flight': monoLoop(flightVoid, 0.85, DARK),
   'projectile.shockorb.flight': monoLoop(flightShock, 0.7),
   'projectile.cryoorb.flight': monoLoop(flightCryo, 0.7),
   // --- statuses, combos ---

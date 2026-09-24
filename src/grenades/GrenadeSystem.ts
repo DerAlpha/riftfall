@@ -38,7 +38,13 @@ import type {
 import type { EventBus } from '../core/EventBus';
 import type { DamageElement, GameEvents, Vec3Like } from '../core/events';
 import { createLogger } from '../core/log';
-import { GRENADE_IDS, GRENADE_RULES, getGrenadeDef, grenadeByWeaponId, type GrenadeDef } from '../defs/grenades';
+import {
+  GRENADE_IDS,
+  GRENADE_RULES,
+  getGrenadeDef,
+  grenadeByWeaponId,
+  type GrenadeDef,
+} from '../defs/grenades';
 import { getPowerUpDef } from '../defs/powerups';
 import { handPosition, throwLaunch, throwStrength } from './grenadeMath';
 
@@ -125,7 +131,10 @@ export class GrenadeSystem implements GrenadeApi {
     areaScale: 1,
   };
   private readonly spawnOpts: ProjectileSpawnOptions;
-  private readonly thrownPayload: GameEvents['grenade:thrown'] = { grenadeId: '', position: { x: 0, y: 0, z: 0 } };
+  private readonly thrownPayload: GameEvents['grenade:thrown'] = {
+    grenadeId: '',
+    position: { x: 0, y: 0, z: 0 },
+  };
   private readonly changedPayload: GameEvents['grenade:changed'] = { grenadeId: '', count: 0, max: 0 };
   private readonly unsubs: (() => void)[] = [];
 

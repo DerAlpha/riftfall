@@ -518,7 +518,7 @@ export class ArsenalBeams {
       ch.emitAcc += dt * s.rate * ctx.budget;
       const cosMax = Math.cos((s.spreadDeg * Math.PI) / 180);
       let guard = 0;
-      while (ch.emitAcc >= 1 && guard++ < 24) {
+      while (ch.emitAcc >= 1 && guard++ < ARSENAL_VFX.beams.maxFlameSpawnsPerFrame) {
         ch.emitAcc -= 1;
         const r = ctx.rand;
         sampleCone(dx, dy, dz, cosMax, r(), r(), _dir);

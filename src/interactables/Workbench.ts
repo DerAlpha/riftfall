@@ -54,7 +54,8 @@ export interface BenchInput {
 
 export interface WorkbenchDeps {
   weapons: WorkshopWeapons;
-  economy: Pick<EconomyApi, 'spend' | 'earn' | 'points'>;
+  /** `points` (optional) colors unaffordable entries in the menu. */
+  economy: Pick<EconomyApi, 'spend' | 'earn'> & { readonly points?: number };
   /** The interactable the player focuses (the menu closes when it is not this bench). */
   focused?: (() => Interactable | null) | null;
   menu?: WorkbenchMenuApi | null;
@@ -86,6 +87,7 @@ export class Workbench implements Interactable {
   private shownMods: object | null = null;
   private shownPoints = -1;
   private shownWeapon: string | null | undefined = undefined;
+  private menu: WorkbenchMenuApi | null;
   private disposed = false;
 
   constructor(
@@ -95,10 +97,17 @@ export class Workbench implements Interactable {
   ) {
     this.id = id;
     this.lookupDef = deps.defs ?? getWeaponDef;
+    this.menu = deps.menu ?? null;
   }
 
   get isOpen(): boolean {
     return this.menuOpen;
+  }
+
+  /** Attach the menu view (the HUD is built after the interactables). */
+  setMenu(menu: WorkbenchMenuApi | null): void {
+    this.closeMenu(false);
+    this.menu = menu;
   }
 
   /** Index of the selected entry (tests / debug). */
@@ -193,7 +202,7 @@ export class Workbench implements Interactable {
     const i = ((index % n) + n) % n;
     if (i === this.selected) return;
     this.selected = i;
-    this.deps.menu?.setSelected(i);
+    this.menu?.setSelected(i);
   }
 
   fixedUpdate(_dt: number): void {
@@ -257,8 +266,8 @@ export class Workbench implements Interactable {
     this.shownMods = null;
     this.shownPoints = -1;
     const name = this.deps.weapons.effectiveDef(weaponId)?.name ?? this.lookupDef(weaponId)?.name ?? weaponId;
-    this.deps.menu?.open(name, entries);
-    this.deps.menu?.setSelected(0);
+    this.menu?.open(name, entries);
+    this.menu?.setSelected(0);
     this.syncStates();
     if (sound && !wasOpen) this.playSound(WORKBENCH.sounds.open);
   }
@@ -270,7 +279,7 @@ export class Workbench implements Interactable {
     this.entries = NO_ENTRIES;
     this.selected = 0;
     this.shownMods = null;
-    this.deps.menu?.close();
+    this.menu?.close();
     if (sound) this.playSound(WORKBENCH.sounds.close);
   }
 
@@ -279,12 +288,12 @@ export class Workbench implements Interactable {
     const id = this.menuWeapon;
     if (!id) return;
     const mods = this.deps.weapons.modsOf(id);
-    const points = this.deps.economy.points;
+    const points = this.deps.economy.points ?? Number.POSITIVE_INFINITY;
     if (mods === this.shownMods && points === this.shownPoints) return;
     this.shownMods = mods;
     this.shownPoints = points;
     for (let i = 0; i < this.entries.length; i++) this.equipped[i] = entryEquipped(this.entries[i]!, mods);
-    this.deps.menu?.setStates(this.equipped, points);
+    this.menu?.setStates(this.equipped, points);
   }
 
   /** Buy + fit entry `index`, or take it off when it is fitted. */
@@ -304,7 +313,7 @@ export class Workbench implements Interactable {
       if (price > 0) economy.earn(price, 'refund');
       return;
     }
-    this.deps.menu?.flash(index);
+    this.menu?.flash(index);
     this.deps.view?.flash();
     this.syncStates();
   }

@@ -300,6 +300,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   private latched = 0;
   /** Pad X is shared by reload and interact: true while a press means "interact" (setReloadSuppressor). */
   private reloadSuppressed: () => boolean = () => false;
+  /** M5 Rift Forge: the weapon in hand is held by a machine (setStowed). */
+  private stowed = false;
   private edgeMask = 0;
   private edgeFrame = -1;
   private inputFrame = 0;
@@ -579,7 +581,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   }
   get blocksSprint(): boolean {
     const w = this.current;
-    if (!w || this.disposed) return false;
+    if (!w || this.disposed || this.stowed) return false;
     const s = this._state;
     // A sprint press is honoured at once (the player ticks first): it cancels an uncommitted
     // reload in this tick, or lets a committed one finish while sprinting (toggle sprint must
@@ -624,6 +626,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     // Current stats, without resizing the inventory that is about to be replaced.
     if (this.statsStale) this.readStats();
     this.baseSlots = slots ?? WEAPON_RULES.inventory.defaultSlots;
+    this.stowed = false;
     const n = this.slotTotal();
     if (this._state === 'reloading') this.finishReload(false);
     this.endFireKinds();
@@ -759,6 +762,32 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     return m ? (m.tier ?? 0) : -1;
   }
 
+  /** The weapon in hand is held by the Rift Forge (setStowed). */
+  get isStowed(): boolean {
+    return this.stowed;
+  }
+
+  /**
+   * M5 Rift Forge: hand the weapon in hand to a machine (true) – a running reload is cancelled,
+   * beam / charge / spin end, nothing fires, aims, reloads, switches, bashes or inspects – and
+   * take it back (false): it is raised again (weapon:equipStart + raiseStart as a re-raise). The
+   * viewmodel lowers it out of view on its own (ViewmodelRig.setStowed); a new loadout clears it.
+   */
+  setStowed(stowed: boolean): void {
+    if (stowed === this.stowed || this.disposed) return;
+    this.stowed = stowed;
+    if (stowed) {
+      if (this._state === 'reloading') this.finishReload(false);
+      this.endFireKinds();
+      this.fireQueued = false;
+      this.burstLeft = 0;
+      this.pressBuffer = 0;
+      this.latched = 0;
+      return;
+    }
+    if (this.current) this.equipSlot(this.currentSlot, null, undefined, true, true);
+  }
+
   /** M4: a reload press is ignored while `suppress()` is true (pad X buying at an interactable). */
   setReloadSuppressor(suppress: (() => boolean) | null): void {
     this.reloadSuppressed = suppress ?? (() => false);
@@ -788,6 +817,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     this.meleeCooldown = Math.max(0, this.meleeCooldown - dt);
     // The fire cycle runs on in every state (equipSlot restores a weapon's own remaining cycle).
     if (this.fireCooldown > 0) this.fireCooldown -= dt;
+    // Held by the Rift Forge: no fire, reload, switch, melee or inspect until it is handed back.
+    if (this.stowed) return;
 
     const w = this.current;
     if (!w) {
@@ -2414,7 +2445,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
 
   private updateAds(dt: number): void {
     const w = this.current;
-    const intent = this.adsHeld && w !== null && ADS_STATES.has(this._state);
+    const intent = this.adsHeld && w !== null && !this.stowed && ADS_STATES.has(this._state);
     const aiming = intent && !this.player.sprinting && this.sprintRecovery <= 0;
     if (w) {
       const a = w.def.ads;

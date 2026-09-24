@@ -1,5 +1,5 @@
 /**
- * Arsenal HUD (M5, bottom left, right of the vitals and the perk row): the equipped ability as an
+ * Arsenal HUD (M5, bottom left, between the perk row and the vitals): the equipped ability as an
  * icon in a cooldown ring and the selected grenade type with its count, plus the full-screen
  * overlays of running abilities (Phasenbarriere shield shimmer, Überladung heat, Chronofeld time
  * tint). Plain DOM like the other widgets: built once, patched when a shown value changes.
@@ -92,12 +92,21 @@ export class ArsenalHud {
   private readonly unsubs: (() => void)[] = [];
 
   /** `corner`: the HUD's bottom-left corner; `layer`: the HUD root (full-screen overlays). */
-  constructor(corner: HTMLElement, layer: HTMLElement, events: EventBus<GameEvents>, settings: SettingsStore) {
+  constructor(
+    corner: HTMLElement,
+    layer: HTMLElement,
+    events: EventBus<GameEvents>,
+    settings: SettingsStore,
+  ) {
     this.el = h('div', 'hud-arsenal');
 
     // --- ability: icon in a cooldown ring ---
     this.ability = h('div', 'hud-ab', this.el);
-    const ring = svgEl('svg', { class: 'hud-ab__ring', viewBox: '0 0 48 48', 'aria-hidden': 'true' }, this.ability);
+    const ring = svgEl(
+      'svg',
+      { class: 'hud-ab__ring', viewBox: '0 0 48 48', 'aria-hidden': 'true' },
+      this.ability,
+    );
     svgEl('circle', { class: 'hud-ab__track', cx: 24, cy: 24, r: RING_R }, ring);
     this.abilityFill = svgEl(
       'circle',
@@ -127,7 +136,9 @@ export class ArsenalHud {
     this.prime.hidden = true;
     this.grenade.hidden = true;
 
-    corner.appendChild(this.el);
+    // Right below the perk row (EconomyHud prepends it), above the dash pips and the vitals.
+    const perks = corner.querySelector('.hud-perks');
+    corner.insertBefore(this.el, perks ? perks.nextSibling : corner.firstChild);
 
     // --- full-screen ability overlay (first in the layer: below the crosshair and prompts) ---
     this.overlay = h('div', 'hud-abfx');

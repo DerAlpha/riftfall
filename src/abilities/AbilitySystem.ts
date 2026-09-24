@@ -21,7 +21,13 @@ import { Vector3 } from 'three';
 import type { AbilityApi, DamageInfo, ExplosionApi, FieldApi, InputApi, StatsApi } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
 import type { GameEvents, Vec3Like } from '../core/events';
-import { ABILITY_IDS, ABILITY_RULES, getAbilityDef, type AbilityDef, type AbilityWorldFx } from '../defs/abilities';
+import {
+  ABILITY_IDS,
+  ABILITY_RULES,
+  getAbilityDef,
+  type AbilityDef,
+  type AbilityWorldFx,
+} from '../defs/abilities';
 import type { WeaponSpecialDef } from '../defs/weapons';
 import { statusBuildupFor } from '../weapons/fire/WeaponSpecials';
 

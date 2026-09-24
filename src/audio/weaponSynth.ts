@@ -982,6 +982,7 @@ const uiKill: Recipe = (g, t) => {
 // ---------------------------------------------------------------------------
 
 const FV = S.weaponFireVariants;
+const DARK = S.darkRate;
 const IV = S.impactVariants;
 
 export const WEAPON_SYNTH_DEFS = {
@@ -999,11 +1000,12 @@ export const WEAPON_SYNTH_DEFS = {
   'weapon.rifle.mech': { variants: 4, duration: 0.12, channels: 2, level: 0.65, recipe: rifleMech },
   'weapon.shotgun.boom': { variants: 2, duration: 0.7, channels: 1, level: 1, recipe: shotgunBoom },
   'weapon.shotgun.pumpCycle': { variants: 3, duration: 0.55, channels: 2, level: 0.85, recipe: pump(0.16) },
-  'weapon.tail.small': { variants: 2, duration: 0.5, channels: 2, level: 0.7, recipe: tail(0.3, 420) },
-  'weapon.tail.medium': { variants: 3, duration: 0.7, channels: 2, level: 0.75, recipe: tail(0.45, 380) },
-  'weapon.tail.large': { variants: 2, duration: 1.1, channels: 2, level: 0.85, recipe: tail(0.75, 320) },
+  // Dark blooms (< 1 kHz): rendered at half rate (SynthDef.rate).
+  'weapon.tail.small': { variants: 2, duration: 0.5, channels: 2, level: 0.7, rate: DARK, recipe: tail(0.3, 420) },
+  'weapon.tail.medium': { variants: 3, duration: 0.7, channels: 2, level: 0.75, rate: DARK, recipe: tail(0.45, 380) },
+  'weapon.tail.large': { variants: 2, duration: 1.1, channels: 2, level: 0.85, rate: DARK, recipe: tail(0.75, 320) },
   // --- explosions (mono → HRTF) ---
-  explosion: { variants: 3, duration: 1.9, channels: 1, level: 1, recipe: explosion },
+  explosion: { variants: 3, duration: 1.9, channels: 1, level: 1, rate: DARK, recipe: explosion },
   // --- handling ---
   'weapon.pistol.dry': { variants: 2, duration: 0.08, channels: 1, level: 0.8, recipe: dry(HANDLING.pistol) },
   'weapon.rifle.dry': { variants: 2, duration: 0.08, channels: 1, level: 0.8, recipe: dry(HANDLING.rifle) },
@@ -1109,6 +1111,8 @@ export const WEAPON_SYNTH_ALIASES = {
   'weapon.shotgun.magOut': 'weapon.rifle.magOut',
   'weapon.shotgun.magIn': 'weapon.rifle.magIn',
   'weapon.shotgun.boltRelease': 'weapon.shotgun.pump',
+  // The SG-12's mechanical layer is its pump cycle (M5 naming convention: weapon.<id>.mech).
+  'weapon.shotgun.mech': 'weapon.shotgun.pumpCycle',
 } as const satisfies Record<string, WeaponSynthId>;
 
 /** Weapon synth id for an alias id, or null. */

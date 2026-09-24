@@ -12,7 +12,9 @@ function setup() {
   const events = new EventBus<GameEvents>();
   const combat = new CombatWorld({ events, physics: null });
   combat.setLevel(
-    buildTestLevel([{ material: 'concrete_wall', center: { x: 0, y: -0.5, z: 0 }, size: { x: 60, y: 1, z: 60 } }]),
+    buildTestLevel([
+      { material: 'concrete_wall', center: { x: 0, y: -0.5, z: 0 }, size: { x: 60, y: 1, z: 60 } },
+    ]),
   );
   const explosions: ExplosionApi = { explode: () => 0 };
   const visuals: string[] = [];

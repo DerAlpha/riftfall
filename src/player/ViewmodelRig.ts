@@ -371,15 +371,19 @@ export class ViewmodelRig {
    * casings). Valid at any time in the frame (matrices are refreshed).
    */
   getSocketWorldPosition(socket: 'muzzle' | 'ejectPort', out: Vector3): Vector3 {
+    return this.viewToWorld(this.anchors[socket], out);
+  }
+
+  /** getSocketWorldPosition for any object in the viewmodel scene (M5: the laser emitter). */
+  private readonly viewToWorld = (obj: Object3D, out: Vector3): Vector3 => {
     const vmCam = this.render.viewmodelCamera;
     const cam = this.render.camera;
-    const anchor = this.anchors[socket];
-    anchor.updateWorldMatrix(true, false);
-    _v.setFromMatrixPosition(anchor.matrixWorld).applyMatrix4(vmCam.matrixWorldInverse);
+    obj.updateWorldMatrix(true, false);
+    _v.setFromMatrixPosition(obj.matrixWorld).applyMatrix4(vmCam.matrixWorldInverse);
     cam.updateWorldMatrix(true, false);
     mapViewPointBetweenProjections(_v, vmCam.projectionMatrix, cam.projectionMatrixInverse, out);
     return out.applyMatrix4(cam.matrixWorld);
-  }
+  };
 
   /** World-space effect direction of a socket (its local −Z: barrel axis, ejection direction). */
   getSocketWorldDirection(socket: ViewmodelSocket, out: Vector3): Vector3 {
@@ -407,6 +411,10 @@ export class ViewmodelRig {
       if (m && m.root.parent === null) temp.push(m);
     }
     for (const m of temp) this.slot.add(m.root);
+    // M5: every attachment model and a forge-camo variant of every body material, so the first
+    // optic or forged weapon never compiles mid-game.
+    const outfit = this.outfitter.warmup([...this.weaponModels.values()]);
+    for (const o of outfit) this.slot.add(o);
     // The viewmodel is only ever drawn into the post chain's buffers: compile with a render
     // target bound so the programs match those draws (linear output), not the canvas variants.
     // (r186 compile() visits hidden meshes too, e.g. the loading shell; lights are unchanged.)
@@ -421,12 +429,19 @@ export class ViewmodelRig {
       renderer.setRenderTarget(previous);
       target.dispose();
       for (const m of temp) this.slot.remove(m.root);
+      this.outfitter.releaseWarmup(outfit);
     }
   }
 
   update(dt: number): void {
     if (this.disposed || dt <= 0) return;
     this.time += dt;
+    // --- M5: forge stow blend; the shown weapon's dress (a new look waits until it is out of view) ---
+    const ST = OUTFIT_RIG.stow;
+    if (this.stow < this.stowTarget) this.stow = Math.min(this.stowTarget, this.stow + dt / ST.lowerTime);
+    else if (this.stow > this.stowTarget) this.stow = Math.max(this.stowTarget, this.stow - dt / ST.raiseTime);
+    const lowering = this.stowTarget > 0 && this.stow < 1;
+    if (this.outfitter.sync(this.shownWeaponId, this.weaponModel, lowering)) this.onOutfitChanged();
     const player = this.player;
     const cam = this.camera;
     const ads = this.adsSource.adsAmount;
@@ -508,6 +523,7 @@ export class ViewmodelRig {
     // --- weapon animation layer (kick, cycling, reload, equip, inspect, melee, idle) ---
     this.animator.update(dt, ads, a11y);
     const anim = this.animator.pose;
+    this.outfitter.afterAnimate(dt);
 
     // --- compose: base offset (hip ↔ ADS), weapon or placeholder poses, rig layers ---
     const w = this.weaponPose;
@@ -540,7 +556,16 @@ export class ViewmodelRig {
       this.moveZ * a11y * sway +
       (w ? w.sprintPos.z * lower : 0) +
       anim.pz;
-    this.root.position.set(px, py, pz);
+    // M5 Rift Forge: the stowed weapon drops along its holster pose, out of view.
+    const stow = this.stow * this.stow * (3 - 2 * this.stow);
+    const lowered = stow > 0 ? (this.weaponModel?.def.lowered ?? VIEWMODEL_ANIM.equip.lowered) : null;
+    if (lowered) {
+      this.root.position.set(
+        px + (lowered.pos?.x ?? 0) * stow,
+        py + ((lowered.pos?.y ?? 0) - ST.drop) * stow,
+        pz + (lowered.pos?.z ?? 0) * stow,
+      );
+    } else this.root.position.set(px, py, pz);
 
     const pitch =
       this.swayPitch.value * sway +
@@ -561,7 +586,12 @@ export class ViewmodelRig {
       tiltDeg * DEG2RAD * a11y +
       (w ? w.sprintRot.z * lower + w.hipRot.z * (1 - ads) : 0);
     this.root.rotation.set(pitch, yaw, roll);
-    this.pivot.rotation.set(anim.rx, anim.ry, anim.rz);
+    const lr = lowered?.rot;
+    this.pivot.rotation.set(
+      anim.rx + (lr?.x ?? 0) * DEG2RAD * stow,
+      anim.ry + (lr?.y ?? 0) * DEG2RAD * stow,
+      anim.rz + (lr?.z ?? 0) * DEG2RAD * stow,
+    );
 
     // --- muzzle flash light (viewmodel scene) ---
     const flash = this.animator.muzzleFlash;
@@ -576,7 +606,16 @@ export class ViewmodelRig {
       this.placeholder.stripMaterial.emissiveIntensity = g.stripIntensity * (0.5 + 0.5 * pulse);
       this.placeholder.screenTexture.offset.x = (this.time * g.screenScroll) % 1;
       this.coreLight.intensity = VIEWMODEL.lights.coreLightIntensity * (pulse + this.flare / g.coreIntensity);
+    } else if (this.weaponModel) {
+      // The accent spill follows the state drivers (charge, beam, spin) and the forge look.
+      this.coreLight.intensity =
+        this.weaponModel.def.accentLight.intensity *
+        this.outfitter.accentLightScale *
+        (1 + this.animator.driverAccentBoost * OUTFIT_RIG.accentLightBoost);
     }
+
+    // --- M5: laser sight (world space: dot at the aim point, beam from the emitter as seen) ---
+    this.outfitter.updateLaser(this.root.visible && stow < 1, this.render.camera, this.viewToWorld);
   }
 
   dispose(): void {
@@ -592,6 +631,7 @@ export class ViewmodelRig {
     this.keyLight.dispose();
     this.coreLight.dispose();
     this.muzzleLight.dispose();
+    this.outfitter.dispose();
     for (const m of this.weaponModels.values()) m.dispose();
     this.weaponModels.clear();
     this.kit?.dispose();
@@ -625,9 +665,21 @@ export class ViewmodelRig {
     const model = weaponId ? this.getWeaponModel(weaponId) : null;
     this.weaponModel = model;
     this.shownWeaponId = model ? weaponId : null;
-    this.weaponPose = model ? resolveWeaponPose(model) : null;
+    // M5: dressed before it shows (attachments, forge look); an optic moves the sight line.
+    if (this.outfitter.sync(this.shownWeaponId, model) && model) prepareViewmodelObject(model.root);
+    this.weaponPose = model ? resolveWeaponPose(model, this.outfitter.sight, this.outfitter.eyeDistance) : null;
     this.swapDisplayed(model ? model.root : this.placeholder.root);
     return model;
+  }
+
+  /** M5: the shown model's dress changed – sight line (pose), anchors (muzzle), lights, layers. */
+  private onOutfitChanged(): void {
+    const wm = this.weaponModel;
+    if (!wm) return;
+    prepareViewmodelObject(wm.root);
+    this.weaponPose = resolveWeaponPose(wm, this.outfitter.sight, this.outfitter.eyeDistance);
+    this.attachAnchors();
+    this.applyLightsForModel();
   }
 
   private swapDisplayed(next: Object3D): void {
@@ -645,9 +697,10 @@ export class ViewmodelRig {
   private attachAnchors(): void {
     const sockets: Record<ViewmodelSocket, Object3D> | null = this.weaponModel
       ? {
-          muzzle: this.weaponModel.muzzle,
+          // M5: a muzzle device / an optic carries the muzzle / sight point.
+          muzzle: this.outfitter.muzzle ?? this.weaponModel.muzzle,
           ejectPort: this.weaponModel.ejectPort,
-          sight: this.weaponModel.sight,
+          sight: this.outfitter.sight ?? this.weaponModel.sight,
         }
       : this.model === this.placeholder.root
         ? this.placeholder.sockets
@@ -680,6 +733,11 @@ export class ViewmodelRig {
       // defs/weapons documents the muzzle light color as a linear hex.
       if (color !== undefined) this.muzzleLight.color.setHex(color, LinearSRGBColorSpace);
       else this.muzzleLight.color.set(L.coreLightColor);
+      // M5: a forge look tints the accent spill and the muzzle flash light.
+      const accent = this.outfitter.lookAccentColor;
+      if (accent) this.coreLight.color.copy(accent);
+      const flash = this.outfitter.lookMuzzleColor;
+      if (flash) this.muzzleLight.color.copy(flash);
     } else {
       this.pivot.position.set(0, 0, 0);
       this.slot.position.set(0, 0, 0);

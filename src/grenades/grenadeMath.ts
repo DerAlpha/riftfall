@@ -61,7 +61,13 @@ export function handPosition(
 }
 
 /** Position on the ballistic arc `t` s after launch from `origin` at `velocity` (gravity m/s² down). */
-export function arcPoint(origin: Vec3Like, velocity: Vec3Like, gravity: number, t: number, out: Vec3Like): Vec3Like {
+export function arcPoint(
+  origin: Vec3Like,
+  velocity: Vec3Like,
+  gravity: number,
+  t: number,
+  out: Vec3Like,
+): Vec3Like {
   out.x = origin.x + velocity.x * t;
   out.y = origin.y + velocity.y * t - 0.5 * gravity * t * t;
   out.z = origin.z + velocity.z * t;

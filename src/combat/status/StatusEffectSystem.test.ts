@@ -70,13 +70,19 @@ function setup(
   const events = new EventBus<GameEvents>();
   const combat = new CombatWorld({ events });
   const vfx: string[] = [];
+  const vfxScales: number[] = [];
   const flashes: number[] = [];
   const blasts: { def: ExplosionDef; from: AreaDamageSource }[] = [];
   const clouds: { def: FieldDef; from: AreaDamageSource; x: number; z: number }[] = [];
   const status = new StatusEffectSystem({
     events,
     combat,
-    vfx: { spawn: (id) => void vfx.push(id) },
+    vfx: {
+      spawn: (id, _p, _n, scale) => {
+        vfx.push(id);
+        vfxScales.push(scale ?? 1);
+      },
+    },
     explosions: {
       explode: (_p, def, from) => {
         blasts.push({ def, from: { ...from } });
@@ -140,6 +146,7 @@ function setup(
     combat,
     status,
     vfx,
+    vfxScales,
     flashes,
     blasts,
     clouds,
@@ -569,6 +576,32 @@ describe('StatusEffectSystem – combos', () => {
     const dotA = a.total((x) => x.kind === 'beam');
     const dotB = b.total((x) => x.kind === 'beam');
     expect(dotB).toBeGreaterThan(dotA * 1.5);
+  });
+
+  it('a horde reacting at once: only a few full-size bursts per window', () => {
+    const h = setup();
+    const ds: Dummy[] = [];
+    for (let i = 0; i < 6; i++) ds.push(new Dummy(i + 1, i * 30, 0));
+    h.add(...ds);
+    for (const d of ds) h.status.applyElement(d, 'poison', T.poison, 'player');
+    h.tick();
+    for (const d of ds) h.status.applyElement(d, 'fire', T.fire, 'player');
+    h.tick(3);
+    const V = ELEMENTS.combos.vfx;
+    const scales = h.vfx
+      .map((id, i) => (id.startsWith('combo.') ? h.vfxScales[i]! : -1))
+      .filter((x) => x >= 0);
+    expect(scales).toHaveLength(6);
+    const def = COMBOS.find((c) => c.id === 'toxicblaze')!;
+    expect(scales.filter((x) => x === def.vfxScale)).toHaveLength(V.fullBursts);
+    expect(scales.filter((x) => x < def.vfxScale)).toHaveLength(6 - V.fullBursts);
+    // After the window, full size again.
+    h.tick(Math.ceil(V.window / DT) + ticks(ELEMENTS.combos.cooldown));
+    const d = ds[0]!;
+    h.status.applyElement(d, 'poison', T.poison, 'player');
+    h.status.applyElement(d, 'fire', T.fire, 'player');
+    h.tick(2);
+    expect(h.vfxScales[h.vfx.lastIndexOf('combo.toxicblaze')]).toBe(def.vfxScale);
   });
 
   it('per-target cooldown and per-tick budget', () => {

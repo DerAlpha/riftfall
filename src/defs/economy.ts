@@ -84,8 +84,7 @@ export const ECONOMY = {
     ammoRoundTo: 10,
     /** Wall buy of a weapon without a price in its def. */
     weaponDefault: 1000,
-    /** Rift Forge (M5): upgrade a weapon to tier 1. */
-    forge: 5000,
+    // Rift Forge prices: defs/forge.ts (FORGE.tierCosts / the defs' upgrades[].cost).
   },
 
   /** Flat power-up rewards (paid by the power-up system through EconomyApi.earn). */

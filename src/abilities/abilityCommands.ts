@@ -60,7 +60,8 @@ export function createAbilityCommands(deps: AbilityCommandDeps): ConsoleCommand[
             a.equip(null);
             return status();
         }
-        if (!getAbilityDef(mode)) throw new Error(`Unbekannte Fähigkeit "${mode}" (${ABILITY_IDS.join(', ')})`);
+        if (!getAbilityDef(mode))
+          throw new Error(`Unbekannte Fähigkeit "${mode}" (${ABILITY_IDS.join(', ')})`);
         a.equip(mode);
         a.makeReady();
         return `${getAbilityDef(mode)!.name} ausgerüstet (bereit)`;

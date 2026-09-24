@@ -185,6 +185,9 @@ export interface DroneOpts {
 const TONE_TAIL = 2;
 const NOISE_TAIL = 1.6;
 
+/** Tones must stay below this fraction of the sample rate (Nyquist = 0.5). */
+const NYQUIST_MARGIN = 0.48;
+
 /** Segments of the piecewise-linear sine/cosine loop edges. */
 const LOOP_EDGE_STEPS = 12;
 
@@ -208,6 +211,16 @@ export class Kit {
   /** Stereo width is only meaningful in a 2-channel render. */
   get stereo(): boolean {
     return this.ctx.destination.channelCount > 1;
+  }
+
+  /**
+   * Tones at or above the render's Nyquist are skipped: an oscillator cannot play them (Web Audio
+   * clamps and warns), and half-rate renders drop their top octave on purpose.
+   */
+  private audible(...freqs: number[]): boolean {
+    const limit = this.ctx.sampleRate * NYQUIST_MARGIN;
+    for (const f of freqs) if (!(f < limit)) return false;
+    return true;
   }
 
   /** Sub-bus: [waveshaper] → [highpass] → [lowpass] → [comb] → gain → [pan] → this kit's output. */
@@ -391,6 +404,7 @@ export class Kit {
     pan = 0,
     lowpass = 0,
   ): void {
+    if (!this.audible(f0, f1)) return;
     const osc = this.ctx.createOscillator();
     osc.type = type;
     osc.frequency.setValueAtTime(f0, t);
@@ -416,6 +430,7 @@ export class Kit {
     peak: number,
     o: { pan?: number; lowpass?: number; q?: number; vibrato?: LfoOpts; expRise?: boolean } = {},
   ): void {
+    if (!this.audible(f0 + (o.vibrato?.depth ?? 0), f1 + (o.vibrato?.depth ?? 0))) return;
     const top = Math.max(attack, hold);
     const stop = t + top + release * TONE_TAIL + 0.01;
     const osc = this.ctx.createOscillator();
@@ -434,6 +449,7 @@ export class Kit {
 
   /** Constant oscillator for loops (no envelope – put it on a loopBus). */
   drone(t: number, dur: number, f: number, level: number, o: DroneOpts = {}): void {
+    if (!this.audible(f * 1.01 + (o.vibrato?.depth ?? 0))) return;
     const voices = o.detune ? [-o.detune / 2, o.detune / 2] : [0];
     for (const cents of voices) {
       const osc = this.ctx.createOscillator();
@@ -464,6 +480,7 @@ export class Kit {
     pan = 0,
     carrierTo = carrier,
   ): void {
+    if (!this.audible(carrier * Math.max(1, ratio), carrierTo * Math.max(1, ratio))) return;
     const ctx = this.ctx;
     const stop = t + attack + decay * TONE_TAIL + 0.01;
     const mod = ctx.createOscillator();
@@ -498,6 +515,7 @@ export class Kit {
     peak: number,
     o: { type?: OscillatorType; carrierTo?: number; modTo?: number; pan?: number } = {},
   ): void {
+    if (!this.audible(carrier + modulator, (o.carrierTo ?? carrier) + (o.modTo ?? modulator))) return;
     const ctx = this.ctx;
     const stop = t + attack + decay * TONE_TAIL + 0.01;
     const car = ctx.createOscillator();

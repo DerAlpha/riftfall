@@ -75,6 +75,9 @@ import {
   type PerkMachineInfo,
 } from './types';
 import { WallBuy } from './WallBuy';
+import { placeWorkshop, type WorkshopDeps } from './workshop';
+import type { RiftForge } from './RiftForge';
+import type { Workbench } from './Workbench';
 import { BoxView } from './visuals/BoxView';
 import type { VisualContext } from './visuals/context';
 import { DoorView } from './visuals/DoorView';
@@ -123,6 +126,8 @@ export interface PlaceInteractablesDeps {
   visuals?: InteractableVisualDeps | null;
   /** Map id for the per-map placements (default: level.id). */
   mapId?: string;
+  /** M5: Rift Forge + Werkbank (interactables/workshop.ts); null/absent = neither machine. */
+  workshop?: WorkshopDeps | null;
 }
 
 export interface InteractablesHandle {
@@ -130,6 +135,9 @@ export interface InteractablesHandle {
   readonly wallBuys: readonly WallBuy[];
   readonly perkMachines: readonly PerkMachine[];
   readonly box: MysteryBox | null;
+  /** M5 workshop machines of the map (null where the map has none). */
+  readonly forge: RiftForge | null;
+  readonly workbench: Workbench | null;
   /** Everything registered with the InteractionSystem. */
   readonly interactables: readonly Interactable[];
   /** Holograms, beam and glow pools draw on RENDER.volumetricLayer. */
@@ -305,6 +313,20 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
     }
   }
 
+  // --- M5 workshop: the Rift Forge and the Werkbank ---
+  const workshop = deps.workshop
+    ? placeWorkshop(deps.workshop, {
+        mapId,
+        events: deps.events,
+        economy: deps.economy,
+        blockerDeps,
+        ctx,
+        vfx: deps.vfx ?? null,
+        player: deps.player ?? null,
+        register,
+      })
+    : null;
+
   // --- the Rift-Kiste ---
   let box: MysteryBox | null = null;
   const locDefs = MYSTERY_BOX.locations[mapId] ?? [];
@@ -346,6 +368,8 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
     wallBuys,
     perkMachines,
     box,
+    forge: workshop?.forge ?? null,
+    workbench: workshop?.workbench ?? null,
     interactables,
     get hasVolumetricContent(): boolean {
       return !disposed && root !== null && root.visible;
@@ -354,6 +378,7 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
       if (disposed) return;
       for (let i = 0; i < doors.length; i++) doors[i]!.fixedUpdate(dt);
       box?.fixedUpdate(dt);
+      workshop?.fixedUpdate(dt);
     },
     update(dt: number, alpha: number): void {
       if (disposed) return;
@@ -363,12 +388,14 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
       for (let i = 0; i < wallBuys.length; i++) wallBuys[i]!.update(dt, t);
       for (let i = 0; i < perkMachines.length; i++) perkMachines[i]!.update(dt, t);
       box?.update(dt, t);
+      workshop?.update(dt, t);
     },
     reset(seed?: string | number): void {
       if (disposed) return;
       for (const d of doors) d.reset();
       for (const w of wallBuys) w.reset();
       box?.reset(seed);
+      workshop?.reset();
     },
     setReducedFlashing(reduced: boolean): void {
       if (!ctx) return;
@@ -383,6 +410,7 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
       for (const w of wallBuys) w.dispose();
       for (const m of perkMachines) m.dispose();
       box?.dispose();
+      workshop?.dispose();
       holograms?.dispose();
       root?.removeFromParent();
     },

@@ -35,6 +35,7 @@ import { PlayerCamera } from '../player/PlayerCamera';
 import { ViewmodelRig } from '../player/ViewmodelRig';
 import { PlayerHealth } from '../player/PlayerHealth';
 import { Hud } from '../ui/hud/Hud';
+import { WorkbenchMenu } from '../ui/hud/WorkbenchMenu';
 import { DebugOverlay, type DebugCombatSnapshot, type DebugSnapshot } from '../ui/debug/DebugOverlay';
 import { DevConsole } from '../ui/console/DevConsole';
 import type { LoadingScreen } from '../ui/LoadingScreen';
@@ -412,6 +413,10 @@ export class Game {
       arsenal,
     });
     viewmodel.setAdsSource(weapons);
+    // M5 Rift Forge / Werkbank: the viewmodel wears the carried weapon's tier and attachments; a
+    // fitted laser puts its dot where the crosshair ray hits.
+    viewmodel.setModsSource((id) => weapons.modsOf(id));
+    viewmodel.setLaserRaycast((o, d, max) => combat.raycast(o, d, max)?.distance ?? null);
 
     // M4 stats: every consumer re-reads them on its next tick/frame/damage call.
     const runSeed = `run:${level.id}:${Date.now()}`;
@@ -552,6 +557,22 @@ export class Game {
       player: { position: player.position, radius: MOVEMENT.collider.radius },
       visuals: { scene: render.scene, materials, render, reduceFlashing },
       mapId: map.id,
+      // M5: the Rift Forge holds the weapon in hand during its sequence (weapon system + rig).
+      workshop: {
+        weapons,
+        hands: {
+          stow: () => {
+            weapons.setStowed(true);
+            viewmodel.setStowed(true);
+          },
+          release: () => {
+            weapons.setStowed(false);
+            viewmodel.setStowed(false);
+          },
+        },
+        focused: () => interaction.focused,
+        audio,
+      },
     });
     const seals =
       map.waves && (level.spawnPoints?.length ?? 0) > 0
@@ -651,6 +672,7 @@ export class Game {
         (isMapLevel(level) && level.hasVolumetricContent) ||
         enemyVisuals.hasVolumetricContent ||
         interactables.hasVolumetricContent ||
+        viewmodel.hasVolumetricContent ||
         (seals?.hasVolumetricContent ?? false) ||
         powerUps.hasVolumetricContent ||
         abilityVisuals.hasVolumetricContent,
@@ -667,6 +689,10 @@ export class Game {
     grenades.announce();
     // M5: the HUD names a forged weapon by its tier.
     hud.setWeaponNameSource((id) => weapons.effectiveDef(id)?.name);
+    // M5: the Werkbank menu lives in the HUD layer (hidden with it behind menus).
+    interactables.workbench?.setMenu(
+      new WorkbenchMenu(el('hud').querySelector<HTMLElement>('.hud') ?? el('hud'), events),
+    );
     hud.setZoneNames(isMapLevel(level) ? level.zones : []);
     hud.setInputDevice(input.device);
     health.announce();
@@ -793,6 +819,8 @@ export class Game {
     } else {
       this.padNav.reset();
     }
+    // M5: an open Werkbank menu takes this frame's wheel / D-pad steps before any tick sees them.
+    if (!this.loop.paused) this.sys.interactables.workbench?.navigate(input);
     // Look before the ticks: wish/dash/mantle directions use the yaw the camera shows this frame.
     // applyLook also runs the weapon look hook (ADS sensitivity, gamepad aim assist).
     if (!this.loop.paused) playerCamera.applyLook();

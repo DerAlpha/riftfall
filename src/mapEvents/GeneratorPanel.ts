@@ -4,7 +4,7 @@
  * it and it can be restarted by holding interact (POWER.generator.hold) – "Generator neu starten";
  * otherwise it is not focusable (empty prompt). Crank ticks play while the hold runs.
  */
-import { Color, Mesh, MeshStandardMaterial, Vector3, CylinderGeometry, type Object3D } from 'three';
+import { Color, CylinderGeometry, Mesh, MeshStandardMaterial, Vector3, type Object3D, type PlaneGeometry } from 'three';
 import type { Interactable } from '../core/contracts';
 import { POWER, type GeneratorSpotDef } from '../defs/mapEvents';
 import { facingNormal, facingYaw } from '../interactables/shapes';
@@ -27,7 +27,7 @@ export class GeneratorPanel implements Interactable {
   private readonly lamp: MeshStandardMaterial | null = null;
   private readonly lampMesh: Mesh | null = null;
   private readonly beam: Mesh<CylinderGeometry, BeamMaterial> | null = null;
-  private readonly pool: Mesh<import('three').PlaneGeometry, PoolMaterial> | null = null;
+  private readonly pool: Mesh<PlaneGeometry, PoolMaterial> | null = null;
   private readonly lever: Mesh | null = null;
   private readonly okColor = new Color(G.okColor[0], G.okColor[1], G.okColor[2]);
   private readonly alarmColor = new Color(G.alarmColor[0], G.alarmColor[1], G.alarmColor[2]);

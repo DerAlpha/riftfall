@@ -50,6 +50,9 @@ const _u = { x: 0, y: 0, z: 0 };
 const _w = { x: 0, y: 0, z: 0 };
 const spawn = createParticleSpawn();
 const FLAME_CELL = spriteCell('flame');
+/** Flame particles ramp in over at least this share of their life and dissolve over the last. */
+const FLAME_FADE_IN_MIN = 0.06;
+const FLAME_FADE_OUT = 0.35;
 /** Scratch polylines (x, y, z per vertex): the main bolt, and forks / arcs built off it. */
 const bolt = new Float32Array((ARSENAL_VFX.beams.maxSegments + 1) * 3);
 const fork = new Float32Array((ARSENAL_VFX.beams.maxSegments + 1) * 3);
@@ -96,6 +99,25 @@ export function buildBolt(
     out[o + 2] = az + dz * t + (_u.z * du + _w.z * dv) * k;
   }
   return n;
+}
+
+/**
+ * Fade-in fraction of life for a flame particle launched at `speed` against linear `drag` that
+ * lives `life` s: the time it needs to fly `distance` m (s(t) = v/k · (1 − e^(−kt))), over life,
+ * clamped to [min, max]. Pure (unit-tested).
+ */
+export function flameFadeIn(
+  speed: number,
+  drag: number,
+  life: number,
+  distance: number,
+  min: number,
+  max: number,
+): number {
+  if (!(speed > 0) || !(life > 0) || !(distance > 0)) return min;
+  const x = drag > 0 ? (distance * drag) / speed : 0;
+  const t = drag > 0 ? (x < 1 ? -Math.log(1 - x) / drag : Number.POSITIVE_INFINITY) : distance / speed;
+  return Math.min(max, Math.max(min, t / life));
 }
 
 /** Orthonormal u, w perpendicular to the direction (dx, dy, dz) of length len. */
@@ -527,6 +549,14 @@ export class ArsenalBeams {
         const reach = len * lerpRange(s.reach, r());
         const drag = s.drag;
         const speed = (reach * drag) / (1 - Math.exp(-drag * life));
+        const fadeIn = flameFadeIn(
+          speed,
+          drag,
+          life,
+          Math.min(s.fadeInDistance, reach * s.fadeInReach),
+          FLAME_FADE_IN_MIN,
+          1 - FLAME_FADE_OUT,
+        );
         const lead = r() * 0.15;
         spawn.x = f.x + dx * lead;
         spawn.y = f.y + dy * lead;
@@ -548,8 +578,8 @@ export class ArsenalBeams {
         // Opaque to the end of its life (the colour cools down), dissolving over the last third.
         spawn.a0 = 1;
         spawn.a1 = 1;
-        spawn.fadeIn = 0.06;
-        spawn.fadeOut = 0.35;
+        spawn.fadeIn = fadeIn;
+        spawn.fadeOut = FLAME_FADE_OUT;
         spawn.gravity = s.gravity * VFX.particles.gravity;
         spawn.drag = drag;
         spawn.rotation = r() * Math.PI * 2;

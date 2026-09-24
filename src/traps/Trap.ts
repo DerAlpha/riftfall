@@ -36,7 +36,8 @@ export interface TrapContext {
   readonly vfx: KitVfx | null;
   readonly audio: KitAudio | null;
   /** Seeded gameplay randomness (turret spread). */
-  readonly rng: Rng;
+  /** Replaced on a run reset (TrapSystem.reset(seed)). */
+  rng: Rng;
   readonly power: { readonly powered: boolean };
   readonly economy: Pick<EconomyApi, 'spend'>;
   readonly visuals: KitVisuals | null;

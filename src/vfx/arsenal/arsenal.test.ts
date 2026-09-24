@@ -31,7 +31,8 @@ import { ParticleSystem } from '../ParticleSystem';
 import { ShockwaveEffect } from '../ShockwaveEffect';
 import { createSpriteAtlas } from '../spriteAtlas';
 import { FakePhysics, FakeSockets, fakeRender, seeded } from '../testFakes';
-import { buildBolt } from './ArsenalBeams';
+import { particleAlpha } from '../ParticleBuffer';
+import { buildBolt, flameFadeIn } from './ArsenalBeams';
 import { ArsenalVfx } from './ArsenalVfx';
 import { createArsenalCommands } from './arsenalCommands';
 import { StripBatch } from './StripBatch';
@@ -321,6 +322,52 @@ describe('ArsenalVfx pools and handles', () => {
     expect(arsenal.stats.segments).toBe(0);
     expect(glow.visible).toBe(false);
     arsenal.dispose();
+  });
+
+  it('flame particles fade in over their first metre: no white-hot blob in front of the eye', () => {
+    const style = BEAM_STYLES['beam.flame'] as { fadeInDistance: number };
+    const nozzle = { x: 0, y: 1.4, z: -0.6 };
+    /** Additive light (rgb × opacity) of the stream within 1 m of the nozzle, and in total. */
+    const burn = (fadeInDistance: number) => {
+      const saved = style.fadeInDistance;
+      style.fadeInDistance = fadeInDistance;
+      const { arsenal, particles } = rig();
+      const cam = new THREE.PerspectiveCamera();
+      for (let i = 0; i < 60; i++) {
+        arsenal.beam('beam.flame', nozzle, { x: 0, y: 1.2, z: -9 }, [], 0);
+        arsenal.update(1 / 60);
+        particles.update(1 / 60, cam);
+      }
+      style.fadeInDistance = saved;
+      const b = particles.additiveBuffer;
+      let near = 0;
+      let total = 0;
+      for (let i = 0; i < b.count; i++) {
+        const t = b.age[i]! / b.life[i]!;
+        const a = particleAlpha(t, b.a0[i]!, b.a1[i]!, b.fadeIn[i]!, b.fadeOut[i]!);
+        const e = (b.r0[i]! + b.g0[i]!) * a;
+        total += e;
+        if (Math.hypot(b.px[i]! - nozzle.x, b.py[i]! - nozzle.y, b.pz[i]! - nozzle.z) < 1) near += e;
+      }
+      arsenal.dispose();
+      return { near, total };
+    };
+    const before = burn(0);
+    const after = burn(style.fadeInDistance);
+    expect(after.near).toBeLessThan(before.near * 0.35);
+    // The body of the stream further out keeps most of its fire.
+    expect(after.total - after.near).toBeGreaterThan((before.total - before.near) * 0.7);
+  });
+
+  it('flameFadeIn solves the flight time under linear drag', () => {
+    // No drag: 1 m at 10 m/s = 0.1 s of a 0.5 s life.
+    expect(flameFadeIn(10, 0, 0.5, 1, 0.06, 0.65)).toBeCloseTo(0.2);
+    // Drag 1.3: t = -ln(1 - 1.3 / 10) / 1.3.
+    expect(flameFadeIn(10, 1.3, 0.5, 1, 0.06, 0.65)).toBeCloseTo(-Math.log(1 - 0.13) / 1.3 / 0.5);
+    // Never reaches the distance: clamped; degenerate input: the minimum.
+    expect(flameFadeIn(1, 1.3, 0.5, 1, 0.06, 0.65)).toBe(0.65);
+    expect(flameFadeIn(10, 1.3, 0.5, 0, 0.06, 0.65)).toBe(0.06);
+    expect(flameFadeIn(0, 1.3, 0.5, 1, 0.06, 0.65)).toBe(0.06);
   });
 
   it('flame particles are budget scaled and particles off still draw the core', () => {

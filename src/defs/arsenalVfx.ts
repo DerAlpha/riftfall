@@ -424,6 +424,13 @@ export interface FlameBeamDef {
   readonly sizeEnd: number;
   /** Velocity stretch (s): fast jets near the nozzle, billows where they slow down. */
   readonly stretch: number;
+  /**
+   * A particle fades in over its first `fadeInDistance` m of flight (≤ `fadeInReach` × its reach):
+   * right in front of the nozzle – and so of the eye – dozens of additive particles overlap into a
+   * white-hot, screen-filling blob; the core strip and nozzle glow carry the jet there.
+   */
+  readonly fadeInDistance: number;
+  readonly fadeInReach: number;
   readonly color: Rgb;
   readonly colorEnd: Rgb;
   readonly intensity: number;
@@ -522,6 +529,8 @@ export const BEAM_STYLES = {
     size: [0.07, 0.11],
     sizeEnd: 5.5,
     stretch: 0.018,
+    fadeInDistance: 1.6,
+    fadeInReach: 0.45,
     color: [1, 0.72, 0.34],
     colorEnd: [0.72, 0.1, 0.02],
     intensity: 1.7,

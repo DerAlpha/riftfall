@@ -115,7 +115,7 @@ export class MapKit {
   private readonly time = { value: 0 };
   private readonly visuals: KitVisuals | null;
 
-  constructor(private readonly deps: MapKitDeps) {
+  constructor(deps: MapKitDeps) {
     const { level, mapId } = deps;
     this.power = deps.power;
     this.gravity = new GravityZones(resolveGravityZones(level));
@@ -224,7 +224,7 @@ export class MapKit {
   /** New run: events ended (power on), traps ready, quest back to its first step. */
   reset(seed?: string): void {
     this.director.reset(seed);
-    this.traps.reset();
+    this.traps.reset(seed);
     this.quest.reset();
   }
 

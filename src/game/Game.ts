@@ -84,7 +84,12 @@ import { PointsRules } from '../economy/PointsRules';
 import { PerkSystem } from '../economy/PerkSystem';
 import { createEconomyCommands } from '../economy/economyCommands';
 import { createPerkBlastFx } from '../economy/perkHooks';
-import { ZoneSystem } from '../interactables/ZoneSystem';
+import type { ZoneSystem } from '../interactables/ZoneSystem';
+import { MapKit, createPowerGrid } from '../maps/kit/MapKit';
+import type { PowerGrid } from '../maps/kit/PowerGrid';
+import { createZoneSystem } from '../maps/kit/zones';
+import { wireKitProgress } from '../maps/kit/kitProgress';
+import { getEnemyDef } from '../defs/enemies';
 import { InteractionSystem } from '../interactables/InteractionSystem';
 import { placeInteractables, type InteractablesHandle } from '../interactables/placeInteractables';
 import { createWeaponAdapter } from '../interactables/types';
@@ -210,6 +215,11 @@ export interface GameSystems {
   // M10
   /** Dynamic procedural music (themes per map, intensity layers, stings, elite / boss cues). */
   music: MusicSystem;
+  // M7
+  /** Map kit: gravity zones, traps, map events (power outage, invasion, anomaly), the map quest. */
+  mapKit: MapKit;
+  /** The map's main power (outages gate machines and dim the level's lights). */
+  power: PowerGrid;
 }
 
 export class Game {
@@ -504,7 +514,8 @@ export class Game {
       economy,
       rewardOf: (id) => enemies.getEnemy(id)?.def.points,
     });
-    const zones = ZoneSystem.forLevel(level, events);
+    // M7: start zones from the level (maps/kit/levelData) before the per-map table.
+    const zones = createZoneSystem(level, events);
     const waves = new WaveDirector({
       events,
       enemies,
@@ -558,6 +569,8 @@ export class Game {
       () => input.device === 'gamepad' && interaction.offering && (interaction.focused?.holdTime() ?? 0) <= 0,
     );
     const reduceFlashing = settings.current.accessibility.reduceFlashing;
+    // M7: the main power exists before the machines – they register through its gate.
+    const power = createPowerGrid(level, events, reduceFlashing);
     const interactables = placeInteractables({
       level,
       events,
@@ -591,6 +604,7 @@ export class Game {
         focused: () => interaction.focused,
         audio,
       },
+      power,
     });
     const seals =
       map.waves && (level.spawnPoints?.length ?? 0) > 0
@@ -682,6 +696,50 @@ export class Game {
       ability: m5Loadout.ability,
     });
 
+    // M7 map kit: gravity zones (player + arsenal projectiles), traps, map events, the map quest.
+    const mapKit = new MapKit({
+      level,
+      mapId: map.id,
+      events,
+      power,
+      combat,
+      economy,
+      interaction,
+      zones,
+      enemies,
+      enemyType: (id) => enemies.getEnemy(id)?.type ?? null,
+      isKnownEnemyType: (type) => getEnemyDef(type) !== undefined,
+      waves,
+      player: {
+        position: player.position,
+        eyePosition: player.eyePosition,
+        get alive() {
+          return enemyTarget.alive;
+        },
+        damage: (amount, direction, kind) => health.damage(amount, direction, kind),
+      },
+      weapons: { give: (id) => weapons.give(id) },
+      perks,
+      audio,
+      vfx,
+      banner: (kicker, title, sub, color, seconds) =>
+        gameRef?.sys.hud.economy.banners.push({
+          kind: 'box',
+          kicker,
+          title,
+          sub,
+          color: `#${color.toString(16).padStart(6, '0')}`,
+          glyph: null,
+          seconds,
+        }),
+      shockwave: (p, r, s) => render.addShockwave(p, r, s),
+      visuals: { scene: render.scene, materials, setupMaterial: (m) => render.setupMaterial(m), reduceFlashing },
+      seed: runSeed,
+    });
+    player.setGravityField(mapKit.gravity);
+    arsenal.projectiles.setGravityField(mapKit.gravity);
+    if (mapKit.musicTheme !== map.id) music.setMapTheme(mapKit.musicTheme);
+
     // Particles/tracers, target barriers, holograms, seals and pickups share the volumetric layer:
     // its pass runs only while one of them (or the level's volumetrics) draws.
     render.setVolumetricContentProbe(
@@ -694,7 +752,8 @@ export class Game {
         viewmodel.hasVolumetricContent ||
         (seals?.hasVolumetricContent ?? false) ||
         powerUps.hasVolumetricContent ||
-        abilityVisuals.hasVolumetricContent,
+        abilityVisuals.hasVolumetricContent ||
+        mapKit.hasVolumetricContent,
     );
 
     // M9 meta progression on the loaded profile: XP, skills, weapon levels, achievements,
@@ -808,6 +867,8 @@ export class Game {
       abilityVisuals,
       progression,
       music,
+      mapKit,
+      power,
     });
     gameRef = game;
     game.registerCommands();
@@ -936,6 +997,8 @@ export class Game {
     // Shockwaves age on game time with their explosion (frozen while paused, slowed by timeScale).
     render.advanceWorldTime(dt);
     level.update(dt, this.time);
+    // M7 after the level and the interactable views: the power dimmer scales what they wrote.
+    this.sys.mapKit.update(dt, render.camera.position);
     targets?.update(dt, alpha);
     enemies.update(dt, alpha);
 
@@ -1048,6 +1111,7 @@ export class Game {
       ...createAbilityCommands({ abilities: this.sys.abilities }),
       ...createProgressionCommands({ progression: this.sys.progression, mapId: () => level.id }),
       ...createMusicCommands({ music: this.sys.music }),
+      ...this.sys.mapKit.commands(render.scene, () => player.position),
       ...createStatusCommands({
         status: this.sys.status,
         combat: this.sys.combat,
@@ -1110,6 +1174,7 @@ export class Game {
       this.sys.seals?.setReducedFlashing(reduce);
       this.sys.powerUps.setReducedFlashing(reduce);
       this.sys.abilityVisuals.setReducedFlashing(reduce);
+      this.sys.mapKit.setReducedFlashing(reduce);
     });
     this.sys.events.on('player:died', () => {
       this.sys.viewmodel.setVisible(false);
@@ -1130,6 +1195,13 @@ export class Game {
 
     // M9: skill tree purchases grant dash / double jump at once.
     this.sys.events.on('progression:skills', () => this.applyMovementUnlocks());
+    // M7: quest completions and trap kills feed progression (quest achievements, trap kills).
+    wireKitProgress({
+      events: this.sys.events,
+      sink: this.sys.progression,
+      mapId: this.sys.level.id,
+      mode: () => this.sys.runFlow.mode,
+    });
 
     // Only pending settings are written on unload: profile changes are saved when they happen (M9
     // progress: coalesced, so a pending one is flushed too), and an unconditional write would

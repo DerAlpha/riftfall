@@ -15,7 +15,8 @@
  * 3. economy (announces the start balance), points rules (repair cap, console-spawn flags);
  * 4. player at the spawn, looking level, the level's props (dynamic crates) at their spawn poses;
  *    zones before the interactables (closed doors re-block their navmesh areas), the interaction
- *    focus after them, seals intact;
+ *    focus after them, seals intact; M7: the map kit (events ended – power on at once, anomalies
+ *    gone –, traps ready, the quest back at its first step, event rolls reseeded);
  * 5. per-run seeds (navmesh samples, Rift-Kiste, power-up drops), loadout after the stat table
  *    (magazine sizes) and the loadout's grenades (M5), the HUD after the economy announced its
  *    balance, the audio bridge;
@@ -55,6 +56,8 @@ export interface RunResetSystems {
   interactables: { reset(seed?: string | number): void };
   interaction: { reset(): void };
   seals: { reset(): void } | null;
+  /** M7 map kit (maps/kit/MapKit); optional for tools and tests. */
+  mapKit?: { reset(seed?: string): void } | null;
   weapons: {
     setLoadout(ids: readonly string[], slots?: number): void;
     refillAmmo(fillMagazines?: boolean): void;
@@ -98,6 +101,7 @@ export function resetRunSystems(s: RunResetSystems, opts: RunResetOptions): void
   s.interactables.reset(`box:${opts.seed}`);
   s.interaction.reset();
   s.seals?.reset();
+  s.mapKit?.reset(`events:${opts.seed}`);
   s.nav.setRandomSeed(opts.seed);
   s.powerUps.reseed(`powerups:${opts.seed}`);
   const loadout = getLoadout(s.level.id);

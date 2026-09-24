@@ -46,7 +46,8 @@ export class TrapSystem implements TrapApi {
   private _kills = 0;
   private readonly root: Group | null;
   private readonly propMeshes: Object3D[] = [];
-  private readonly rng: Rng;
+  private rng: Rng;
+  private readonly ctx: TrapContext;
   private readonly visuals: KitVisuals | null;
   private readonly interaction: Pick<InteractionApi, 'register' | 'unregister'> | null;
   private time = 0;
@@ -67,7 +68,7 @@ export class TrapSystem implements TrapApi {
     this.root = root;
     this.visuals = visuals;
     const props = visuals ? new PropBuilder() : null;
-    const ctx: TrapContext = {
+    const ctx: TrapContext = (this.ctx = {
       events: deps.events,
       combat: deps.combat,
       player: deps.player ?? null,
@@ -81,7 +82,7 @@ export class TrapSystem implements TrapApi {
       onKill: () => {
         this._kills++;
       },
-    };
+    });
     const traps: Trap[] = [];
     const ids = new Set<string>();
     for (const slot of deps.slots) {
@@ -141,8 +142,13 @@ export class TrapSystem implements TrapApi {
     for (let i = 0; i < this.list.length; i++) this.list[i]!.update(dt, this.time, listener, reduced);
   }
 
-  reset(): void {
+  /** New run: every trap ready, kills cleared; `seed` restarts the turret spread stream. */
+  reset(seed?: string | number): void {
     this._kills = 0;
+    if (seed !== undefined) {
+      this.rng = new Rng(`traps:${seed}`);
+      this.ctx.rng = this.rng;
+    }
     for (const t of this.list) t.reset();
   }
 

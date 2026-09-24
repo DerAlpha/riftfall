@@ -3,7 +3,7 @@
  * cycle telegraphs (the grate glows and hisses), then burns: enemies and the player inside the
  * column take fire damage every TRAPS.flame.tickInterval (enemies build up burn); embers rise.
  */
-import { Color, Mesh, MeshStandardMaterial, Vector3 } from 'three';
+import { Color, MeshStandardMaterial, Vector3, type Material, type Mesh, type PlaneGeometry, type ShaderMaterial } from 'three';
 import { TRAPS, type FlameSlotDef } from '../defs/traps';
 import { createLightPool, type PoolMaterial } from '../interactables/visuals/holo';
 import { createFlameColumn } from '../maps/kit/energy';
@@ -28,7 +28,7 @@ export class FlameTrap extends Trap {
   private burst = 0;
   private readonly glow: MeshStandardMaterial | null = null;
   private readonly column: Mesh | null = null;
-  private readonly pool: Mesh<import('three').PlaneGeometry, PoolMaterial> | null = null;
+  private readonly pool: Mesh<PlaneGeometry, PoolMaterial> | null = null;
   private readonly meshes: Mesh[] = [];
 
   constructor(slot: FlameSlotDef, ctx: TrapContext) {
@@ -130,7 +130,7 @@ export class FlameTrap extends Trap {
     this.burst += (target - this.burst) * Math.min(1, dt * (burning ? 9 : 6));
     if (this.burst < 0.003) this.burst = 0;
     if (this.column) {
-      const u = (this.column.material as import('three').ShaderMaterial).uniforms;
+      const u = (this.column.material as ShaderMaterial).uniforms;
       (u.uBurst as { value: number }).value = this.burst;
       this.column.visible = this.burst > 0.01;
     }
@@ -167,7 +167,7 @@ export class FlameTrap extends Trap {
     if (this.column) {
       this.column.removeFromParent();
       this.column.geometry.dispose();
-      (this.column.material as import('three').Material).dispose();
+      (this.column.material as Material).dispose();
     }
     if (this.pool) {
       this.pool.removeFromParent();

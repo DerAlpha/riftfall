@@ -6,7 +6,8 @@
  * combat:impact, damage through CombatWorld (source 'trap', head shots count). Without a target it
  * sweeps around its rest yaw. A red laser sight shows where it aims; the sensor eye shows the state.
  */
-import { Color, Group, Mesh, MeshStandardMaterial, Vector3, type Material } from 'three';
+import type { Mesh} from 'three';
+import { Color, Group, MeshStandardMaterial, Vector3, type Material } from 'three';
 import type { Damageable } from '../core/contracts';
 import type { GameEvents, HitZone, SurfaceType, FleshSurface } from '../core/events';
 import { DEG2RAD } from '../core/math';

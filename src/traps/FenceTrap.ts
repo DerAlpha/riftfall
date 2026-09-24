@@ -5,7 +5,7 @@
  * the line, a zap strike from the fence to the body, sparks and a crackle; the player takes damage
  * on contact too. The navmesh is untouched – enemies walk straight into it.
  */
-import { Color, Mesh, MeshStandardMaterial, Vector3 } from 'three';
+import { Color, MeshStandardMaterial, Vector3, type Mesh, type PlaneGeometry } from 'three';
 import type { Vec3Like } from '../core/events';
 import { TRAPS, type FenceSlotDef } from '../defs/traps';
 import { MOVEMENT } from '../defs/movement';
@@ -40,7 +40,7 @@ export class FenceTrap extends Trap {
   private readonly arcs: ArcBundle | null = null;
   private readonly coils: MeshStandardMaterial | null = null;
   private readonly coilMesh: Mesh | null = null;
-  private readonly pool: Mesh<import('three').PlaneGeometry, PoolMaterial> | null = null;
+  private readonly pool: Mesh<PlaneGeometry, PoolMaterial> | null = null;
   private readonly coilColor = new Color();
 
   constructor(slot: FenceSlotDef, ctx: TrapContext) {

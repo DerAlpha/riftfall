@@ -5,7 +5,8 @@
  * shredded (heavy damage, gore, a grinding hit). Wind streaks flow into the intake; warning strips
  * glow while it runs. The player is not pulled (the character controller has no external forces).
  */
-import { Color, Group, Mesh, MeshStandardMaterial, Matrix4, Quaternion, Vector3, type InstancedBufferGeometry, type ShaderMaterial } from 'three';
+import type { Mesh} from 'three';
+import { Color, Group, MeshStandardMaterial, Matrix4, Quaternion, Vector3, type InstancedBufferGeometry, type ShaderMaterial } from 'three';
 import { TRAPS, type FanSlotDef } from '../defs/traps';
 import { createStreaks } from '../maps/kit/energy';
 import { PropBuilder } from '../maps/kit/PropBuilder';

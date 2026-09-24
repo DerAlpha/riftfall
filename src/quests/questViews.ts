@@ -4,8 +4,9 @@
  * and the defend zone (floor ring with a progress arc + a containment column that grows with it).
  * Built once at load (hidden until their step), animated per frame without allocation.
  */
+import type {
+  CanvasTexture} from 'three';
 import {
-  CanvasTexture,
   Color,
   CylinderGeometry,
   Group,

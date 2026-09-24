@@ -719,6 +719,12 @@ export interface NavApi {
   update(dt: number): void;
   /** Optional debug visualization (dev console `nav`). */
   setDebugVisible(visible: boolean, scene: THREE.Object3D): void;
+  /**
+   * M4 door gating: while `blocked`, the navmesh inside the axis-aligned box (center ± halfExtents)
+   * is excluded from every query and from crowd paths. The first call with a box registers it;
+   * later calls with the same box toggle it. Areas persist across rebuilds. Optional (fakes).
+   */
+  setAreaBlocked?(center: Vec3Like, halfExtents: Vec3Like, blocked: boolean): void;
   readonly stats: { agents: number; polys: number; buildMs: number };
   dispose(): void;
 }

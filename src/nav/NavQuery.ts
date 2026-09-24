@@ -40,6 +40,8 @@ const HIT_EDGE_INDEX_OFFSET = 16;
 const HIT_PATH_OFFSET = 20;
 const HIT_PATH_COUNT_OFFSET = 24;
 const HIT_MAX_PATH_OFFSET = 28;
+/** dtPolyFlags are 16 bit. */
+const ALL_POLY_FLAGS = 0xffff;
 /** Distinct marker values for the layout check. */
 const LAYOUT_MARKERS = [0x5a17, 0x6b28, 0x7c39] as const;
 
@@ -68,6 +70,9 @@ export class NavQuery {
   private readonly straightFlags: RawModule.UnsignedCharArray;
   private readonly straightRefs: RawModule.UnsignedIntArray;
   private readonly hit: RawModule.dtRaycastHit;
+  /** Passes every polygon (blocked areas included): area bookkeeping only, never pathing. */
+  private readonly allFilter: RawModule.dtQueryFilter;
+  private readonly boxPolys: RawModule.UnsignedIntArray;
   /** Buffer behind hit.path (null: layout check failed, rays record no polygons). */
   private readonly rayPolys: RawModule.UnsignedIntArray | null;
   private readonly heightOut: RawModule.FloatRef;
@@ -87,6 +92,13 @@ export class NavQuery {
     this.query = new NavMeshQuery(navMesh, { maxNodes: NAV.query.maxNodes });
     this.raw = this.query.raw;
     this.filter = this.query.defaultFilter.raw;
+    // Blocked areas (closed doors, machines) are invisible to every query.
+    this.filter.setExcludeFlags(NAV.areas.disabledFlag);
+    this.allFilter = new Raw.Module.dtQueryFilter();
+    this.allFilter.setIncludeFlags(ALL_POLY_FLAGS);
+    this.allFilter.setExcludeFlags(0);
+    this.boxPolys = new Raw.Module.UnsignedIntArray();
+    this.boxPolys.resize(NAV.areas.maxPolysPerArea);
     this.refOut = new Raw.Module.UnsignedIntRef();
     this.ptOut = new Raw.Module.Vec3();
     this.overOut = new Raw.Module.BoolRef();
@@ -293,6 +305,29 @@ export class NavQuery {
     return this.rayClear(bRef, bx, by, bz, ax, ay, az);
   }
 
+  /**
+   * Every polygon (blocked ones included) whose bounds overlap the box; returns the count, the refs
+   * are read with boxPoly(i) until the next call.
+   */
+  queryBoxPolys(center: Vec3Like, halfExtents: Vec3Like): number {
+    if (this.destroyed) return 0;
+    const max = NAV.areas.maxPolysPerArea;
+    this.countOut.value = 0;
+    const status = this.raw.queryPolygons(
+      set3(this._a, center.x, center.y, center.z),
+      set3(this._ext, halfExtents.x, halfExtents.y, halfExtents.z),
+      this.allFilter,
+      this.boxPolys,
+      this.countOut,
+      max,
+    );
+    return statusFailed(status) ? 0 : Math.min(this.countOut.value, max);
+  }
+
+  boxPoly(i: number): number {
+    return this.boxPolys.get(i);
+  }
+
   /** Detail-mesh height of polygon `ref` at (x, z) (raw navmesh height), or NaN. */
   polyHeight(ref: number, x: number, y: number, z: number): number {
     const status = this.raw.getPolyHeight(ref, set3(this._a, x, y, z), this.heightOut);
@@ -368,6 +403,8 @@ export class NavQuery {
       this.straightRefs,
       this.hit,
       this.heightOut,
+      this.boxPolys,
+      this.allFilter,
     ]) {
       Raw.destroy(o);
     }

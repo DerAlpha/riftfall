@@ -190,6 +190,11 @@ export interface GameEvents {
   'wave:progress': { wave: number; remaining: number; alive: number };
   'wave:complete': { wave: number; duration: number };
   'player:died': { position: Vec3Like };
+  /**
+   * Lethal damage consumed a revive charge (reviveCharges stat): the player is back up at `health`,
+   * invulnerable for `invulnerability` s. Emitted by PlayerHealth instead of dying.
+   */
+  'player:revived': { health: number; chargesLeft: number; invulnerability: number };
   'run:over': {
     mapId: string;
     mode: string;

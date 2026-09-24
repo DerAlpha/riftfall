@@ -79,6 +79,8 @@ export class NavCrowd implements SteeringBackend {
       this.raw.setObstacleAvoidanceParams(i, oa);
     }
     Raw.destroy(oa);
+    // Agents never path through blocked areas (closed doors, machines – NavSystem.setAreaBlocked).
+    this.raw.getEditableFilter(0).setExcludeFlags(NAV.areas.disabledFlag);
     this.addParams = new Raw.Module.dtCrowdAgentParams();
     for (let i = 0; i < capacity; i++) {
       const agent = this.raw.getEditableAgent(i);

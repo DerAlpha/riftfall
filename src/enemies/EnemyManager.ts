@@ -14,6 +14,15 @@
  *   6. projectiles (when owned)
  * Frame: update(dt, alpha) → visuals.update (interpolation) + projectile blobs.
  *
+ * M4 hooks (power-ups, rift seals):
+ * - `timeScale` (Slow Motion): the whole enemy side runs on dt × timeScale – AI clock, cooldowns,
+ *   attack phases, the nav crowd step, knockback, projectiles and the visuals' shader time. The
+ *   player and the rest of the game keep real speed.
+ * - `instakill`: player damage is lethal (Enemy.applyDamage via EnemyOwner.instakill), bosses aside.
+ * - `breach` (EnemyBreachApi, the seal system): enemies spawned at a sealed spawn point are confined
+ *   behind the seal, and after emerging tear it down ('breach' state, ai/breach.ts) before the brain
+ *   takes over. killAll (nuke) skips bosses.
+ *
  * Budgets keep 60 enemies inside ~2.5 ms/tick: LOS rays, nav path queries (surround slots), spot
  * rays (spitter search) are rationed per tick and handed out first come first served (the think
  * order rotates every tick; per-kind attack-spacing slots go to the longest waiter), everything
@@ -67,6 +76,16 @@ import {
   yawTo,
 } from './ai/attackMath';
 import { cancelAttack, phaseDuration, updateAttack } from './ai/attacks';
+import {
+  BREACH_OPEN,
+  BREACH_SWING,
+  createBreachPlan,
+  resetBreach,
+  separateAtSeal,
+  stepBreach,
+  type BreachPlan,
+  type EnemyBreachApi,
+} from './ai/breach';
 import { getBrain } from './ai/brains';
 import { STUCK_NONE, STUCK_REPATH, STUCK_TELEPORT, resetStuck, updateStuck } from './ai/StuckMonitor';
 import { SurroundSlots } from './ai/SurroundSlots';
@@ -114,6 +133,8 @@ export interface EnemyManagerDeps {
   capacity?: number;
   /** Gameplay RNG seed (daily challenge determinism). */
   seed?: string | number;
+  /** M4 rift seals: sealed spawn points must be torn open first (settable later: setBreach). */
+  breach?: EnemyBreachApi | null;
 }
 
 /** PhysicsWorld extra (collider metadata registry) used when present. */
@@ -142,6 +163,8 @@ interface TypeRuntime {
   readonly deathEffect: string | null;
   readonly deathScale: number;
   readonly deathSocket: string | null;
+  /** Rift seal tearing (animation + timing). */
+  readonly breach: BreachPlan;
 }
 
 export interface EnemyManagerStats {
@@ -178,6 +201,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   readonly pathScratch: Vector3[] = [];
   /** AI on/off (dev console `enemy freeze`): frozen enemies still animate, die and dissolve. */
   aiEnabled = true;
+  /** Instakill power-up: player damage kills (EnemyOwner; bosses excepted). */
+  instakill = false;
 
   private readonly events: EventBus<GameEvents>;
   private readonly visuals: EnemyVisualsApi;
@@ -217,6 +242,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   private playerAgentRetryAt = 0;
   private readonly playerAgentAt = new Vector3(Number.NaN, 0, 0);
   private suppressBursts = false;
+  private breachApi: EnemyBreachApi | null;
+  private _timeScale = 1;
   private readonly warned = new Set<string>();
   private readonly unsubscribe: (() => void)[] = [];
 
@@ -282,6 +309,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     this.stepNav = deps.stepNav ?? true;
     this._capacity = Math.max(1, Math.floor(deps.capacity ?? ENEMY_AI.capacity));
     this.rng = new Rng(deps.seed ?? 'enemies');
+    this.breachApi = deps.breach ?? null;
     if (deps.projectiles) {
       this.projectiles = deps.projectiles;
       this.ownsProjectiles = false;
@@ -373,6 +401,28 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     return null;
   }
 
+  /**
+   * Enemy time scale (Slow Motion power-up): the enemy side simulates dt × timeScale, clamped to
+   * ENEMY_AI.timeScale. 1 = normal.
+   */
+  get timeScale(): number {
+    return this._timeScale;
+  }
+
+  set timeScale(v: number) {
+    const T = ENEMY_AI.timeScale;
+    this._timeScale = Number.isFinite(v) ? Math.min(T.max, Math.max(T.min, v)) : 1;
+  }
+
+  /** Rift seals (null: nothing is sealed). Enemies already tearing a seal keep their spawn point. */
+  setBreach(api: EnemyBreachApi | null): void {
+    this.breachApi = api;
+  }
+
+  get breach(): EnemyBreachApi | null {
+    return this.breachApi;
+  }
+
   /** Spawn points for relocating leashed enemies (the wave director passes the map's). */
   setSpawnPoints(points: readonly SpawnPointDef[] | null | undefined): void {
     this.spawnPoints = points ?? [];
@@ -422,7 +472,13 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       );
       return null;
     }
-    if (!this.nav.closestPoint(position, _v)) _v.set(position.x, position.y, position.z);
+    // A sealed spawn point: emerge in the pen behind its seal (the burst jitter may land in front).
+    const sp = opts?.spawnPoint ?? null;
+    const breach = this.breachApi;
+    const sealed = sp !== null && breach !== null && breach.segmentsLeft(sp.id) > 0;
+    _probe.set(position.x, position.y, position.z);
+    if (sealed) breach.confine(sp.id, _probe, def.nav.radius);
+    if (!this.nav.closestPoint(_probe, _v)) _v.copy(_probe);
     const speedMult = finiteOr(opts?.speedMultiplier, 1);
     const params = rt.navParams;
     params.maxSpeed = def.movement.runSpeed * speedMult;
@@ -442,6 +498,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       return null;
     }
     this.initEnemy(e, rt, handle, agent, _v, speedMult, opts);
+    e.breachPoint = sealed ? sp.id : null;
     this.active.push(e);
     this.aliveCount++;
     this.stats.byType[type] = (this.stats.byType[type] ?? 0) + 1;
@@ -459,6 +516,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     p.elite = e.elite;
     this.events.emit('enemy:spawned', p);
     if (rt.spawnEffect) this.vfx?.spawn(rt.spawnEffect, e.position, UP, rt.spawnScale * e.pose.scale);
+    // A type without an emerge phase goes straight to the seal.
+    if (e.breachPoint !== null && e.state === 'active') this.enterBreach(e, rt);
     return e.id;
   }
 
@@ -480,7 +539,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     // A nuke must not splash the player with every spitter's acid sac.
     this.suppressBursts = true;
     for (const e of this.active) {
-      if (!e.alive) continue;
+      if (!e.alive || e.def.boss) continue;
       e.lastWeaponId = ENEMY_AI.nukeWeaponId;
       e.lastZone = null;
       e.lastSource = credit ? 'player' : 'environment';
@@ -495,9 +554,11 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     return n;
   }
 
-  fixedUpdate(dt: number): void {
-    if (this.disposed || !(dt > 0)) return;
+  fixedUpdate(realDt: number): void {
+    if (this.disposed || !(realDt > 0)) return;
     const t0 = performance.now();
+    // Slow Motion: everything below runs on enemy time.
+    const dt = realDt * this._timeScale;
     this._time += dt;
     const B = ENEMY_AI.budget;
     this.losLeft = B.losPerTick;
@@ -531,8 +592,9 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     this.stats.records = this.active.length;
   }
 
-  update(dt: number, alpha: number): void {
+  update(realDt: number, alpha: number): void {
     if (this.disposed) return;
+    const dt = realDt * this._timeScale;
     this.visuals.update(dt, alpha);
     if (this.ownsProjectiles) this.projectiles?.update(dt, alpha);
   }
@@ -683,7 +745,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     p.type = e.type;
     p.attack = a.id;
     copyVec(e.position, p.position);
-    p.windup = a.windup;
+    // Listeners (strike sounds) count game seconds: enemy time runs slower in Slow Motion.
+    p.windup = a.windup / this._timeScale;
     this.events.emit('enemy:attack', p);
   }
 
@@ -817,7 +880,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       const e = list[this.losCursor % n]!;
       this.losCursor = (this.losCursor + 1) % Math.max(1, n);
       scanned++;
-      if (!e.alive || e.state === 'emerge') continue;
+      // Emerging / seal-tearing enemies do not attack: no rays for them.
+      if (!e.alive || e.state === 'emerge' || e.state === 'breach') continue;
       if (this.checkLos(e)) this.losLeft--;
     }
   }
@@ -893,6 +957,18 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
         if (e.pose.emerge >= 1) this.setActive(e, rt);
         return;
       }
+      case 'breach': {
+        const S = e.def.stagger;
+        if (e.staggerAccum >= S.threshold && this._time >= e.staggerImmuneUntil) {
+          // Back to the seal after the stagger (setActive re-enters the breach).
+          e.pose.attackId = -1;
+          e.pose.attack = 0;
+          this.enterStagger(e, S.duration);
+          return;
+        }
+        this.tearSeal(e, rt, dt);
+        return;
+      }
       case 'active':
       case 'attack': {
         const S = e.def.stagger;
@@ -953,6 +1029,15 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   }
 
   private setActive(e: Enemy, rt: TypeRuntime): void {
+    if (e.breachPoint !== null) {
+      const api = this.breachApi;
+      if (api && api.segmentsLeft(e.breachPoint) > 0) {
+        this.enterBreach(e, rt);
+        return;
+      }
+      e.breachPoint = null;
+    }
+    if (e.override === 'hold') this.endOverride(e);
     e.state = 'active';
     e.stateTime = 0;
     e.attackIndex = -1;
@@ -961,6 +1046,62 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.pose.emerge = 1;
     resetStuck(e.stuck, e.position.x, e.position.z, this._time, ENEMY_AI.stuck);
     rt.brain.resume(e, this);
+  }
+
+  /** Hold the spot behind the seal and start tearing (ai/breach.ts). */
+  private enterBreach(e: Enemy, rt: TypeRuntime): void {
+    e.state = 'breach';
+    e.stateTime = 0;
+    e.hasMove = false;
+    e.override = 'hold';
+    if (e.agent >= 0 && !e.agentStopped) {
+      this.nav.stopAgent(e.agent);
+      e.agentStopped = true;
+      e.sentValid = false;
+    }
+    e.pose.emerge = 1;
+    e.pose.attackId = rt.breach.animId;
+    e.pose.attack = 0;
+    resetBreach(e);
+    this.emitBreachSwing(e, rt);
+  }
+
+  /** One tick at the seal: tear (strikes break segments), or enter once it is open. */
+  private tearSeal(e: Enemy, rt: TypeRuntime, dt: number): void {
+    const api = this.breachApi;
+    const point = e.breachPoint;
+    let r = BREACH_OPEN;
+    if (api && point !== null) {
+      // The target standing on this side of the seal right next to the enemy frees it at once.
+      const target = this.target(e);
+      const freed =
+        target !== null &&
+        api.frontDistance(point, target.position) < 0 &&
+        distXZ(e.position, target.position) <= ENEMY_AI.breach.breakoutDistance;
+      if (!freed) {
+        r = stepBreach(e, rt.breach, api, dt);
+        separateAtSeal(e, this.active, api, dt);
+      }
+    }
+    if (r === BREACH_OPEN) {
+      e.breachPoint = null;
+      this.setActive(e, rt);
+    } else if (r === BREACH_SWING) {
+      this.emitBreachSwing(e, rt);
+    }
+  }
+
+  /** A tearing swing starts: enemy:attack (attack sound / strike cue) for its animation's attack. */
+  private emitBreachSwing(e: Enemy, rt: TypeRuntime): void {
+    const plan = rt.breach;
+    if (plan.attackId === '') return;
+    const p = this.attackPayload;
+    p.id = e.id;
+    p.type = e.type;
+    p.attack = plan.attackId;
+    copyVec(e.position, p.position);
+    p.windup = plan.windup / this._timeScale;
+    this.events.emit('enemy:attack', p);
   }
 
   private enterStagger(e: Enemy, duration: number): void {
@@ -1048,9 +1189,10 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     } else if (
       (!hasKnock && e.override !== 'knockback') ||
       e.override === 'leap' ||
-      e.override === 'charge'
+      e.override === 'charge' ||
+      e.override === 'hold'
     ) {
-      // Attack movement ignores knockback.
+      // Attack movement ignores knockback; so does an enemy held at a rift seal.
       e.knock.set(0, 0, 0);
     }
 
@@ -1064,6 +1206,9 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       case 'leap':
       case 'charge':
         e.velocity.subVectors(e.position, _prev).multiplyScalar(1 / dt);
+        break;
+      case 'hold':
+        e.velocity.set(0, 0, 0);
         break;
       case 'knockback': {
         _v.copy(e.position).addScaledVector(e.knock, dt);
@@ -1383,6 +1528,10 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.lastZone = null;
     e.lastSource = 'environment';
     e.lastElement = 'physical';
+
+    e.breachPoint = null;
+    e.breachYaw = e.yaw;
+    resetBreach(e);
   }
 
   private noteKilled(e: Enemy): void {
@@ -1658,6 +1807,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       def,
       brain,
       pool,
+      breach: createBreachPlan(def, animIndex, animWindup, animStrike),
       navParams: {
         radius: def.nav.radius,
         height: def.nav.height,

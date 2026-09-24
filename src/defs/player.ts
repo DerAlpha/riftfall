@@ -25,6 +25,15 @@ export const PLAYER = {
     regenCapFraction: 1,
     armorAbsorb: 0.6,
   } satisfies PlayerHealthDef,
+  /**
+   * Self-revive (reviveCharges stat, e.g. the Phoenix-Protokoll perk): lethal damage consumes a
+   * charge instead of killing – back up at `healthFraction` of max health, invulnerable for
+   * `invulnerability` seconds.
+   */
+  revive: {
+    healthFraction: 0.5,
+    invulnerability: 3,
+  },
   /** Aim-down-sights blend rates (1/s) for the smoothed adsAmount. */
   ads: {
     lambdaIn: 14,

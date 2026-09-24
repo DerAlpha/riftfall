@@ -16,7 +16,9 @@ import { ENEMY_AI, type EnemyTypeDef, type SlotPoolId } from '../defs/enemies';
 import type { StuckState } from './ai/StuckMonitor';
 import { createEnemyPose, type EnemyInstanceHandle, type EnemyPose } from './types';
 
-export type EnemyState = 'free' | 'emerge' | 'active' | 'attack' | 'stagger' | 'dying' | 'dissolve';
+/** 'breach': tearing down the rift seal of its spawn point before entering (ai/breach.ts). */
+export type EnemyState =
+  'free' | 'emerge' | 'breach' | 'active' | 'attack' | 'stagger' | 'dying' | 'dissolve';
 
 /** Attack phases (numeric: index into the phase durations). */
 export const PHASE_WINDUP = 0;
@@ -24,13 +26,18 @@ export const PHASE_STRIKE = 1;
 export const PHASE_RECOVER = 2;
 export type AttackPhase = typeof PHASE_WINDUP | typeof PHASE_STRIKE | typeof PHASE_RECOVER;
 
-/** Who moves the enemy: the nav crowd, or the AI directly (the agent is parked meanwhile). */
-export type MoveOverride = 'none' | 'leap' | 'charge' | 'knockback';
+/**
+ * Who moves the enemy: the nav crowd, or the AI directly (the agent is parked meanwhile). 'hold':
+ * nobody – the enemy keeps its spot (tearing a rift seal) and ignores knockback.
+ */
+export type MoveOverride = 'none' | 'leap' | 'charge' | 'knockback' | 'hold';
 
 /** Callbacks into the manager (no import cycle). */
 export interface EnemyOwner {
   /** Damage was applied (inside CombatWorld.dealDamage – record only, no side effects). */
   onEnemyDamaged(e: Enemy, info: Readonly<DamageInfo>, applied: number, killed: boolean): void;
+  /** Instakill power-up: player damage is lethal (bosses excepted). Optional (default off). */
+  readonly instakill?: boolean;
 }
 
 /** Melee token pools in index order (ENEMY_AI.slots.pools). */
@@ -186,6 +193,16 @@ export class Enemy implements Damageable {
   goalChecked = false;
   goalOk = true;
 
+  // --- rift seal breach (ai/breach.ts) ---
+  /** Spawn point id whose seal the enemy must tear down before entering (null = none). */
+  breachPoint: string | null = null;
+  /** Yaw facing the seal. */
+  breachYaw = 0;
+  /** Time into the current tearing swing (s), its strike landed, strikes towards the next segment. */
+  breachSwing = 0;
+  breachStruck = false;
+  breachHits = 0;
+
   // --- stuck / leash ---
   readonly stuck: StuckState = { ax: 0, az: 0, next: 0, fails: 0 };
   /** Stuck teleports without progress in between (escalates to a relocation). */
@@ -234,7 +251,11 @@ export class Enemy implements Damageable {
 
   applyDamage(info: DamageInfo): DamageResult {
     if (!this.alive || this.state === 'free') return NO_DAMAGE;
-    const dmg = enemyDamageAmount(this.def, info.zone, info.amount, info.element);
+    let dmg = enemyDamageAmount(this.def, info.zone, info.amount, info.element);
+    // Instakill power-up: any player hit that would hurt at all is lethal (not for bosses).
+    if (info.source === 'player' && info.amount > 0 && this.owner.instakill === true && !this.def.boss) {
+      dmg = Math.max(dmg, this.health);
+    }
     if (!(dmg > 0)) return NO_DAMAGE;
     const applied = Math.min(this.health, dmg);
     this.health -= applied;

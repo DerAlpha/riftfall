@@ -119,7 +119,7 @@ export function buildReception(kit: LevelKit): void {
       bands: R.pillarBands,
     });
   }
-  wallBuyBoard(kit);
+  // The wall-buy board at L.reception.wallBuy is built by the M4 interactables (WallBuyView).
 }
 
 function planter(kit: LevelKit, p: LabBoxDef): void {
@@ -138,54 +138,6 @@ function planter(kit: LevelKit, p: LabBoxDef): void {
     { x: p.minX + g.inset, y: p.height, z: p.minZ + g.inset },
     { x: p.maxX - g.inset, y: p.height + g.height, z: p.maxZ - g.inset },
     { collider: false, castShadow: false },
-  );
-}
-
-/** M4 wall-buy placeholder: framed board with a glowing rifle outline and a price plate. */
-function wallBuyBoard(kit: LevelKit): void {
-  const W = L.reception.wallBuy;
-  const f = new WallFrame({ x: W.position[0], y: W.position[1], z: W.position[2] }, W.facing);
-  const d = W.plateDepth;
-  kit.box('wall_panel_dark', f.point(0, 0, d / 2), f.size(W.width, W.height, d), { collider: false });
-  const fr = W.frame;
-  for (const side of [-1, 1]) {
-    kit.box(
-      'trim_metal',
-      f.point(side * (W.width / 2 + fr / 2), 0, d / 2 + fr / 4),
-      f.size(fr, W.height + fr * 2, d + fr / 2),
-      {
-        collider: false,
-      },
-    );
-    kit.box(
-      'trim_metal',
-      f.point(0, side * (W.height / 2 + fr / 2), d / 2 + fr / 4),
-      f.size(W.width, fr, d + fr / 2),
-      {
-        collider: false,
-      },
-    );
-  }
-  const o = d + DECAL.offset;
-  const ln = W.line;
-  const iw = W.width - fr * 2;
-  const ih = W.height - fr * 2;
-  const glow = { collider: false, castShadow: false };
-  // Outline.
-  for (const side of [-1, 1]) {
-    kit.box('emissive_cyan', f.point(0, (side * ih) / 2, o), f.size(iw, ln, DECAL.thickness), glow);
-    kit.box('emissive_cyan', f.point((side * iw) / 2, 0, o), f.size(ln, ih, DECAL.thickness), glow);
-  }
-  // Rifle silhouette (board units: fractions of the inner width / height).
-  for (const [cx, cy, sw, sh] of W.silhouette) {
-    kit.box('emissive_cyan', f.point(cx * iw, cy * ih, o), f.size(sw * iw, sh * ih, DECAL.thickness), glow);
-  }
-  const pp = W.pricePlate;
-  kit.box(
-    'emissive_orange',
-    f.point(0, pp.offsetY * W.height, o),
-    f.size(pp.width, pp.height, DECAL.thickness),
-    glow,
   );
 }
 

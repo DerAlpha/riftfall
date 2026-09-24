@@ -17,9 +17,70 @@
  * Tick: call update(dt) once per fixed tick (EnemyManager does, after its movement requests): move
  * targets set since the last update are sent (round-robin budget), then the crowd steps; positions
  * read afterwards are this tick's.
+ *
+ * Blockable areas (M4 doors, machines – setAreaBlocked): an area is an axis-aligned box. The tiles
+ * under it are regenerated on the main thread with the box marked as recast area NAV.areas.areaId
+ * (AreaTileBuilder: the tile pipeline of recast-navigation's tiled generator plus markBoxArea), so
+ * its polygons end exactly at the box; while blocked they carry NAV.areas.disabledFlag, which the
+ * query filter (NavQuery) and the crowd filter (NavCrowd) exclude – closestPoint, randomPointAround,
+ * findPath, walkable and agent paths all avoid them. Toggling only rewrites poly flags (instant);
+ * registering a new area regenerates its tiles once (a few ms each, batched on the next update or
+ * flushAreas()). Areas survive rebuilds. Without a tiled navmesh (solo mode, regeneration failure)
+ * every polygon overlapping the box is flagged instead (coarse but safe).
  */
 import { Mesh, MeshBasicMaterial, Vector3, type BufferGeometry, type Object3D } from 'three';
-import { importNavMesh, setRandomSeed, type NavMesh } from 'recast-navigation';
+import {
+  ChunkIdsArray,
+  Detour,
+  NavMeshCreateParams,
+  Raw,
+  Recast,
+  RecastBuildContext,
+  RecastChunkyTriMesh,
+  TriangleAreasArray,
+  TrianglesArray,
+  VerticesArray,
+  allocCompactHeightfield,
+  allocContourSet,
+  allocHeightfield,
+  allocPolyMesh,
+  allocPolyMeshDetail,
+  buildCompactHeightfield,
+  buildContours,
+  buildDistanceField,
+  buildPolyMesh,
+  buildPolyMeshDetail,
+  buildRegions,
+  cloneRcConfig,
+  createHeightfield,
+  createNavMeshData,
+  erodeWalkableArea,
+  filterLedgeSpans,
+  filterLowHangingWalkableObstacles,
+  filterWalkableLowHeightSpans,
+  freeCompactHeightfield,
+  freeContourSet,
+  freeHeightfield,
+  freePolyMesh,
+  freePolyMeshDetail,
+  importNavMesh,
+  markBoxArea,
+  markWalkableTriangles,
+  rasterizeTriangles,
+  setRandomSeed,
+  statusFailed,
+  type FloatArray,
+  type IntArray,
+  type NavMesh,
+  type RawModule,
+  type RecastCompactHeightfield,
+  type RecastContourSet,
+  type RecastHeightfield,
+  type RecastPolyMesh,
+  type RecastPolyMeshDetail,
+  type UnsignedCharArray,
+} from 'recast-navigation';
+import { buildTiledNavMeshRcConfig, tiledNavMeshGeneratorConfigDefaults } from 'recast-navigation/generators';
 import type { NavAgentParams, NavApi } from '../core/contracts';
 import type { Vec3Like } from '../core/events';
 import { createLogger } from '../core/log';
@@ -27,6 +88,7 @@ import { Rng } from '../core/Rng';
 import { NAV } from '../defs/nav';
 import { DirectSteering } from './DirectSteering';
 import {
+  alignForVoxels,
   countNavMeshPolys,
   createGeneratorConfig,
   generateNavMesh,
@@ -88,6 +150,18 @@ function validParams(p: NavAgentParams): boolean {
   );
 }
 
+/** A registered blockable area (world AABB) and whether the current navmesh has it split off. */
+interface BlockArea {
+  readonly center: { x: number; y: number; z: number };
+  readonly half: { x: number; y: number; z: number };
+  blocked: boolean;
+  /** pending: tiles not regenerated yet · exact: own polygons (area id) · coarse: overlap flags. */
+  mode: 'pending' | 'exact' | 'coarse';
+}
+
+/** Two registrations within this distance (m) are the same area. */
+const AREA_MATCH_EPSILON = 1e-3;
+
 // Per-slot agent params layout (slotParams).
 const P_RADIUS = 0;
 const P_HEIGHT = 1;
@@ -136,6 +210,13 @@ export class NavSystem implements NavApi {
   private debugParent: Object3D | null = null;
   private debugHelper: Object3D | null = null;
   private debugDisposables: { dispose(): void }[] = [];
+
+  // Blockable areas (M4 doors).
+  private readonly areas: BlockArea[] = [];
+  private areasDirty = false;
+  /** Geometry + config of the current navmesh (tile regeneration). */
+  private areaSource: { geo: NavGeometry; config: NavGeneratorConfig } | null = null;
+  private areaTiles: AreaTileBuilder | null = null;
 
   private readonly _v = new Vector3();
   private readonly _params: NavAgentParams = {
@@ -219,6 +300,11 @@ export class NavSystem implements NavApi {
       this.stats.polys = polys;
       this.stats.tiles = tiles;
       this.stats.builtIn = builtIn;
+      // Blockable areas: split their tiles in the new navmesh (main thread, before the first query).
+      this.areaSource = { geo, config };
+      for (const a of this.areas) a.mode = 'pending';
+      this.areasDirty = this.areas.length > 0;
+      this.flushAreas();
       this.stats.buildMs = performance.now() - t0;
       log.info(
         `Navmesh: ${polys} polys in ${tiles} tiles from ${geo.triangles} tris / ${geo.meshes} meshes, ` +
@@ -342,6 +428,8 @@ export class NavSystem implements NavApi {
     const oldQuery = this.query;
     const oldNavMesh = this.navMesh;
     this.disposeDebug();
+    // The tile builder belongs to the old geometry.
+    this.destroyAreaTiles();
     // Reads the positions from the old backend (still alive), then disposes it.
     this.swapBackend(crowd);
     this.navMesh = navMesh;
@@ -357,6 +445,9 @@ export class NavSystem implements NavApi {
   /** Back to direct steering (agents migrate) and free the navmesh. */
   private releaseNavMesh(): void {
     this.disposeDebug();
+    this.destroyAreaTiles();
+    this.areaSource = null;
+    for (const a of this.areas) a.mode = 'pending';
     if (this.backend.kind === 'crowd') this.swapBackend(new DirectSteering(this.capacity, this.groundProbe));
     this.query?.destroy();
     this.query = null;
@@ -506,6 +597,7 @@ export class NavSystem implements NavApi {
   update(dt: number): void {
     // NaN / non-positive steps would poison detour's agent state.
     if (this.disposed || !(dt > 0) || !Number.isFinite(dt)) return;
+    if (this.areasDirty) this.flushAreas();
     const t0 = performance.now();
     this.backend.update(dt);
     if (this.backend instanceof NavCrowd) this.stats.pendingTargets = this.backend.pendingCount;
@@ -536,6 +628,132 @@ export class NavSystem implements NavApi {
     p.maxAcceleration = this.slotParams[o + P_MAX_ACCEL]!;
     p.separationWeight = this.slotParams[o + P_SEPARATION]!;
     return p;
+  }
+
+  // -------------------------------------------------------------------------
+  // Blockable areas (M4 doors, machines)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Block / unblock the navmesh inside an axis-aligned box (center ± halfExtents). The first call
+   * registers the area (its tiles are regenerated on the next update() / flushAreas()); later
+   * calls with the same box only toggle it (instant). Registered areas persist across rebuilds.
+   */
+  setAreaBlocked(center: Vec3Like, halfExtents: Vec3Like, blocked: boolean): void {
+    if (this.disposed || !finite(center) || !finite(halfExtents)) return;
+    let area = this.findArea(center, halfExtents);
+    if (!area) {
+      area = {
+        center: { x: center.x, y: center.y, z: center.z },
+        half: { x: Math.abs(halfExtents.x), y: Math.abs(halfExtents.y), z: Math.abs(halfExtents.z) },
+        blocked,
+        mode: 'pending',
+      };
+      this.areas.push(area);
+      this.areasDirty = true;
+      return;
+    }
+    if (area.blocked === blocked) return;
+    area.blocked = blocked;
+    if (area.mode === 'pending') this.areasDirty = true;
+    else this.applyAreaFlags(area);
+  }
+
+  /** Blocked areas right now (debug / tests). */
+  get blockedAreaCount(): number {
+    let n = 0;
+    for (const a of this.areas) if (a.blocked) n++;
+    return n;
+  }
+
+  /** Split newly registered areas off the navmesh and apply every area's flags now. */
+  flushAreas(): void {
+    if (!this.areasDirty) return;
+    this.areasDirty = false;
+    if (!this.navMesh || !this.query) return;
+    let pending = false;
+    for (const a of this.areas) if (a.mode === 'pending') pending = true;
+    if (pending) this.splitPendingAreas();
+    for (const a of this.areas) this.applyAreaFlags(a);
+  }
+
+  private findArea(c: Vec3Like, h: Vec3Like): BlockArea | null {
+    const e = AREA_MATCH_EPSILON;
+    for (const a of this.areas) {
+      if (
+        Math.abs(a.center.x - c.x) < e &&
+        Math.abs(a.center.y - c.y) < e &&
+        Math.abs(a.center.z - c.z) < e &&
+        Math.abs(a.half.x - Math.abs(h.x)) < e &&
+        Math.abs(a.half.y - Math.abs(h.y)) < e &&
+        Math.abs(a.half.z - Math.abs(h.z)) < e
+      ) {
+        return a;
+      }
+    }
+    return null;
+  }
+
+  /** Regenerate every tile under a pending area once (with ALL areas of that tile marked). */
+  private splitPendingAreas(): void {
+    const navMesh = this.navMesh!;
+    const src = this.areaSource;
+    let builder: AreaTileBuilder | null = null;
+    if (src && src.config.mode === 'tiled') {
+      try {
+        builder = this.areaTiles ??= new AreaTileBuilder(src.geo, src.config);
+      } catch (err) {
+        log.warn('Navmesh area tiles unavailable – blocked areas flag whole polygons', err);
+      }
+    }
+    if (!builder) {
+      for (const a of this.areas) if (a.mode === 'pending') a.mode = 'coarse';
+      return;
+    }
+    const tiles = new Set<number>();
+    for (const a of this.areas) {
+      if (a.mode !== 'pending') continue;
+      builder.forEachTile(a, (key) => tiles.add(key));
+    }
+    const failed = new Set<number>();
+    const t0 = performance.now();
+    for (const key of tiles) {
+      if (!builder.rebuildTile(navMesh, key, this.areas)) failed.add(key);
+    }
+    for (const a of this.areas) {
+      if (a.mode !== 'pending') continue;
+      let ok = true;
+      builder.forEachTile(a, (key) => {
+        if (failed.has(key)) ok = false;
+      });
+      a.mode = ok ? 'exact' : 'coarse';
+    }
+    if (failed.size > 0) log.warn(`Navmesh: ${failed.size} area tile(s) failed to regenerate – coarse flags`);
+    log.debug(
+      `Navmesh areas: ${tiles.size} tile(s) regenerated in ${(performance.now() - t0).toFixed(1)} ms`,
+    );
+    // Areas are registered in bursts (map load): free the wasm copy of the geometry until the next.
+    this.destroyAreaTiles();
+  }
+
+  /** Write the area's flags onto its polygons (exact: area-id polygons only; coarse: all overlapping). */
+  private applyAreaFlags(a: BlockArea): void {
+    const navMesh = this.navMesh;
+    const q = this.query;
+    if (!navMesh || !q || a.mode === 'pending') return;
+    const A = NAV.areas;
+    const flags = a.blocked ? A.walkFlag | A.disabledFlag : A.walkFlag;
+    const n = q.queryBoxPolys(a.center, a.half);
+    for (let i = 0; i < n; i++) {
+      const ref = q.boxPoly(i);
+      if (a.mode === 'exact' && navMesh.getPolyArea(ref).area !== A.areaId) continue;
+      navMesh.setPolyFlags(ref, flags);
+    }
+  }
+
+  private destroyAreaTiles(): void {
+    this.areaTiles?.destroy();
+    this.areaTiles = null;
   }
 
   // -------------------------------------------------------------------------
@@ -615,6 +833,7 @@ export class NavSystem implements NavApi {
   dispose(): void {
     if (this.disposed) return;
     this.buildId++;
+    this.areas.length = 0;
     this.cancelWorker?.();
     this.releaseNavMesh();
     this.disposed = true;
@@ -622,5 +841,226 @@ export class NavSystem implements NavApi {
     this.slotActive.fill(0);
     this.slotIndex.fill(-1);
     this.stats.agents = 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Area tiles: one tile of the tiled generator with blockable areas marked
+// ---------------------------------------------------------------------------
+
+/**
+ * Regenerates single tiles of a tiled navmesh on the main thread from the build geometry, with the
+ * blockable area boxes marked (markBoxArea after erosion) – the per-tile pipeline of
+ * recast-navigation's generateTileNavMeshData, same config and voxel alignment as navBuild, so the
+ * regenerated tile matches its neighbours. Area polygons keep area id NAV.areas.areaId and get the
+ * walk flag; everything else becomes area 0 / walk flag like the generator's output.
+ * Holds the geometry + chunky triangle mesh in wasm memory until destroy().
+ */
+class AreaTileBuilder {
+  private readonly ctx = new RecastBuildContext(false);
+  private readonly verts: FloatArray;
+  private readonly tris: IntArray;
+  private readonly chunky: RecastChunkyTriMesh;
+  private readonly chunkIds: IntArray;
+  private readonly rc: RawModule.rcConfig;
+  private readonly bmin: readonly [number, number, number];
+  private readonly bmax: readonly [number, number, number];
+  private readonly tileWorld: number;
+  private readonly tilesX: number;
+  private readonly tilesZ: number;
+  private destroyed = false;
+
+  constructor(geo: NavGeometry, config: NavGeneratorConfig) {
+    const aligned = alignForVoxels(geo.positions, config.recast.ch);
+    const genCfg = { ...tiledNavMeshGeneratorConfigDefaults, ...config.recast };
+    const built = buildTiledNavMeshRcConfig({ recastConfig: genCfg, navMeshBounds: aligned.bounds });
+    this.rc = built.config;
+    this.tileWorld = built.tcs;
+    this.tilesX = built.tileWidth;
+    this.tilesZ = built.tileHeight;
+    this.bmin = aligned.bounds[0];
+    this.bmax = aligned.bounds[1];
+    this.verts = new VerticesArray();
+    this.verts.copy(aligned.positions);
+    this.tris = new TrianglesArray();
+    // Same bits, signed view (indices stay far below 2^31).
+    this.tris.copy(new Int32Array(geo.indices.buffer, geo.indices.byteOffset, geo.indices.length));
+    this.chunky = new RecastChunkyTriMesh();
+    this.chunkIds = new ChunkIdsArray();
+    this.chunkIds.resize(NAV.areas.maxChunks);
+    if (!this.chunky.init(this.verts, this.tris, geo.indices.length / 3, genCfg.chunkyTriMeshTrisPerChunk)) {
+      this.destroy();
+      throw new Error('chunky triangle mesh failed');
+    }
+  }
+
+  /** Tile keys (tx + ty × tilesX) whose bounds overlap the area box on XZ. */
+  forEachTile(a: BlockArea, fn: (key: number) => void): void {
+    const w = this.tileWorld;
+    const x0 = Math.max(0, Math.floor((a.center.x - a.half.x - this.bmin[0]) / w));
+    const x1 = Math.min(this.tilesX - 1, Math.floor((a.center.x + a.half.x - this.bmin[0]) / w));
+    const z0 = Math.max(0, Math.floor((a.center.z - a.half.z - this.bmin[2]) / w));
+    const z1 = Math.min(this.tilesZ - 1, Math.floor((a.center.z + a.half.z - this.bmin[2]) / w));
+    for (let tz = z0; tz <= z1; tz++) for (let tx = x0; tx <= x1; tx++) fn(tx + tz * this.tilesX);
+  }
+
+  /**
+   * Replace tile `key` in `navMesh` by a regeneration with `areas` marked; false on failure. A tile
+   * without walkable polygons stays as it is (its original has none either: same geometry).
+   */
+  rebuildTile(navMesh: NavMesh, key: number, areas: readonly BlockArea[]): boolean {
+    if (this.destroyed) return false;
+    const tx = key % this.tilesX;
+    const tz = Math.floor(key / this.tilesX);
+    let data: UnsignedCharArray | 'empty' | null;
+    try {
+      data = this.buildTile(tx, tz, areas);
+    } catch (err) {
+      log.warn(`Navmesh area tile ${tx},${tz} crashed`, err);
+      return false;
+    }
+    if (data === 'empty') return true;
+    if (!data) return false;
+    const ref = navMesh.getTileRefAt(tx, tz, 0);
+    if (ref !== 0) navMesh.removeTile(ref);
+    const res = navMesh.addTile(data, Detour.DT_TILE_FREE_DATA, 0);
+    if (statusFailed(res.status)) {
+      data.destroy();
+      log.warn(`Navmesh area tile ${tx},${tz} could not be added`);
+      return false;
+    }
+    return true;
+  }
+
+  /** Tile data, 'empty' (no geometry / no walkable polygon), or null on a failed build step. */
+  private buildTile(tx: number, tz: number, areas: readonly BlockArea[]): UnsignedCharArray | 'empty' | null {
+    const ctx = this.ctx;
+    const cfg = cloneRcConfig(this.rc);
+    const border = cfg.borderSize * cfg.cs;
+    const w = this.tileWorld;
+    const bmin: [number, number, number] = [
+      this.bmin[0] + tx * w - border,
+      this.bmin[1],
+      this.bmin[2] + tz * w - border,
+    ];
+    const bmax: [number, number, number] = [
+      this.bmin[0] + (tx + 1) * w + border,
+      this.bmax[1],
+      this.bmin[2] + (tz + 1) * w + border,
+    ];
+    for (let i = 0; i < 3; i++) {
+      cfg.set_bmin(i, bmin[i]!);
+      cfg.set_bmax(i, bmax[i]!);
+    }
+    let hf: RecastHeightfield | null = allocHeightfield();
+    let chf: RecastCompactHeightfield | null = null;
+    let cset: RecastContourSet | null = null;
+    let pmesh: RecastPolyMesh | null = null;
+    let dmesh: RecastPolyMeshDetail | null = null;
+    let params: NavMeshCreateParams | null = null;
+    try {
+      if (!createHeightfield(ctx, hf, cfg.width, cfg.height, bmin, bmax, cfg.cs, cfg.ch)) return null;
+      const nChunks = this.chunky.getChunksOverlappingRect(
+        [bmin[0], bmin[2]],
+        [bmax[0], bmax[2]],
+        this.chunkIds,
+        NAV.areas.maxChunks,
+      );
+      if (nChunks === 0) return 'empty';
+      for (let i = 0; i < nChunks; i++) {
+        const nodeId = this.chunkIds.get(i);
+        const nodeTris = this.chunky.getNodeTris(nodeId);
+        const n = this.chunky.nodes(nodeId).n;
+        const triAreas = new TriangleAreasArray();
+        triAreas.resize(n);
+        markWalkableTriangles(ctx, cfg.walkableSlopeAngle, this.verts, this.tris.size, nodeTris, n, triAreas);
+        const ok = rasterizeTriangles(
+          ctx,
+          this.verts,
+          this.tris.size,
+          nodeTris,
+          triAreas,
+          n,
+          hf,
+          cfg.walkableClimb,
+        );
+        triAreas.destroy();
+        if (!ok) return null;
+      }
+      filterLowHangingWalkableObstacles(ctx, cfg.walkableClimb, hf);
+      filterLedgeSpans(ctx, cfg.walkableHeight, cfg.walkableClimb, hf);
+      filterWalkableLowHeightSpans(ctx, cfg.walkableHeight, hf);
+      chf = allocCompactHeightfield();
+      if (!buildCompactHeightfield(ctx, cfg.walkableHeight, cfg.walkableClimb, hf, chf)) return null;
+      freeHeightfield(hf);
+      hf = null;
+      if (!erodeWalkableArea(ctx, cfg.walkableRadius, chf)) return null;
+      const areaId = NAV.areas.areaId;
+      for (const a of areas) {
+        const c = a.center;
+        const h = a.half;
+        if (c.x + h.x < bmin[0] || c.x - h.x > bmax[0] || c.z + h.z < bmin[2] || c.z - h.z > bmax[2])
+          continue;
+        markBoxArea(ctx, [c.x - h.x, c.y - h.y, c.z - h.z], [c.x + h.x, c.y + h.y, c.z + h.z], areaId, chf);
+      }
+      if (!buildDistanceField(ctx, chf)) return null;
+      if (!buildRegions(ctx, chf, cfg.borderSize, cfg.minRegionArea, cfg.mergeRegionArea)) return null;
+      cset = allocContourSet();
+      if (
+        !buildContours(
+          ctx,
+          chf,
+          cfg.maxSimplificationError,
+          cfg.maxEdgeLen,
+          cset,
+          Recast.RC_CONTOUR_TESS_WALL_EDGES,
+        )
+      ) {
+        return null;
+      }
+      pmesh = allocPolyMesh();
+      if (!buildPolyMesh(ctx, cset, cfg.maxVertsPerPoly, pmesh)) return null;
+      dmesh = allocPolyMeshDetail();
+      if (!buildPolyMeshDetail(ctx, pmesh, chf, cfg.detailSampleDist, cfg.detailSampleMaxError, dmesh))
+        return null;
+      const A = NAV.areas;
+      for (let i = 0; i < pmesh.npolys(); i++) {
+        const area = pmesh.areas(i);
+        if (area === Recast.RC_WALKABLE_AREA) pmesh.setAreas(i, 0);
+        if (area === Recast.RC_WALKABLE_AREA || area === 0 || area === A.areaId)
+          pmesh.setFlags(i, A.walkFlag);
+      }
+      if (pmesh.npolys() === 0) return 'empty';
+      params = new NavMeshCreateParams();
+      params.setPolyMeshCreateParams(pmesh);
+      params.setPolyMeshDetailCreateParams(dmesh);
+      params.setWalkableHeight(cfg.walkableHeight * cfg.ch);
+      params.setWalkableRadius(cfg.walkableRadius * cfg.cs);
+      params.setWalkableClimb(cfg.walkableClimb * cfg.ch);
+      params.setCellSize(cfg.cs);
+      params.setCellHeight(cfg.ch);
+      params.setBuildBvTree(tiledNavMeshGeneratorConfigDefaults.buildBvTree);
+      params.setTileX(tx);
+      params.setTileY(tz);
+      const res = createNavMeshData(params);
+      return res.success ? res.navMeshData : null;
+    } finally {
+      if (hf) freeHeightfield(hf);
+      if (chf) freeCompactHeightfield(chf);
+      if (cset) freeContourSet(cset);
+      if (pmesh) freePolyMesh(pmesh);
+      if (dmesh) freePolyMeshDetail(dmesh);
+      if (params) Raw.destroy(params.raw);
+      Raw.destroy(cfg);
+    }
+  }
+
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.verts.destroy();
+    this.tris.destroy();
+    this.chunkIds.destroy();
+    Raw.destroy(this.chunky.raw);
   }
 }

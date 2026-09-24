@@ -215,6 +215,17 @@ export interface BruteBehaviourDef {
   readonly laneCheckInterval: number;
 }
 
+/**
+ * M4 rift seals: how a type tears a sealed spawn point open ('breach' state). The tearing swings
+ * play the animation of attack `attack` (an id of this type's attacks), fitted so that a segment
+ * falls every `segmentTime` seconds; `segmentsPerTear` segments fall per finished tear.
+ */
+export interface EnemyBreachDef {
+  readonly attack: string;
+  readonly segmentTime: number;
+  readonly segmentsPerTear: number;
+}
+
 /** Acid sac rupture on death (spitter): AoE + puddle. */
 export interface DeathBurstDef {
   readonly radius: number;
@@ -304,6 +315,10 @@ export interface EnemyTypeDef {
    */
   readonly slotPool: SlotPoolId;
   readonly slotCost: number;
+  /** M4 rift seals: tearing a sealed spawn point open (missing: ENEMY_AI.breach.fallback). */
+  readonly breach?: EnemyBreachDef;
+  /** M6 bosses: immune to the instakill power-up and skipped by the nuke (killAll). */
+  readonly boss?: boolean;
   /** M4 economy hooks (points). */
   readonly points: {
     readonly hit: number;
@@ -412,6 +427,7 @@ const SWARMER: EnemyTypeDef = {
   },
   emergeTime: 0.9,
   death: { collapse: 0.45, linger: 0.5, dissolve: 0.9, burst: null },
+  breach: { attack: 'bite', segmentTime: 1.5, segmentsPerTear: 1 },
   slotPool: 'light',
   slotCost: 1,
   points: { hit: 10, kill: 60, headshotBonus: 40, weakpointBonus: 40 },
@@ -529,6 +545,7 @@ const SPITTER: EnemyTypeDef = {
       shake: 0.25,
     },
   },
+  breach: { attack: 'swipe', segmentTime: 2, segmentsPerTear: 1 },
   slotPool: 'light',
   slotCost: 1,
   points: { hit: 10, kill: 90, headshotBonus: 40, weakpointBonus: 60 },
@@ -667,6 +684,8 @@ const TANK: EnemyTypeDef = {
   },
   emergeTime: 1.6,
   death: { collapse: 1.2, linger: 1.2, dissolve: 1.6, burst: null },
+  // Slams through the lattice: slower per tear, but two segments at once.
+  breach: { attack: 'slam', segmentTime: 2.4, segmentsPerTear: 2 },
   slotPool: 'heavy',
   slotCost: 1,
   points: { hit: 10, kill: 250, headshotBonus: 50, weakpointBonus: 100 },
@@ -887,6 +906,20 @@ export const ENEMY_AI = {
   firstAttackJitter: 0.5,
   /** weaponId in enemy:died / combat events for killAll (nuke power-up, M4). */
   nukeWeaponId: 'nuke',
+  /**
+   * M4 rift seals ('breach' state): tearing enemies turn towards the seal at `turnRateDeg`; a
+   * target (the player) standing on their side of the seal within `breakoutDistance` (m) frees
+   * them at once. `fallback` applies to types without a `breach` def.
+   */
+  breach: {
+    turnRateDeg: 360,
+    breakoutDistance: 2.2,
+    /** Overlapping enemies at the same seal ease apart at this speed (m/s). */
+    separationSpeed: 1.5,
+    fallback: { attack: '', segmentTime: 2, segmentsPerTear: 1 } satisfies EnemyBreachDef,
+  },
+  /** Enemy time scale (Slow Motion power-up): EnemyManager.timeScale is clamped to this range. */
+  timeScale: { min: 0.05, max: 2 },
   /** Exponential moving average factor of `stats.aiMsAvg` (per tick). */
   statsSmoothing: 0.1,
 } as const;

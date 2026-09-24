@@ -26,6 +26,13 @@
  *
  * Hot-path event payloads (fired, impact, tracer, ammo, shake) are reused objects: handlers must
  * copy what they keep (EventBus contract).
+ *
+ * Stats (M4, optional `setStats`): def-changing stats (fireRate, reloadSpeed, damage, spread, recoil,
+ * magazineSize, reserveAmmo) are one more resolveWeapon mod on every carried weapon (re-resolved
+ * when they change; a running reload keeps its timing, ammo above a smaller capacity moves back to
+ * the reserve); adsSpeed, headshotMultiplier and meleeDamage apply per use; weaponSlots adds slots
+ * to the loadout's count (losing the bonus drops the weapons that no longer fit). Without stats
+ * every weapon plays exactly as its def.
  */
 import { Vector3 } from 'three';
 import type {
@@ -37,6 +44,7 @@ import type {
   PhysicsApi,
   RenderApi,
   SettingsStore,
+  StatsApi,
   WeaponSystemApi,
 } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
@@ -54,6 +62,7 @@ import {
   getWeaponDef,
   type ReloadMarker,
   type WeaponDef,
+  type WeaponStatMods,
 } from '../defs/weapons';
 import type { WeaponCombatApi, CombatRaycastOptions } from '../combat/types';
 import type { LookModifier, PlayerCamera } from '../player/PlayerCamera';
@@ -70,6 +79,12 @@ import {
   type RecoilKick,
 } from './recoil';
 import { resolveWeapon, type WeaponModState } from './resolveWeapon';
+import {
+  createWeaponStatFactors,
+  precisionScale,
+  readWeaponStats,
+  weaponStatMods,
+} from '../stats/weaponStats';
 import {
   addBloom,
   aimBasis,
@@ -144,6 +159,8 @@ interface WeaponInstance {
   /** Effective def (base + Rift Forge tier + attachments + element, see resolveWeapon). */
   def: WeaponDef;
   readonly base: WeaponDef;
+  /** Tier / attachment / element state (setWeaponMods); stat mods are applied on top. */
+  mods: WeaponModState;
   mag: number;
   reserve: number;
   tracerCounter: number;
@@ -176,6 +193,7 @@ const EDGES: readonly (readonly [Action, number])[] = [
 ];
 
 const NO_MARKERS: readonly ReloadMarker[] = [];
+const NO_MODS: WeaponModState = {};
 
 /** States the weapon can aim from (inspect is cancelled by aiming). */
 const ADS_STATES: ReadonlySet<WeaponState> = new Set(['idle', 'firing', 'inspecting', 'sprinting']);
@@ -267,6 +285,15 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
 
   // --- switching ---
   private pendingSlot = -1;
+  /** Slots granted by the loadout (setLoadout); the weaponSlots stat adds to it. */
+  private baseSlots: number = WEAPON_RULES.inventory.defaultSlots;
+
+  // --- stats (setStats; null = def values) ---
+  private statSource: StatsApi | null = null;
+  private statVersion = -1;
+  private readonly statFactors = createWeaponStatFactors();
+  /** resolveWeapon mod from the def-changing stats; null = neutral. */
+  private statMods: WeaponStatMods | null = null;
 
   // --- melee ---
   private meleeCooldown = 0;
@@ -443,10 +470,10 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
 
   /** Replace the inventory (slot count, weapons; the first is equipped at once). */
   setLoadout(ids: readonly string[], slots?: number): void {
-    const n = Math.max(
-      1,
-      Math.min(WEAPON_RULES.inventory.maxSlots, Math.floor(slots ?? WEAPON_RULES.inventory.defaultSlots)),
-    );
+    // Current stats, without resizing the inventory that is about to be replaced.
+    if (this.statsStale) this.readStats();
+    this.baseSlots = slots ?? WEAPON_RULES.inventory.defaultSlots;
+    const n = this.slotTotal();
     if (this._state === 'reloading') this.finishReload(false);
     this.slots = [];
     for (let i = 0; i < n; i++) this.slots.push(null);
@@ -470,6 +497,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   }
 
   give(weaponId: string): void {
+    this.syncStats();
     const existing = this.slots.findIndex((s) => s?.def.id === weaponId);
     if (existing >= 0) {
       this.refillInstance(this.slots[existing]!, true);
@@ -496,6 +524,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   }
 
   refillAmmo(fillMagazines = false): void {
+    this.syncStats();
     for (const s of this.slots) if (s) this.refillInstance(s, fillMagazines);
     this.emitAmmo();
   }
@@ -517,15 +546,24 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
    * magazine is clamped to the new capacity. False if the weapon is not carried.
    */
   setWeaponMods(weaponId: string, mods: WeaponModState): boolean {
+    this.syncStats();
     const slot = this.slots.findIndex((s) => s?.def.id === weaponId);
     const w = slot >= 0 ? this.slots[slot] : null;
     if (!w) return false;
     if (slot === this.currentSlot && this._state === 'reloading') this.finishReload(false);
-    w.def = resolveWeapon(w.base, mods);
+    w.mods = mods;
+    w.def = this.resolveDef(w.base, mods);
     w.mag = Math.min(w.mag, fullMag(w.def));
     w.reserve = Math.min(w.reserve, w.def.reserve);
     if (slot === this.currentSlot) this.emitAmmo();
     return true;
+  }
+
+  /** Gameplay stats (perks, cards; see the file header). null = def values. */
+  setStats(stats: StatsApi | null): void {
+    this.statSource = stats;
+    this.statVersion = -1;
+    this.syncStats(true);
   }
 
   // -------------------------------------------------------------------------
@@ -534,6 +572,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
 
   fixedUpdate(dt: number): void {
     if (this.disposed || !(dt > 0)) return;
+    this.syncStats();
     this.simTime += dt;
     this.sampleInput();
     const edges = this.latched;
@@ -644,6 +683,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
 
   update(dt: number): void {
     if (this.disposed) return;
+    this.syncStats();
     this.sampleInput();
     this.inputFrame++;
     // Counter-pull against the recoil (recoil space: yaw + = right; lookDelta.yaw + = left). Kick
@@ -723,14 +763,120 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       log.warn(`Weapon "${id}": kind '${def.kind}' is not implemented – ignored`);
       return null;
     }
+    const effective = this.resolveDef(def, NO_MODS);
     return {
-      def,
+      def: effective,
       base: def,
-      mag: fullMag(def),
-      reserve: def.reserve,
+      mods: NO_MODS,
+      mag: fullMag(effective),
+      reserve: effective.reserve,
       tracerCounter: 0,
       readyAt: Number.NEGATIVE_INFINITY,
     };
+  }
+
+  /** Base def + tier/attachment mods + the current stat mods. */
+  private resolveDef(base: WeaponDef, mods: WeaponModState): WeaponDef {
+    const sm = this.statMods;
+    if (!sm) return resolveWeapon(base, mods);
+    return resolveWeapon(base, {
+      tier: mods.tier,
+      element: mods.element,
+      mods: mods.mods ? [...mods.mods, sm] : [sm],
+    });
+  }
+
+  /** Loadout slots + the weaponSlots stat bonus. */
+  private slotTotal(): number {
+    const n = Math.floor(this.baseSlots + this.statFactors.weaponSlots);
+    return Math.max(1, Math.min(WEAPON_RULES.inventory.maxSlots, n));
+  }
+
+  /** The stats changed since the last read. */
+  private get statsStale(): boolean {
+    const stats = this.statSource;
+    return stats !== null && stats.version !== this.statVersion;
+  }
+
+  /**
+   * Re-read the stats when their version moved (cheap compare per tick/frame, and before every
+   * inventory change: a perk granted this tick must count for a weapon given this tick).
+   */
+  private syncStats(force = false): void {
+    if (!force && !this.statsStale) return;
+    if (this.readStats()) this.emitAmmo();
+    if (this.slotTotal() !== this.slots.length) this.resizeSlots(this.slotTotal());
+  }
+
+  /** Update the stat factors; true when the def factors changed (carried weapons re-resolved). */
+  private readStats(): boolean {
+    const stats = this.statSource;
+    this.statVersion = stats ? stats.version : -1;
+    if (!readWeaponStats(stats, this.statFactors)) return false;
+    this.statMods = weaponStatMods(this.statFactors);
+    for (const w of this.slots) if (w) this.applyEffectiveDef(w, this.resolveDef(w.base, w.mods));
+    return true;
+  }
+
+  /**
+   * A stat change re-resolved `w`: rounds above a smaller magazine go back to the reserve (a
+   * running reload keeps its timing), the reserve is capped by its new maximum.
+   */
+  private applyEffectiveDef(w: WeaponInstance, def: WeaponDef): void {
+    w.def = def;
+    const full = fullMag(def);
+    if (w.mag > full) {
+      w.reserve += w.mag - full;
+      w.mag = full;
+    }
+    w.reserve = Math.min(w.reserve, def.reserve);
+  }
+
+  /**
+   * Inventory size changed (weaponSlots stat). Growing adds empty slots; shrinking moves weapons of
+   * the removed slots into free ones and drops what does not fit (CoD: losing the extra-slot perk
+   * loses the third weapon). A dropped weapon in hand is replaced by the switch target, else the
+   * first remaining weapon; a dropped switch target re-raises the weapon in hand.
+   */
+  private resizeSlots(n: number): void {
+    const slots = this.slots;
+    if (n >= slots.length) {
+      while (slots.length < n) slots.push(null);
+      this.emitInventory();
+      return;
+    }
+    let dropped: string | null = null;
+    for (let i = slots.length - 1; i >= n; i--) {
+      const w = slots[i];
+      if (!w) continue;
+      const free = slots.indexOf(null);
+      if (free >= 0 && free < n) {
+        slots[free] = w;
+        slots[i] = null;
+        if (this.currentSlot === i) this.currentSlot = free;
+        if (this.pendingSlot === i) this.pendingSlot = free;
+        continue;
+      }
+      if (this.currentSlot === i) {
+        dropped = w.def.id;
+        // Still in hand: its reload ends (reloadEnd) before it leaves the inventory.
+        if (this._state === 'reloading') this.finishReload(false);
+      }
+      if (this.pendingSlot === i) this.pendingSlot = -1;
+    }
+    slots.length = n;
+    if (dropped === null) {
+      if (this._state === 'holstering' && this.pendingSlot < 0) this.equipSlot(this.currentSlot, null);
+      else this.emitInventory();
+      return;
+    }
+    this.currentSlot = -1;
+    const next = this.pendingSlot >= 0 ? this.pendingSlot : slots.findIndex((s) => s !== null);
+    if (next >= 0) this.equipSlot(next, dropped);
+    else {
+      this._state = 'idle';
+      this.emitInventory();
+    }
   }
 
   private refillInstance(w: WeaponInstance, fillMagazine: boolean): void {
@@ -1029,7 +1175,13 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
         const zone = hit.zone ?? 'body';
         this.acc.add(
           target,
-          hitDamage(def.damage, zone, distance, keep, this.damageScale),
+          hitDamage(
+            def.damage,
+            zone,
+            distance,
+            keep,
+            this.damageScale * precisionScale(zone, this.statFactors.headshot),
+          ),
           zone,
           hit.point.x,
           hit.point.y,
@@ -1400,7 +1552,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   private meleeStrike(def: WeaponDef, target: Damageable, hit: CombatHit, dir: Vec3Like): void {
     const m = def.melee;
     const info = this.damageInfo;
-    info.amount = m.damage;
+    info.amount = m.damage * this.statFactors.melee;
     info.zone = hit.zone ?? 'body';
     copyVec(hit.point, info.point);
     copyVec(dir, info.direction);
@@ -1434,8 +1586,9 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     const aiming = intent && !this.player.sprinting && this.sprintRecovery <= 0;
     if (w) {
       const a = w.def.ads;
-      if (aiming) this.adsProgress = a.inTime > 0 ? Math.min(1, this.adsProgress + dt / a.inTime) : 1;
-      else this.adsProgress = a.outTime > 0 ? Math.max(0, this.adsProgress - dt / a.outTime) : 0;
+      const step = dt * this.statFactors.adsSpeed;
+      if (aiming) this.adsProgress = a.inTime > 0 ? Math.min(1, this.adsProgress + step / a.inTime) : 1;
+      else this.adsProgress = a.outTime > 0 ? Math.max(0, this.adsProgress - step / a.outTime) : 0;
     } else {
       this.adsProgress = 0;
     }

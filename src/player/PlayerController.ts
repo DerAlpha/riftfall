@@ -20,10 +20,21 @@
  * walkable (≤ maxSlopeDeg) per an axis ray, else per the most upward contact normal, else per
  * two contacts wedging the capsule (V crevice); steeper surfaces count as air and a fall onto
  * them turns into a slide.
+ *
+ * Stats (M4, optional `setStats`): moveSpeed scales every ground wish speed, sprintSpeed the sprint
+ * on top (and the sprint-based caps of the double jump and slide boost), dashCharges / dashRecharge
+ * the dash charges and their refill rate. Without stats the defs/movement values apply unchanged.
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three';
-import type { AdsProvider, InputApi, PlayerApi, RaycastOptions, SettingsStore } from '../core/contracts';
+import type {
+  AdsProvider,
+  InputApi,
+  PlayerApi,
+  RaycastOptions,
+  SettingsStore,
+  StatsApi,
+} from '../core/contracts';
 import type { Action } from '../defs/input';
 import type { EventBus } from '../core/EventBus';
 import type { GameEvents, MovementState, SurfaceType, Vec3Like } from '../core/events';
@@ -232,6 +243,14 @@ export class PlayerController implements PlayerApi {
   private readonly groundNormal = { x: 0, y: 1, z: 0 };
   private groundSurface: SurfaceType = 'default';
 
+  // --- stats (setStats; null = defs/movement values) ---
+  private stats: StatsApi | null = null;
+  private statsVersion = -1;
+  private moveSpeedScale = 1;
+  private sprintSpeedScale = 1;
+  private dashMax: number = D.charges;
+  private dashRechargeTime: number = D.rechargeTime;
+
   constructor(deps: PlayerControllerDeps, spawn: PlayerSpawn, options?: PlayerControllerOptions) {
     this.physics = deps.physics;
     this.input = deps.input;
@@ -290,9 +309,20 @@ export class PlayerController implements PlayerApi {
   get dashCharges(): number {
     return this.dashCharge.charges;
   }
+  /** Dash charge capacity (MOVEMENT.dash.charges, or the dashCharges stat). */
+  get maxDashCharges(): number {
+    return this.dashMax;
+  }
   /** 0..1 progress of the next charge; 1 when all charges are full. */
   get dashRecharge(): number {
-    return this.dashCharge.charges >= D.charges ? 1 : this.dashCharge.progress;
+    return this.dashCharge.charges >= this.dashMax ? 1 : this.dashCharge.progress;
+  }
+
+  /** Gameplay stats (perks, cards). null = defs/movement values. */
+  setStats(stats: StatsApi | null): void {
+    this.stats = stats;
+    this.statsVersion = -1;
+    this.syncStats(true);
   }
   get adsAmount(): number {
     const p = this.adsProvider;
@@ -398,6 +428,7 @@ export class PlayerController implements PlayerApi {
 
   fixedUpdate(dt: number): void {
     if (this.disposed || this.physics.disposed || !(dt > 0)) return;
+    this.syncStats();
     this.sampleInput();
     this.physics.ensureQueries();
     this.prevFeet.copy(this.position);
@@ -410,7 +441,7 @@ export class PlayerController implements PlayerApi {
     this.dashInterval = tickDown(this.dashInterval, dt);
     this.mantleCooldown = tickDown(this.mantleCooldown, dt);
     this.slideBoostCooldown = tickDown(this.slideBoostCooldown, dt);
-    rechargeDash(this.dashCharge, D.charges, D.rechargeTime, dt);
+    rechargeDash(this.dashCharge, this.dashMax, this.dashRechargeTime, dt);
 
     const jumpPressed = this.jumpLatched;
     const crouchPressed = this.crouchLatched;
@@ -512,10 +543,38 @@ export class PlayerController implements PlayerApi {
 
   private groundWishSpeed(): number {
     let speed =
-      this._crouched || this.crouchWanted ? G.crouchSpeed : this._sprinting ? G.sprintSpeed : G.runSpeed;
+      this._crouched || this.crouchWanted
+        ? G.crouchSpeed
+        : this._sprinting
+          ? G.sprintSpeed * this.sprintSpeedScale
+          : G.runSpeed;
+    speed *= this.moveSpeedScale;
     if (this.moveInput.y < 0) speed *= G.backwardSpeedMultiplier;
     speed *= lerp(1, this.adsProvider?.adsMoveSpeedMultiplier ?? G.adsSpeedMultiplier, this.adsAmount);
     return speed * this.wishMag;
+  }
+
+  /** Sprint speed with the movement stats (the caps that follow the sprint). */
+  private get sprintSpeed(): number {
+    return G.sprintSpeed * this.sprintSpeedScale * this.moveSpeedScale;
+  }
+
+  /** Re-read the movement stats when their version moved. */
+  private syncStats(force = false): void {
+    const s = this.stats;
+    if (!force && (!s || s.version === this.statsVersion)) return;
+    this.statsVersion = s ? s.version : -1;
+    const move = s ? s.value('moveSpeed') : 1;
+    const sprint = s ? s.value('sprintSpeed') : 1;
+    const rate = s ? s.value('dashRecharge') : 1;
+    const charges = s ? Math.floor(s.value('dashCharges')) : D.charges;
+    this.moveSpeedScale = move > 0 && Number.isFinite(move) ? move : 1;
+    this.sprintSpeedScale = sprint > 0 && Number.isFinite(sprint) ? sprint : 1;
+    this.dashRechargeTime = rate > 0 && Number.isFinite(rate) ? D.rechargeTime / rate : D.rechargeTime;
+    const max = charges >= 0 && Number.isFinite(charges) ? charges : D.charges;
+    // A new charge slot starts empty and refills; a lost one takes its charge with it.
+    if (this.dashCharge.charges > max) this.dashCharge.charges = max;
+    this.dashMax = max;
   }
 
   // -------------------------------------------------------------------------
@@ -615,7 +674,7 @@ export class PlayerController implements PlayerApi {
       this.wishDir,
       this.wishMag > 0,
       J.doubleJumpDirectionalBoost,
-      G.sprintSpeed,
+      this.sprintSpeed,
     );
     this.doubleJumpUsed = true;
     this.jumpActive = true;
@@ -644,7 +703,7 @@ export class PlayerController implements PlayerApi {
     const speed = this.intendedSpeed();
     if (this.slideBoostCooldown <= 0 && speed > 1e-3) {
       // Never boost past sprint + boost: repeated landing slides can't stack speed.
-      const boosted = Math.min(speed + S.startBoost, G.sprintSpeed + S.startBoost);
+      const boosted = Math.min(speed + S.startBoost, this.sprintSpeed + S.startBoost);
       const s = Math.min(S.maxSpeed, Math.max(speed, boosted)) / speed;
       this.velocity.x *= s;
       this.velocity.z *= s;

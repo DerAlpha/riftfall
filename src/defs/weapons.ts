@@ -296,6 +296,11 @@ export interface WeaponDef {
   readonly model: string;
   /** Purchase price (M4 wall buys / mystery box). */
   readonly cost: number;
+  /**
+   * Only obtainable from the Rift-Kiste (M5 wonder weapons): never sold at a wall buy, joins the
+   * box pool automatically (defs/interactables MYSTERY_BOX.boxOnlyWeight).
+   */
+  readonly boxOnly?: boolean;
   readonly attachmentSlots: readonly AttachmentSlot[];
   readonly upgrades: readonly WeaponUpgradeTier[];
 }
@@ -758,8 +763,8 @@ export const WEAPON_RULES = {
     default: { slots: 2, weapons: ['pistol'] },
     // The calibration hall lets the player compare all three M2 weapons.
     testroom: { slots: 3, weapons: ['pistol', 'rifle', 'shotgun'] },
-    // M3 vertical slice: no wall buys yet (M4), so the lab starts with rifle + sidearm.
-    lab: { slots: 2, weapons: ['rifle', 'pistol'] },
+    // M4: the lab starts with the sidearm; rifle and shotgun are wall buys / Rift-Kiste rolls.
+    lab: { slots: 2, weapons: ['pistol'] },
   } as Readonly<Record<string, LoadoutDef>>,
 } as const;
 

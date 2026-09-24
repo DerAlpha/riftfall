@@ -180,6 +180,22 @@ export const NAV = {
     /** Pending move requests sent per tick (round-robin) – spreads a wave's A* spike. */
     maxTargetRequestsPerTick: 12,
   },
+  /**
+   * M4 blockable areas (closed doors, perk machines, the box): NavSystem.setAreaBlocked registers an
+   * axis-aligned box; the tiles under it are regenerated with the box marked as recast area `areaId`
+   * (its polygons are split off exactly at the box) and those polygons carry `disabledFlag` while
+   * blocked. Every query filter and the crowd filter exclude `disabledFlag`.
+   */
+  areas: {
+    /** Poly flag of walkable polygons (recast-navigation's generators set 1). */
+    walkFlag: 1,
+    disabledFlag: 2,
+    areaId: 1,
+    /** Polygons collected per area box (queryPolygons buffer). */
+    maxPolysPerArea: 128,
+    /** Triangle chunks per tile rasterization (the generator's own limit). */
+    maxChunks: 512,
+  },
   /** Fallback when recast is unavailable: straight lines + separation, no pathing. */
   direct: {
     /** Stop steering within this distance of the target (m). */

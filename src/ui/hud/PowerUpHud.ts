@@ -1,5 +1,6 @@
 /**
- * Power-up widgets: a timer per running timed power-up (top center; icon + shrinking ring +
+ * Power-up widgets: a timer per running timed power-up (top center, above the intermission
+ * countdown; icon + shrinking ring +
  * seconds, flashing during the last ECONOMY_HUD.powerUps.warnSeconds), the nuke flash and the
  * slow-motion tint.
  *
@@ -60,7 +61,9 @@ export class PowerUpHud {
 
   /** `layer`: the HUD root; `tintParent`/`tintBefore`: where the blend overlay goes (see header). */
   constructor(layer: HTMLElement, tintParent: HTMLElement | null, tintBefore: HTMLElement | null) {
-    this.el = h('div', 'hud-powerups', layer);
+    // First in the layer: the intermission countdown (a later sibling) moves down while timers show.
+    this.el = h('div', 'hud-powerups');
+    layer.prepend(this.el);
     for (const id of POWERUP_IDS) {
       const def = POWERUP_DEFS[id]!;
       if (!(def.duration > 0)) continue;

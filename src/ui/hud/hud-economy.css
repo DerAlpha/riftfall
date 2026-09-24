@@ -354,7 +354,7 @@
   animation: rf-fade-in 0.15s ease-out both;
 }
 
-/* --- power-up timers (top center; below the intermission countdown while it shows) --- */
+/* --- power-up timers (top center; the intermission countdown moves below them) --- */
 .hud-powerups {
   position: absolute;
   left: 50%;
@@ -365,8 +365,8 @@
   scale: var(--hud-scale);
   transform-origin: 50% 0;
 }
-.hud-countdown:not([hidden]) ~ .hud-powerups {
-  top: calc(var(--rf-safe-t) + 112px);
+.hud-powerups:not([hidden]) ~ .hud-countdown {
+  top: calc(var(--rf-safe-t) + 76px * var(--hud-scale));
 }
 .hud-pu {
   --pu: #ffffff;
@@ -436,6 +436,7 @@
 .hud-ebanner {
   --eb: var(--rf-cyan);
   position: absolute;
+  isolation: isolate;
   left: 50%;
   top: 27%;
   display: flex;
@@ -446,6 +447,20 @@
   scale: var(--hud-scale);
   transform-origin: 50% 0;
   white-space: nowrap;
+  pointer-events: none;
+}
+/* Soft dark scrim: the thin kicker line stays readable over bright holograms and neon. */
+.hud-ebanner::before {
+  content: '';
+  position: absolute;
+  inset: -22px -70px;
+  z-index: -1;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(2, 5, 8, 0.52) 0%,
+    rgba(2, 5, 8, 0.32) 45%,
+    rgba(2, 5, 8, 0) 72%
+  );
   pointer-events: none;
 }
 .hud-banner:not([hidden]) ~ .hud-ebanner {
@@ -468,7 +483,9 @@
   font-weight: 700;
   letter-spacing: 0.46em;
   color: var(--eb);
-  text-shadow: 0 0 10px color-mix(in srgb, var(--eb) 60%, transparent);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    0 0 10px color-mix(in srgb, var(--eb) 60%, transparent);
 }
 .hud-ebanner__kicker::before,
 .hud-ebanner__kicker::after {

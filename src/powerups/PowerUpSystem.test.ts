@@ -143,6 +143,26 @@ describe('PowerUpSystem drops', () => {
     expect(u.byType('powerup:spawned')).toHaveLength(1);
   });
 
+  it('forced (console / perk) pickups do not shift the seeded drop stream', () => {
+    const rolled = (forced: boolean): string[] => {
+      const t = setup({ seed: 'stream', rules: { ...ALWAYS, chance: 0.3 } });
+      const types: string[] = [];
+      t.events.on('powerup:spawned', (e) => void types.push(e.type));
+      for (let i = 1; i <= 60; i++) {
+        if (forced && i % 7 === 0) {
+          t.sys.rollDrop({ x: 0, y: 0, z: 0 }, 'maxAmmo');
+          // Only the rolled drops are compared.
+          types.pop();
+        }
+        t.died(i);
+      }
+      return types;
+    };
+    const plain = rolled(false);
+    expect(plain.length).toBeGreaterThan(3);
+    expect(rolled(true)).toEqual(plain);
+  });
+
   it('carpenter only drops while a seal is damaged', () => {
     const events = new EventBus<GameEvents>();
     const seals = new SealSystem({

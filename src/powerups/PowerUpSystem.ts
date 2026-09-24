@@ -135,6 +135,8 @@ interface Pickup extends PickupVisual {
 }
 
 const UP: Vec3Like = { x: 0, y: 1, z: 0 };
+/** Low-discrepancy step for the cosmetic per-pickup phase (bob, ring dashes). */
+const GOLDEN_RATIO = 0.6180339887;
 const _v = new Vector3();
 const _pos = { x: 0, y: 0, z: 0 };
 
@@ -361,7 +363,8 @@ export class PowerUpSystem implements PowerUpApi {
     pk.cell = glyphCell(def.glyph);
     pk.color = def.color;
     pk.scale = def.scale;
-    pk.seed = this.rng.next();
+    // Cosmetic phase from the serial: console / perk spawns never shift the seeded drop stream.
+    pk.seed = fract(pk.serial * GOLDEN_RATIO);
     pk.age = 0;
     pk.lifetime = def.lifetime > 0 ? def.lifetime : P.lifetime;
     pk.collecting = -1;
@@ -581,6 +584,10 @@ function createPickup(): Pickup {
     lifetime: POWERUPS.pickup.lifetime,
     collecting: -1,
   };
+}
+
+function fract(v: number): number {
+  return v - Math.floor(v);
 }
 
 function setPos(out: Vec3Like, x: number, y: number, z: number): Vec3Like {

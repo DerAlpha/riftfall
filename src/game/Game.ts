@@ -46,6 +46,9 @@ import { createFireCommands } from '../weapons/fire/fireCommands';
 import type { ProjectileSystem } from '../weapons/fire/ProjectileSystem';
 import type { FieldSystem } from '../combat/FieldSystem';
 import type { Explosions } from '../combat/Explosions';
+import { StatusEffectSystem } from '../combat/status/StatusEffectSystem';
+import { createStatusCommands } from '../combat/status/statusCommands';
+import { statusResistFor } from '../defs/elements';
 import { getLoadout } from '../defs/weapons';
 import { VFX } from '../defs/vfx';
 import { VfxSystem } from '../vfx/VfxSystem';
@@ -183,6 +186,8 @@ export interface GameSystems {
   projectiles: ProjectileSystem;
   fields: FieldSystem;
   explosions: Explosions;
+  /** M5 elements: status effects (build-up from CombatWorld hits, slow/halt/rim read by enemies). */
+  status: StatusEffectSystem;
 }
 
 export class Game {
@@ -478,6 +483,29 @@ export class Game {
       isZoneActive: (z) => zones.isActive(z),
     });
     audioBridge.setEnemySource(enemies);
+    // M5 elements: CombatWorld reports every hit (build-up, void mark), the arsenal's element procs
+    // build up directly, enemies read slow / halt / rim tint and the fields' pull and slow.
+    const status = new StatusEffectSystem({
+      events,
+      combat,
+      vfx,
+      explosions: arsenal.explosions,
+      fields: arsenal.fields,
+      arcs: arsenal.specials,
+      // Resistances by enemy kind; damage over time scales with its toughness (wave health, elite).
+      profile: (t, out) => {
+        const e = enemies.getEnemy(t.id);
+        if (!e) return false;
+        out.resist = statusResistFor(e.type, e.def.boss);
+        out.healthScale = e.def.health > 0 ? e.maxHealth / e.def.health : 1;
+        return true;
+      },
+      seed: `status:${runSeed}`,
+    });
+    combat.setStatus(status);
+    arsenal.setStatus(status);
+    enemies.setStatus(status);
+    enemies.setFields(arsenal.fields);
 
     // M4 economy world: interaction focus, doors/wall buys/box/perk machines, rift seals, power-ups.
     const playing = (): boolean => !health.dead && runFlow.state !== 'dying' && runFlow.state !== 'over';
@@ -655,6 +683,7 @@ export class Game {
       projectiles: arsenal.projectiles,
       fields: arsenal.fields,
       explosions: arsenal.explosions,
+      status,
     });
     gameRef = game;
     game.registerCommands();
@@ -868,6 +897,7 @@ export class Game {
         player: () => ({ position: player.position, yaw: player.yaw }),
       }),
       ...createFireCommands({ weapons, arsenal: this.sys.arsenal }),
+      ...createStatusCommands({ status: this.sys.status, combat: this.sys.combat, player: () => player.position }),
     ];
     for (const c of commands) devConsole.register(c);
   }

@@ -686,17 +686,27 @@ export function buildCryo(kit: LevelKit): void {
         collider: true,
         castShadow: false,
       });
-      // Frozen occupant (dark silhouette behind the frost).
-      kit.cylinder(
-        'wall_panel_dark',
-        at(P.baseHeight + P.glowHeight),
-        at(P.baseHeight + P.bodyHeight),
-        P.bodyRadius,
-      );
+      cryoOccupant(kit, x, P.baseHeight + P.glowHeight, z);
       kit.cylinder('trim_metal', at(P.height - P.capHeight), at(P.height), P.radius + P.rimExtra);
       kit.cylinder('pipe', at(P.height), at(h), P.pipeRadius);
     }
   }
+}
+
+/** Frozen occupant of a cryo pod standing on `floor` (a dark human silhouette behind the frost). */
+function cryoOccupant(kit: LevelKit, x: number, floor: number, z: number): void {
+  const O = L.cryo.pod.occupant;
+  const opts = { segments: O.segments };
+  const rod = (x0: number, y0: number, x1: number, y1: number, r: number): void =>
+    kit.cylinder(O.material, { x: x + x0, y: floor + y0, z }, { x: x + x1, y: floor + y1, z }, r, opts);
+  for (const side of [-1, 1]) {
+    rod(side * O.legs.x, O.legs.bottom, side * O.legs.x, O.legs.top, O.legs.radius);
+    rod(side * O.arms.x, O.shoulders.y, side * O.arms.hand[0], O.arms.hand[1], O.arms.radius);
+  }
+  rod(0, O.torso.bottom, 0, O.torso.top, O.torso.radius);
+  rod(-O.shoulders.halfWidth, O.shoulders.y, O.shoulders.halfWidth, O.shoulders.y, O.shoulders.radius);
+  rod(0, O.torso.top, 0, O.neck.top, O.neck.radius);
+  rod(0, O.head.bottom, 0, O.head.top, O.head.radius);
 }
 
 // ---------------------------------------------------------------------------

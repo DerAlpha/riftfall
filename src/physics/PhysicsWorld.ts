@@ -165,12 +165,22 @@ export class PhysicsWorld implements PhysicsApi {
       e.prevRot.copy(e.currRot);
       e.body.translation(e.currPos);
       e.body.rotation(e.currRot);
-      if (e.currPos.y < killY) this.resetToSpawn(e);
+      if (e.currPos.y < killY) {
+        log.debug(`dynamic body ${e.body.handle} fell below kill plane, resetting`);
+        this.resetToSpawn(e);
+      }
     }
   }
 
+  /**
+   * Every dynamic body back to its spawn pose, at rest (a new run: props pushed around by the last
+   * one). The visuals follow on the next syncVisuals, also while paused.
+   */
+  resetDynamicBodies(): void {
+    for (let i = 0; i < this.dynamics.length; i++) this.resetToSpawn(this.dynamics[i]!);
+  }
+
   private resetToSpawn(e: DynamicEntry): void {
-    log.debug(`dynamic body ${e.body.handle} fell below kill plane, resetting`);
     e.body.setTranslation(e.spawnPos, true);
     e.body.setRotation(e.spawnRot, true);
     e.body.setLinvel(ZERO, true);
@@ -179,6 +189,7 @@ export class PhysicsWorld implements PhysicsApi {
     e.prevPos.copy(e.spawnPos);
     e.currRot.copy(e.spawnRot);
     e.prevRot.copy(e.spawnRot);
+    e.restSynced = false;
   }
 
   /**

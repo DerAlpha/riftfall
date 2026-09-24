@@ -166,7 +166,7 @@ export class WeaponSpecials implements SpecialsHook {
         if (!hit.primary || via === 'arc' || !this.status || !hit.target.alive) return;
         if (!this.roll(s.chance)) return;
         this.stats.procs++;
-        this.status.applyElement(hit.target, s.element, s.amount, hit.source);
+        this.status.applyElement(hit.target, s.element, s.amount, hit.source, hit.weaponId);
         return;
       }
       case 'lifesteal': {

@@ -110,6 +110,33 @@ describe('PhysicsWorld', () => {
     p.dispose();
   });
 
+  it('resetDynamicBodies puts pushed props back at their spawn pose (new run), visuals too', async () => {
+    const p = await PhysicsWorld.create();
+    p.addStaticBox({ x: 0, y: -0.5, z: 0 }, { x: 20, y: 0.5, z: 20 });
+    const rot = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.4);
+    const obj = new Object3D();
+    const body = p.addDynamicBox({ x: 2, y: 0.5, z: 1 }, { x: 0.5, y: 0.5, z: 0.5 }, obj, { rotation: rot });
+    // A shot / blast shoves it across the floor; let it come to rest (the visual is then skipped).
+    body.applyImpulse({ x: body.mass() * 6, y: body.mass() * 3, z: 0 }, true);
+    for (let i = 0; i < 600 && !body.isSleeping(); i++) p.step(DT);
+    for (let i = 0; i < 3; i++) p.syncVisuals(1);
+    expect(body.translation().x).toBeGreaterThan(3);
+    expect(obj.position.x).toBeCloseTo(body.translation().x, 4);
+
+    // Behind the menus: no step runs, the frame still syncs the visuals.
+    p.resetDynamicBodies();
+    p.syncVisuals(0.5);
+    expect(body.translation()).toMatchObject({ x: 2, y: 0.5, z: 1 });
+    expect(body.linvel().x).toBeCloseTo(0, 6);
+    expect(obj.position.x).toBeCloseTo(2, 5);
+    expect(obj.position.y).toBeCloseTo(0.5, 5);
+    expect(obj.quaternion.angleTo(rot)).toBeLessThan(1e-3);
+    p.step(DT);
+    p.syncVisuals(1);
+    expect(obj.position.x).toBeCloseTo(2, 3);
+    p.dispose();
+  });
+
   it('flushes queries with zero-length steps without moving kinematic bodies', async () => {
     const p = await PhysicsWorld.create();
     const body = p.world.createRigidBody(

@@ -35,6 +35,7 @@ uniform float uViewportHeight;
 uniform float uMinPx;
 uniform float uDepthPull;
 uniform float uMinDepth;
+uniform float uMaxAngular;
 varying vec2 vUv;
 varying float vLen;
 varying vec4 vColor;
@@ -43,9 +44,10 @@ ${HEIGHT_FOG_GLSL}
 ${PIXEL_GLSL}
 void main() {
   vec3 center = iPos.xyz;
-  float size = iPos.w;
   vec4 mv = viewMatrix * vec4(center, 1.0);
   float depth = -mv.z;
+  // Right at the eye (a bolt leaving the muzzle) a halo must not swallow the screen.
+  float size = min(iPos.w, max(depth, 0.0) * uMaxAngular);
   float minSize = uMinPx * metersPerPixel(depth, uViewportHeight);
   float energy = 1.0;
   if (size < minSize) {
@@ -254,6 +256,7 @@ export class GlowSprites {
         // Dark discs sit exactly at their core depth (they write it); glows are pulled forward.
         uDepthPull: { value: dark ? 0 : g.depthPull },
         uMinDepth: { value: g.depthPullMinDistance },
+        uMaxAngular: { value: g.maxAngularSize },
         fogParams: HEIGHT_FOG_PARAMS,
       },
       transparent: true,

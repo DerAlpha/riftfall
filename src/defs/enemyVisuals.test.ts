@@ -20,7 +20,8 @@ describe('enemy visual defs', () => {
       const weightSum = fillers.reduce((sum, t) => sum + t.weight.max, 0);
       for (const t of fillers) {
         // Swarm waves spawn their types only: every living enemy may be one of them.
-        const share = mode.swarm?.types.includes(t.id) ? 1 : maxWeight(t.id) / weightSum;
+        const swarm: readonly string[] = mode.swarm?.types ?? [];
+        const share = swarm.includes(t.id) ? 1 : maxWeight(t.id) / weightSum;
         const def = getEnemyVisualDef(t.id)!;
         expect(def.capacity, `${mode.id}: ${t.id}`).toBeGreaterThanOrEqual(headroom(Math.ceil(alive * share)));
       }

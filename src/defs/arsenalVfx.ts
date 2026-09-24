@@ -800,6 +800,8 @@ export const ARSENAL_VFX = {
     /** Pulled towards the camera by size × depthPull (not cut by the wall behind them). */
     depthPull: 0.5,
     depthPullMinDistance: 0.1,
+    /** Largest a sprite may look from the eye (quad edge / depth): shots leaving the muzzle. */
+    maxAngularSize: 0.35,
     /** Dark discs composite over lit smoke (5) and below the level's light cones (10). */
     darkRenderOrder: 8,
     renderOrder: 24,

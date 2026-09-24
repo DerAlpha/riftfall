@@ -1162,9 +1162,20 @@ export const LAB_LAYOUT = {
       glowHeight: 0.05,
       /** Glow ring radius beyond the pod glass (m). */
       glowExtra: 0.05,
-      /** Frozen occupant silhouette. */
-      bodyRadius: 0.26,
-      bodyHeight: 1.75,
+      /**
+       * Frozen occupant: a human silhouette behind the frost (limbs as rods; y above the pod's
+       * inner floor, x across the pod, m). Arms hang from the shoulder line to the hands.
+       */
+      occupant: {
+        material: 'rubber' as LabMaterialId,
+        segments: 8,
+        legs: { x: 0.09, bottom: 0, top: 0.82, radius: 0.075 },
+        torso: { bottom: 0.76, top: 1.34, radius: 0.16 },
+        shoulders: { y: 1.3, halfWidth: 0.22, radius: 0.07 },
+        arms: { x: 0.24, hand: [0.2, 0.74] as Vec2Tuple, radius: 0.05 },
+        neck: { top: 1.46, radius: 0.05 },
+        head: { bottom: 1.44, top: 1.66, radius: 0.1 },
+      },
       pipeRadius: 0.06,
     },
   },

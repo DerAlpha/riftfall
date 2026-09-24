@@ -16,6 +16,7 @@ import { Box3, Matrix3, Mesh, Raycaster, Vector3, type Intersection, type Object
 import type RAPIER from '@dimforge/rapier3d-compat';
 import type {
   CombatHit,
+  CombatStatusHook,
   DamageInfo,
   DamageResult,
   Damageable,
@@ -67,6 +68,19 @@ export class CombatWorld implements WeaponCombatApi {
 
   private readonly events: EventBus<GameEvents>;
   private readonly physics: PhysicsApi | null;
+  /** M5 elements (StatusEffectSystem): void-mark damage scale, build-up after each hit. */
+  private status: CombatStatusHook | null = null;
+  /** The caller's DamageInfo with a status-scaled amount (the caller's object stays untouched). */
+  private readonly scaled: DamageInfo = {
+    amount: 0,
+    zone: 'body',
+    point: { x: 0, y: 0, z: 0 },
+    direction: { x: 0, y: 0, z: 0 },
+    weaponId: '',
+    element: 'physical',
+    source: 'player',
+    kind: 'bullet',
+  };
   private readonly statics: StaticEntry[] = [];
   private readonly _targets: Damageable[] = [];
   private readonly raycaster = new Raycaster();
@@ -310,9 +324,16 @@ export class CombatWorld implements WeaponCombatApi {
     return out;
   }
 
+  /** M5 elements: the status system scales damage taken and turns applied damage into build-up. */
+  setStatus(hook: CombatStatusHook | null): void {
+    this.status = hook;
+  }
+
   dealDamage(target: Damageable, info: DamageInfo): DamageResult {
     if (!target.alive || !(info.amount >= 0)) return NO_DAMAGE;
-    const res = target.applyDamage(info);
+    const status = this.status;
+    const mult = status ? status.damageTakenMultiplier(target.id) : 1;
+    const res = target.applyDamage(mult !== 1 && mult >= 0 ? this.scale(info, mult) : info);
     const p = this.damagePayload;
     p.targetId = target.id;
     p.amount = res.applied;
@@ -333,6 +354,7 @@ export class CombatWorld implements WeaponCombatApi {
       k.source = info.source;
       this.events.emit('combat:kill', k);
     }
+    status?.onDamaged(target, info, res.applied, res.killed);
     return res;
   }
 
@@ -358,6 +380,21 @@ export class CombatWorld implements WeaponCombatApi {
     this.lastPropCollider = null;
     this.stats.targets = 0;
     this.stats.staticMeshes = 0;
+  }
+
+  private scale(info: DamageInfo, mult: number): DamageInfo {
+    const s = this.scaled;
+    s.amount = info.amount * mult;
+    s.zone = info.zone;
+    copyVec(info.point, s.point);
+    copyVec(info.direction, s.direction);
+    s.weaponId = info.weaponId;
+    s.element = info.element;
+    s.source = info.source;
+    s.kind = info.kind;
+    s.impulse = info.impulse;
+    s.statusBuildup = info.statusBuildup;
+    return s;
   }
 
   /** Nearest static-mesh hit within maxDistance → distance (fills staticPoint/Normal/Entry) or -1. */

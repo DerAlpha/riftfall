@@ -210,6 +210,14 @@ export class Enemy implements Damageable {
   leashTime = 0;
   leashCheckAt = 0;
 
+  // --- M5 statuses / fields (EnemyManager.readStatus, statusPose) ---
+  /** Movement and attack speed factor of this tick (chill stacks, slow fields); 1 = normal. */
+  statusSpeed = 1;
+  /** Frozen or stunned this tick: no AI, no attack, the body holds still. */
+  halted = false;
+  /** The pose rim shows a status tint (the elite rim comes back after it). */
+  statusRim = false;
+
   // --- death bookkeeping ---
   deathPending = false;
   lastWeaponId: string | null = null;

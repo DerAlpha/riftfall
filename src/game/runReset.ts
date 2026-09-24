@@ -3,16 +3,18 @@
  * system back to its start state – nothing of the previous run survives (Game.resetRunSystems).
  *
  * The order is binding:
- * 1. enemies (no AI tick, breach or blow reaches into the reset), the wave director, VFX, the
- *    arsenal (M5: projectiles, fields, arc flashes – no detonation or collapse);
+ * 1. enemies (no AI tick, breach or blow reaches into the reset), status effects (M5: no death
+ *    cloud of a cleared body), the wave director, VFX, the arsenal (M5: projectiles, fields, arc
+ *    flashes – no detonation or collapse);
  * 2. timed power-ups before the perks before the stat table: each removes its own stat sources
  *    (the power-ups also end their enemy effects: Zeitdehnung's time scale, Instakill), then the
  *    table drops whatever is left – health resets after it (start health at the base max health,
  *    no perk bonus, revives unused; the economy audio stays silent after a death until that
  *    health reset, so the cleared perks and power-ups play no loss / expiry sounds);
  * 3. economy (announces the start balance), points rules (repair cap, console-spawn flags);
- * 4. player at the spawn, looking level; zones before the interactables (closed doors re-block
- *    their navmesh areas), the interaction focus after them, seals intact;
+ * 4. player at the spawn, looking level, the level's props (dynamic crates) at their spawn poses;
+ *    zones before the interactables (closed doors re-block their navmesh areas), the interaction
+ *    focus after them, seals intact;
  * 5. per-run seeds (navmesh samples, Rift-Kiste, power-up drops), loadout after the stat table
  *    (magazine sizes), the HUD after the economy announced its balance, the audio bridge;
  * 6. the wave director starts last: its intermission shows on the fresh HUD.
@@ -28,6 +30,8 @@ export interface RunResetSystems {
   vfx: { clear(): void };
   /** M5 fire kinds (weapons/fire Arsenal); optional for tools and tests. */
   arsenal?: { clear(): void } | null;
+  /** M5 status effects (combat/status); optional for tools and tests. */
+  status?: { reset(): void } | null;
   powerUps: { clear(): void; reseed(seed: string | number): void };
   perks: { clear(): void };
   stats: { reset(): void };
@@ -35,6 +39,8 @@ export interface RunResetSystems {
   pointsRules: { reset(): void };
   health: { reset(): void };
   player: Pick<PlayerApi, 'teleport' | 'pitch'>;
+  /** Props pushed around by the last run (dynamic crates) back to their spawn poses. */
+  physics?: { resetDynamicBodies(): void } | null;
   level: Pick<LevelInstance, 'id' | 'spawn'>;
   map: { readonly waves: boolean };
   nav: { setRandomSeed(seed: string | number): void };
@@ -61,6 +67,7 @@ export interface RunResetOptions {
 
 export function resetRunSystems(s: RunResetSystems, opts: RunResetOptions): void {
   s.enemies.clear();
+  s.status?.reset();
   s.waves.reset();
   s.vfx.clear();
   s.arsenal?.clear();
@@ -76,6 +83,7 @@ export function resetRunSystems(s: RunResetSystems, opts: RunResetOptions): void
   s.health.reset();
   s.player.teleport(s.level.spawn.position, s.level.spawn.yaw);
   s.player.pitch = 0;
+  s.physics?.resetDynamicBodies();
   s.zones.reset();
   s.interactables.reset(`box:${opts.seed}`);
   s.interaction.reset();

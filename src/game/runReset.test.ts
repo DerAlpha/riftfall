@@ -98,6 +98,7 @@ function setup() {
       },
       teleport: (p: Vec3Like, yaw?: number) => view.teleports.push([p.x, p.y, p.z, yaw ?? NaN]),
     },
+    physics: { resetDynamicBodies: () => calls.push('props') },
     level: { id: 'lab', spawn: SPAWN },
     map: { waves: true },
     nav: { setRandomSeed: (seed) => calls.push(`nav ${seed}`) },
@@ -230,6 +231,8 @@ describe('resetRunSystems', () => {
     const loadout = getLoadout('lab');
     expect(s.calls).toEqual([
       'vfx',
+      // The props pushed around by the last run (dynamic crates) are back at their spawn poses.
+      'props',
       'interactables box:run:lab:7:123',
       'nav run:lab:7:123',
       `loadout ${loadout.weapons.join(',')} ${loadout.slots}`,

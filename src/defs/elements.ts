@@ -83,8 +83,11 @@ export const ELEMENTS = {
     duration: 4,
     /** × the target's toughness (healthScale). */
     dps: 12,
-    /** Fire build-up handed to up to `maxTargets` neighbours within `radius` every `interval`. */
-    spread: { interval: 0.8, radius: 2.2, amount: 22, maxTargets: 3 },
+    /**
+     * Fire build-up handed to up to `maxTargets` neighbours within `radius` every `interval`: a
+     * neighbour pressed against a body for its whole burn catches fire.
+     */
+    spread: { interval: 0.8, radius: 2.2, amount: 26, maxTargets: 3 },
   },
   chill: {
     /** Stacks 1..maxStacks slow; a trigger at maxStacks freezes. */

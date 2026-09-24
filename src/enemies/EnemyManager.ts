@@ -23,6 +23,13 @@
  *   behind the seal, and after emerging tear it down ('breach' state, ai/breach.ts) before the brain
  *   takes over. killAll (nuke) skips bosses.
  *
+ * M5 hooks (elements, fields – setStatus / setFields):
+ * - statuses: chill and slow fields scale movement AND attack phases (Enemy.statusSpeed); frozen /
+ *   stunned enemies halt (attack lost, no AI, head still); the pose rim shows the status tint and
+ *   shocked bodies twitch.
+ * - pull fields (singularities): a caught body drifts with the pull like a knockback (walkable and
+ *   wall checked), its agent parked until the field lets go.
+ *
  * Budgets keep 60 enemies inside ~2.5 ms/tick: LOS rays, nav path queries (surround slots), spot
  * rays (spitter search) are rationed per tick and handed out first come first served (the think
  * order rotates every tick; per-kind attack-spacing slots go to the longest waiter), everything
@@ -38,10 +45,12 @@ import type {
   EnemyManagerApi,
   EnemySpawnOptions,
   EnemyTargetApi,
+  FieldApi,
   NavAgentParams,
   NavApi,
   PhysicsApi,
   SpawnPointDef,
+  StatusEffectsApi,
   VfxApi,
 } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
@@ -58,6 +67,7 @@ import {
   type EnemyAttackKind,
   type EnemyTypeDef,
 } from '../defs/enemies';
+import { ELEMENTS } from '../defs/elements';
 import { attackAnimIndex, getEnemyVisualDef } from '../defs/enemyVisuals';
 import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { ProjectileSystem } from '../combat/Projectiles';
@@ -111,6 +121,11 @@ const PLAYER_AGENT_PARAMS: NavAgentParams = {
 const ATTACK_KINDS = Object.keys(ENEMY_AI.attackSpacing) as EnemyAttackKind[];
 /** Enemy blocker bodies: ENEMY members that only touch the player. */
 const BLOCKER_GROUPS = interactionGroups(COLLISION_GROUP.ENEMY, COLLISION_GROUP.PLAYER);
+
+/** M5 statuses as the enemies read them every tick (combat/status StatusEffectSystem). */
+export type EnemyStatusApi = Pick<StatusEffectsApi, 'speedMultiplier' | 'incapacitated' | 'rimFor' | 'has'>;
+/** M5 lingering fields applied to enemy movement (combat/FieldSystem). */
+export type EnemyFieldApi = Pick<FieldApi, 'pullAt' | 'slowAt'>;
 
 export interface EnemyManagerDeps {
   events: EventBus<GameEvents>;
@@ -192,6 +207,8 @@ const _probe = new Vector3();
 const _prev = new Vector3();
 const _kin = { x: 0, y: 0, z: 0 };
 const _dir = { x: 0, y: 0, z: 0 };
+const _pull = new Vector3();
+const _rim = { color: 0, strength: 0 };
 
 export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   readonly stats: EnemyManagerStats;
@@ -245,6 +262,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   private readonly playerAgentAt = new Vector3(Number.NaN, 0, 0);
   private suppressBursts = false;
   private breachApi: EnemyBreachApi | null;
+  private status: EnemyStatusApi | null = null;
+  private fields: EnemyFieldApi | null = null;
   private _timeScale = 1;
   private readonly warned = new Set<string>();
   private readonly unsubscribe: (() => void)[] = [];
@@ -423,6 +442,16 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
 
   get breach(): EnemyBreachApi | null {
     return this.breachApi;
+  }
+
+  /** M5 status effects (slow, halt, rim tint); null = none. */
+  setStatus(api: EnemyStatusApi | null): void {
+    this.status = api;
+  }
+
+  /** M5 lingering fields (pull, slow) acting on enemy movement; null = none. */
+  setFields(api: EnemyFieldApi | null): void {
+    this.fields = api;
   }
 
   /** Spawn points for relocating leashed enemies (the wave director passes the map's). */
@@ -713,7 +742,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   moveTo(e: Enemy, point: Vector3, speed: number): void {
     e.moveTarget.copy(point);
     e.hasMove = true;
-    e.moveSpeed = speed * e.speedMult;
+    e.moveSpeed = speed * e.speedMult * e.statusSpeed;
   }
 
   stopMoving(e: Enemy): void {
@@ -952,6 +981,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.flinch = Math.max(0, e.flinch - PP.flinchDecay * dt);
     e.staggerAccum = Math.max(0, e.staggerAccum - e.def.stagger.decayPerSecond * dt);
     e.faceTarget = false;
+    this.readStatus(e, rt);
 
     switch (e.state) {
       case 'emerge': {
@@ -960,6 +990,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
         return;
       }
       case 'breach': {
+        // Frozen / stunned at the seal: the tearing waits.
+        if (e.halted) return;
         const S = e.def.stagger;
         if (e.staggerAccum >= S.threshold && this._time >= e.staggerImmuneUntil) {
           // Back to the seal after the stagger (setActive re-enters the breach).
@@ -973,6 +1005,10 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       }
       case 'active':
       case 'attack': {
+        if (e.halted) {
+          e.hasMove = false;
+          return;
+        }
         const S = e.def.stagger;
         if (
           e.staggerAccum >= S.threshold &&
@@ -984,7 +1020,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
         }
         const target = this.target(e);
         if (e.state === 'attack') {
-          if (updateAttack(e, this, target, dt)) {
+          // Chill / slow fields stretch the attack phases too.
+          if (updateAttack(e, this, target, dt * e.statusSpeed)) {
             if (e.state === 'attack') this.setActive(e, rt);
           } else if (e.state === 'attack') {
             const a = e.def.attacks[e.attackIndex]!;
@@ -1028,6 +1065,40 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       case 'free':
         return;
     }
+  }
+
+  /** M5: this tick's status speed (chill, slow fields) and halt (frozen, stunned). */
+  private readStatus(e: Enemy, rt: TypeRuntime): void {
+    const st = this.status;
+    let speed = 1;
+    let halted = false;
+    if (e.alive) {
+      if (st) {
+        speed = st.speedMultiplier(e.id);
+        halted = st.incapacitated(e.id);
+      }
+      if (this.fields) speed *= this.fields.slowAt(e.position);
+    }
+    e.statusSpeed = Number.isFinite(speed) ? Math.max(0, speed) : 1;
+    if (halted && !e.halted) {
+      if (e.state === 'attack') {
+        // Frozen mid-swing: the attack is lost (token back), the body keeps the pose it froze in.
+        const anim = e.pose.attackId;
+        const progress = e.pose.attack;
+        cancelAttack(e, this);
+        this.coordinator(e).release(e.id, this._time);
+        e.state = 'active';
+        e.stateTime = 0;
+        e.pose.attackId = anim;
+        e.pose.attack = progress;
+      }
+      e.hasMove = false;
+    } else if (!halted && e.halted && e.state === 'active') {
+      e.pose.attackId = -1;
+      e.pose.attack = 0;
+      rt.brain.resume(e, this);
+    }
+    e.halted = halted;
   }
 
   private setActive(e: Enemy, rt: TypeRuntime): void {
@@ -1206,7 +1277,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     const K = ENEMY_AI.knockback;
     // Starting needs a real shove; a running knockback continues down to minSpeed.
     const keep = e.override === 'knockback' ? K.minSpeed : K.startSpeed;
-    const hasKnock = e.knock.x * e.knock.x + e.knock.z * e.knock.z >= keep * keep;
+    const pulled = this.applyPull(e);
+    const hasKnock = pulled || e.knock.x * e.knock.x + e.knock.z * e.knock.z >= keep * keep;
     if (hasKnock && e.override === 'none') {
       e.override = 'knockback';
       if (e.agent >= 0 && !e.agentStopped) {
@@ -1248,7 +1320,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
         }
         e.velocity.copy(e.knock);
         e.knock.multiplyScalar(Math.exp(-K.friction * dt));
-        if (e.knock.x * e.knock.x + e.knock.z * e.knock.z < K.minSpeed * K.minSpeed) {
+        if (!pulled && e.knock.x * e.knock.x + e.knock.z * e.knock.z < K.minSpeed * K.minSpeed) {
           e.knock.set(0, 0, 0);
           this.endOverride(e);
         }
@@ -1268,6 +1340,25 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     this.updatePose(e, target, dt);
     this.syncVisual(e);
     this.syncBlocker(e);
+  }
+
+  /**
+   * M5 pull fields (singularities): a caught body drifts with the pull like a knockback (the
+   * stronger of the two wins; knockback resistance counts partly). True while caught.
+   */
+  private applyPull(e: Enemy): boolean {
+    const f = this.fields;
+    if (!f || !e.alive || e.state === 'emerge' || e.state === 'breach') return false;
+    if (e.override === 'leap' || e.override === 'charge' || e.override === 'hold') return false;
+    if (!f.pullAt(e.boundsCenter, _pull)) return false;
+    const res = Math.min(1, Math.max(0, e.def.knockbackResistance)) * ELEMENTS.pull.resistanceWeight;
+    const px = _pull.x * (1 - res);
+    const pz = _pull.z * (1 - res);
+    if (px * px + pz * pz >= e.knock.x * e.knock.x + e.knock.z * e.knock.z) {
+      e.knock.x = px;
+      e.knock.z = pz;
+    }
+    return true;
   }
 
   /**
@@ -1402,7 +1493,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   }
 
   private updateFacingOf(e: Enemy, target: EnemyTargetApi | null, dt: number): void {
-    if (e.state !== 'active' || e.override !== 'none') return;
+    if (e.state !== 'active' || e.override !== 'none' || e.halted) return;
     const M = ENEMY_AI.movement;
     const speed = Math.hypot(e.velocity.x, e.velocity.z);
     let want = e.yaw;
@@ -1439,7 +1530,9 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       pose.stagger = e.alive ? e.flinch : 0;
     }
 
-    if (target && e.alive && e.state !== 'emerge') {
+    if (e.halted) {
+      // Frozen / stunned: the head holds still.
+    } else if (target && e.alive && e.state !== 'emerge') {
       const want = yawTo(target.eyePosition.x - e.position.x, target.eyePosition.z - e.position.z);
       pose.lookYaw = wrapPi(want - e.yaw);
       const headY = e.position.y + e.def.perception.eyeHeight * pose.scale;
@@ -1450,6 +1543,28 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     } else {
       pose.lookYaw = 0;
       pose.lookPitch = 0;
+    }
+    this.statusPose(e);
+  }
+
+  /** M5 status looks: the rim takes the status tint (the elite rim returns after), shock twitches. */
+  private statusPose(e: Enemy): void {
+    const st = this.status;
+    const pose = e.pose;
+    if (st && e.alive && st.rimFor(e.id, _rim)) {
+      const c = _rim.color;
+      pose.rimColor.setRGB(((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255);
+      pose.rim = _rim.strength;
+      e.statusRim = true;
+      if (st.has(e.id, 'shocked') && !st.has(e.id, 'frozen')) {
+        const T = ELEMENTS.twitch;
+        pose.stagger = Math.max(pose.stagger, T.amplitude * Math.abs(Math.sin(this._time * T.rate + e.serial)));
+      }
+    } else if (e.statusRim) {
+      const E = ENEMY_AI.elite;
+      pose.rimColor.setRGB(E.rimColor[0], E.rimColor[1], E.rimColor[2]);
+      pose.rim = e.elite ? E.rim : 0;
+      e.statusRim = false;
     }
   }
 
@@ -1501,7 +1616,11 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     pose.lookYaw = 0;
     pose.lookPitch = 0;
     pose.rim = e.elite ? E.rim : 0;
+    pose.rimColor.setRGB(E.rimColor[0], E.rimColor[1], E.rimColor[2]);
     pose.scale = e.elite ? E.scale : 1;
+    e.statusSpeed = 1;
+    e.halted = false;
+    e.statusRim = false;
 
     e.aware = ENEMY_AI.perception.awareOnSpawn;
     e.alerted = false;

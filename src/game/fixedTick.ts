@@ -9,7 +9,9 @@
  *    move their hitboxes a further tick ahead ((2 − alpha) ticks – several cm on a moving target).
  * 3. targets (M3: enemies after them): move, refresh hitboxes, react to this tick's damage.
  *    M5: arsenal projectiles, then lingering fields – they collide with / tick on this tick's
- *    hitboxes (after the enemies moved) and blasts push props before physics.step.
+ *    hitboxes (after the enemies moved) and blasts push props before physics.step; then status
+ *    effects resolve this tick's build-up (statuses, combos, damage over time) – enemies read
+ *    them on their next tick.
  * 4. interactables (door leaves, box), power-up pickups; kill plane, then physics.step: kinematic
  *    bodies land where their owners moved them this tick, props react to pushes and bullet impulses.
  * 5. health, perk hooks (cooldowns, buff decay), level, run flow.
@@ -38,6 +40,8 @@ export interface FixedTickSystems {
   projectiles?: TickStep | null;
   /** M5: lingering fields (combat/FieldSystem) – after the projectiles that leave them. */
   fields?: TickStep | null;
+  /** M5: status effects (combat/status) – after every damage source of the tick. */
+  status?: TickStep | null;
   /** M3: run flow (survival time). */
   runFlow: TickStep | null;
   /** M4: interaction focus/hold (after the player moved, before the weapons). */
@@ -63,6 +67,7 @@ export function runFixedTick(s: FixedTickSystems, dt: number): void {
   enemies?.fixedUpdate(dt);
   s.projectiles?.fixedUpdate(dt);
   s.fields?.fixedUpdate(dt);
+  s.status?.fixedUpdate(dt);
   s.interactables?.fixedUpdate(dt);
   s.powerUps?.fixedUpdate(dt);
   if (!player.noclip && player.position.y < PHYSICS.killPlaneY) {

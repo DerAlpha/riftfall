@@ -30,10 +30,14 @@ if (!useDev && !existsSync('dist/index.html')) {
   process.exit(2);
 }
 
-const server = spawn('npx', ['vite', useDev ? 'dev' : 'preview', '--port', String(port), '--strictPort'], {
-  stdio: ['ignore', 'pipe', 'pipe'],
-  env: { ...process.env, BROWSER: 'none' },
-});
+const server = spawn(
+  process.execPath,
+  ['node_modules/vite/bin/vite.js', useDev ? 'dev' : 'preview', '--port', String(port), '--strictPort'],
+  {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, BROWSER: 'none' },
+  },
+);
 let serverLog = '';
 server.stdout.on('data', (d) => (serverLog += d));
 server.stderr.on('data', (d) => (serverLog += d));

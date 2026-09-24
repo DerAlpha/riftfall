@@ -32,7 +32,11 @@ const spots = JSON.parse(argVal('--spots', JSON.stringify(DEFAULT_SPOTS)));
 const port = 4299;
 mkdirSync('smoke-output', { recursive: true });
 
-const server = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { stdio: 'ignore' });
+const server = spawn(
+  process.execPath,
+  ['node_modules/vite/bin/vite.js', 'preview', '--port', String(port), '--strictPort'],
+  { stdio: 'ignore' },
+);
 const base = `http://localhost:${port}/`;
 for (let i = 0; i < 100; i++) {
   try {

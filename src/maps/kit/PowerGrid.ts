@@ -55,7 +55,7 @@ export class ScaledValues {
   add(get: NumberGetter, set: NumberSetter): void {
     const i = this.get.length;
     if (i >= this.base.length) {
-      const grow = (a: Float64Array): Float64Array => {
+      const grow = (a: Float64Array<ArrayBuffer>): Float64Array<ArrayBuffer> => {
         const b = new Float64Array(a.length * 2);
         b.set(a);
         return b;

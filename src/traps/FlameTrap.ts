@@ -92,7 +92,7 @@ export class FlameTrap extends Trap {
     this.phase = 'off';
   }
 
-  protected onReset(): void {
+  protected override onReset(): void {
     this.burst = 0;
   }
 

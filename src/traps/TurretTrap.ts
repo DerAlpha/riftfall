@@ -189,7 +189,7 @@ export class TurretTrap extends Trap {
     this.target = null;
   }
 
-  protected onReset(): void {
+  protected override onReset(): void {
     this.yaw = this.restYaw;
     this.pitch = this.restPitch;
     this.recoil = 0;

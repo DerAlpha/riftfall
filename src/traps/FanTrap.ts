@@ -140,7 +140,7 @@ export class FanTrap extends Trap {
 
   protected onDeactivate(): void {}
 
-  protected onReset(): void {
+  protected override onReset(): void {
     this.spin = 0;
   }
 

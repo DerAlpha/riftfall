@@ -1017,3 +1017,29 @@ export interface AbilityApi {
   fixedUpdate(dt: number): void;
   reset(): void;
 }
+
+/**
+ * Visuals of the M5 arsenal, implemented by the VFX side (pooled, preallocated at max quality like
+ * every VFX pool): projectiles with trails, beams with chain arcs, lingering fields. The simulation
+ * (ProjectileApi, beam weapons, FieldApi) calls these; unknown presets draw a default style.
+ */
+export interface ArsenalVfxApi {
+  /** Start drawing a projectile; returns a handle (0 = pool exhausted: draw nothing). */
+  projectileStart(visual: string, trail: string | null, position: Vec3Like, velocity: Vec3Like): number;
+  /** Per frame: interpolated position and velocity (orientation, trail emission). */
+  projectileMove(handle: number, position: Vec3Like, velocity: Vec3Like): void;
+  /** Stop drawing (the trail fades out on its own). */
+  projectileEnd(handle: number): void;
+  /**
+   * Per frame while a beam fires: `from` (the muzzle as shown) → `to`; `arcs` holds `arcCount`
+   * chain segments as consecutive point pairs (reused array). Beams not refreshed in a frame vanish.
+   */
+  beam(visual: string, from: Vec3Like, to: Vec3Like, arcs: readonly Vec3Like[], arcCount: number): void;
+  /** A lingering field's visual (singularity lensing, fire pool, poison cloud, frost). */
+  fieldStart(visual: string, position: Vec3Like, radius: number, duration: number): number;
+  fieldEnd(handle: number): void;
+  /** Charge glow at the muzzle (0..1, per frame while charging; 0 hides it). */
+  charge(visual: string, amount: number): void;
+  update(dt: number): void;
+  clear(): void;
+}

@@ -240,10 +240,14 @@ describe('BannerQueue', () => {
   });
 
   it('merges zone banners of one door and drops the oldest waiting one when full', () => {
-    const q = new BannerQueue(2, 1, 0.25);
+    const q = new BannerQueue(2, 1, 0.25, 2);
     q.push(banner('zone', 'Atrium'));
     expect(q.push(banner('zone', 'Laborflügel'))).toBe('merged');
     expect(q.current?.title).toBe('Atrium · Laborflügel');
+    // At most two names per banner: the third zone waits for its own.
+    expect(q.push(banner('zone', 'Serverraum'))).toBe('queued');
+    q.clear();
+    q.push(banner('zone', 'Atrium'));
     q.push(banner('perk', '1'));
     q.push(banner('perk', '2'));
     q.push(banner('perk', '3'));

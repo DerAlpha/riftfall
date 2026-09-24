@@ -322,10 +322,13 @@ export interface EconomyBanner {
   seconds: number;
 }
 
+const MERGE_SEP = ' · ';
+
 /**
  * One banner at a time; later ones wait (at most `capacity`, the oldest waiting one is dropped).
  * While others wait the current one ends after `minSeconds`. Zone banners arriving within
- * `mergeSeconds` of each other join into one ("A · B").
+ * `mergeSeconds` of each other join into one ("A · B", at most `maxMerged` names – `door all` in
+ * the dev console opens every zone at once).
  */
 export class BannerQueue {
   private _current: EconomyBanner | null = null;
@@ -338,6 +341,7 @@ export class BannerQueue {
     private readonly capacity: number = ECONOMY_HUD.banners.queue,
     private readonly minSeconds: number = ECONOMY_HUD.banners.minSeconds,
     private readonly mergeSeconds: number = ECONOMY_HUD.banners.mergeSeconds,
+    private readonly maxMerged: number = ECONOMY_HUD.banners.maxMerged,
   ) {}
 
   get current(): EconomyBanner | null {
@@ -351,8 +355,9 @@ export class BannerQueue {
   push(b: EconomyBanner): 'shown' | 'queued' | 'merged' {
     const cur = this._current;
     if (b.kind === 'zone') {
-      if (cur && cur.kind === 'zone' && this.age < this.mergeSeconds) {
-        cur.title = `${cur.title} · ${b.title}`;
+      const parts = cur ? cur.title.split(MERGE_SEP).length : 0;
+      if (cur && cur.kind === 'zone' && this.age < this.mergeSeconds && parts < this.maxMerged) {
+        cur.title = `${cur.title}${MERGE_SEP}${b.title}`;
         this.version++;
         return 'merged';
       }

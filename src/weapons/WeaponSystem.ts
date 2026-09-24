@@ -561,12 +561,12 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     return true;
   }
 
-  /** Gameplay stats (perks, cards; see the file header). null = def values. */
   /** M4: a reload press is ignored while `suppress()` is true (pad X buying at an interactable). */
   setReloadSuppressor(suppress: (() => boolean) | null): void {
     this.reloadSuppressed = suppress ?? (() => false);
   }
 
+  /** Gameplay stats (perks, cards; see the file header). null = def values. */
   setStats(stats: StatsApi | null): void {
     this.statSource = stats;
     this.statVersion = -1;

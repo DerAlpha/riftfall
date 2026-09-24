@@ -216,7 +216,7 @@
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 5px 14px 5px 7px;
+  padding: 6px 14px 6px 7px;
   background: linear-gradient(90deg, rgba(4, 10, 14, 0.82), rgba(4, 10, 14, 0.58));
   border-left: 2px solid var(--hud-accent);
   box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.16);
@@ -279,20 +279,24 @@
 .hud-key__label {
   position: relative;
 }
-/* Hold interactions: a ring around the cap fills while the button is held. */
+/* Hold interactions: a round cap with a ring that fills while the button is held (the ring fits
+   the row's height – the row's cut corner would clip anything taller). */
 .hud-key__ring {
   position: absolute;
   left: 50%;
   top: 50%;
   display: none;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   translate: -50% -50%;
   rotate: -90deg;
   overflow: visible;
 }
 .hud-key.is-hold {
+  width: 26px;
   margin: 0 5px;
+  padding: 0;
+  border-radius: 50%;
 }
 .hud-key.is-hold .hud-key__ring {
   display: block;
@@ -431,7 +435,6 @@
 /* --- banners (the wave banner's slot; below it while a wave banner shows) --- */
 .hud-ebanner {
   --eb: var(--rf-cyan);
-  --eb-dur: 2.5s;
   position: absolute;
   left: 50%;
   top: 27%;
@@ -448,11 +451,15 @@
 .hud-banner:not([hidden]) ~ .hud-ebanner {
   top: calc(27% + 126px);
 }
+/* Entry pop and exit fade only: how long a banner stays is game time (EconomyBanners). */
 .hud-ebanner.is-in-a {
-  animation: rf-eco-banner-a var(--eb-dur) ease-out both;
+  animation: rf-eco-banner-a 0.32s ease-out both;
 }
 .hud-ebanner.is-in-b {
-  animation: rf-eco-banner-b var(--eb-dur) ease-out both;
+  animation: rf-eco-banner-b 0.32s ease-out both;
+}
+.hud-ebanner.is-out {
+  animation: rf-eco-banner-out 0.35s ease-in both;
 }
 .hud-ebanner__kicker {
   position: relative;
@@ -572,9 +579,9 @@
   mix-blend-mode: color;
   background: radial-gradient(
     ellipse at center,
-    hsla(210, 26%, 58%, 0.5) 20%,
-    hsla(218, 40%, 50%, 0.78) 72%,
-    hsla(224, 48%, 46%, 0.95) 100%
+    hsla(210, 16%, 56%, 0.3) 25%,
+    hsla(216, 26%, 52%, 0.52) 70%,
+    hsla(222, 36%, 48%, 0.78) 100%
   );
   will-change: opacity;
 }
@@ -593,6 +600,9 @@
 }
 .hud--reduce-flashing .hud-ebanner.is-in-b {
   animation-name: rf-eco-banner-calm-b;
+}
+.hud--reduce-flashing .hud-ebanner.is-out {
+  animation-name: rf-eco-banner-out;
 }
 .hud--reduce-flashing .hud-perk.is-new-a,
 .hud--reduce-flashing .hud-perk.is-new-b {
@@ -800,18 +810,10 @@
     transform: scale(1.22);
     filter: blur(3px) brightness(2);
   }
-  10% {
+  100% {
     opacity: 1;
     transform: scale(1);
     filter: blur(0) brightness(1);
-  }
-  82% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.98);
   }
 }
 @keyframes rf-eco-banner-b {
@@ -820,12 +822,14 @@
     transform: scale(1.22);
     filter: blur(3px) brightness(2);
   }
-  10% {
+  100% {
     opacity: 1;
     transform: scale(1);
     filter: blur(0) brightness(1);
   }
-  82% {
+}
+@keyframes rf-eco-banner-out {
+  0% {
     opacity: 1;
     transform: scale(1);
   }
@@ -838,28 +842,16 @@
   0% {
     opacity: 0;
   }
-  12% {
-    opacity: 1;
-  }
-  85% {
-    opacity: 1;
-  }
   100% {
-    opacity: 0;
+    opacity: 1;
   }
 }
 @keyframes rf-eco-banner-calm-b {
   0% {
     opacity: 0;
   }
-  12% {
-    opacity: 1;
-  }
-  85% {
-    opacity: 1;
-  }
   100% {
-    opacity: 0;
+    opacity: 1;
   }
 }
 @keyframes rf-eco-nuke-a {

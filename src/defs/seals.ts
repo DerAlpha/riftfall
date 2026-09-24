@@ -112,6 +112,11 @@ export const SEALS = {
     warnHz: 1.6,
     /** Reduced flashing: flashes / flicker scaled by this. */
     reducedFlash: 0.3,
+    /**
+     * The lattice fades out within this camera distance (m, from → fully visible): walking through
+     * a seal must not flash the whole screen.
+     */
+    nearFade: [0.15, 0.9] as readonly [number, number],
     pylon: {
       size: 0.16,
       /** Pylon top above the lattice (m) and the base plate. */

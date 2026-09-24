@@ -267,6 +267,10 @@ export const ECONOMY_HUD = {
     minSeconds: 1.1,
     /** Banners of one kind arriving within this time merge (a door opening two zones) (s). */
     mergeSeconds: 0.25,
+    /** At most this many zone names share one banner (the rest wait for the next one). */
+    maxMerged: 2,
+    /** Exit fade (s, matches the CSS `is-out` keyframes); the entry pop is CSS only. */
+    outSeconds: 0.35,
     seconds: { powerUp: 2.4, zone: 3.2, perk: 3, box: 2.6, revive: 3.2 },
     labels: {
       zone: 'BEREICH FREIGESCHALTET',

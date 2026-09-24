@@ -337,6 +337,26 @@ describe('EconomyHud (through Hud)', () => {
       expect(q(banner, '.hud-ebanner__text').textContent).toBe('Laborflügel · Serverraum');
     });
 
+    it('holds a banner for its game time, then fades it out before hiding it', () => {
+      events.emit('perk:acquired', { perkId: 'titan', slot: 0 });
+      const banner = q(root, '.hud-ebanner');
+      hud.update(ECONOMY_HUD.banners.seconds.perk - 0.1, 0);
+      expect(banner.hidden).toBe(false);
+      expect(banner.classList.contains('is-out')).toBe(false);
+      hud.update(0.2, 0);
+      expect(banner.hidden).toBe(false);
+      expect(banner.classList.contains('is-out')).toBe(true);
+      hud.update(ECONOMY_HUD.banners.outSeconds, 0);
+      expect(banner.hidden).toBe(true);
+      // A new banner during the fade replaces it at once.
+      events.emit('perk:acquired', { perkId: 'quickload', slot: 1 });
+      hud.update(ECONOMY_HUD.banners.seconds.perk + 0.01, 0);
+      events.emit('perk:acquired', { perkId: 'nova', slot: 2 });
+      expect(banner.hidden).toBe(false);
+      expect(banner.classList.contains('is-out')).toBe(false);
+      expect(q(banner, '.hud-ebanner__text').textContent).toBe(PERKS.nova.name);
+    });
+
     it('shows box results and the Phoenix revive one after another', () => {
       const weaponId = Object.keys(WEAPONS)[0]!;
       events.emit('box:resolved', { boxId: 'rift_box', weaponId });

@@ -28,6 +28,7 @@ import {
   MeshStandardMaterial,
   PlaneGeometry,
   ShaderMaterial,
+  Vector2,
   type BufferGeometry,
   type Material,
   type Object3D,
@@ -115,6 +116,7 @@ uniform float uDrift;
 uniform float uScan;
 uniform float uWarnHz;
 uniform float uReduced;
+uniform vec2 uNearFade;
 varying vec2 vUv;
 varying float vLen;
 varying float vPart;
@@ -205,6 +207,8 @@ void main() {
     vec3 c = mix(uDamaged * 0.5, uGlow + uCore * 0.15, integrity);
     col = c * uFloor * fall * ends * (0.35 + 0.65 * integrity);
   }
+  // Walking through the lattice: it fades before it fills the screen.
+  col *= smoothstep(uNearFade.x, uNearFade.y, distance(cameraPosition, vWorld));
   gl_FragColor = vec4(col * vFog, 1.0);
 }
 `;
@@ -297,6 +301,7 @@ export class SealView {
         uScan: { value: V.emitter.scanSpeed },
         uWarnHz: { value: V.warnHz },
         uReduced: { value: reduced },
+        uNearFade: { value: new Vector2(V.nearFade[0], V.nearFade[1]) },
         fogParams: HEIGHT_FOG_PARAMS,
       },
       transparent: true,

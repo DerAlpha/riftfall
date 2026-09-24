@@ -12,9 +12,14 @@ import { FakeCamera, FakePlayer, FakeWeaponInput, fakeRenderCamera } from '../we
 import { WeaponSystem } from '../weapons/WeaponSystem';
 import { TARGET_ID_BASE } from '../world/TrainingTargets';
 import { EconomySystem } from './EconomySystem';
-import { PointsRules, isRewardableId, killPoints, type PointsRulesDeps } from './PointsRules';
+import { PointsRules, isRewardableId, killPoints, killReason, type PointsRulesDeps } from './PointsRules';
 
 const P = ECONOMY.points;
+/** Fallback kind (the CoD table): hit 10, kill 60, headshot 100, melee 130. */
+const HIT = P.fallback.hit;
+const KILL = P.fallback.kill;
+const HEAD_KILL = P.fallback.kill + P.fallback.headshotBonus;
+const MELEE_KILL = P.fallback.kill + P.meleeKillBonus;
 const DT = 1 / 60;
 
 function setup(deps: Partial<Pick<PointsRulesDeps, 'rewardOf'>> = {}) {
@@ -67,14 +72,21 @@ function setup(deps: Partial<Pick<PointsRulesDeps, 'rewardOf'>> = {}) {
 }
 
 describe('PointsRules: pure rules', () => {
-  it('kill points: body 60, head/weakpoint 100, melee 130', () => {
+  it('kill points (fallback kind = CoD): body 60, head/weakpoint 100, melee 130', () => {
     expect(killPoints('body', false)).toBe(60);
     expect(killPoints('limb', false)).toBe(60);
     expect(killPoints('head', false)).toBe(100);
     expect(killPoints('weakpoint', false)).toBe(100);
     expect(killPoints('head', true)).toBe(130);
     expect(killPoints(null, false)).toBe(60);
-    expect(P.hit).toBe(10);
+    expect(HIT).toBe(10);
+    expect(killReason('weakpoint', false)).toBe('headshot');
+    expect(killReason('head', true)).toBe('melee');
+    expect(killReason('limb', false)).toBe('kill');
+    // The kinds' own tables (swarmer = the CoD values).
+    expect(getEnemyDef('swarmer')!.points).toMatchObject({ hit: 10, kill: 60, headshotBonus: 40 });
+    const tank = getEnemyDef('tank')!.points;
+    expect(killPoints('weakpoint', false, tank)).toBe(tank.kill + tank.weakpointBonus);
   });
 
   it('only enemy ids pay (training dummies start at 1_000_000)', () => {
@@ -93,10 +105,10 @@ describe('PointsRules: events', () => {
     t.damage(5);
     expect(t.economy.points).toBe(20);
     t.kill(5);
-    expect(t.economy.points).toBe(20 + P.kill);
+    expect(t.economy.points).toBe(20 + KILL);
     t.kill(6, 'head');
-    expect(t.economy.points).toBe(20 + P.kill + P.headshotKill);
-    expect(t.reasons).toEqual(['hit:10', 'hit:10', `kill:${P.kill}`, `headshot:${P.headshotKill}`]);
+    expect(t.economy.points).toBe(20 + KILL + HEAD_KILL);
+    expect(t.reasons).toEqual(['hit:10', 'hit:10', `kill:${KILL}`, `headshot:${HEAD_KILL}`]);
     // Zero-damage hits (immune shields) pay nothing.
     t.damage(7, { amount: 0 });
     expect(t.reasons).toHaveLength(4);
@@ -116,14 +128,14 @@ describe('PointsRules: events', () => {
     expect(t.economy.points).toBe(0);
     // The flag is cleared with the death: a recycled id pays again.
     t.damage(11);
-    expect(t.economy.points).toBe(P.hit);
+    expect(t.economy.points).toBe(HIT);
   });
 
   it('detects melee kills from the melee impact that precedes the blow', () => {
     const t = setup();
     t.impact('melee');
     t.kill(3);
-    expect(t.reasons.at(-1)).toBe(`melee:${P.meleeKill}`);
+    expect(t.reasons.at(-1)).toBe(`melee:${MELEE_KILL}`);
     // A melee bash that only hit the world must not turn the next (non-impact) kill into melee.
     t.impact('melee');
     t.events.emit('weapon:fired', {
@@ -137,28 +149,28 @@ describe('PointsRules: events', () => {
     });
     t.impact('bullet');
     t.kill(4);
-    expect(t.reasons.at(-1)).toBe(`kill:${P.kill}`);
+    expect(t.reasons.at(-1)).toBe(`kill:${KILL}`);
     t.impact('melee');
     t.events.emit('weapon:reloadStart', { weaponId: 'rifle', empty: false, duration: 1 });
     t.kill(5);
-    expect(t.reasons.at(-1)).toBe(`kill:${P.kill}`);
+    expect(t.reasons.at(-1)).toBe(`kill:${KILL}`);
     // A non-lethal melee hit consumes the flag too.
     t.impact('melee');
     t.damage(6);
     t.kill(6);
-    expect(t.reasons.slice(-2)).toEqual(['hit:10', `kill:${P.kill}`]);
+    expect(t.reasons.slice(-2)).toEqual(['hit:10', `kill:${KILL}`]);
   });
 
   it('elite bonus, nuke kills and the wave bonus', () => {
     const t = setup();
     t.kill(20);
     t.died(20, { elite: true });
-    expect(t.economy.points).toBe(P.kill + P.eliteKillBonus);
+    expect(t.economy.points).toBe(KILL + P.eliteKillBonus);
     // Nuke kills have no combat:kill; the nuke's flat bonus is the power-up's.
     t.died(21, { weaponId: ENEMY_AI.nukeWeaponId, elite: true });
-    expect(t.economy.points).toBe(P.kill + P.eliteKillBonus + P.nukeKill);
+    expect(t.economy.points).toBe(KILL + P.eliteKillBonus + P.nukeKill);
     t.events.emit('wave:complete', { wave: 3, duration: 60 });
-    expect(t.economy.points).toBe(P.kill + P.eliteKillBonus + P.nukeKill + waveBonus(3));
+    expect(t.economy.points).toBe(KILL + P.eliteKillBonus + P.nukeKill + waveBonus(3));
     expect(t.rules.stats.wave).toBe(waveBonus(3));
   });
 
@@ -167,7 +179,7 @@ describe('PointsRules: events', () => {
     t.stats.addModifier({ source: 'powerup:double', stat: 'pointsMultiplier', op: 'mul', value: 2 });
     t.damage(1);
     t.kill(1, 'head');
-    expect(t.economy.points).toBe(2 * (P.hit + P.headshotKill));
+    expect(t.economy.points).toBe(2 * (HIT + HEAD_KILL));
   });
 
   it('repair points are capped per wave and reset on wave:start', () => {
@@ -189,11 +201,11 @@ describe('PointsRules: events', () => {
     t.rules.awardRepair(10);
     t.rules.reset();
     t.damage(1);
-    expect(t.economy.points).toBe(10 * ECONOMY.repair.perPlank + P.hit);
+    expect(t.economy.points).toBe(10 * ECONOMY.repair.perPlank + HIT);
     expect(t.rules.repairAllowance).toBe(ECONOMY.repair.capPerWave);
     t.rules.dispose();
     t.kill(2);
-    expect(t.economy.points).toBe(10 * ECONOMY.repair.perPlank + P.hit);
+    expect(t.economy.points).toBe(10 * ECONOMY.repair.perPlank + HIT);
   });
 });
 
@@ -284,13 +296,13 @@ describe('PointsRules with the real weapon system', () => {
     r.combat.register(target);
     r.input.tap('fire');
     r.frame(20);
-    expect(r.economy.points).toBe(P.hit);
+    expect(r.economy.points).toBe(HIT);
     // Aim at the head (eye 1.6 m, head 1.62 m) and finish it.
     target.health = 1;
     r.player.pitch = Math.atan2(0.02, 6);
     r.input.tap('fire');
     r.frame(20);
-    expect(r.reasons.at(-1)).toBe(`headshot:${P.headshotKill}`);
+    expect(r.reasons.at(-1)).toBe(`headshot:${HEAD_KILL}`);
   });
 
   it('a melee kill pays the melee value', () => {
@@ -300,6 +312,6 @@ describe('PointsRules with the real weapon system', () => {
     r.input.tap('melee');
     r.frame(Math.ceil(WEAPONS.pistol.melee.hitTime / DT) + 2);
     expect(target.alive).toBe(false);
-    expect(r.reasons).toEqual([`melee:${P.meleeKill}`]);
+    expect(r.reasons).toEqual([`melee:${MELEE_KILL}`]);
   });
 });

@@ -1,11 +1,13 @@
 /**
  * Combat → points (CoD Zombies rules, tuning in defs/economy.ts ECONOMY.points). Listens to:
- * - combat:damage – a player hit that does not kill pays `hit`;
- * - combat:kill – the killing blow pays `kill`, `headshotKill` (head/weakpoint) or `meleeKill`;
+ * - combat:damage – a player hit that does not kill pays the kind's `hit`;
+ * - combat:kill – the killing blow pays the kind's `kill` (+ head / weakpoint bonus, or the melee
+ *   bonus); the kind's table comes from `rewardOf(targetId)` (Game: the enemy's def `points`),
+ *   ECONOMY.points.fallback without one;
  * - enemy:died – elite bonus, nuke kills (they bypass CombatWorld and have no combat:kill);
  * - wave:complete – waveBonus(wave).
  * Only source 'player' pays, and only damageables in the enemy id range that are not flagged
- * (`flagNoReward`, e.g. dev spawns): training dummies (ids from 1_000_000) never pay.
+ * (`flagNoReward`: dev-console spawns): training dummies (ids from 1_000_000) never pay.
  *
  * Melee kills: combat events carry no damage kind, but the weapon system emits the melee blow's
  * combat:impact (kind 'melee') right before its dealDamage – that impact arms a flag the very next
@@ -16,20 +18,36 @@
  */
 import type { EconomyApi } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
-import type { GameEvents, HitZone, Vec3Like } from '../core/events';
-import { ECONOMY, waveBonus } from '../defs/economy';
+import type { GameEvents, HitZone, PointsReason, Vec3Like } from '../core/events';
+import { ECONOMY, waveBonus, type KillRewardDef } from '../defs/economy';
 import { ENEMY_AI } from '../defs/enemies';
 
 export interface PointsRulesDeps {
   events: EventBus<GameEvents>;
   economy: Pick<EconomyApi, 'earn'>;
+  /**
+   * Point table of the enemy kind behind a damageable id (Game: `enemies.getEnemy(id)?.def.points`),
+   * asked on every paying hit and kill; null/undefined = ECONOMY.points.fallback.
+   */
+  rewardOf?: ((targetId: number) => KillRewardDef | null | undefined) | null;
 }
 
 /** Points paid for a killing blow (before the multiplier). */
-export function killPoints(zone: HitZone | null, melee: boolean): number {
-  const p = ECONOMY.points;
-  if (melee) return p.meleeKill;
-  return zone !== null && p.headshotZones.includes(zone) ? p.headshotKill : p.kill;
+export function killPoints(
+  zone: HitZone | null,
+  melee: boolean,
+  reward: KillRewardDef = ECONOMY.points.fallback,
+): number {
+  if (melee) return reward.kill + ECONOMY.points.meleeKillBonus;
+  if (zone === 'head') return reward.kill + reward.headshotBonus;
+  if (zone === 'weakpoint') return reward.kill + reward.weakpointBonus;
+  return reward.kill;
+}
+
+/** Popup / stats reason of a killing blow: melee wins, head and weakpoint count as 'headshot'. */
+export function killReason(zone: HitZone | null, melee: boolean): PointsReason {
+  if (melee) return 'melee';
+  return zone === 'head' || zone === 'weakpoint' ? 'headshot' : 'kill';
 }
 
 /** Does damage to this damageable id pay points (enemy id range)? */
@@ -43,6 +61,7 @@ export class PointsRules {
   readonly stats = { hits: 0, kills: 0, headshots: 0, melee: 0, elite: 0, wave: 0, repair: 0 };
 
   private readonly economy: Pick<EconomyApi, 'earn'>;
+  private readonly rewardOf: ((targetId: number) => KillRewardDef | null | undefined) | null;
   private readonly unsubscribe: (() => void)[];
   private readonly noReward = new Set<number>();
   private meleeArmed = false;
@@ -51,6 +70,7 @@ export class PointsRules {
 
   constructor(deps: PointsRulesDeps) {
     this.economy = deps.economy;
+    this.rewardOf = deps.rewardOf ?? null;
     const ev = deps.events;
     this.unsubscribe = [
       ev.on('combat:impact', (e) => {
@@ -115,6 +135,11 @@ export class PointsRules {
     this.noReward.clear();
   }
 
+  /** The kind's point table (killed enemies are still looked up: combat:kill precedes enemy:died). */
+  private reward(targetId: number): KillRewardDef {
+    return this.rewardOf?.(targetId) ?? ECONOMY.points.fallback;
+  }
+
   private pays(targetId: number, source: string): boolean {
     return source === 'player' && isRewardableId(targetId) && !this.noReward.has(targetId);
   }
@@ -129,15 +154,16 @@ export class PointsRules {
       return;
     }
     if (!(e.amount > 0) || !this.pays(e.targetId, e.source)) return;
-    this.stats.hits += this.economy.earn(ECONOMY.points.hit, 'hit', copy(e.point, this.pos));
+    const reward = this.reward(e.targetId);
+    this.stats.hits += this.economy.earn(reward.hit, 'hit', copy(e.point, this.pos));
   }
 
   private onKill(e: GameEvents['combat:kill']): void {
     const melee = this.meleeArmed;
     this.meleeArmed = false;
     if (!this.pays(e.targetId, e.source)) return;
-    const points = killPoints(e.zone, melee);
-    const reason = melee ? 'melee' : points === ECONOMY.points.headshotKill ? 'headshot' : 'kill';
+    const points = killPoints(e.zone, melee, this.reward(e.targetId));
+    const reason = killReason(e.zone, melee);
     const got = this.economy.earn(points, reason, copy(e.position, this.pos));
     if (reason === 'headshot') this.stats.headshots += got;
     else if (reason === 'melee') this.stats.melee += got;

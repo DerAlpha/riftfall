@@ -3,21 +3,32 @@
  * EconomySystem (balance, earn/spend), PointsRules (combat → points), PerkSystem (perk prices live
  * in defs/perks.ts), interactables (doors, wall buys, box, seals) read their prices here.
  *
- * Point rewards (PointsRules, player-caused only):
- * - a hit that does not kill: `hit` per damage event (a shotgun blast is one event per hit zone);
- * - the killing blow: `kill` / `headshotKill` (head or weakpoint) / `meleeKill` – these include the
- *   hit, nothing else is paid for it;
+ * Point rewards (PointsRules, player-caused only), per enemy kind from its def (EnemyTypeDef.points,
+ * same shape as KillRewardDef; kinds without one use `points.fallback`, the CoD values):
+ * - a hit that does not kill: the kind's `hit` per damage event (a shotgun blast is one event per
+ *   hit zone);
+ * - the killing blow: the kind's `kill`, + `headshotBonus` (head) / `weakpointBonus` (weakpoint), or
+ *   `kill` + `meleeKillBonus` for a melee blow – these include the hit, nothing else is paid for it
+ *   (swarmer: 60 / 100 / 130 like CoD; spitter 90, tank 250);
  * - elite kills add `eliteKillBonus`; a completed wave pays waveBonus(wave);
  * - nuke kills pay `nukeKill` each (0: the nuke's flat `powerUps.nukeBonus` is paid by the power-up).
  * Only enemies earn points: damageable ids in [rewardIdMin, rewardIdMax] (the enemy manager's id
  * range; training dummies start at 1_000_000), minus ids flagged with PointsRules.flagNoReward
- * (dev-console spawns that should not pay).
+ * (dev-console spawns, Game wires the enemy command's onSpawned).
  *
  * Every earning is scaled by the pointsMultiplier stat (Double Points ×2) except `unscaledReasons`.
  */
 import type { PointsReason } from '../core/events';
 import { ENEMY_AI } from './enemies';
 import { getWeaponDef } from './weapons';
+
+/** Point values of one enemy kind (EnemyTypeDef.points has this shape). */
+export interface KillRewardDef {
+  readonly hit: number;
+  readonly kill: number;
+  readonly headshotBonus: number;
+  readonly weakpointBonus: number;
+}
 
 export interface WaveBonusDef {
   readonly base: number;
@@ -32,12 +43,10 @@ export const ECONOMY = {
   roundTo: 1,
 
   points: {
-    hit: 10,
-    kill: 60,
-    headshotKill: 100,
-    meleeKill: 130,
-    /** Zones that count as a headshot kill. */
-    headshotZones: ['head', 'weakpoint'] as readonly string[],
+    /** Enemy kinds without their own point table (CoD: 10 per hit, kill 60, headshot 100). */
+    fallback: { hit: 10, kill: 60, headshotBonus: 40, weakpointBonus: 40 } satisfies KillRewardDef,
+    /** A melee killing blow pays the kind's kill value + this (CoD knife kill: 60 + 70 = 130). */
+    meleeKillBonus: 70,
     eliteKillBonus: 50,
     nukeKill: 0,
     /** Completed wave n pays min(max, base + perWave × n). */

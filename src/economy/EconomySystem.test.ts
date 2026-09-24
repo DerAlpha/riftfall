@@ -45,7 +45,8 @@ describe('EconomySystem', () => {
     expect(economy.earn(50, 'dev')).toBe(50);
     stats.removeSource('powerup:doublePoints');
     expect(economy.earn(10, 'hit')).toBe(10);
-    expect(economy.totals.earned).toBe(10 + 120 + 50 + 50 + 10);
+    // The refund took 50 of the door purchase back out of the totals.
+    expect(economy.totals).toEqual({ earned: 10 + 120 + 50 + 10, spent: 50, purchases: 0 });
   });
 
   it('rounds earnings to whole points and ignores non-positive or invalid amounts', () => {

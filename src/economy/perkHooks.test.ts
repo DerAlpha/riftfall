@@ -265,6 +265,9 @@ describe('Phoenix-Protokoll', () => {
     health.damage(10_000);
     expect(health.dead).toBe(false);
     expect(t.perks.has('phoenix')).toBe(false);
+    // Not inside the enemy attack that caused the revive: on the next perk tick.
+    expect(t.combat.dealt).toHaveLength(0);
+    t.perks.fixedUpdate(DT);
     expect(t.combat.dealt.map((d) => d.id)).toEqual([near.id]);
     const info = t.combat.dealt[0]!.info;
     expect(info).toMatchObject({ source: 'player', element: 'fire', kind: 'explosion', weaponId: 'perk.phoenix' });
@@ -273,6 +276,21 @@ describe('Phoenix-Protokoll', () => {
     // Pushed away from the player.
     expect(info.direction.x).toBeGreaterThan(0);
     expect(t.blasts).toEqual([expect.objectContaining({ hook: 'phoenix', element: 'fire' })]);
+    // Once: the perk is gone.
+    t.tick(1);
+    expect(t.blasts).toHaveLength(1);
+  });
+
+  it('a new run drops a burst that has not gone off yet', () => {
+    const t = setup();
+    const health = new PlayerHealth({ events: t.events });
+    health.setStats(t.stats);
+    t.combat.targets.push(new FakeTarget({ x: 1, y: 0, z: 0 }, 10_000));
+    t.perks.grant('phoenix');
+    health.damage(10_000);
+    t.perks.clear();
+    t.perks.fixedUpdate(DT);
+    expect(t.combat.dealt).toHaveLength(0);
   });
 
   it('a revive charge from elsewhere (no Phoenix owned) bursts nothing', () => {
@@ -283,6 +301,7 @@ describe('Phoenix-Protokoll', () => {
     t.combat.targets.push(new FakeTarget({ x: 1, y: 0, z: 0 }, 10_000));
     health.damage(10_000);
     expect(health.dead).toBe(false);
+    t.tick(0.5);
     expect(t.combat.dealt).toHaveLength(0);
     expect(t.blasts).toHaveLength(0);
   });

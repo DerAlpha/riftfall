@@ -15,7 +15,7 @@
 import type { DamageElement } from '../core/events';
 import type { StatKey } from './stats';
 
-export type PerkHookId = 'nova' | 'scavenger' | 'kinetic' | 'adrenaline';
+export type PerkHookId = 'nova' | 'scavenger' | 'kinetic' | 'adrenaline' | 'phoenix';
 
 export interface PerkStatModDef {
   readonly stat: StatKey;
@@ -111,7 +111,7 @@ export const PERKS = {
     name: 'Phoenix-Protokoll',
     tagline: 'Aus der Asche. Einmal.',
     description:
-      'Tödlicher Schaden belebt dich einmal wieder (Implantat wird verbraucht). Regeneration setzt früher ein und ist 50 % schneller.',
+      'Tödlicher Schaden belebt dich einmal wieder – mit einer Feuerwelle, die Gegner zurückwirft (Implantat wird verbraucht). Regeneration setzt früher ein und ist 50 % schneller.',
     price: 1500,
     color: 0xff6a1f,
     icon: 'phoenix',
@@ -120,7 +120,7 @@ export const PERKS = {
       { stat: 'regenDelay', op: 'mul', value: 0.6 },
       { stat: 'regenRate', op: 'mul', value: 1.5 },
     ],
-    hook: null,
+    hook: 'phoenix',
     lostOnRevive: true,
   },
   sprinter: {
@@ -377,6 +377,24 @@ export const PERK_TUNING = {
     minImpactSpeed: 12,
     fullImpactSpeed: 24,
   } satisfies PerkBlastDef & { readonly minImpactSpeed: number; readonly fullImpactSpeed: number },
+  /**
+   * Phoenix-Protokoll: the revive it pays for bursts out of the player (full strength, fire): the
+   * swarm around the body is burnt and thrown back, so the 3 s of invulnerability buy room instead
+   * of dying again inside the same crowd. Fired on the perk tick after the revive.
+   */
+  phoenix: {
+    weaponId: 'perk.phoenix',
+    element: 'fire',
+    fxElement: 'fire',
+    radius: { min: 4.5, max: 4.5 },
+    damage: { min: 90, max: 90 },
+    innerFraction: 0.4,
+    minFalloff: 0.35,
+    impulse: 12,
+    centerHeight: 1,
+    fxHeight: 0.15,
+    cooldown: 0,
+  } satisfies PerkBlastDef,
   /** Aasgeier: chance per player kill (× dropChance stat) to drop a small ammo pickup. */
   scavenger: {
     chance: 0.1,

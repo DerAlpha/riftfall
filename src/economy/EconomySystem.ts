@@ -1,7 +1,8 @@
 /**
  * Points balance (EconomyApi). Earnings are scaled by the pointsMultiplier stat (perks, Double
  * Points) and rounded to whole points; spending is all-or-nothing (the balance never goes below 0);
- * refunds and dev grants are never scaled (ECONOMY.unscaledReasons).
+ * refunds and dev grants are never scaled (ECONOMY.unscaledReasons). A refund (reason 'refund')
+ * undoes its purchase in the run totals instead of counting as earnings.
  *
  * Events: `economy:points` for every balance change (delta 0 on reset: the HUD shows the new total
  * without a popup) and `economy:purchase` for every spend attempt (ok=false when unaffordable). The
@@ -70,7 +71,8 @@ export class EconomySystem implements EconomyApi {
     const credited = roundPoints(scaled);
     if (credited <= 0) return 0;
     this._points += credited;
-    this._totals.earned += credited;
+    if (reason === 'refund') this.undoSpend(credited);
+    else this._totals.earned += credited;
     this.emitPoints(credited, reason, position);
     return credited;
   }
@@ -119,6 +121,15 @@ export class EconomySystem implements EconomyApi {
   /** Emit the current total (HUD init). */
   announce(): void {
     this.emitPoints(0, 'dev');
+  }
+
+  /** A refund takes its purchase back out of the run totals (a moved box is no purchase). */
+  private undoSpend(amount: number): void {
+    const t = this._totals;
+    const undo = Math.min(amount, t.spent);
+    t.spent -= undo;
+    t.earned += amount - undo;
+    if (undo > 0 && t.purchases > 0) t.purchases--;
   }
 
   private emitPoints(delta: number, reason: PointsReason, position?: Vec3Like): void {

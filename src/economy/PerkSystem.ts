@@ -4,9 +4,10 @@
  * removes exactly that source (stats return to their previous values bit for bit) and disposes the
  * hook. At most `perkSlots` (stat) perks; lowering the stat later keeps what is owned.
  *
- * Revive (decision, see defs/perks.ts): when a revive charge saves the player (player:revived), the
- * perks with `lostOnRevive` (Phoenix-Protokoll) are revoked synchronously – PlayerHealth counts
- * that as the consumed charge – and every other perk is kept.
+ * Revive (decision, see defs/perks.ts): when a revive charge saves the player (player:revived),
+ * every hook hears it first (`onRevived`: the Phoenix burst), then the perks with `lostOnRevive`
+ * (Phoenix-Protokoll) are revoked synchronously – PlayerHealth counts that as the consumed charge –
+ * and every other perk is kept. Work a hook defers runs at the start of the next perk tick.
  *
  * Buying: interactables call `buy(perkId, economy)` (checks → atomic spend → grant) or check
  * `canGrant` themselves. `grant` alone is free (dev console, rewards).
@@ -55,6 +56,8 @@ export class PerkSystem implements PerkApi {
   private readonly hooks = new Map<string, PerkHook>();
   private readonly hookList: PerkHook[] = [];
   private readonly unsubscribe: (() => void)[];
+  /** Hook work for the next tick (PerkHookContext.defer); run in order, then emptied. */
+  private readonly deferred: (() => void)[] = [];
   private dropAmmo: ((position: Vec3Like) => void) | null;
 
   constructor(deps: PerkSystemDeps) {
@@ -79,6 +82,9 @@ export class PerkSystem implements PerkApi {
           })),
       // Late-bound: the power-up system may be built after the perks.
       ammoDrop: () => this.dropAmmo,
+      defer: (fn) => {
+        this.deferred.push(fn);
+      },
     };
     this.unsubscribe = [events.on('player:revived', () => this.onRevived())];
   }
@@ -154,6 +160,7 @@ export class PerkSystem implements PerkApi {
 
   clear(): void {
     for (let i = this._owned.length - 1; i >= 0; i--) this.revoke(this._owned[i]!);
+    this.deferred.length = 0;
   }
 
   /** Hand the Aasgeier ammo spawner over once the power-up system exists. */
@@ -161,8 +168,12 @@ export class PerkSystem implements PerkApi {
     this.dropAmmo = drop;
   }
 
-  /** Hook timers (cooldowns, buff decay). Fixed tick. */
+  /** Deferred hook work (revive burst), then hook timers (cooldowns, buff decay). Fixed tick. */
   fixedUpdate(dt: number): void {
+    const later = this.deferred;
+    // Index loop: work that defers again lands behind and runs in this pass too.
+    for (let i = 0; i < later.length; i++) later[i]!();
+    later.length = 0;
     const list = this.hookList;
     for (let i = 0; i < list.length; i++) list[i]!.fixedUpdate?.(dt);
   }
@@ -174,6 +185,8 @@ export class PerkSystem implements PerkApi {
   }
 
   private onRevived(): void {
+    const hooks = this.hookList;
+    for (let i = 0; i < hooks.length; i++) hooks[i]!.onRevived?.();
     for (let i = this._owned.length - 1; i >= 0; i--) {
       const id = this._owned[i]!;
       if (this.lookup(id)?.lostOnRevive) this.revoke(id);

@@ -25,6 +25,8 @@ export interface EnemyCommandDeps {
   };
   /** Player feet + look yaw (PlayerApi convention: 0 looks down −Z). */
   player: () => { position: Vec3Like; yaw: number };
+  /** Every enemy the console spawned (M4: Game flags them – console spawns pay no points, drop nothing). */
+  onSpawned?: (id: number) => void;
 }
 
 const MODES = ['spawn', 'elite', 'kill', 'clear', 'freeze', 'stats'];
@@ -64,7 +66,10 @@ export function createEnemyCommands(deps: EnemyCommandDeps): ConsoleCommand[] {
         y: position.y,
         z: position.z + fz * dist + fx * side,
       };
-      if (deps.manager.spawn(type, p, opts) !== null) ok++;
+      const id = deps.manager.spawn(type, p, opts);
+      if (id === null) continue;
+      ok++;
+      deps.onSpawned?.(id);
     }
     return ok === count
       ? `${ok} × ${getEnemyDef(type)!.name}${elite ? ' (Elite)' : ''} gespawnt`

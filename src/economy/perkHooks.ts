@@ -12,6 +12,9 @@
  *   `dropAmmo` hook (the power-up system spawns a small ammo pickup), with a cooldown.
  * - adrenaline (Adrenalinschub): combat:kill by the player → +1 stack of moveSpeed; stacks fall off
  *   one by one after `duration`.
+ * - phoenix (Phoenix-Protokoll): a revive (PerkSystem calls `onRevived` before the perk is consumed)
+ *   → a full-strength fire burst around the player, deferred to the next perk tick (the revive
+ *   happens inside an enemy attack: no damage/raycasts nested in the enemy tick).
  *
  * Blasts damage enemies only (team 'enemy', static line of sight from the blast center), as
  * source 'player' – they pay points like any other player damage – and show their VFX through
@@ -46,10 +49,14 @@ export interface PerkHookContext {
    * it), null = not wired.
    */
   readonly ammoDrop: () => ((position: Vec3Like) => void) | null;
+  /** Run `fn` at the start of the next perk tick (outlives the hook: a consumed perk's last act). */
+  readonly defer: (fn: () => void) => void;
 }
 
 export interface PerkHook {
   fixedUpdate?(dt: number): void;
+  /** A revive charge saved the player (called before perks lost on revive are revoked). */
+  onRevived?(): void;
   dispose(): void;
 }
 
@@ -297,9 +304,25 @@ export const adrenalineHook: PerkHookFactory = (ctx, perkId) => {
   };
 };
 
+/** Phoenix-Protokoll: the revive bursts out of the player (deferred to the perk tick). */
+export const phoenixHook: PerkHookFactory = (ctx) => {
+  const def = PERK_TUNING.phoenix;
+  const burst = (): void => {
+    const player = ctx.player;
+    if (player) perkBlast(ctx, 'phoenix', def, player.position, 1);
+  };
+  return {
+    onRevived() {
+      ctx.defer(burst);
+    },
+    dispose() {},
+  };
+};
+
 export const PERK_HOOKS: Readonly<Record<PerkHookId, PerkHookFactory>> = {
   nova: novaHook,
   kinetic: kineticHook,
   scavenger: scavengerHook,
   adrenaline: adrenalineHook,
+  phoenix: phoenixHook,
 };

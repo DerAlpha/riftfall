@@ -94,7 +94,9 @@ export const summonAttack: AttackExecutor = {
       if (S.visual !== '' && host.beams?.open(e, S.visual, S.socket)) host.beams.toPoint(e, st.point);
     }
     if (st.startHealth - e.health >= S.interruptDamage) {
+      // Interrupted: the rift collapses and the summoner reels (the stagger cancels the attack).
       host.beams?.close(e);
+      host.staggerSelf(e, S.interruptStagger);
       return true;
     }
     if (now >= st.nextFx) {
@@ -111,7 +113,8 @@ export const summonAttack: AttackExecutor = {
     const type = summonType(a);
     if (!type) return false;
     const st = stateOf(e);
-    const n = Math.min(S.count, S.maxAlive - minionsOf(e, host));
+    const count = type === S.type ? S.count : S.fallbackCount;
+    const n = Math.min(count, S.maxAlive - minionsOf(e, host));
     let spawned = 0;
     for (let i = 0; i < n; i++) if (host.spawnMinion(type, st.point, S.radius, e) !== null) spawned++;
     if (spawned > 0) host.vfx?.spawn(S.burstEffect, st.point, UP, S.effectScale * e.pose.scale);

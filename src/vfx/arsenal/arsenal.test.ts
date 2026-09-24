@@ -324,6 +324,20 @@ describe('ArsenalVfx pools and handles', () => {
     arsenal.dispose();
   });
 
+  it('reduce flashing holds the full-charge pulse steady (no 9 Hz throb at the muzzle)', () => {
+    const { arsenal, sockets } = rig();
+    const flicker = (): number => {
+      arsenal.charge('charge.rail', 1);
+      arsenal.update(1 / 60);
+      const glow = sockets.anchors.muzzle.children.find((c) => c.name === 'ArsenalChargeGlow') as THREE.Mesh;
+      return (glow.material as THREE.ShaderMaterial).uniforms.uFlicker!.value as number;
+    };
+    expect(flicker()).toBe(1);
+    arsenal.setFlashScale(ARSENAL_VFX.reducedFlashingScale);
+    expect(flicker()).toBe(0);
+    arsenal.dispose();
+  });
+
   it('flame particles fade in over their first metre: no white-hot blob in front of the eye', () => {
     const style = BEAM_STYLES['beam.flame'] as { fadeInDistance: number };
     const nozzle = { x: 0, y: 1.4, z: -0.6 };

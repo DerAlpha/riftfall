@@ -131,6 +131,8 @@ export class StatusEffectSystem implements StatusEffectsApi, CombatStatusHook {
   private readonly profile: StatusEffectDeps['profile'];
   private readonly rng: Rng;
   private now = 0;
+  /** 1: rims pulse, 0: steady (reduce flashing). */
+  private rimPulse = 1;
 
   // --- slots ---
   private readonly targets: (Damageable | null)[];
@@ -373,6 +375,11 @@ export class StatusEffectSystem implements StatusEffectsApi, CombatStatusHook {
     return s !== undefined && (this.time[s * NS + FROZEN]! > 0 || this.stun[s]! > 0);
   }
 
+  /** accessibility.reduceFlashing: status rims hold a steady strength instead of pulsing. */
+  setReducedFlashing(on: boolean): void {
+    this.rimPulse = on ? 0 : 1;
+  }
+
   rimFor(targetId: number, out: { color: number; strength: number }): boolean {
     const s = this.slotOf.get(targetId);
     if (s === undefined) return false;
@@ -383,7 +390,8 @@ export class StatusEffectSystem implements StatusEffectsApi, CombatStatusHook {
       const def: { color: number; strength: number; pulse: number; rate: number; perStack?: number } =
         R[STATUS_IDS[st]!];
       const extra = (def.perStack ?? 0) * Math.max(0, this.stacks[s * NS + st]! - 1);
-      const wave = 0.5 + 0.5 * Math.sin(this.now * def.rate + this.phase[s]!);
+      // Reduce flashing: the rim holds its mean (the shocked rim would throb at ~5 Hz).
+      const wave = this.rimPulse > 0 ? 0.5 + 0.5 * Math.sin(this.now * def.rate + this.phase[s]!) : 0.5;
       out.color = def.color;
       out.strength = Math.min(1, Math.max(0, (def.strength + extra) * (1 - def.pulse + def.pulse * wave)));
       return true;

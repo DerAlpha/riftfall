@@ -159,8 +159,9 @@ export interface BeamHealParams {
   readonly losInterval: number;
   /** The channel ends when the target comes this close (m) – the healer flees. */
   readonly breakDistance: number;
-  /** ... or when the healer took this much damage since the channel started (HP). */
+  /** ... or when the healer took this much damage since the channel started (HP): it staggers (s). */
   readonly interruptDamage: number;
+  readonly interruptStagger: number;
   /** Turn rate towards the tethered ally (DEGREES/s). */
   readonly turnRateDeg: number;
   /** Heal pulse on the ally (defs/vfx preset × scale) every `pulseInterval` s. */
@@ -217,10 +218,11 @@ export interface BeamParams {
  * or a stagger breaks it. At the strike, `count` minions emerge around the point.
  */
 export interface SummonParams {
-  /** Minion type; `fallbackType` while it cannot spawn (no def yet). */
+  /** Minion type and count; `fallbackType` × fallbackCount while it cannot spawn (no def yet). */
   readonly type: string;
-  readonly fallbackType: string;
   readonly count: number;
+  readonly fallbackType: string;
+  readonly fallbackCount: number;
   /** At most this many minions of ONE summoner alive at once (only the missing ones emerge). */
   readonly maxAlive: number;
   /** Channel point distance towards the target (m) and the minions' spread around it (m). */
@@ -229,8 +231,9 @@ export interface SummonParams {
   readonly socket: string;
   /** Arsenal beam style from the socket to the channel point ('' = none). */
   readonly visual: string;
-  /** Damage taken during the channel that breaks it (HP). */
+  /** Damage taken during the channel that breaks it (HP) – the summoner staggers (s). */
   readonly interruptDamage: number;
+  readonly interruptStagger: number;
   /** Channel VFX at the point every `channelInterval` s, burst at the summon (defs/vfx × scale). */
   readonly channelEffect: string;
   readonly channelInterval: number;

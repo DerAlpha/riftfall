@@ -26,6 +26,7 @@ uniform float uAmount;
 uniform float uTime;
 uniform float uSwirl;
 uniform float uPulse;
+uniform float uFlicker;
 uniform vec3 uColor;
 uniform vec3 uCore;
 varying vec2 vP;
@@ -60,11 +61,12 @@ void main() {
   // Ring contracting onto the core.
   float ringR = mix(0.85, 0.3, amt);
   float ring = exp(-pow((r - ringR) / 0.035, 2.0)) * amt * (0.6 + 0.4 * sin(ang * 6.0 + t * 9.0));
-  // Crackling arcs once the charge is well under way.
-  float tt = floor(t * 26.0);
+  // Crackling arcs once the charge is well under way (re-rolled in steps; drifting smoothly with
+  // reduce flashing, uFlicker 0).
+  float tt = uFlicker > 0.5 ? floor(t * 26.0) : t * 4.0;
   float arcs = aRidge(aNoise(vec2(ang * 2.5 + tt * 1.3, r * 3.5 - tt)), 18.0);
   arcs *= smoothstep(0.35, 0.8, amt) * (1.0 - smoothstep(0.2, 0.9, r)) * 1.3;
-  float ready = amt >= 0.999 ? 1.0 + 0.45 * sin(t * 6.2832 * uPulse) : 1.0;
+  float ready = amt >= 0.999 ? 1.0 + 0.45 * uFlicker * sin(t * 6.2832 * uPulse) : 1.0;
   vec3 rgb = (uColor * (sparks * 1.4 + ring + arcs + halo) + uCore * core * 2.0) * ready;
   rgb *= 1.0 - smoothstep(0.85, 1.0, r);
   if (max(rgb.r, max(rgb.g, rgb.b)) < 0.002) discard;
@@ -82,6 +84,7 @@ export class ChargeGlow {
     uSize: { value: number };
     uSwirl: { value: number };
     uPulse: { value: number };
+    uFlicker: { value: number };
     uColor: { value: THREE.Color };
     uCore: { value: THREE.Color };
   };
@@ -93,6 +96,7 @@ export class ChargeGlow {
       uSize: { value: 0.1 },
       uSwirl: { value: 1 },
       uPulse: { value: 8 },
+      uFlicker: { value: 1 },
       uColor: { value: new THREE.Color() },
       uCore: { value: new THREE.Color() },
     };
@@ -126,9 +130,13 @@ export class ChargeGlow {
     parent?.add(this.mesh);
   }
 
-  /** Show the glow at `amount` (0..1); `intensityScale` dims it (reduce flashing). */
-  show(style: ChargeStyleDef, amount: number, time: number, intensityScale: number): void {
+  /**
+   * Show the glow at `amount` (0..1); `intensityScale` dims it and `flicker` 0 (both: reduce
+   * flashing) holds the ready pulse steady and lets the arcs drift instead of re-rolling.
+   */
+  show(style: ChargeStyleDef, amount: number, time: number, intensityScale: number, flicker = 1): void {
     const u = this.u;
+    u.uFlicker.value = flicker;
     const k = style.intensity * Math.max(0, intensityScale);
     u.uAmount.value = amount;
     u.uTime.value = time;

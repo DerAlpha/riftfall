@@ -223,7 +223,12 @@ function healUpdate(
   if (target && target.alive && distXZ(e.position, target.position) < H.breakDistance) {
     return endHeal(e, host, st);
   }
-  if (st.startHealth - e.health >= H.interruptDamage) return endHeal(e, host, st);
+  if (st.startHealth - e.health >= H.interruptDamage) {
+    // Interrupted: the tether snaps and the healer reels.
+    endHeal(e, host, st);
+    host.staggerSelf(e, H.interruptStagger);
+    return true;
+  }
   const now = host.time;
   // Budget exhausted: re-check next tick.
   if (now >= st.nextLos && host.takeSpotRays(1)) {

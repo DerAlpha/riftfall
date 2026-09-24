@@ -372,7 +372,7 @@ export class ArsenalVfx implements ArsenalVfxApi {
     }
     const style = this.chargeStyle;
     glow.attach(sockets.getSocketObject('muzzle'));
-    glow.show(style, this.chargeAmount, this.time.value, this.ctx.flashScale);
+    glow.show(style, this.chargeAmount, this.time.value, this.ctx.flashScale, this.ctx.flicker);
     sockets.getSocketWorldPosition('muzzle', _v);
     if (Number.isFinite(_v.x + _v.y + _v.z)) {
       sustainLight(

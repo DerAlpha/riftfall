@@ -1477,6 +1477,114 @@ export const VFX_EFFECTS = {
     ],
   },
 
+  // --- M6 enemy telegraphs (EnemyAttackDef.telegraph: spawned at a socket when a dangerous wind-up
+  // starts – a glint the eye catches plus a light the room shows) and the berserker's roar ---
+  /** Leaper pounce: cold eye glint in the crouch. */
+  'enemy.telegraph.pounce': {
+    emitters: [
+      {
+        blend: 'add',
+        sprite: 'star',
+        count: [1, 1],
+        minCount: 1,
+        life: [0.3, 0.36],
+        speed: [0, 0],
+        spread: 0,
+        size: [0.22, 0.26],
+        sizeEnd: 1.6,
+        color: [0.55, 0.92, 1],
+        intensity: 14,
+        intensityEnd: 0,
+        alphaEnd: 0,
+        offset: 0.04,
+        flash: true,
+      },
+      flashGlow([0.35, 0.85, 1], 0.5, 0.45, 4, 0.04),
+    ],
+    light: { color: [0.35, 0.8, 1], intensity: 45, range: 6, duration: 0.6, flicker: 0.2, offset: 0.1, priority: 1 },
+  },
+  /** Exploder fuse: the sac burns brighter and brighter, embers boil off, an amber light flickers. */
+  'enemy.telegraph.fuse': {
+    emitters: [
+      {
+        blend: 'add',
+        sprite: 'glow',
+        count: [1, 1],
+        minCount: 1,
+        life: [1.05, 1.1],
+        speed: [0, 0],
+        spread: 0,
+        size: [0.6, 0.7],
+        sizeEnd: 2,
+        color: [1, 0.55, 0.12],
+        intensity: 1.5,
+        intensityEnd: 6,
+        alpha: 0.9,
+        alphaEnd: 0.9,
+        offset: 0.3,
+      },
+      motes([1, 0.6, 0.15], [10, 14], [0.4, 1.2], [0.6, 1.1], 6, { axis: 'up', spread: 70, jitter: 0.3 }),
+    ],
+    light: { color: [1, 0.5, 0.12], intensity: 90, range: 8, duration: 1.15, flicker: 0.55, offset: 0.3, priority: 1 },
+  },
+  /** Berserker overhead crush: a red flare in its eyes. */
+  'enemy.telegraph.crush': {
+    emitters: [
+      {
+        blend: 'add',
+        sprite: 'star',
+        count: [1, 1],
+        minCount: 1,
+        life: [0.28, 0.34],
+        speed: [0, 0],
+        spread: 0,
+        size: [0.3, 0.34],
+        sizeEnd: 1.5,
+        color: [1, 0.3, 0.1],
+        intensity: 14,
+        intensityEnd: 0,
+        alphaEnd: 0,
+        offset: 0.05,
+        flash: true,
+      },
+    ],
+    light: { color: [1, 0.25, 0.08], intensity: 50, range: 6, duration: 0.5, flicker: 0.3, offset: 0.2, priority: 1 },
+  },
+  /** Berserker enrage: red light and embers around the rearing head. */
+  'enemy.telegraph.roar': {
+    emitters: [
+      flashGlow([1, 0.22, 0.06], 1.2, 0.6, 3, 0.1),
+      motes([1, 0.3, 0.08], [16, 22], [1, 3], [0.6, 1.2], 8, { spread: 120, jitter: 0.25 }),
+    ],
+    light: { color: [1, 0.2, 0.06], intensity: 110, range: 9, duration: 1, flicker: 0.4, offset: 0.2, priority: 1 },
+  },
+  /** Berserker roar peak (strike, on the floor under its head): dust blown outwards, a red ring. */
+  'enemy.berserker.roar': {
+    emitters: [
+      {
+        blend: 'alpha',
+        sprite: 'dust',
+        count: [14, 20],
+        minCount: 4,
+        life: [0.7, 1.2],
+        speed: [3, 6],
+        axis: 'up',
+        spread: 88,
+        size: [0.18, 0.3],
+        sizeEnd: 3.4,
+        color: [0.4, 0.37, 0.34],
+        alpha: 0.35,
+        drag: 4,
+        gravity: 0.02,
+        spin: [-1, 1],
+        offset: 0.05,
+        jitter: 0.2,
+      },
+      shockRing([1, 0.3, 0.12], 0.8, 6, 0.4, 3, 0.6),
+      flashGlow([1, 0.25, 0.08], 2.2, 0.25, 2.5, 0.8),
+    ],
+  },
+
   // --- perk blasts (M4, defs/perks.ts PERK_TUNING.*.fx): a center effect at the player's feet
   // (flash light, shake, sparks hopping along the floor – no smoke, scorch or large billboards: a
   // quad centered straight below the first-person camera veils the whole screen) plus a ring of

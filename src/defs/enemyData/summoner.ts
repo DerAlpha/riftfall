@@ -1,7 +1,126 @@
 /**
- * Beschwörer – enemy type def (M6). null = not built yet (the type cannot spawn). Import runtime values
- * only from '../enemyCommon' and TYPES from '../enemies' (runtime cycle otherwise).
+ * Beschwörer – enemy type def (M6). Import runtime values only from '../enemyCommon' and TYPES from
+ * '../enemies' (runtime cycle otherwise).
+ *
+ * A tall robed rift-caller. It hangs back behind the pack, walks to a rift when its summon is
+ * almost ready and channels there: violet rift energy runs from its raised hands into the floor a
+ * few meters towards the player, the ground boils with rift motes for 2.4 s, then a brood of
+ * Milben (mites) claws out. Hurting it during the channel (55 HP) or staggering it breaks the rift
+ * and staggers the summoner. Counterplay: interrupt the channel; the glowing rift heart in its
+ * chest (visible through the parted robe) is its weakpoint.
  */
 import type { EnemyTypeDef } from '../enemies';
+import { NO_ARMOR } from '../enemyCommon';
 
-export const SUMMONER_ENEMY: EnemyTypeDef | null = null;
+export const SUMMONER_ENEMY: EnemyTypeDef | null = {
+  id: 'summoner',
+  name: 'Beschwörer',
+  brain: 'support',
+  health: 240,
+  surface: 'flesh',
+  zoneSurfaces: {},
+  movement: { walkSpeed: 1.9, runSpeed: 4.2, acceleration: 10, turnRateDeg: 200, stride: 1.3 },
+  nav: { radius: 0.45, height: 2.1, separation: 0.9 },
+  collider: { radius: 0.4, height: 2 },
+  zoneMultipliers: { weakpoint: 2.5, head: 1.4, limb: 0.8 },
+  armor: NO_ARMOR,
+  resist: { void: 0.5 },
+  stagger: { threshold: 70, decayPerSecond: 40, duration: 0.9, immunity: 1.6, weakpointMultiplier: 2 },
+  knockbackResistance: 0.45,
+  attacks: [
+    {
+      id: 'summon',
+      kind: 'summon',
+      minRange: 6,
+      range: 45,
+      windup: 2.4,
+      strike: 0.35,
+      recover: 0.9,
+      cooldown: 12,
+      damage: 0,
+      priority: 2,
+      usesSlot: false,
+      requiresLos: false,
+      trackTurnRateDeg: 0,
+      shake: 0,
+      sound: 'enemy.summoner.summon',
+      summon: {
+        type: 'mite',
+        count: 4,
+        fallbackType: 'swarmer',
+        fallbackCount: 2,
+        maxAlive: 6,
+        forward: 3.2,
+        radius: 1.6,
+        socket: 'hands',
+        visual: 'enemy.summon.channel',
+        interruptDamage: 55,
+        interruptStagger: 1,
+        channelEffect: 'enemy.summon.channel',
+        channelInterval: 0.16,
+        burstEffect: 'enemy.summon.burst',
+        effectScale: 1,
+      },
+    },
+    {
+      id: 'claw',
+      kind: 'melee',
+      minRange: 0,
+      range: 2,
+      windup: 0.5,
+      strike: 0.15,
+      recover: 0.65,
+      cooldown: 1.9,
+      damage: 14,
+      priority: 1,
+      usesSlot: false,
+      requiresLos: true,
+      trackTurnRateDeg: 280,
+      shake: 0.2,
+      sound: 'enemy.summoner.claw',
+      melee: { reach: 1.8, coneDeg: 120, height: 1.8 },
+    },
+  ],
+  perception: {
+    sightRange: 40,
+    fovDeg: 130,
+    hearingRadius: 35,
+    memory: 8,
+    eyeSocket: 'head',
+    eyeHeight: 1.85,
+  },
+  support: {
+    bandMin: 10,
+    bandPreferred: 16,
+    bandMax: 26,
+    packRadius: 18,
+    packBehind: 6,
+    fleeDistance: 6,
+    fleeStep: 5,
+    fleeArcDeg: 40,
+    fleeTries: 5,
+    replanInterval: 1,
+    fleeReplan: 0.7,
+    arriveDistance: 1.2,
+    runDistance: 7,
+    riftLead: 4,
+    riftSearch: 22,
+    riftStandoff: 3,
+    riftTimeout: 6,
+  },
+  emergeTime: 1.5,
+  death: { collapse: 1.1, linger: 0.6, dissolve: 1.3, burst: null },
+  breach: { attack: 'claw', segmentTime: 2.4, segmentsPerTear: 1 },
+  slotPool: 'light',
+  slotCost: 1,
+  points: { hit: 10, kill: 140, headshotBonus: 40, weakpointBonus: 60 },
+  audio: {
+    spawn: 'enemy.summoner.spawn',
+    alert: 'enemy.summoner.alert',
+    hurt: 'enemy.summoner.hurt',
+    death: 'enemy.summoner.death',
+    step: 'enemy.summoner.step',
+    idle: 'enemy.summoner.idle',
+    idleInterval: [4, 8],
+  },
+};

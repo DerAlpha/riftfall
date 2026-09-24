@@ -551,6 +551,7 @@ export class Game {
       },
       seed: `status:${runSeed}`,
     });
+    status.setReducedFlashing(settings.current.accessibility.reduceFlashing);
     combat.setStatus(status);
     arsenal.setStatus(status);
     enemies.setStatus(status);
@@ -1178,6 +1179,7 @@ export class Game {
       this.sys.powerUps.setReducedFlashing(reduce);
       this.sys.abilityVisuals.setReducedFlashing(reduce);
       this.sys.mapKit.setReducedFlashing(reduce);
+      this.sys.status.setReducedFlashing(reduce);
     });
     this.sys.events.on('player:died', () => {
       this.sys.viewmodel.setVisible(false);

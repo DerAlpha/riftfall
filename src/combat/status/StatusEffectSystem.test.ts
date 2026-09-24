@@ -456,6 +456,34 @@ describe('StatusEffectSystem – statuses', () => {
     expect(h.status.incapacitated(2)).toBe(false);
   });
 
+  it('rim: reduce flashing holds the rim at its mean instead of throbbing (shocked: ~5 Hz)', () => {
+    const h = setup();
+    const d = new Dummy(1);
+    h.add(d);
+    h.status.applyElement(d, 'shock', T.shock, 'player');
+    h.tick();
+    const out = { color: 0, strength: 0 };
+    const sample = (): number[] => {
+      const v: number[] = [];
+      for (let i = 0; i < 20; i++) {
+        h.tick();
+        if (h.status.rimFor(1, out)) v.push(out.strength);
+      }
+      return v;
+    };
+    const normal = sample();
+    expect(Math.max(...normal) - Math.min(...normal)).toBeGreaterThan(0.2);
+    h.status.setReducedFlashing(true);
+    const reduced = sample();
+    expect(reduced.length).toBeGreaterThan(0);
+    expect(Math.max(...reduced) - Math.min(...reduced)).toBeLessThan(1e-9);
+    const R = ELEMENTS.rim.shocked;
+    expect(reduced[0]).toBeCloseTo(R.strength * (1 - R.pulse / 2), 9);
+    h.status.setReducedFlashing(false);
+    const again = sample();
+    expect(Math.max(...again) - Math.min(...again)).toBeGreaterThan(0.2);
+  });
+
   it('rim: the highest-priority status tints, pulsing within 0..1', () => {
     const h = setup();
     const d = new Dummy(1);

@@ -10,7 +10,7 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import type { Hitbox } from '../../core/contracts';
 import { onLog } from '../../core/log';
-import { ENEMY_VISUALS, type EnemyVisualDef } from '../../defs/enemyVisuals';
+import { ENEMY_VISUALS, enemyVisualTypeIds, type EnemyVisualDef } from '../../defs/enemyVisuals';
 import { createEnemyPose, type EnemyPose } from '../types';
 import { EnemyRenderer, cullReach } from './EnemyRenderer';
 import { buildTypeGeometry } from './partGeometry';
@@ -48,7 +48,8 @@ describe('EnemyRenderer: instances', () => {
       expect(m.customDepthMaterial).toBeDefined();
       expect(setup).toHaveBeenCalledWith(m.material);
     }
-    expect(setup).toHaveBeenCalledTimes(Object.keys(ENEMY_VISUALS).length);
+    // Every built visual (M3 types + the non-null M6 per-type files) gets a mesh.
+    expect(setup).toHaveBeenCalledTimes(enemyVisualTypeIds().length);
     r.dispose();
     expect(scene.children).not.toContain(r.root);
   });

@@ -491,7 +491,9 @@ describe('ViewmodelAnimator', () => {
     expect(swing(accent)).toBeLessThan(0.35);
     // Reduce flashing: dimmer and perfectly steady.
     events.emit('settings:changed', {
-      settings: { accessibility: { reduceFlashing: true } } as unknown as GameEvents['settings:changed']['settings'],
+      settings: {
+        accessibility: { reduceFlashing: true },
+      } as unknown as GameEvents['settings:changed']['settings'],
       sections: ['accessibility'],
     });
     const reduced = burn(anim);

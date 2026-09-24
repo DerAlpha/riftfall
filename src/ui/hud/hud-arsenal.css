@@ -292,7 +292,7 @@
 /* Phasenbarriere: a hexagonal shield lattice shimmering at the screen edges, flaring on hits. */
 .hud-abfx--shield::before {
   inset: -40px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20.78' height='36' viewBox='0 0 20.78 36'%3E%3Cpath d='M10.39 0 20.78 6V18L10.39 24 0 18V6Z M10.39 24V36' fill='none' stroke='%236affd8' stroke-width='0.8'/%3E%3C/svg%3E")
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20.78' height='36' viewBox='0 0 20.78 36'%3E%3Cpath d='M10.39 0 20.78 6V18L10.39 24 0 18V6Z M10.39 24V36' fill='none' stroke='%236affd8' stroke-width='1.1'/%3E%3C/svg%3E")
     0 0 / 31px 54px repeat;
   -webkit-mask-image: radial-gradient(ellipse 72% 70% at 50% 50%, transparent 52%, #000 100%);
   mask-image: radial-gradient(ellipse 72% 70% at 50% 50%, transparent 52%, #000 100%);
@@ -492,10 +492,10 @@
 }
 @keyframes rf-ar-shimmer {
   0% {
-    opacity: 0.35;
+    opacity: 0.45;
   }
   100% {
-    opacity: 0.75;
+    opacity: 0.9;
   }
 }
 @keyframes rf-ar-drift {

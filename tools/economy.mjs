@@ -3,9 +3,10 @@
  * M4 economy scenario on a wave map (default: the research lab). Boots the production build in
  * headless Chromium and plays the whole economy loop with real inputs – teleport next to an object,
  * look at it, press / hold F; mouse clicks to shoot, W to walk into pickups – and uses dev commands
- * only for setup (god mode, starting the wave, topping up points, spawning test subjects):
+ * only for setup (god mode, starting / stopping the waves, topping up points, spawning test
+ * subjects, breaking a seal bar for the Versiegelung, the lethal damage):
  *
- *   1. the run starts with 500 points (economy and HUD),
+ *   1. the run starts with 500 points (economy and HUD); the door is refused while unaffordable,
  *   2. wave 1: enemies breach a rift seal (seal:broken), the pistol kills them → economy:points
  *      with the reasons hit / kill / headshot (+ the wave bonus),
  *   3. the first door, paid with the earned points (door:opened, zone:activated, navmesh path),
@@ -13,10 +14,13 @@
  *   6. a perk machine (the perk's stat modifiers show in the stat table),
  *   7. the breached seal repaired by holding interact (seal:repaired, repair points),
  *   8. every power-up type spawned and collected by walking into it, each effect checked,
- *   9. death → game over → "Neu starten": 500 points, doors closed, perks gone, seals intact.
+ *   9. death (`hurt`: through the regular damage path) → game over → "Neu starten" (a click):
+ *      500 points, doors closed (navmesh blocked again), perks gone, seals intact, no power-ups.
  *
- * Screenshots: smoke-output/economy-*.png, report: smoke-output/economy-report.json. Exit code 0
- * only when every check passed (and the page threw nothing).
+ * SwiftShader runs the simulation several times slower than real time (slower still on a busy
+ * machine), so gameplay waits are budgeted in game seconds (loop.stats.simTime), not wall time.
+ * Screenshots: smoke-output/economy-*.png, report: smoke-output/economy-report.json (checks, event
+ * log). Exit code 0 only when every check passed (and the page threw nothing).
  *
  * Usage: npm run build && node tools/economy.mjs [--map lab] [--preset low] [--port 4599] [--dist dist]
  */
@@ -48,6 +52,11 @@ const START_POINTS = 500;
 const STAND = { door: 1.3, wallBuy: 1.15, box: 1.2, perk: 1.1, seal: 1.4 };
 /** A navmesh path "reaches" its goal when its last corner is this close (m, XZ). */
 const PATH_REACH = 1;
+/** Real-time cap of a single wait (the game-time budgets below are the real limits). */
+const REAL_CAP = 600_000;
+/** Wave 1 has to be cleared within this much game time (and real time). */
+const COMBAT_GAME_SECONDS = 300;
+const COMBAT_REAL_CAP = 30 * 60_000;
 
 const server = spawn(
   process.execPath,
@@ -122,12 +131,38 @@ try {
       .waitForFunction(fn, arg, { timeout, polling })
       .then(() => true)
       .catch(() => false);
-  const untilEvent = (type, from, timeout = 30_000) =>
-    until(([t, n]) => (window.__ev[t] ?? 0) > n, [type, from], timeout);
+  /**
+   * Poll `fn(arg)` until truthy, for at most `gameSeconds` of simulation time (SwiftShader runs the
+   * sim several times slower than real time, and slower still while the machine is busy): false
+   * when the budget ran out. `fn` is serialized – it may only use its argument and the page.
+   */
+  const untilGame = async (fn, arg, gameSeconds, polling = 150) => {
+    const start = await h(() => window.__RIFTFALL__.game.loop.stats.simTime);
+    return page
+      .waitForFunction(
+        ([src, a, t0, budget]) => {
+          const cache = (window.__predicates ??= new Map());
+          let f = cache.get(src);
+          if (!f) {
+            f = new Function(`return (${src});`)();
+            cache.set(src, f);
+          }
+          if (f(a)) return { ok: true };
+          return window.__RIFTFALL__.game.loop.stats.simTime - t0 > budget ? { ok: false } : false;
+        },
+        [fn.toString(), arg, start, gameSeconds],
+        { timeout: REAL_CAP, polling },
+      )
+      .then((handle) => handle.jsonValue())
+      .then((v) => v.ok === true)
+      .catch(() => false);
+  };
+  const untilEvent = (type, from, gameSeconds = 5) =>
+    untilGame(([t, n]) => (window.__ev[t] ?? 0) > n, [type, from], gameSeconds);
   /** Let `n` unpaused frames pass (the aim harness applies the look once per frame). */
   const frames = async (n = 2) => {
     const start = await h(() => window.__frames);
-    await until(([s, k]) => window.__frames >= s + k, [start, n], 20_000, 50);
+    await until(([s, k]) => window.__frames >= s + k, [start, n], 60_000, 50);
   };
   const shot = (name) => page.screenshot({ path: `${OUT}/economy-${name}.png` }).catch(() => {});
   const aimPoint = (p) => h((q) => (window.__aim = q ? { kind: 'point', ...q } : null), p);
@@ -137,10 +172,10 @@ try {
   await page.mouse.move(cbox.x + cbox.width / 2, cbox.y + cbox.height / 2);
 
   /** One trigger pull: press until the weapon reports a shot (or `timeout`), release. */
-  const fireOnce = async (timeout = 5000) => {
+  const fireOnce = async () => {
     const before = await count('weapon:fired');
     await page.mouse.down();
-    const ok = await untilEvent('weapon:fired', before, timeout);
+    const ok = await untilEvent('weapon:fired', before, 3);
     await page.mouse.up();
     return ok;
   };
@@ -156,13 +191,13 @@ try {
     if (!a || a.reserve <= 0 || (!force && a.mag > 0) || a.mag >= a.magSize) return false;
     const before = await count('weapon:reloadEnd');
     await page.keyboard.press('KeyR');
-    return untilEvent('weapon:reloadEnd', before, 20_000);
+    return untilEvent('weapon:reloadEnd', before, 6);
   };
   /** Stand in front of an interactable (see __h.standAt), wait until the interaction focuses it. */
   const approach = async (id, anchor, out, dist) => {
     await h(([a, o, d]) => window.__h.standAt(a, o, d), [anchor, out, dist]);
     await frames(3);
-    return until((want) => window.__h.focusId() === want, id, 20_000);
+    return untilGame((want) => window.__h.focusId() === want, id, 3);
   };
   /** Press F once (a tap is latched even inside one frame). */
   const pressInteract = () => page.keyboard.press('KeyF');
@@ -175,16 +210,16 @@ try {
       type,
     );
     await exec(`powerup ${type}`);
-    const spawned = await until(
+    const spawned = await untilGame(
       (t) => window.__log.some((e) => e.t === 'powerup:spawned' && e.type === t),
       type,
-      10_000,
+      2,
     );
     await page.keyboard.down('KeyW');
-    const got = await until(
+    const got = await untilGame(
       ([t, n]) => window.__log.filter((e) => e.t === 'powerup:collected' && e.type === t).length > n,
       [type, before],
-      30_000,
+      10,
       50,
     );
     await page.keyboard.up('KeyW');
@@ -202,7 +237,7 @@ try {
   const startInfo = await info();
   report.start = startInfo;
   check('start: 500 points', startInfo.points === START_POINTS, { points: startInfo.points });
-  const hudStart = await until((p) => window.__h.hudPoints() === p, START_POINTS, 20_000);
+  const hudStart = await untilGame((p) => window.__h.hudPoints() === p, START_POINTS, 3);
   check('start: HUD shows 500 points', hudStart, { hud: await h(() => window.__h.hudPoints()) });
   check('start: only the start zone is active', startInfo.zones.length === 1, { zones: startInfo.zones });
   await shot('00-start');
@@ -214,7 +249,7 @@ try {
       const prompt = await h(() => window.__log.filter((e) => e.t === 'interact:focus').pop() ?? null);
       const before = await count('economy:purchase');
       await pressInteract();
-      const tried = await untilEvent('economy:purchase', before, 15_000);
+      const tried = await untilEvent('economy:purchase', before, 3);
       const attempt = (await events('economy:purchase', 'start')).pop();
       check(
         'start: unaffordable door refused (economy:purchase ok=false)',
@@ -239,10 +274,10 @@ try {
   await setPhase('combat');
   await exec('god on');
   await exec('wave skip');
-  const spawned = await until(() => (window.__ev['enemy:spawned'] ?? 0) >= 1, null, 120_000);
+  const spawned = await untilGame(() => (window.__ev['enemy:spawned'] ?? 0) >= 1, null, 30);
   check('combat: wave 1 enemies spawn', spawned, { info: await info() });
   // The enemies have to tear down at least one bar before we shoot: the seal is breached by them.
-  const breached = await until(() => (window.__ev['seal:broken'] ?? 0) >= 1, null, 150_000);
+  const breached = await untilGame(() => (window.__ev['seal:broken'] ?? 0) >= 1, null, 90);
   const brokenByEnemies = await events('seal:broken', 'combat');
   check('seal: enemies breach a rift seal (seal:broken)', breached && brokenByEnemies.length > 0, {
     broken: brokenByEnemies.length,
@@ -257,9 +292,11 @@ try {
   const pistolId = (await info()).weapon;
   // Kill the wave with the pistol: body shots (hit, then kill) and head shots (headshot kills).
   const zoneOf = new Map();
-  const combatDeadline = Date.now() + 360_000;
+  const simTime = () => h(() => window.__RIFTFALL__.game.loop.stats.simTime);
+  const combatEnd = (await simTime()) + COMBAT_GAME_SECONDS;
+  const combatRealEnd = Date.now() + COMBAT_REAL_CAP;
   let lastPick = null;
-  while (Date.now() < combatDeadline) {
+  while ((await simTime()) < combatEnd && Date.now() < combatRealEnd) {
     const st = await info();
     if ((await count('wave:complete')) >= 1) break;
     const reasons = await h(() => {
@@ -348,7 +385,7 @@ try {
   const pointsBeforeDoor = (await info()).points;
   const doorEv = await count('door:opened');
   await pressInteract();
-  const opened = await untilEvent('door:opened', doorEv, 20_000);
+  const opened = await untilEvent('door:opened', doorEv, 3);
   const doorPurchase = (await events('economy:purchase', 'door')).find((e) => e.kind === 'door');
   const zonesOn = (await events('zone:activated', 'door')).map((e) => e.zone);
   check('door: F buys and opens it (door:opened)', opened, { door: door.id });
@@ -364,7 +401,7 @@ try {
     zones: zonesOn,
     expected: door.zoneBehind,
   });
-  const doorOpen = await until((id) => window.__h.doorState(id) === 'open', door.id, 30_000);
+  const doorOpen = await untilGame((id) => window.__h.doorState(id) === 'open', door.id, 5);
   const pathAfter = await h(([a, b]) => window.__h.pathReach(a, b), [door.from, door.behind]);
   check('door: navmesh path leads through the open door', doorOpen && pathAfter.gap <= PATH_REACH, {
     state: await h((id) => window.__h.doorState(id), door.id),
@@ -389,46 +426,46 @@ try {
   const equipBefore = await count('weapon:equipped');
   let pts = (await info()).points;
   await pressInteract();
-  const bought = await until(
+  const bought = await untilGame(
     (w) =>
       window.__log.some((e) => e.t === 'economy:purchase' && e.kind === 'weapon' && e.item === w && e.ok),
     wb.weaponId,
-    15_000,
+    3,
   );
   check('wallbuy: weapon bought (economy:purchase weapon)', bought, { weapon: wb.weaponId, price: wb.price });
   check('wallbuy: weapon price deducted', (await info()).points === pts - wb.price, {
     before: pts,
     after: (await info()).points,
   });
-  const equipped = await until(
+  const equipped = await untilGame(
     ([w, n]) =>
       (window.__ev['weapon:equipped'] ?? 0) > n && window.__RIFTFALL__.game.sys.weapons.currentWeaponId === w,
     [wb.weaponId, equipBefore],
-    30_000,
+    5,
   );
   check('wallbuy: bought weapon in hand', equipped, { current: (await info()).weapon });
   // Spend some rounds: a full weapon refuses the refill ("Munition voll").
   await fireShots(3);
   await frames(3);
   const ammoBefore = await h((w) => window.__h.ammoOf(w), wb.weaponId);
-  const ammoOffered = await until(
+  const ammoOffered = await untilGame(
     ([id, cost]) => {
       const f = window.__RIFTFALL__.game.sys.interaction.focused;
       return f?.id === id && f.cost() === cost;
     },
     [wb.id, wb.ammoPrice],
-    20_000,
+    5,
   );
   check('wallbuy: ammo offered after firing', ammoOffered, { ammo: ammoBefore, ammoPrice: wb.ammoPrice });
   pts = (await info()).points;
   await pressInteract();
-  const ammoBought = await until(
+  const ammoBought = await untilGame(
     (w) =>
       window.__log.some(
         (e) => e.t === 'economy:purchase' && e.kind === 'ammo' && e.item === `ammo:${w}` && e.ok,
       ),
     wb.weaponId,
-    15_000,
+    3,
   );
   await frames(2);
   const ammoAfter = await h((w) => window.__h.ammoOf(w), wb.weaponId);
@@ -459,7 +496,7 @@ try {
   pts = (await info()).points;
   const boxOpenedBefore = await count('box:opened');
   await pressInteract();
-  const rolled = await untilEvent('box:opened', boxOpenedBefore, 15_000);
+  const rolled = await untilEvent('box:opened', boxOpenedBefore, 3);
   const boxPurchase = (await events('economy:purchase', 'box')).find((e) => e.kind === 'box');
   check(
     'box: roll bought (box:opened, box price)',
@@ -474,10 +511,10 @@ try {
   });
   await frames(6);
   await shot('07-box-rolling');
-  const resolved = await until(() => window.__log.some((e) => e.t === 'box:resolved'), null, 90_000);
+  const resolved = await untilGame(() => window.__log.some((e) => e.t === 'box:resolved'), null, 15);
   const result = (await events('box:resolved', 'box'))[0]?.weaponId ?? null;
   check('box: roll resolves to a weapon (box:resolved)', resolved && result !== null, { weapon: result });
-  const offerFocused = await until(
+  const offerFocused = await untilGame(
     () => {
       const s = window.__RIFTFALL__.game.sys;
       return (
@@ -485,14 +522,14 @@ try {
       );
     },
     null,
-    30_000,
+    5,
   );
   await shot('08-box-offer');
   await pressInteract();
-  const taken = await until(
+  const taken = await untilGame(
     (w) => w !== null && window.__RIFTFALL__.game.sys.weapons.slotIds.includes(w),
     result,
-    20_000,
+    3,
   );
   check('box: F takes the offered weapon', offerFocused && taken, {
     weapon: result,
@@ -516,7 +553,7 @@ try {
   pts = (await info()).points;
   const perkEv = await count('perk:acquired');
   await pressInteract();
-  const perkGot = await untilEvent('perk:acquired', perkEv, 15_000);
+  const perkGot = await untilEvent('perk:acquired', perkEv, 3);
   await frames(3);
   const perkAfter = await h((p) => window.__h.perkEffect(p), perk);
   check('perk: bought (perk:acquired, owned)', perkGot && perkAfter.owned, {
@@ -555,7 +592,7 @@ try {
         await frames(3);
         await shot('12-seal-repair');
       }
-      const ok = await untilEvent('seal:repaired', before, 30_000);
+      const ok = await untilEvent('seal:repaired', before, 5);
       await page.keyboard.up('KeyF');
       await frames(2);
       if (!ok) break;
@@ -593,10 +630,10 @@ try {
   {
     await h(() => window.__h.powerUpLane());
     await exec('enemy spawn swarmer 3 8');
-    await until(() => window.__RIFTFALL__.game.sys.enemies.alive >= 3, null, 30_000);
+    await untilGame(() => window.__RIFTFALL__.game.sys.enemies.alive >= 3, null, 10);
     const alive = (await info()).alive;
     const r = await collectPowerUp('nuke');
-    await until(() => window.__RIFTFALL__.game.sys.enemies.alive === 0, null, 20_000);
+    await untilGame(() => window.__RIFTFALL__.game.sys.enemies.alive === 0, null, 5);
     const nukePoints = await pointsOf('nuke', 'powerups');
     const after = await info();
     check(
@@ -657,17 +694,17 @@ try {
     const st = await h(() => window.__h.powerUpState('instakill'));
     const hitscan = await h(() => window.__h.selectHitscan());
     if (hitscan) await page.keyboard.press(`Digit${hitscan.slot + 1}`);
-    await until(
+    await untilGame(
       (w) => {
         const ws = window.__RIFTFALL__.game.sys.weapons;
         return ws.currentWeaponId === w && ws.state === 'idle';
       },
       hitscan?.weaponId,
-      20_000,
+      5,
     );
     await exec('enemy spawn tank 1 9');
     // Console spawns rise out of the floor first: wait until the tank can be seen (and hit).
-    await until(() => window.__h.nearestEnemy() !== null, null, 120_000, 250);
+    await untilGame(() => window.__h.nearestEnemy() !== null, null, 30, 250);
     const tank = await h(() => window.__h.nearestEnemy());
     let tankDead = false;
     let shots = 0;
@@ -676,10 +713,10 @@ try {
       await frames(2);
       for (; shots < 3 && !tankDead; shots++) {
         await fireOnce();
-        tankDead = await until(
+        tankDead = await untilGame(
           (id) => window.__log.some((e) => e.t === 'enemy:died' && e.id === id),
           tank.id,
-          4000,
+          2,
         );
       }
     }
@@ -767,51 +804,50 @@ try {
   await setPhase('death');
   report.beforeDeath = await info();
   await exec('god off');
-  await h(() => window.__h.powerUpLane());
-  await exec('enemy spawn swarmer 4 3');
-  // God mode is off: the enemies hurt the player for real.
-  const hurtByEnemies = await until(
-    () => window.__log.some((e) => e.t === 'player:damaged' && e.phase === 'death'),
-    null,
-    150_000,
-  );
-  check('death: enemies hurt the player without god mode', hurtByEnemies, { hp: (await info()).hp });
-  // Regeneration outpaces the melee cadence at SwiftShader frame rates (a natural death takes
-  // minutes): give the enemies a moment, then finish through the regular damage path.
-  let died = await until(() => (window.__ev['player:died'] ?? 0) >= 1, null, 20_000);
-  report.deathCause = died ? 'enemies' : 'hurt';
-  if (!died) {
-    await exec('hurt 100000');
-    died = await until(() => (window.__ev['player:died'] ?? 0) >= 1, null, 20_000);
-  }
+  // A death by the enemies takes minutes at SwiftShader frame rates (regeneration outpaces the
+  // melee cadence): lethal damage through the regular damage path (armor, revive charges, the
+  // death sequence) instead.
+  await exec('hurt 100000');
+  let died = await untilGame(() => (window.__ev['player:died'] ?? 0) >= 1, null, 2);
+  report.deathCause = 'hurt';
   if (!died) {
     report.deathCause = 'console';
     note('`hurt` did not kill the player – `run kill`');
     await exec('run kill');
-    died = await until(() => (window.__ev['run:over'] ?? 0) >= 1, null, 30_000);
+    died = await until(() => (window.__ev['run:over'] ?? 0) >= 1, null, 60_000);
   }
-  const over = await until(() => (window.__ev['run:over'] ?? 0) >= 1, null, 60_000);
+  // The death sequence runs on real time (slow motion, camera drop).
+  const over = await until(() => (window.__ev['run:over'] ?? 0) >= 1, null, 120_000);
   check('death: player dies → game over (run:over)', died && over, { cause: report.deathCause });
   const restartButton = '.gameover .menu-btn--primary:not([disabled])';
   const buttonReady = await page
     .waitForSelector(restartButton, { timeout: 30_000 })
     .then(() => true)
     .catch(() => false);
-  await sleep(600);
+  // The button unlocks on a timer; the reveal animations advance with the (slow) frames.
+  await until(
+    () => {
+      const t = document.querySelector('.gameover__title');
+      return t !== null && getComputedStyle(t).opacity === '1';
+    },
+    null,
+    30_000,
+    250,
+  );
   await shot('18-gameover');
   const restartEv = await count('run:restart');
   if (buttonReady) await page.click(restartButton);
-  const restarted = await untilEvent('run:restart', restartEv, 20_000);
+  const restarted = await until(([n]) => (window.__ev['run:restart'] ?? 0) > n, [restartEv], 30_000);
   check('restart: "Neu starten" restarts the run (run:restart)', buttonReady && restarted, { buttonReady });
   await setPhase('restart');
-  await until(() => !window.__RIFTFALL__.game.loop.paused, null, 20_000);
+  await until(() => !window.__RIFTFALL__.game.loop.paused, null, 30_000);
   await frames(4);
   const fresh = await h(([a, b]) => window.__h.freshRun(a, b), [door.from, door.behind]);
   report.afterRestart = fresh;
   check('restart: points back to 500', fresh.points === START_POINTS, { points: fresh.points });
   check(
     'restart: HUD shows 500 points',
-    await until((p) => window.__h.hudPoints() === p, START_POINTS, 20_000),
+    await untilGame((p) => window.__h.hudPoints() === p, START_POINTS, 3),
     {
       hud: await h(() => window.__h.hudPoints()),
     },

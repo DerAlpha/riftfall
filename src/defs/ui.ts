@@ -354,7 +354,7 @@ export const RUN_MENU = {
     /** Subtitle without a map list (the M1/M2 calibration build). */
     subtitle: 'Kalibrierungshalle – Meilenstein 1',
     /** Subtitle and card heading with a map list. */
-    subtitleMaps: 'Vertical Slice – Meilenstein 3',
+    subtitleMaps: 'Forschungsstation Kepler-9 – Rift-Ausbruch',
     mapsHeading: 'Einsatzgebiet wählen',
     recommended: 'Empfohlen',
   },

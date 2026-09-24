@@ -12,6 +12,7 @@ import type * as THREE from 'three';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import type { Action, Binding } from '../defs/input';
 import type { MapAtmosphereDef } from '../defs/maps';
+import type { MusicIntensitySource, MusicState, MusicStingId } from '../defs/music';
 import type { ExplosionDef, FieldDef, WeaponProjectileDef, WeaponSpecialDef } from '../defs/weapons';
 import type {
   AccessibilitySettings,
@@ -472,6 +473,35 @@ export interface AudioApi {
   /** Pause/resume everything (game pause, tab hidden). */
   setPaused(paused: boolean): void;
   readonly stats: { activeVoices: number; contextState: string };
+  dispose(): void;
+}
+
+/**
+ * M10 dynamic procedural music (audio/music/MusicSystem). It follows the game on its own (events:
+ * menus, waves, bosses, death, power-ups, progression); these are the hooks for systems that know
+ * more. Silent no-op without Web Audio / before the first user gesture / at music volume 0.
+ */
+export interface MusicApi {
+  readonly state: MusicState;
+  /** Theme the current state plays (map themes by map id, `boss`, `menu`). */
+  readonly themeId: string;
+  /** Intensity 0..1 of the current state (after its clamp). */
+  readonly intensity: number;
+  /**
+   * The M6 spawn director's intensity 0..1: wins over the built-in model while it keeps sending
+   * (MUSIC.intensity.directorTimeout); null releases it. `dev` overrides both (console).
+   */
+  setIntensity(value: number | null, source?: MusicIntensitySource): void;
+  /** M6 boss fights: play a boss theme by id (`boss` = generic); null returns to the wave music. */
+  setBossTheme(themeId: string | null): void;
+  /** Map theme by map id (unknown ids: MUSIC.fallbackTheme). */
+  setMapTheme(mapId: string): void;
+  /** Play a sting in the playing theme's key (rate limited); false when it was dropped. */
+  sting(id: MusicStingId, transpose?: number): boolean;
+  /** Dev console: force a state (null: follow the game again). */
+  forceState(state: MusicState | null): void;
+  /** Per frame while the game runs (game dt): intensity model, hint-cue listener, danger mix. */
+  update(dt: number, listener?: Vec3Like): void;
   dispose(): void;
 }
 
@@ -999,6 +1029,8 @@ export interface Interactable {
   canInteract(): boolean;
   /** Seconds the button must be held (0 = press). Repairs hold, purchases press. */
   holdTime(): number;
+  /** Hold interactions only: keep interacting every `holdTime` while the button stays held (seal repairs). */
+  repeatHold?(): boolean;
   interact(): void;
 }
 

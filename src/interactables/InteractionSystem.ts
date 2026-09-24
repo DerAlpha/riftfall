@@ -140,8 +140,8 @@ export class InteractionSystem implements InteractionApi {
         this.holdTimer += dt;
         if (this.holdTimer >= hold) {
           this.holdTimer = 0;
-          // One use per hold: release before the next one.
-          this.holdArmed = false;
+          // One use per hold (release before the next) unless it repeats while held (seal bars).
+          this.holdArmed = focus.repeatHold?.() === true;
           focus.interact();
         }
       } else if (!this.held) {

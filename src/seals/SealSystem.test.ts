@@ -75,7 +75,7 @@ describe('SealSystem', () => {
     expect(t.seals.seal('rift_a')!.prompt()).toBe(SEALS.prompts.repair);
   });
 
-  it('holding interact repairs one bar per hold and pays points up to the per-wave cap', () => {
+  it('holding interact repairs bar after bar and pays points up to the per-wave cap', () => {
     const t = setup();
     const seal = t.seals.seal('rift_a')!;
     t.seals.breakSeal('rift_a');
@@ -116,8 +116,12 @@ describe('SealSystem', () => {
     expect(t.repaired[0]).toMatchObject({ sealId: 'seal:rift_a', planks: 1 });
     expect(t.economy.points).toBe(perPlank);
 
-    // One bar per hold: release and hold again for the next ones.
-    tick(SEALS.repair.holdTime * 2);
+    // Keeping the button held repairs the next bar every holdTime (CoD style).
+    tick(SEALS.repair.holdTime * 2 + 0.05);
+    expect(seal.up).toBe(3);
+    held = false;
+    tick(0.05);
+    t.seals.breakSeal('rift_a', 2);
     expect(seal.up).toBe(1);
     const repairOnce = (): void => {
       held = false;
@@ -128,7 +132,8 @@ describe('SealSystem', () => {
     repairOnce();
     repairOnce();
     expect(seal.up).toBe(3);
-    expect(t.economy.points).toBe(3 * perPlank);
+    // 3 bars while held, 2 more after the strike.
+    expect(t.economy.points).toBe(5 * perPlank);
 
     // The swarm keeps tearing, the player keeps repairing: points stop at the per-wave cap.
     const farm = Math.ceil(capPerWave / perPlank);

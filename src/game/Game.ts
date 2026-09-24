@@ -152,6 +152,8 @@ export class Game {
   private time = 0;
   /** A run touched the run systems since the last resetRunSystems (startPlaying resets them). */
   private runDirty = false;
+  /** Runs started this session (per-run random seeds). */
+  private runSeq = 0;
   private benchmarkRunning = false;
   private readonly _yawDir = new THREE.Vector3();
   private readonly _up = new THREE.Vector3(0, 1, 0);
@@ -711,7 +713,7 @@ export class Game {
     this.runDirty = true;
     runFlow.begin(level.id);
     // Fresh gameplay randomness per run (daily challenge runs pass a fixed seed in M8).
-    this.sys.nav.setRandomSeed(`run:${level.id}:${this.runsStarted}:${Date.now()}`);
+    this.sys.nav.setRandomSeed(`run:${level.id}:${++this.runSeq}:${Date.now()}`);
     if (map.waves) this.sys.waves.start(1);
     this.pauseState.start(lockless || this.padNav.activating);
     void this.maybeRunBenchmark();

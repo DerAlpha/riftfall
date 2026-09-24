@@ -579,6 +579,10 @@ export function isWeaponId(id: string): id is WeaponId {
 export interface LoadoutDef {
   readonly slots: number;
   readonly weapons: readonly string[];
+  /** M5: starting grenades (type id, count); absent = GRENADE_RULES.start (defs/grenades). */
+  readonly grenade?: { readonly id: string; readonly count: number };
+  /** M5: equipped ability id (null = none); absent = ABILITY_RULES.defaultAbility (defs/abilities). */
+  readonly ability?: string | null;
 }
 
 /**

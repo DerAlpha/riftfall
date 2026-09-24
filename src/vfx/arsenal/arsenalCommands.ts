@@ -265,7 +265,7 @@ export function createArsenalCommands(deps: ArsenalCommandDeps): ConsoleCommand[
             const to = new THREE.Vector3();
             const n = new THREE.Vector3();
             muzzle(from);
-            if (aim(to, n)) deps.vfx.spawn('impact.plasma', to, n, 1);
+            if (aim(to, n)) deps.vfx.spawn(P.shotImpacts[visual] ?? 'impact.plasma', to, n, 1);
             deps.arsenal.shot(visual, to, from);
             return `${visual} abgefeuert`;
           }

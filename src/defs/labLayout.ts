@@ -18,7 +18,7 @@
  * Walkable space is a set of "spaces" (unions of axis-aligned rects, floor at y = 0). Every space
  * is enclosed by its own walls (thickness `wallThickness` behind the interior faces), so two
  * neighbouring spaces are 2 × wallThickness apart; doorways cut both walls. Doorways with
- * `slot: true` are the purchasable doors of M4 (open in M3), the others are permanent archways.
+ * `slot: true` are the purchasable M4 doors (interactables/Door), the others are permanent archways.
  * Zones (M4 door gating, spawn point zones) are groups of spaces.
  */
 import type { MaterialId } from './materials';
@@ -73,7 +73,8 @@ export const LAB_MATERIALS = {
   'concrete_wall#atrium': { tint: [1.45, 1.5, 1.62] },
   'concrete_wall#ceiling': { navIgnore: true },
   'concrete_wall#roof': { tint: [0.8, 0.8, 0.82], navIgnore: true },
-  'glass#frost': { tint: [1.35, 1.35, 1.35], opacity: 0.4, roughness: 9 },
+  /** Cryo pod glass: frosted enough that the occupants read as silhouettes, not mannequins. */
+  'glass#frost': { tint: [1.35, 1.4, 1.45], opacity: 0.58, roughness: 15 },
   'glass#tank': { tint: [0.85, 1.25, 0.95], opacity: 0.2 },
   /** Atrium lantern glazing: its flat top would be a navmesh island above the roof. */
   'glass#lantern': { navIgnore: true },
@@ -165,7 +166,7 @@ export interface LabDoorwayDef {
   readonly axis: 'x' | 'z';
   readonly width: number;
   readonly height: number;
-  /** M4 purchasable door (open in M3) or a permanent archway. */
+  /** M4 purchasable door (interactables/Door builds it) or a permanent archway. */
   readonly slot: boolean;
   /** Suggested M4 price (points); 0 for archways. */
   readonly costHint: number;

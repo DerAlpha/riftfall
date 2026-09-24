@@ -986,6 +986,13 @@ export interface FieldApi {
   pullAt(position: Vec3Like, out: THREE.Vector3): boolean;
   /** Speed multiplier from slow fields at a point (1 = none). */
   slowAt(position: Vec3Like): number;
+  /**
+   * M5 abilities (a Chronofeld that follows the player): move a live field (floor fields snap to
+   * the floor below `position` again) – call it from the fixed tick. False when `id` is gone.
+   */
+  move?(id: number, position: Vec3Like): boolean;
+  /** End a live field early (no collapse). False when `id` is gone. */
+  end?(id: number): boolean;
   readonly active: number;
   fixedUpdate(dt: number): void;
   update(dt: number): void;

@@ -15,7 +15,7 @@ export interface LevelZoneDef {
 }
 
 /**
- * Doorway where M4 places a purchasable door. Open in M3. `position` is the bottom center of the
+ * Doorway of a purchasable M4 door (interactables/Door). `position` is the bottom center of the
  * passage (floor level, between the two walls); the door leaf spans `width` × `height` and may be
  * up to `depth` thick. `facing` points from zoneA into zoneB (yaw: three.js convention of an object
  * whose local +Z points that way, i.e. atan2(dir.x, dir.z)).

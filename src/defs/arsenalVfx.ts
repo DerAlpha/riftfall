@@ -522,8 +522,8 @@ export const BEAM_STYLES = {
     stretch: 0.018,
     color: [1, 0.72, 0.34],
     colorEnd: [0.72, 0.1, 0.02],
-    intensity: 4.2,
-    intensityEnd: 0.3,
+    intensity: 3.6,
+    intensityEnd: 0.7,
     gravity: -0.35,
     core: { length: 1.4, width: 0.05, widthEnd: 0.3, color: FIRE_CORE, intensity: 3.5 },
     nozzleGlow: {
@@ -547,15 +547,15 @@ export const BEAM_STYLES = {
     style: 'void',
     width: 0.18,
     color: VOID,
-    intensity: 3,
+    intensity: 3.5,
     haloWidth: 0.6,
     haloColor: VOID_DEEP,
-    haloIntensity: 0.6,
+    haloIntensity: 0.9,
     startGlow: { shape: 'void', size: 0.08, color: VOID, intensity: 3, spin: 6 },
     endGlow: { shape: 'void', size: 0.8, color: VOID, intensity: 2.6, spin: -5 },
-    fade: 0.35,
-    fadeWidth: 1.8,
-    along: { effect: 'beam.void.motes', spacing: 1.4, rate: 12 },
+    fade: 0.45,
+    fadeWidth: 2.6,
+    along: { effect: 'beam.void.motes', spacing: 0.9, rate: 12 },
     light: { color: [0.6, 0.3, 1], intensity: 40, range: 6, interval: 0.08 },
   },
   /** RG-9 Lanze slug: a blinding core wound by a cyan helix that lingers and widens. */
@@ -707,7 +707,7 @@ export const FIELD_VISUALS = {
     glows: [],
     coreHeight: 0,
     ambient: [
-      { effect: 'field.fire.flames', rate: 90, area: 'disc', height: [0, 0.05], scale: 1 },
+      { effect: 'field.fire.flames', rate: 110, area: 'disc', height: [0, 0.05], scale: 1 },
       { effect: 'field.fire.smoke', rate: 5, area: 'disc', height: [0.5, 1.1], scale: 1 },
     ],
     infall: null,
@@ -865,6 +865,8 @@ export const ARSENAL_VFX = {
     arcHops: 3,
     arcSpread: 3,
     arcInterval: 0.3,
+    /** Impact preset of a previewed one-shot ray (`fx shot`). */
+    shotImpacts: { 'beam.rail': 'impact.plasma', 'beam.void': 'impact.void' } as Record<string, string>,
     /** What a previewed projectile does on impact (dev stand-in for the weapon data). */
     projectiles: {
       'projectile.plasma': { speed: 60, gravity: 0, effect: 'impact.plasma' },

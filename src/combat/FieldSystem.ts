@@ -172,7 +172,8 @@ export class FieldSystem implements FieldApi {
     this.specialDefs[i] = from.special ?? null;
     const id = ++this.seq;
     this.ids[i] = id;
-    this.handle[i] = this.vfx.fieldStart(def.vfx, center, def.radius, def.duration);
+    // vfx '' = drawn by its owner (the Chronofeld's dome): no arsenal visual.
+    this.handle[i] = def.vfx ? this.vfx.fieldStart(def.vfx, center, def.radius, def.duration) : 0;
     this.stats.spawned++;
     const e = this.spawnedPayload;
     e.id = id;
@@ -245,7 +246,7 @@ export class FieldSystem implements FieldApi {
           this.damageTick(i, def, interval);
         }
       }
-      if (this.age[i]! >= def.duration - TIME_EPS) this.end(k, true);
+      if (this.age[i]! >= def.duration - TIME_EPS) this.endAt(k, true);
     }
   }
 
@@ -253,9 +254,35 @@ export class FieldSystem implements FieldApi {
     // Field visuals animate on their own (ArsenalVfxApi); nothing to interpolate.
   }
 
+  /**
+   * Move live field `id` (M5 abilities: a field following the player; fixed tick). Floor fields
+   * snap to the floor below `position` again. The arsenal visual stays where it started – a moving
+   * field is drawn by its owner (vfx '').
+   */
+  move(id: number, position: Vec3Like): boolean {
+    const k = this.indexOf(id);
+    if (k < 0 || !finite(position)) return false;
+    const i = this.activeList[k]!;
+    const center = _center.set(position.x, position.y, position.z);
+    if (this.defs[i]!.kind !== 'pull') this.snapToFloor(center);
+    const o = i * 3;
+    this.pos[o] = center.x;
+    this.pos[o + 1] = center.y;
+    this.pos[o + 2] = center.z;
+    return true;
+  }
+
+  /** End live field `id` early: visual and field:ended, no collapse. */
+  end(id: number): boolean {
+    const k = this.indexOf(id);
+    if (k < 0) return false;
+    this.endAt(k, false);
+    return true;
+  }
+
   /** Remove every field (run reset): visuals and field:ended, no collapse. */
   clear(): void {
-    while (this.activeCount > 0) this.end(this.activeCount - 1, false);
+    while (this.activeCount > 0) this.endAt(this.activeCount - 1, false);
   }
 
   /** Active fields (debug / tests). */
@@ -360,8 +387,15 @@ export class FieldSystem implements FieldApi {
     return dx * dx + dz * dz <= r * r;
   }
 
+  /** Active-list index of live field `id`, -1 when it is gone. */
+  private indexOf(id: number): number {
+    if (!(id > 0)) return -1;
+    for (let k = 0; k < this.activeCount; k++) if (this.ids[this.activeList[k]!] === id) return k;
+    return -1;
+  }
+
   /** End the field at active index k (collapse explosion when due), release its slot. */
-  private end(k: number, collapse: boolean): void {
+  private endAt(k: number, collapse: boolean): void {
     const i = this.activeList[k]!;
     const def = this.defs[i]!;
     const id = this.ids[i]!;

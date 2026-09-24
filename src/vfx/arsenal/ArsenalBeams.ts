@@ -543,10 +543,11 @@ export class ArsenalBeams {
         spawn.r1 = s.colorEnd[0] * i1;
         spawn.g1 = s.colorEnd[1] * i1;
         spawn.b1 = s.colorEnd[2] * i1;
+        // Opaque to the end of its life (the colour cools down), dissolving over the last third.
         spawn.a0 = 1;
-        spawn.a1 = 0;
+        spawn.a1 = 1;
         spawn.fadeIn = 0.06;
-        spawn.fadeOut = 0.45;
+        spawn.fadeOut = 0.35;
         spawn.gravity = s.gravity * VFX.particles.gravity;
         spawn.drag = drag;
         spawn.rotation = r() * Math.PI * 2;

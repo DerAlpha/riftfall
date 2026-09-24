@@ -93,6 +93,15 @@ export function propNavBox(box: BoxShape): BoxShape {
   };
 }
 
+/** `box` grown by `margin` on every side. */
+export function grownBox(box: BoxShape, margin: number): BoxShape {
+  const h = box.half;
+  return {
+    center: { x: box.center.x, y: box.center.y, z: box.center.z },
+    half: { x: h.x + margin, y: h.y + margin, z: h.z + margin },
+  };
+}
+
 export function tupleToVec(t: Vec3Tuple): Vec3Like {
   return { x: t[0], y: t[1], z: t[2] };
 }

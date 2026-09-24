@@ -69,6 +69,7 @@ import { SolidBlocker, type SolidBlockerDeps } from './SolidBlocker';
 import {
   createDefaultPrices,
   defaultPerkMachineInfos,
+  type DecalFader,
   type InteractablePrices,
   type InteractableWeapons,
   type PerkMachineInfo,
@@ -112,6 +113,8 @@ export interface PlaceInteractablesDeps {
   /** Seeded run randomness (box results, relocation). */
   rng: Rng;
   vfx?: Pick<VfxApi, 'spawn'> | null;
+  /** Bullet decals (VfxSystem.decals): holes on door leaves / the chest go when they move away. */
+  decals?: DecalFader | null;
   /** Player feet + capsule radius (the box never materializes on the player). */
   player?: { readonly position: Vec3Like; readonly radius: number } | null;
   prices?: InteractablePrices;
@@ -217,6 +220,7 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
         price,
         view,
         zoneName,
+        decals: deps.decals ?? null,
       });
       doors.push(door);
       for (const side of door.sides) register(side);
@@ -322,6 +326,7 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
       weaponName: (id) => getWeaponDef(id)?.name ?? id,
       player: deps.player ?? null,
       vfx: deps.vfx ?? null,
+      decals: deps.decals ?? null,
       view,
     });
     register(box);

@@ -221,7 +221,9 @@ describe('MysteryBox', () => {
     t.box.roll(true);
     t.run(B.rollDuration + 0.05);
     expect(t.box.state).toBe('anomaly');
-    expect(t.economy.earned).toEqual([{ amount: 950, reason: 'refund' }]);
+    // A free (console) roll refunds nothing: `box anomaly` must not print points.
+    expect(t.economy.earned).toEqual([]);
+    expect(t.economy.points).toBe(5000);
 
     const single = setup({ locations: 1 });
     for (let i = 0; i < 12; i++) {
@@ -291,5 +293,42 @@ describe('MysteryBox', () => {
     expect(t.box.location.id).toBe('loc0');
     expect(t.box.state).toBe('idle');
     expect(t.locations.filter((l) => l.blocker.blocked).map((l) => l.id)).toEqual(['loc0']);
+  });
+
+  it('refunds only what the roll cost; the relocation removes bullet holes on the chest', () => {
+    const t = setup({ points: 5000 });
+    // A paid roll that turns into the anomaly refunds the price it was bought for.
+    t.box.purchase();
+    // Force the reveal of this paid roll (as if the threshold and the chance hit).
+    (t.box as unknown as { _anomaly: boolean; result: string | null })._anomaly = true;
+    (t.box as unknown as { result: string | null }).result = null;
+    t.run(B.rollDuration + 0.05);
+    expect(t.box.state).toBe('anomaly');
+    expect(t.economy.earned).toEqual([{ amount: 950, reason: 'refund' }]);
+    expect(t.economy.points).toBe(5000);
+
+    const faded: { x: number; z: number; hx: number; hy: number }[] = [];
+    const u = setup();
+    const withDecals = new MysteryBox({
+      events: new EventBus<GameEvents>(),
+      economy: u.economy,
+      weapons: u.weapons,
+      price: 950,
+      rng: new Rng('decals'),
+      locations: u.locations,
+      startLocations: [0],
+      pool: resolveBoxPool(),
+      weaponName: (id) => id,
+      decals: {
+        fadeInBox: (c, h) => {
+          faded.push({ x: c.x, z: c.z, hx: h.x, hy: h.y });
+          return 1;
+        },
+      },
+    });
+    expect(withDecals.move()).toBe(true);
+    expect(faded).toHaveLength(1);
+    expect(faded[0]!.x).toBeCloseTo(u.locations[0]!.position.x, 6);
+    expect(faded[0]!.hx).toBeGreaterThan(u.locations[0]!.halfX);
   });
 });

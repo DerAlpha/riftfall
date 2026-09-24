@@ -42,6 +42,8 @@ const CYL_Z = (CYL_REAR + CYL_FRONT) / 2;
 const CYL_LEN = CYL_REAR - CYL_FRONT;
 const CHAMBER_HOLE = 0.0056;
 const FRAME_W = 0.032;
+/** The grip frame behind the recoil shield is slimmer and rounder. */
+const REAR_FRAME_W = 0.028;
 const FRAME_TOP = 0.066;
 const SHROUD_FRONT = -0.214;
 const SHROUD_REAR = -0.074;
@@ -126,9 +128,33 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
   b.part('hammer', [0, 0.03, 0.031]);
   b.part('trigger', [0, 0.0, -0.028]);
 
-  // --- frame: side profile open at the top around the cylinder window (the strap bridges it) ---
+  // --- frame: front section open at the top around the cylinder window (the strap bridges it),
+  // a narrower, rounder rear section behind the recoil shield ---
   const winRear = -CYL_REAR - 0.0025;
   const winFront = -CYL_FRONT + 0.004;
+  const frameTop = STRAP_BOTTOM + 0.0012;
+  b.add(
+    BODY,
+    'gunmetal',
+    profileX(
+      [
+        [-0.004, 0.0],
+        [-0.004, frameTop],
+        [winRear, frameTop],
+        [winRear, WINDOW_BOTTOM],
+        [winFront, WINDOW_BOTTOM],
+        [winFront, frameTop],
+        [0.08, frameTop],
+        [0.08, 0.006],
+        [0.068, 0.002],
+        [0.03, 0.002],
+        [0.0, -0.004],
+      ],
+      FRAME_W,
+      { bevel: 0.0022 },
+    ),
+    { paint: P.gunmetal.paint },
+  );
   b.add(
     BODY,
     'gunmetal',
@@ -136,21 +162,14 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
       [
         [-0.03, -0.006],
         [-0.044, 0.0],
-        [-0.045, 0.036],
-        [-0.036, 0.05],
-        [-0.027, STRAP_BOTTOM + 0.0012],
-        [winRear, STRAP_BOTTOM + 0.0012],
-        [winRear, WINDOW_BOTTOM],
-        [winFront, WINDOW_BOTTOM],
-        [winFront, STRAP_BOTTOM + 0.0012],
-        [0.08, STRAP_BOTTOM + 0.0012],
-        [0.08, 0.006],
-        [0.068, 0.002],
-        [0.03, 0.002],
-        [0.0, -0.006],
+        [-0.045, 0.034],
+        [-0.037, 0.048],
+        [-0.027, frameTop - 0.001],
+        [0.0, frameTop - 0.001],
+        [0.0, -0.004],
       ],
-      FRAME_W,
-      { bevel: 0.0022 },
+      REAR_FRAME_W,
+      { bevel: 0.0045, bevelSegments: 3 },
     ),
     { paint: P.gunmetal.paint },
   );
@@ -171,7 +190,7 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
   b.add(BODY, 'brass', cylinderZ(0.0024, 0.0024, 0.0004, 12), { pos: [0, BORE_Y, CYL_REAR + 0.00125] });
   // Machined side plate (right; the LED pod sits on the left) and screws on both flanks.
   b.add(BODY, 'darkMetal', roundedBox(0.0016, 0.024, 0.034, 0.0006), {
-    pos: [FRAME_W / 2 + 0.0002, 0.03, 0.02],
+    pos: [REAR_FRAME_W / 2 + 0.0002, 0.03, 0.02],
     paint: P.darkMetal.paint,
   });
   for (const side of [-1, 1]) {
@@ -180,19 +199,19 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
       [0.052, 0.004],
     ] as const) {
       b.add(BODY, 'gunmetal', cylinderX(0.0019, 0.0012, 10), {
-        pos: [side * (FRAME_W / 2 + 0.0011), y, z],
+        pos: [side * (REAR_FRAME_W / 2 + 0.0011), y, z],
         paint: 0.9,
       });
     }
   }
   // Cylinder release latch (left, behind the cylinder) – accent paint.
   b.add(BODY, 'accentPaint', roundedBox(0.0032, 0.0065, 0.011, 0.001), {
-    pos: [-FRAME_W / 2 - 0.0012, 0.047, -0.004],
+    pos: [-FRAME_W / 2 - 0.0012, 0.047, -0.008],
     paint: P.accentPaint.paint,
   });
 
   // --- chamber LED pod (left flank, angled towards the shooter) ---
-  const podCenter: [number, number, number] = [-FRAME_W / 2 - 0.0022, 0.036, 0.021];
+  const podCenter: [number, number, number] = [-REAR_FRAME_W / 2 - 0.0022, 0.036, 0.021];
   b.add(BODY, 'darkMetal', roundedBox(0.005, 0.018, 0.026, 0.0012), {
     pos: podCenter,
     rot: [0, POD_YAW, 0],

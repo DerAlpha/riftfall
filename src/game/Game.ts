@@ -480,6 +480,7 @@ export class Game {
       nav,
       rng: new Rng(`box:${runSeed}`),
       vfx,
+      decals: vfx.decals,
       player: { position: player.position, radius: MOVEMENT.collider.radius },
       visuals: { scene: render.scene, materials, render, reduceFlashing },
       mapId: map.id,

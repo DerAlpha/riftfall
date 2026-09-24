@@ -89,6 +89,11 @@ export const BLOCKERS = {
    */
   navLift: 0.5,
   navHalfHeight: 1,
+  /**
+   * Bullet decals within the bullet volume grown by this (m) vanish when the surface goes away (a
+   * door opens, the box leaves): decals sit a few mm in front of the surface they hit.
+   */
+  decalMargin: 0.05,
 } as const;
 
 /** Additive floor glow in front of emissive fixtures (fake light spill; real lights stay constant). */

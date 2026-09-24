@@ -37,6 +37,9 @@ const FRONT_SIGHT_Z = -0.272;
 const RECEIVER_REAR = 0.085;
 const HANDGUARD_REAR = -0.15;
 const HANDGUARD_FRONT = -0.285;
+/** The handguard carries the rail on its top and a short rail underneath. */
+const HG_TOP = RAIL_TOP - 0.006;
+const HG_BOTTOM = BORE_Y - 0.021;
 const MUZZLE_Z = -0.338;
 const GRIP_TILT = -16;
 const GRIP_TOP = { y: 0.002, z: 0.012 } as const;
@@ -83,8 +86,8 @@ export const buildSmg: ViewmodelBuilder = (kit) => {
   b.add(BODY, 'brass', new BoxGeometry(0.0006, 0.006, 0.014), { pos: [0.0196, 0.054, -0.03] });
   // Accent strips: receiver left flank + handguard upper-left chamfer.
   b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.13), { pos: [-0.0192, 0.047, 0.005] });
-  b.add(BODY, 'accent', new BoxGeometry(0.0012, 0.0024, 0.11), {
-    pos: [-0.0161, BORE_Y + 0.0165, (HANDGUARD_REAR + HANDGUARD_FRONT) / 2 - 0.004],
+  b.add(BODY, 'accent', new BoxGeometry(0.0012, 0.0034, 0.11), {
+    pos: [-0.0154, HG_TOP - 0.0046, (HANDGUARD_REAR + HANDGUARD_FRONT) / 2 - 0.004],
     rot: [0, 0, -45],
   });
 
@@ -194,9 +197,9 @@ export const buildSmg: ViewmodelBuilder = (kit) => {
   // --- collapsible twin-rod stock + butt plate ---
   const buttZ = 0.238;
   for (const [x, y] of [
-    [-0.012, 0.052],
-    [0.012, 0.052],
-    [0, 0.018],
+    [-0.012, 0.041],
+    [0.012, 0.041],
+    [0, 0.012],
   ] as const) {
     b.add(BODY, 'darkMetal', cylinderZ(0.0036, 0.0036, buttZ - RECEIVER_REAR, 12), {
       pos: [x, y, (buttZ + RECEIVER_REAR) / 2],
@@ -231,11 +234,11 @@ export const buildSmg: ViewmodelBuilder = (kit) => {
   b.add(
     BODY,
     'darkMetal',
-    profileZ(chamferRectProfile(0.04, 0.042, 0.01, 0.008), hgLen, {
+    profileZ(chamferRectProfile(0.04, HG_TOP - HG_BOTTOM, 0.01, 0.008), hgLen, {
       bevel: 0.002,
-      holes: [chamferRectProfile(0.028, 0.028, 0.006)],
+      holes: [chamferRectProfile(0.028, 0.03, 0.006)],
     }),
-    { pos: [0, BORE_Y, hgZ], paint: P.darkMetal.paint },
+    { pos: [0, (HG_TOP + HG_BOTTOM) / 2, hgZ], paint: P.darkMetal.paint },
   );
   for (const side of [-1, 1]) {
     for (let i = 0; i < 4; i++) {
@@ -251,7 +254,7 @@ export const buildSmg: ViewmodelBuilder = (kit) => {
       });
     }
   }
-  const underRailY = BORE_Y - 0.021 - 0.002;
+  const underRailY = HG_BOTTOM - 0.002;
   b.add(BODY, 'darkMetal', new BoxGeometry(0.016, 0.004, 0.08), {
     pos: [0, underRailY, hgZ - 0.008],
     paint: P.darkMetal.paint,

@@ -13,7 +13,9 @@
  * MYSTERY_BOX.anomalyChance. The cycling display uses its own (forked) stream.
  *
  * Each location owns a SolidBlocker (collider, bullets, nav area) that is solid only while the box
- * stands there; a box arriving on top of the player waits until the player stepped off.
+ * stands there; a box arriving on top of the player waits until the player stepped off. Bullet
+ * decals on the chest go with it when it leaves. The anomaly refunds what its roll cost (a free
+ * console roll refunds nothing).
  */
 import type { Vector3 } from 'three';
 import type { EconomyApi, Interactable, VfxApi } from '../core/contracts';
@@ -21,9 +23,9 @@ import type { EventBus } from '../core/EventBus';
 import type { GameEvents, Vec3Like } from '../core/events';
 import { clamp01, lerp, smoothstep } from '../core/math';
 import { Rng } from '../core/Rng';
-import { INTERACTION, MYSTERY_BOX, type BoxPoolEntry } from '../defs/interactables';
+import { BLOCKERS, INTERACTION, MYSTERY_BOX, type BoxPoolEntry } from '../defs/interactables';
 import { IMPLEMENTED_WEAPON_KINDS, WEAPONS, getWeaponDef, type WeaponDef } from '../defs/weapons';
-import { formatPrompt, type InteractableWeapons } from './types';
+import { formatPrompt, type DecalFader, type InteractableWeapons } from './types';
 
 export type BoxState = 'idle' | 'rolling' | 'offering' | 'closing' | 'anomaly' | 'leaving' | 'arriving';
 
@@ -81,6 +83,8 @@ export interface MysteryBoxDeps {
   /** Player feet (the collider waits until the player left the footprint) and capsule radius. */
   player?: { readonly position: Vec3Like; readonly radius: number } | null;
   vfx?: Pick<VfxApi, 'spawn'> | null;
+  /** Bullet decals on the chest (removed when it leaves a location). */
+  decals?: DecalFader | null;
   view?: MysteryBoxViewApi | null;
 }
 
@@ -137,6 +141,8 @@ export class MysteryBox implements Interactable, MysteryBoxReadout {
   private uses = 0;
   private threshold = 0;
   private result: string | null = null;
+  /** Points the current roll cost (refunded by the anomaly; 0 for a free console roll). */
+  private paid = 0;
   private _anomaly = false;
   private display: string | null = null;
   private phase = 0;
@@ -151,6 +157,8 @@ export class MysteryBox implements Interactable, MysteryBoxReadout {
   };
   private readonly resolvedPayload: GameEvents['box:resolved'] = { boxId: MYSTERY_BOX_ID, weaponId: null };
   private readonly movedPayload: GameEvents['box:moved'] = { boxId: MYSTERY_BOX_ID, from: '', to: '' };
+  private readonly decalCenter = { x: 0, y: 0, z: 0 };
+  private readonly decalHalf = { x: 0, y: 0, z: 0 };
 
   constructor(private readonly deps: MysteryBoxDeps) {
     this.price = deps.price;
@@ -240,14 +248,14 @@ export class MysteryBox implements Interactable, MysteryBoxReadout {
   purchase(): boolean {
     if (this._state !== 'idle') return false;
     if (!this.deps.economy.spend(this.price, MYSTERY_BOX_ID, 'box')) return false;
-    this.startRoll(false);
+    this.startRoll(false, this.price);
     return true;
   }
 
   /** Free roll (dev console); `forceAnomaly` makes it reveal the anomaly (needs ≥ 2 locations). */
   roll(forceAnomaly = false): boolean {
     if (this._state !== 'idle') return false;
-    this.startRoll(forceAnomaly);
+    this.startRoll(forceAnomaly, 0);
     return true;
   }
 
@@ -323,6 +331,7 @@ export class MysteryBox implements Interactable, MysteryBoxReadout {
     this.uses = 0;
     this.threshold = this.rollThreshold();
     this.result = null;
+    this.paid = 0;
     this._anomaly = false;
     this.display = null;
     this.phase = 0;
@@ -339,8 +348,9 @@ export class MysteryBox implements Interactable, MysteryBoxReadout {
 
   // -------------------------------------------------------------------------
 
-  private startRoll(forceAnomaly: boolean): void {
+  private startRoll(forceAnomaly: boolean, paid: number): void {
     this.uses++;
+    this.paid = paid;
     const canMove = this.deps.locations.length > 1;
     this._anomaly =
       canMove && (forceAnomaly || (this.uses >= this.threshold && this.rng.chance(B.anomalyChance)));
@@ -360,12 +370,14 @@ export class MysteryBox implements Interactable, MysteryBoxReadout {
     if (this._anomaly || this.result === null) {
       this._anomaly = true;
       this.display = null;
-      this.deps.economy.earn(this.price, 'refund');
+      if (this.paid > 0) this.deps.economy.earn(this.paid, 'refund');
+      this.paid = 0;
       this.resolvedPayload.weaponId = null;
       this.deps.events.emit('box:resolved', this.resolvedPayload);
       this.setState('anomaly');
       return;
     }
+    this.paid = 0;
     this.display = this.result;
     this.resolvedPayload.weaponId = this.result;
     this.deps.events.emit('box:resolved', this.resolvedPayload);
@@ -375,7 +387,25 @@ export class MysteryBox implements Interactable, MysteryBoxReadout {
   private leave(): void {
     this.display = null;
     this.spawnBurst(this.location.position);
+    this.clearDecals(this.location);
     this.setState('leaving');
+  }
+
+  /** Bullet holes on the chest (its solid volume grown by BLOCKERS.decalMargin). */
+  private clearDecals(l: BoxLocation): void {
+    const decals = this.deps.decals;
+    if (!decals) return;
+    const m = BLOCKERS.decalMargin;
+    const h = (B.size.height + B.size.lidHeight) / 2;
+    const c = this.decalCenter;
+    c.x = l.position.x;
+    c.y = l.position.y + h;
+    c.z = l.position.z;
+    const half = this.decalHalf;
+    half.x = l.halfX + m;
+    half.y = h + m;
+    half.z = l.halfZ + m;
+    decals.fadeInBox(c, half);
   }
 
   private relocate(): void {

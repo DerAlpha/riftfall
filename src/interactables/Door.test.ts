@@ -6,6 +6,9 @@ import { BLOCKERS, DOORS } from '../defs/interactables';
 import { NAV } from '../defs/nav';
 import type { DoorSlotDef } from '../maps/types';
 import { CombatWorld } from '../combat/CombatWorld';
+import { createDecalAtlas } from '../vfx/decalAtlas';
+import { DecalSystem } from '../vfx/DecalSystem';
+import { fakeRender } from '../vfx/testFakes';
 import { Door, type DoorState, type DoorViewApi } from './Door';
 import { doorBulletBox, doorColliderBox, doorNavBox } from './shapes';
 import { SolidBlocker } from './SolidBlocker';
@@ -224,5 +227,33 @@ describe('Door', () => {
     expect(combat.raycast(from, dir, 10)).not.toBeNull();
     blocker.dispose();
     expect(combat.raycast(from, dir, 10)).toBeNull();
+  });
+
+  it('bullet holes on the leaves vanish when the door opens (real DecalSystem)', () => {
+    const s = slot();
+    const time = { value: 12 };
+    const decals = new DecalSystem(createDecalAtlas(), fakeRender(), 32, 32, time);
+    const face = doorBulletBox(s);
+    const n = { x: 0, y: 0, z: -1 };
+    // Two holes on the zone A face of the leaves, one on the wall beside the door frame.
+    decals.add('bullet.metal', { x: 4.3, y: 1.2, z: face.center.z - face.half.z }, n, 1, 0, 0);
+    decals.add('bullet.metal', { x: 3.1, y: 2.6, z: face.center.z - face.half.z }, n, 1, 0, 0);
+    decals.add('bullet.concrete', { x: 4 + s.width / 2 + 0.6, y: 1.5, z: s.position.z - s.depth / 2 }, n, 1, 0, 0);
+    const events = new EventBus<GameEvents>();
+    const door = new Door(s, { events, economy: new FakeEconomy(0), zones: null, blocker: null, price: 0, decals });
+    const die = (i: number): number =>
+      (decals.mesh.geometry.getAttribute('aDecal').array as Float32Array)[i * 4 + 2]!;
+    expect(die(0)).toBeGreaterThan(1e8);
+    door.open();
+    expect(die(0)).toBeLessThanOrEqual(time.value);
+    expect(die(1)).toBeLessThanOrEqual(time.value);
+    // The wall keeps its hole.
+    expect(die(2)).toBeGreaterThan(1e8);
+    // Shots that land on the leaves while they unseal go when the passage opens.
+    time.value = 12.2;
+    decals.add('bullet.metal', { x: 4.1, y: 1.4, z: face.center.z - face.half.z }, n, 1, 0, 0);
+    runOpen(door, door.duration);
+    expect(die(3)).toBeLessThanOrEqual(time.value);
+    decals.dispose();
   });
 });

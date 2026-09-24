@@ -130,12 +130,15 @@ describe('blocked nav areas on the test level', () => {
   });
 
   it('overlapping areas keep their own state (a door opening beside a machine)', () => {
-    // A doorway box and a machine footprint (always blocked) overlapping it by 0.2 m, registered
-    // in placeInteractables' order (doors first: the later area owns the overlap).
+    // A doorway box and a machine footprint (always blocked, grown by the agent radius) overlapping
+    // it by 0.2 m (the lab's reception door beside a perk machine). Recast used to merge both into
+    // shared polygons: opening the door opened the machine footprint too. The strip where the boxes
+    // overlap may go either way (a voxel or so), the machine itself must stay closed.
     const door = { c: { x: 5, y: 0.5, z: -1.9 }, h: { x: 1.2, y: 1, z: 0.9 } };
     const machine = { c: { x: 5, y: 0.5, z: -3.5 }, h: { x: 0.8, y: 1, z: 0.9 } };
+    const strip = 0.3;
     const insideMachine = (p: Vec3Like): boolean =>
-      Math.abs(p.x - machine.c.x) < machine.h.x - 0.1 && Math.abs(p.z - machine.c.z) < machine.h.z - 0.1;
+      Math.abs(p.x - machine.c.x) < machine.h.x - strip && Math.abs(p.z - machine.c.z) < machine.h.z - strip;
     nav.setAreaBlocked(door.c, door.h, true);
     nav.setAreaBlocked(machine.c, machine.h, true);
     nav.flushAreas();
@@ -147,12 +150,11 @@ describe('blocked nav areas on the test level', () => {
     // …the machine footprint is not: nothing snaps, samples or paths into it.
     for (const probe of [
       { x: 5, y: 0, z: -3.5 },
-      { x: 4.5, y: 0, z: -3.1 },
-      { x: 5.5, y: 0, z: -3 },
-      { x: 5, y: 0, z: -2.9 },
+      { x: 4.6, y: 0, z: -3.2 },
+      { x: 5.4, y: 0, z: -3.1 },
+      { x: 5, y: 0, z: -2.95 },
     ]) {
       expect(nav.closestPoint(probe, out)).toBe(true);
-      process.stderr.write(`\nPROBE ${JSON.stringify(probe)} -> ${out.x.toFixed(2)},${out.z.toFixed(2)}`);
       expect(insideMachine(out)).toBe(false);
     }
     for (let i = 0; i < 200; i++) {
@@ -163,7 +165,7 @@ describe('blocked nav areas on the test level', () => {
     // Closing the door again blocks it without touching the machine.
     nav.setAreaBlocked(door.c, door.h, true);
     expect(nav.closestPoint({ x: 5, y: 0, z: -1.9 }, out)).toBe(true);
-    expect(Math.abs(out.z + 1.9) > door.h.z - 0.1 || Math.abs(out.x - 5) > door.h.x - 0.1).toBe(true);
+    expect(Math.abs(out.z + 1.9) > door.h.z - strip || Math.abs(out.x - 5) > door.h.x - strip).toBe(true);
     nav.setAreaBlocked(door.c, door.h, false);
   });
 

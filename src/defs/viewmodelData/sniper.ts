@@ -44,7 +44,7 @@ const BOLT_STROKE: PartMotionDef = {
 export const SNIPER_VIEWMODEL: WeaponViewmodelDef = {
   hip: { pos: V(0.14, -0.172, -0.37), rot: V(0, 2, 0) },
   // The eye sits right behind the eyecup: the ocular fills the view (a real scope picture).
-  adsEyeDistance: 0.042,
+  adsEyeDistance: 0.038,
   sprint: { pos: V(-0.035, -0.045, 0.035), rot: V(-12, 32, -24) },
   lowered: LONG_GUN_LOWERED,
   pivot: V(0, 0.035, -0.12),
@@ -151,5 +151,5 @@ export const SNIPER_VIEWMODEL: WeaponViewmodelDef = {
     ],
   },
   accentLight: { pos: V(-0.05, 0.12, -0.1), color: 0x46e6ff, intensity: 0.015, distance: 0.24 },
-  glow: { accent: 2.2, readout: 2.4, sight: 7, heat: 5 },
+  glow: { accent: 2.2, readout: 2.4, sight: 5, heat: 5 },
 };

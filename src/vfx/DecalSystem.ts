@@ -204,6 +204,33 @@ export class DecalSystem {
   }
 
   /**
+   * Remove the decals whose center lies in the axis-aligned box (center ± half) at once – their
+   * surface went away (M4: a door's leaves slide open, the Rift-Kiste relocates). Returns the count.
+   */
+  fadeInBox(center: Vec3Like, half: Vec3Like): number {
+    const now = this.timeUniform.value;
+    const m = this.mesh.instanceMatrix.array as Float32Array;
+    const da = this.decalAttr.array as Float32Array;
+    let n = 0;
+    for (let slot = 0; slot < this.ring.count; slot++) {
+      const o = slot * 16;
+      if (
+        Math.abs(m[o + 12]! - center.x) > half.x ||
+        Math.abs(m[o + 13]! - center.y) > half.y ||
+        Math.abs(m[o + 14]! - center.z) > half.z ||
+        da[slot * 4 + 2]! <= now
+      ) {
+        continue;
+      }
+      da[slot * 4 + 2] = now;
+      addUpdateRange(this.decalAttr, this.decalRange, slot * 4, 4);
+      n++;
+    }
+    if (n > 0) this.decalAttr.needsUpdate = true;
+    return n;
+  }
+
+  /**
    * Place a decal. `size` multiplies the kind's base size; `rotation` (radians) spins it around
    * the normal (random when omitted). Returns false for unknown kinds, zero capacity or bad input.
    */

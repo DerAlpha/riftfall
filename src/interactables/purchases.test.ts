@@ -4,9 +4,21 @@ import { Vector3 } from 'three';
 import { ammoCost, weaponCost } from '../defs/economy';
 import { PERK_MACHINES, WALL_BUYS } from '../defs/interactables';
 import { WEAPONS } from '../defs/weapons';
+import { EventBus } from '../core/EventBus';
+import type { GameEvents } from '../core/events';
+import { CombatWorld } from '../combat/CombatWorld';
+import { fakeSettings } from '../player/testHelpers';
+import { FakeCamera, FakePlayer, FakeWeaponInput, fakeRenderCamera } from '../weapons/testFakes';
+import { WeaponSystem } from '../weapons/WeaponSystem';
 import { PerkMachine, type PerkAvailability, type PerkMachineViewApi } from './PerkMachine';
 import { FakeEconomy, FakePerks, FakeWeapons } from './testFakes';
-import { createDefaultPrices, defaultPerkMachineInfos, formatPrompt, type PerkMachineInfo } from './types';
+import {
+  createDefaultPrices,
+  createWeaponAdapter,
+  defaultPerkMachineInfos,
+  formatPrompt,
+  type PerkMachineInfo,
+} from './types';
 import { WallBuy } from './WallBuy';
 
 const PERK: PerkMachineInfo = { id: 'titan', name: 'Titanplatte', tagline: '', color: 0xff0000, glyph: '' };
@@ -185,5 +197,58 @@ describe('WallBuy', () => {
     t.wb.reset();
     t.wb.update(0, 0);
     expect(t.flashes.owned).toEqual([false, true, true]);
+  });
+
+  it('knows the ammo of every carried weapon, not only the one in hand (real WeaponSystem)', () => {
+    const events = new EventBus<GameEvents>();
+    const player = new FakePlayer();
+    const input = new FakeWeaponInput();
+    const weapons = new WeaponSystem(
+      {
+        events,
+        input,
+        settings: fakeSettings(),
+        player,
+        camera: new FakeCamera(player),
+        render: fakeRenderCamera({ x: 0, y: 1.6, z: 0 }),
+        combat: new CombatWorld({ events, physics: null }),
+        getMuzzleWorld: (o) => o.set(0, 1.5, -0.5),
+      },
+      { loadout: ['pistol', 'rifle'], slots: 2, seed: 'wallbuy' },
+    );
+    const frames = (n: number): void => {
+      for (let i = 0; i < n; i++) {
+        weapons.fixedUpdate(1 / 60);
+        weapons.update(1 / 60);
+        input.endFrame();
+      }
+    };
+    const economy = new FakeEconomy(5000);
+    const board = (weaponId: string): WallBuy =>
+      new WallBuy(
+        { id: `wb_${weaponId}`, weaponId, name: weaponId, shortName: weaponId, position: new Vector3() },
+        { weapons: createWeaponAdapter(weapons), economy, prices: createDefaultPrices() },
+      );
+    frames(120);
+    expect(weapons.currentWeaponId).toBe('pistol');
+    // The rifle is holstered with full ammo: nothing to sell, nothing charged, no switch.
+    const rifle = board('rifle');
+    expect(rifle.prompt()).toBe(WALL_BUYS.prompts.ammoFull);
+    expect(rifle.canInteract()).toBe(false);
+    rifle.interact();
+    expect(economy.spent).toHaveLength(0);
+    // Spend pistol rounds, then raise the rifle: the holstered pistol is buyable again.
+    for (let shot = 0; shot < 3; shot++) {
+      input.tap('fire');
+      frames(30);
+    }
+    expect(weapons.ammo!.mag).toBeLessThan(weapons.ammo!.magSize);
+    weapons.switchTo(1);
+    frames(120);
+    expect(weapons.currentWeaponId).toBe('rifle');
+    const pistol = board('pistol');
+    expect(pistol.canInteract()).toBe(true);
+    expect(pistol.cost()).toBe(pistol.ammoPrice);
+    weapons.dispose();
   });
 });

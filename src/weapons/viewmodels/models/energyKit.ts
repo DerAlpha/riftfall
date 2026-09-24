@@ -21,6 +21,7 @@ import {
   FrontSide,
   MeshPhysicalMaterial,
   NormalBlending,
+  Quaternion,
   ShaderMaterial,
   TubeGeometry,
   Vector3,
@@ -30,6 +31,7 @@ import {
   type Object3D,
 } from 'three';
 import type { WeaponViewmodelDef } from '../../../defs/viewmodels';
+import { latheZHard } from '../shapes';
 import type { BuiltModel } from '../ModelBuilder';
 import type { GlowMaterials } from '../materials';
 import { ProceduralWeaponModel, type ReadoutSpec, type ViewmodelFxState } from '../WeaponModel';
@@ -398,4 +400,53 @@ export function bentTube(
 ): BufferGeometry {
   const curve = new PolyCurve(points.map(([x, y, z]) => new Vector3(x, y, z)));
   return new TubeGeometry(curve, segments, radius, radial, false);
+}
+
+/** Circle outline [x, y] around (cx, cy) (chamber holes, round windows). */
+export function circleProfile(r: number, segments = 20, cx = 0, cy = 0): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+  }
+  return pts;
+}
+
+/** Faceted crystal along −Z (lathe with few sides): a short base cone, a long body, a sharp tip. */
+export function crystalZ(r: number, len: number, sides = 6): BufferGeometry {
+  return latheZHard(
+    [
+      [0, 0],
+      [r, len * 0.14],
+      [r * 0.82, len * 0.72],
+      [0, len],
+    ],
+    sides,
+    0,
+  );
+}
+
+const _spinQ = new Quaternion();
+const AXES = { x: new Vector3(1, 0, 0), y: new Vector3(0, 1, 0), z: new Vector3(0, 0, 1) } as const;
+
+/** Constant spin of a free node about one of its own rest axes (rad/s). */
+export function spinner(node: Object3D, axis: 'x' | 'y' | 'z', rate: number): ExtraAnimator {
+  const rest = node.quaternion.clone();
+  const ax = AXES[axis];
+  return (fx) => {
+    _spinQ.setFromAxisAngle(ax, (fx.time * rate) % (Math.PI * 2));
+    node.quaternion.copy(rest).multiply(_spinQ);
+  };
+}
+
+/**
+ * Scale of something that collapses when fired and re-forms: `min` right after the shot, back to
+ * 1 (with a small overshoot) after `regrow` seconds.
+ */
+export function reformScale(sinceShot: number, regrow: number, min: number): number {
+  if (sinceShot >= regrow) return 1;
+  const u = Math.max(0, sinceShot / regrow);
+  const c = 1.9;
+  const back = 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2);
+  return min + (1 - min) * back;
 }

@@ -319,6 +319,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     impulse: 0,
   };
   private readonly ammoOut = { mag: 0, reserve: 0, magSize: 0 };
+  private readonly ammoOfOut = { mag: 0, reserve: 0, magSize: 0, maxReserve: 0 };
 
   // --- reused hot-path payloads ---
   private readonly firedPayload: GameEvents['weapon:fired'] = {
@@ -422,6 +423,19 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     this.ammoOut.reserve = w.reserve;
     this.ammoOut.magSize = w.def.magazine;
     return this.ammoOut;
+  }
+  /** Ammo of a carried weapon, in hand or holstered (M4 wall buys); null if not carried. Reused object. */
+  ammoOf(weaponId: string): { mag: number; reserve: number; magSize: number; maxReserve: number } | null {
+    for (const w of this.slots) {
+      if (w?.def.id !== weaponId) continue;
+      const o = this.ammoOfOut;
+      o.mag = w.mag;
+      o.reserve = w.reserve;
+      o.magSize = w.def.magazine;
+      o.maxReserve = w.def.reserve;
+      return o;
+    }
+    return null;
   }
 
   // --- AdsProvider (PlayerController) ---

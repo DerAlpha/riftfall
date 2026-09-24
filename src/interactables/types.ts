@@ -3,6 +3,7 @@
  * prices (economy + perk table), the weapon inventory, perk info for the machines. Default
  * implementations read defs/economy.ts, defs/perks.ts and the concrete WeaponSystem.
  */
+import type { Vec3Like } from '../core/events';
 import { ECONOMY, ammoCost, doorCost, weaponCost } from '../defs/economy';
 import { PERK_GLYPHS, PERK_IDS, getPerkDef } from '../defs/perks';
 import type { WeaponSystem } from '../weapons/WeaponSystem';
@@ -15,6 +16,11 @@ export interface InteractableWeapons {
   give(weaponId: string): void;
   /** Optional: reserve and magazine are full (the wall buy refuses a pointless refill). */
   ammoFull?(weaponId: string): boolean;
+}
+
+/** Bullet decals of a volume whose surface goes away (VfxSystem.decals: DecalSystem.fadeInBox). */
+export interface DecalFader {
+  fadeInBox(center: Vec3Like, half: Vec3Like): number;
 }
 
 /** Purchase prices (points). */
@@ -68,21 +74,19 @@ export function defaultPerkMachineInfos(): PerkMachineInfo[] {
 }
 
 /** The subset of WeaponSystem the adapter reads (all allocation-free). */
-export type WeaponAdapterSource = Pick<WeaponSystem, 'effectiveDef' | 'give' | 'currentWeaponId' | 'ammo'>;
+export type WeaponAdapterSource = Pick<WeaponSystem, 'effectiveDef' | 'give' | 'ammoOf'>;
 
 /**
- * InteractableWeapons over the weapon system. `ammoFull` is only known for the weapon in hand
- * (the system reports ammo of the current weapon); other carried weapons always accept a refill.
+ * InteractableWeapons over the weapon system. `ammoFull`: reserve at its maximum and a full
+ * magazine – of any carried weapon, in hand or holstered (a refill would change nothing).
  */
 export function createWeaponAdapter(weapons: WeaponAdapterSource): InteractableWeapons {
   return {
     owns: (id) => weapons.effectiveDef(id) !== null,
     give: (id) => weapons.give(id),
     ammoFull: (id) => {
-      if (weapons.currentWeaponId !== id) return false;
-      const def = weapons.effectiveDef(id);
-      const ammo = weapons.ammo;
-      return def !== null && ammo !== null && ammo.reserve >= def.reserve && ammo.mag >= ammo.magSize;
+      const ammo = weapons.ammoOf(id);
+      return ammo !== null && ammo.reserve >= ammo.maxReserve && ammo.mag >= ammo.magSize;
     },
   };
 }

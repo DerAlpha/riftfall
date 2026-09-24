@@ -350,13 +350,13 @@ export const buildSniper: ViewmodelBuilder = (kit) => {
     rot: [0, 0, -20],
     paint: P.darkMetal.paint,
   });
-  b.add('boltHandle', 'grip', cylinderX(0.0105, 0.022, 16), {
-    pos: [0.052, BORE_Y - 0.019, 0.064],
+  b.add('boltHandle', 'grip', cylinderX(0.0088, 0.02, 16), {
+    pos: [0.051, BORE_Y - 0.0186, 0.064],
     rot: [0, 0, -20],
     uvDensity: VIEWMODEL_ART.knurlDensity,
   });
-  b.add('boltHandle', 'darkMetal', new SphereGeometry(0.0106, 14, 10), {
-    pos: [0.0623, BORE_Y - 0.0228, 0.064],
+  b.add('boltHandle', 'darkMetal', new SphereGeometry(0.0089, 14, 10), {
+    pos: [0.0604, BORE_Y - 0.022, 0.064],
     paint: P.darkMetal.paint,
   });
 
@@ -397,10 +397,10 @@ export const buildSniper: ViewmodelBuilder = (kit) => {
     });
     b.add('sight', 'darkMetal', cylinderX(0.0028, 0.03, 8), { pos: [0, RAIL_TOP + 0.004, sz(f)] });
   }
-  // Rubber eyecup (its rear face and inner wall frame the picture).
+  // Rubber eyecup (its rear face and inner wall frame the picture: matte black, no pattern).
   b.add(
     'sight',
-    'grip',
+    'bore',
     latheZHard(
       [
         [OCULAR_R, 0.02],
@@ -413,7 +413,7 @@ export const buildSniper: ViewmodelBuilder = (kit) => {
       ],
       32,
     ),
-    { pos: [0, SIGHT_Y, SCOPE_REAR], uvDensity: VIEWMODEL_ART.knurlDensity },
+    { pos: [0, SIGHT_Y, SCOPE_REAR] },
   );
   b.add(
     'sight',
@@ -438,7 +438,7 @@ export const buildSniper: ViewmodelBuilder = (kit) => {
     pos: [0, SIGHT_Y, SCOPE_REAR],
   });
   b.add('sight', 'lens', cylinderZ(0.0215, 0.0215, 0.0004, 24), { pos: [0, SIGHT_Y, sz(0.398)] });
-  b.add('sight', 'grip', cylinderZ(0.0212, 0.0212, 0.0004, 24), { pos: [0, SIGHT_Y, sz(0.388)] });
+  b.add('sight', 'bore', cylinderZ(0.0212, 0.0212, 0.0004, 24), { pos: [0, SIGHT_Y, sz(0.388)] });
   // Elevation turret (top), windage (right), illuminated parallax knob (left, facing the shooter).
   const turretZ = sz(0.185);
   b.add('sight', 'darkMetal', new CylinderGeometry(0.0118, 0.0125, 0.016, 20), {
@@ -469,15 +469,15 @@ export const buildSniper: ViewmodelBuilder = (kit) => {
 
   // Ocular: lens tint, black edge vignette, reticle, then the depth mask (drawn first).
   b.add('sight', 'lens', cylinderZ(OCULAR_R, OCULAR_R, 0.0003, 32), { pos: [0, SIGHT_Y, sz(0.011)] });
-  b.add('sight', 'grip', tubeZ(OCULAR_R, OCULAR_R - 0.0028, 0.0004, 32), {
+  b.add('sight', 'bore', tubeZ(OCULAR_R, OCULAR_R - 0.0028, 0.0004, 32), {
     pos: [0, SIGHT_Y, sz(RETICLE_F - 0.0002)],
   });
   const rz = sz(RETICLE_F);
   const reticle = (w: number, h: number, x: number, y: number): void => {
     b.add('sight', 'sight', new BoxGeometry(w, h, 0.0002), { pos: [x, SIGHT_Y + y, rz] });
   };
-  const fine = 0.00016;
-  const post = 0.0007;
+  const fine = 0.00012;
+  const post = 0.00045;
   const inner = 0.0062;
   const edge = OCULAR_R - 0.0026;
   reticle(inner * 2, fine, 0, 0);

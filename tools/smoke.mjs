@@ -180,10 +180,32 @@ try {
   await snap('07-console');
   await page.keyboard.press('Backquote');
 
-  // Shooting range: pistol taps at a dummy, then a rifle burst and a reload.
+  // Shooting range: pistol taps at a dummy, then a rifle burst and a reload. On a busy machine
+  // SwiftShader runs the sim far slower than real time: wait for the weapon system (switch done,
+  // shots out, reload started) instead of fixed delays alone.
+  const weaponReady = (slot) =>
+    page
+      .waitForFunction(
+        (i) => {
+          const w = window.__RIFTFALL__.game.sys.weapons;
+          return w.slotIndex === i && w.state === 'idle';
+        },
+        slot,
+        { timeout: 30_000, polling: 100 },
+      )
+      .catch(() => {});
+  const eventCount = (type) => page.evaluate((t) => window.__events.filter((e) => e.type === t).length, type);
+  const untilEvents = (type, n) =>
+    page
+      .waitForFunction(([t, k]) => window.__events.filter((e) => e.type === t).length >= k, [type, n], {
+        timeout: 30_000,
+        polling: 100,
+      })
+      .catch(() => {});
   await page.evaluate(() => window.__RIFTFALL__.teleport(-5.5, 0.1, -12.5, 0, -2));
   await page.keyboard.press('Digit1');
   await sleep(1500);
+  await weaponReady(0);
   const canvas = await page.$('#game-canvas');
   const box = await canvas.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -196,14 +218,20 @@ try {
   await snap('08-pistol');
   await page.keyboard.press('Digit2');
   await sleep(1500);
+  await weaponReady(1);
+  const firedBefore = await eventCount('weapon:fired');
   await page.mouse.down();
   await sleep(1500);
+  await untilEvents('weapon:fired', firedBefore + 3);
   await snap('09-rifle-burst');
   await page.mouse.up();
+  const reloadsBefore = await eventCount('weapon:reloadStart');
   await page.keyboard.press('KeyR');
   await sleep(2500);
+  await untilEvents('weapon:reloadStart', reloadsBefore + 1);
   await page.keyboard.press('Digit3');
   await sleep(1500);
+  await weaponReady(2);
   await page.mouse.down();
   await sleep(150);
   await page.mouse.up();

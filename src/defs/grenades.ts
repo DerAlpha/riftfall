@@ -152,8 +152,9 @@ export const GRENADES = {
       trail: 'trail.frost',
       flightAudio: null,
     },
-    // Blast build-up + this ≥ 4 ice thresholds (defs/elements): three chill stacks, then frozen.
-    detonationStatus: { element: 'ice', amount: 300, radius: 5.5 },
+    // Blast build-up + this ≥ 4 ice thresholds (defs/elements: three chill stacks, then frozen) –
+    // anywhere in the blast for regular enemies, near the center even for a Koloss (ice ×0.6).
+    detonationStatus: { element: 'ice', amount: 420, radius: 5.5 },
   },
   singularity: {
     id: 'singularity',

@@ -161,7 +161,7 @@ export const DOORS = {
     color: [1.0, 0.52, 0.12] as Rgb,
     intensity: 2.1,
     canvas: [384, 192] as readonly [number, number],
-    /** Fade-out once the door starts opening (s). */
+    /** Fade-out over this fraction of the opening (0..1) once the door starts to open. */
     fadeOut: 0.3,
   },
   /** `withZone`: the prompt when the zone behind the door has a name. */

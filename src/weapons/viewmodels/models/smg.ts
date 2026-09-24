@@ -63,10 +63,15 @@ export const buildSmg: ViewmodelBuilder = (kit) => {
 
   // --- upper receiver + full-length top rail ---
   const upperLen = RECEIVER_REAR - HANDGUARD_REAR + 0.01;
-  b.add(BODY, 'gunmetal', profileZ(chamferRectProfile(0.038, 0.034, 0.007, 0.003), upperLen, { bevel: 0.002 }), {
-    pos: [0, 0.056, RECEIVER_REAR - upperLen / 2],
-    paint: P.gunmetal.paint,
-  });
+  b.add(
+    BODY,
+    'gunmetal',
+    profileZ(chamferRectProfile(0.038, 0.034, 0.007, 0.003), upperLen, { bevel: 0.002 }),
+    {
+      pos: [0, 0.056, RECEIVER_REAR - upperLen / 2],
+      paint: P.gunmetal.paint,
+    },
+  );
   const railRear = RECEIVER_REAR - 0.004;
   const railFront = FRONT_SIGHT_Z - 0.012;
   b.add(BODY, 'darkMetal', new BoxGeometry(0.02, 0.004, railRear - railFront), {

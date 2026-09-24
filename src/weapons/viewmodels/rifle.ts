@@ -335,6 +335,13 @@ export function buildRifle(kit: WeaponMaterialKit): WeaponViewmodelModel {
   b.socket('muzzle', [0, BORE_Y, -0.558]);
   b.socket('ejectPort', [0.026, 0.0565, -0.02], [-40, -110, 0]);
   b.socket('sight', [0, SIGHT_Y, -0.011]);
+  // Attachment mounts (M5): rail top under the built-in dot, barrel tip, handguard bottom, left rail
+  // (+Y out of the rail), receiver rear.
+  b.mount('optic', [0, 0.085, -0.042]);
+  b.mount('muzzleDevice', [0, BORE_Y, -0.558]);
+  b.mount('underbarrel', [0, BORE_Y - 0.025, -0.36]);
+  b.mount('laser', [-0.026, BORE_Y, -0.38], [0, 0, 90]);
+  b.mount('stock', [0, 0.052, 0.1]);
 
   const built = b.build({ ...kit.materials, ...glow });
   return new ProceduralWeaponModel('rifle', def, built, glow, readoutSpec, readout);

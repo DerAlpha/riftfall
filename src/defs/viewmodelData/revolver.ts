@@ -79,7 +79,14 @@ export const REVOLVER_VIEWMODEL: WeaponViewmodelDef = {
   reload: { style: 'timeline', tactical: RELOAD_TRACK, empty: RELOAD_TRACK },
   reloadSteps: {
     magOut: [
-      { part: 'crane', type: 'tween', pose: { rot: V(0, 0, 95) }, lead: 0.03, duration: 0.2, ease: 'outBack' },
+      {
+        part: 'crane',
+        type: 'tween',
+        pose: { rot: V(0, 0, 95) },
+        lead: 0.03,
+        duration: 0.2,
+        ease: 'outBack',
+      },
       {
         part: 'ejector',
         type: 'pulse',

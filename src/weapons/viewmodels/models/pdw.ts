@@ -209,7 +209,9 @@ export const buildPdw: ViewmodelBuilder = (kit) => {
   }
   // Glowing seam along both flanks; ejection chute under the butt.
   for (const side of [-1, 1]) {
-    b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.24), { pos: [side * (BODY_W / 2 + 0.0014), 0.046, -0.05] });
+    b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.24), {
+      pos: [side * (BODY_W / 2 + 0.0014), 0.046, -0.05],
+    });
   }
   b.add(BODY, 'bore', new BoxGeometry(0.014, 0.0012, 0.03), { pos: [0, -0.1134, 0.085] });
   // Charging-handle slot (left).
@@ -264,14 +266,15 @@ export const buildPdw: ViewmodelBuilder = (kit) => {
     'gunmetal',
     profileZ(housingProfile(), hLen, {
       bevel: 0.0015,
-      holes: [
-        chamferRectProfile(0.034, 0.018, 0.004).map(([x, y]) => [x, y + SIGHT_Y] as const),
-      ],
+      holes: [chamferRectProfile(0.034, 0.018, 0.004).map(([x, y]) => [x, y + SIGHT_Y] as const)],
     }),
     { pos: [0, 0, hZ], paint: P.gunmetal.paint },
   );
   b.add(BODY, 'accent', new BoxGeometry(0.012, 0.0012, 0.03), { pos: [0, HOUSING_TOP + 0.0002, hZ] });
-  b.add(BODY, 'lens', new PlaneGeometry(0.034, 0.018), { pos: [0, SIGHT_Y, HOUSING_FRONT + 0.002], uv: 'keep' });
+  b.add(BODY, 'lens', new PlaneGeometry(0.034, 0.018), {
+    pos: [0, SIGHT_Y, HOUSING_FRONT + 0.002],
+    uv: 'keep',
+  });
   b.add(BODY, 'sight', new TorusGeometry(0.0042, 0.00045, 6, 28), {
     pos: [0, SIGHT_Y, HOUSING_FRONT + 0.0025],
   });
@@ -309,9 +312,14 @@ export const buildPdw: ViewmodelBuilder = (kit) => {
   // --- magazine: smoked shell with the glowing round cells, rails, feed block and latch ---
   const magLen = MAG_REAR - MAG_FRONT;
   const magZ = (MAG_REAR + MAG_FRONT) / 2;
-  b.add('magazine', 'magShell', profileZ(chamferRectProfile(MAG_W, MAG_H, 0.006, 0.003), magLen, { bevel: 0.002 }), {
-    pos: [0, MAG_Y, magZ],
-  });
+  b.add(
+    'magazine',
+    'magShell',
+    profileZ(chamferRectProfile(MAG_W, MAG_H, 0.006, 0.003), magLen, { bevel: 0.002 }),
+    {
+      pos: [0, MAG_Y, magZ],
+    },
+  );
   const pitch = (magLen - 0.03) / CELLS;
   for (let i = 0; i < CELLS; i++) {
     b.add('magazine', 'readout', new BoxGeometry(0.034, 0.008, pitch * 0.62), {

@@ -102,8 +102,12 @@ export const buildMachinepistol: ViewmodelBuilder = (kit) => {
     });
   }
   // Ejection port with a glimpse of brass.
-  b.add('slide', 'bore', new BoxGeometry(0.001, 0.009, 0.026), { pos: [SLIDE_W / 2 + 0.0002, 0.039, -0.022] });
-  b.add('slide', 'brass', new BoxGeometry(0.0006, 0.0045, 0.012), { pos: [SLIDE_W / 2 + 0.0008, 0.039, -0.024] });
+  b.add('slide', 'bore', new BoxGeometry(0.001, 0.009, 0.026), {
+    pos: [SLIDE_W / 2 + 0.0002, 0.039, -0.022],
+  });
+  b.add('slide', 'brass', new BoxGeometry(0.0006, 0.0045, 0.012), {
+    pos: [SLIDE_W / 2 + 0.0008, 0.039, -0.024],
+  });
   // Accent strips under the windows and a chevron on the nose (both flanks).
   for (const side of [-1, 1]) {
     const x = side * (SLIDE_W / 2 + 0.0001);
@@ -138,7 +142,9 @@ export const buildMachinepistol: ViewmodelBuilder = (kit) => {
       pos: [x, notchFloor + NOTCH_DEPTH / 2, REAR_SIGHT_Z],
       paint: P.darkMetal.paint,
     });
-    b.add('slide', 'sight', new BoxGeometry(0.0021, 0.0021, 0.0006), { pos: [x, dotY, REAR_SIGHT_Z + 0.0043] });
+    b.add('slide', 'sight', new BoxGeometry(0.0021, 0.0021, 0.0006), {
+      pos: [x, dotY, REAR_SIGHT_Z + 0.0043],
+    });
   }
   b.add(
     'slide',
@@ -155,7 +161,9 @@ export const buildMachinepistol: ViewmodelBuilder = (kit) => {
     ),
     { paint: P.darkMetal.paint },
   );
-  b.add('slide', 'sight', new BoxGeometry(0.0021, 0.0021, 0.0006), { pos: [0, dotY, FRONT_SIGHT_Z + 0.0023] });
+  b.add('slide', 'sight', new BoxGeometry(0.0021, 0.0021, 0.0006), {
+    pos: [0, dotY, FRONT_SIGHT_Z + 0.0023],
+  });
 
   // --- barrel: visible through both windows (hot sections glow), threaded tip past the comp ---
   b.add(BODY, 'darkMetal', cylinderZ(0.0068, 0.0068, -MUZZLE_Z - 0.02, 18), {

@@ -1055,7 +1055,8 @@ export class ViewmodelAnimator {
       _q.setFromEuler(_e.set(_offset.rx, _offset.ry, _offset.rz));
       obj.quaternion.copy(b.restQuat).multiply(_q);
       // Spins turn the part about its own (offset) axis, after the pose offset.
-      for (const d of b.drivers) if (d.axis && d.angle !== 0) obj.quaternion.multiply(_qs.setFromAxisAngle(d.axis, d.angle));
+      for (const d of b.drivers)
+        if (d.axis && d.angle !== 0) obj.quaternion.multiply(_qs.setFromAxisAngle(d.axis, d.angle));
       obj.visible = b.state.visible;
     }
   }

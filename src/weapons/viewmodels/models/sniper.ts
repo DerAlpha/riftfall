@@ -434,9 +434,20 @@ export const buildSniper: ViewmodelBuilder = (kit) => {
     ),
     { pos: [0, SIGHT_Y, SCOPE_REAR], paint: P.darkMetal.paint },
   );
-  b.add('sight', 'accent', latheZHard([[0.0264, 0.36], [0.0264, 0.364]], 32), {
-    pos: [0, SIGHT_Y, SCOPE_REAR],
-  });
+  b.add(
+    'sight',
+    'accent',
+    latheZHard(
+      [
+        [0.0264, 0.36],
+        [0.0264, 0.364],
+      ],
+      32,
+    ),
+    {
+      pos: [0, SIGHT_Y, SCOPE_REAR],
+    },
+  );
   b.add('sight', 'lens', cylinderZ(0.0215, 0.0215, 0.0004, 24), { pos: [0, SIGHT_Y, sz(0.398)] });
   b.add('sight', 'bore', cylinderZ(0.0212, 0.0212, 0.0004, 24), { pos: [0, SIGHT_Y, sz(0.388)] });
   // Elevation turret (top), windage (right), illuminated parallax knob (left, facing the shooter).
@@ -483,8 +494,8 @@ export const buildSniper: ViewmodelBuilder = (kit) => {
   reticle(inner * 2, fine, 0, 0);
   reticle(fine, inner * 2, 0, 0);
   for (const s of [-1, 1]) {
-    reticle(edge - inner, post, s * (inner + edge) / 2, 0);
-    reticle(post, edge - inner, 0, s * (inner + edge) / 2);
+    reticle(edge - inner, post, (s * (inner + edge)) / 2, 0);
+    reticle(post, edge - inner, 0, (s * (inner + edge)) / 2);
   }
   // Holdover chevrons below the center.
   for (let i = 1; i <= 3; i++) reticle(0.0014 - i * 0.0002, fine * 1.3, 0, -i * 0.0014);

@@ -12,7 +12,7 @@ import type * as THREE from 'three';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import type { Action, Binding } from '../defs/input';
 import type { MapAtmosphereDef } from '../defs/maps';
-import type { ExplosionDef, FieldDef, WeaponProjectileDef } from '../defs/weapons';
+import type { ExplosionDef, FieldDef, WeaponProjectileDef, WeaponSpecialDef } from '../defs/weapons';
 import type {
   AccessibilitySettings,
   AudioSettings,
@@ -383,6 +383,8 @@ export interface AdsProvider {
   /** Ground speed multiplier at full ADS. */
   readonly adsMoveSpeedMultiplier: number;
   readonly blocksSprint: boolean;
+  /** Ground speed multiplier while the weapon is held (M5 heavy weapons), ADS on top; default 1. */
+  readonly carrySpeedMultiplier?: number;
 }
 
 /**
@@ -487,6 +489,11 @@ export interface DamageInfo {
   kind: ImpactKind;
   /** Knockback impulse magnitude (m/s applied to the target), optional. */
   impulse?: number;
+  /**
+   * M5 elements: status build-up of `element` per damage point (the status system applies
+   * build-up = applied damage × this), 0 / absent = none. Set by the arsenal for elemental damage.
+   */
+  statusBuildup?: number;
 }
 
 export interface DamageResult {
@@ -912,7 +919,20 @@ export interface DamageSource {
   weakpointMultiplier: number;
   /** Status build-up per damage point for this source's element (elemental mods), 0 = none. */
   statusBuildup: number;
+  /**
+   * Special effect its hits trigger (Rift Forge tier / wonder weapon, WeaponDef.special of the
+   * effective def): chain arcs, element procs, lifesteal, fields on kill … Absent = none.
+   */
+  special?: WeaponSpecialDef | null;
+  /** Multiplier on the source's AREA damage (explosions, field ticks and collapses): crits, perks. Default 1. */
+  areaScale?: number;
 }
+
+/** Who caused area damage (explosions, fields): no direct-hit numbers. */
+export type AreaDamageSource = Pick<
+  DamageSource,
+  'weaponId' | 'source' | 'statusBuildup' | 'special' | 'areaScale'
+>;
 
 /** Area damage (explosions) – projectiles, grenades, forge specials, perks, enemies. */
 export interface ExplosionApi {
@@ -921,11 +941,7 @@ export interface ExplosionApi {
    * inside `def.radius` with line of sight, push props, emit combat:explosion. Returns the
    * number of damageables hit.
    */
-  explode(
-    position: Vec3Like,
-    def: ExplosionDef,
-    from: Pick<DamageSource, 'weaponId' | 'source' | 'statusBuildup'>,
-  ): number;
+  explode(position: Vec3Like, def: ExplosionDef, from: AreaDamageSource): number;
 }
 
 export interface ProjectileSpawnOptions {
@@ -939,6 +955,12 @@ export interface ProjectileSpawnOptions {
   /** Speed/blast factors (attachments, stats); default 1. */
   speedScale?: number;
   blastScale?: number;
+  /**
+   * Where it is DRAWN from (the muzzle as shown): the simulation starts at `origin` (the rendered
+   * camera, WYSIWYG) and the visual converges onto the true path within ARSENAL.projectiles
+   * convergeTime. Default: `origin`.
+   */
+  visualFrom?: Vec3Like;
 }
 
 /** Pooled simulated projectiles (fixed tick) with interpolated visuals (per frame). */
@@ -946,6 +968,11 @@ export interface ProjectileApi {
   /** Returns the projectile id (0 when the pool refused it). */
   spawn(opts: ProjectileSpawnOptions): number;
   readonly active: number;
+  /**
+   * Drawn position of a live projectile this frame (after update; flight audio, debug). False
+   * when `id` is not flying (anymore).
+   */
+  positionOf(id: number, out: THREE.Vector3): boolean;
   fixedUpdate(dt: number): void;
   update(dt: number, alpha: number): void;
   clear(): void;
@@ -953,11 +980,7 @@ export interface ProjectileApi {
 
 /** Lingering area effects (FieldDef). */
 export interface FieldApi {
-  spawn(
-    position: Vec3Like,
-    def: FieldDef,
-    from: Pick<DamageSource, 'weaponId' | 'source' | 'statusBuildup'>,
-  ): number;
+  spawn(position: Vec3Like, def: FieldDef, from: AreaDamageSource): number;
   /** Pull velocity (m/s, written into `out`) a field applies to a point this tick; false = none. */
   pullAt(position: Vec3Like, out: THREE.Vector3): boolean;
   /** Speed multiplier from slow fields at a point (1 = none). */

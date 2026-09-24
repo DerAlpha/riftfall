@@ -235,7 +235,10 @@ export const buildBattlerifle: ViewmodelBuilder = (kit) => {
     { paint: P.polymer.paint },
   );
   b.add(BODY, 'gunmetal', cylinderZ(0.0095, 0.0095, 0.18, 16), { pos: [0, 0.032, 0.235], paint: 0.55 });
-  b.add(BODY, 'darkMetal', cylinderZ(0.0125, 0.0125, 0.03, 16), { pos: [0, 0.032, 0.15], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', cylinderZ(0.0125, 0.0125, 0.03, 16), {
+    pos: [0, 0.032, 0.15],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'accent', cylinderZ(0.0128, 0.0128, 0.003, 16), { pos: [0, 0.032, 0.17] });
   b.add(BODY, 'grip', roundedBox(0.046, 0.134, 0.02, 0.005), {
     pos: [0, 0.006, 0.362],
@@ -403,8 +406,14 @@ export const buildBattlerifle: ViewmodelBuilder = (kit) => {
   for (const x of [-0.008, 0.008]) {
     b.add('sight', 'accent', roundedBox(0.006, 0.002, 0.004, 0.0006), { pos: [x, RAIL_TOP + 0.0188, 0.006] });
   }
-  b.add('sight', 'lens', new PlaneGeometry(0.035, 0.027), { pos: [0, SIGHT_Y, SIGHT_FRONT + 0.002], uv: 'keep' });
-  b.add('sight', 'lens', new PlaneGeometry(0.035, 0.027), { pos: [0, SIGHT_Y, SIGHT_REAR - 0.002], uv: 'keep' });
+  b.add('sight', 'lens', new PlaneGeometry(0.035, 0.027), {
+    pos: [0, SIGHT_Y, SIGHT_FRONT + 0.002],
+    uv: 'keep',
+  });
+  b.add('sight', 'lens', new PlaneGeometry(0.035, 0.027), {
+    pos: [0, SIGHT_Y, SIGHT_REAR - 0.002],
+    uv: 'keep',
+  });
   const rz = SIGHT_FRONT + 0.0025;
   b.add('sight', 'sight', new TorusGeometry(0.0062, 0.00034, 6, 48), { pos: [0, SIGHT_Y, rz] });
   b.add('sight', 'sight', cylinderZ(0.0007, 0.0007, 0.0004, 12), { pos: [0, SIGHT_Y, rz] });

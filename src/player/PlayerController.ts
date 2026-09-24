@@ -551,6 +551,8 @@ export class PlayerController implements PlayerApi {
     speed *= this.moveSpeedScale;
     if (this.moveInput.y < 0) speed *= G.backwardSpeedMultiplier;
     speed *= lerp(1, this.adsProvider?.adsMoveSpeedMultiplier ?? G.adsSpeedMultiplier, this.adsAmount);
+    // M5 heavy weapons (LMG, minigun, railgun …) slow the carrier down.
+    speed *= this.adsProvider?.carrySpeedMultiplier ?? 1;
     return speed * this.wishMag;
   }
 

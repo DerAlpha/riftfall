@@ -79,10 +79,15 @@ export const buildVector: ViewmodelBuilder = (kit) => {
 
   // --- upper receiver + rail over receiver and shroud ---
   const upperLen = RECEIVER_REAR - SHROUD_REAR + 0.006;
-  b.add(BODY, 'gunmetal', profileZ(chamferRectProfile(0.034, 0.03, 0.005, 0.002), upperLen, { bevel: 0.002 }), {
-    pos: [0, 0.057, RECEIVER_REAR - upperLen / 2],
-    paint: P.gunmetal.paint,
-  });
+  b.add(
+    BODY,
+    'gunmetal',
+    profileZ(chamferRectProfile(0.034, 0.03, 0.005, 0.002), upperLen, { bevel: 0.002 }),
+    {
+      pos: [0, 0.057, RECEIVER_REAR - upperLen / 2],
+      paint: P.gunmetal.paint,
+    },
+  );
   const railRear = RECEIVER_REAR - 0.004;
   const railFront = FRONT_SIGHT_Z - 0.01;
   b.add(BODY, 'darkMetal', new BoxGeometry(0.02, 0.004, railRear - railFront), {
@@ -154,7 +159,10 @@ export const buildVector: ViewmodelBuilder = (kit) => {
       [0.036, 0.05],
       [0.03, -0.1],
     ] as const) {
-      b.add(BODY, 'gunmetal', cylinderX(0.0022, 0.0014, 10), { pos: [side * (LOWER_W / 2 + 0.0004), y, z], paint: 0.9 });
+      b.add(BODY, 'gunmetal', cylinderX(0.0022, 0.0014, 10), {
+        pos: [side * (LOWER_W / 2 + 0.0004), y, z],
+        paint: 0.9,
+      });
     }
   }
   // Magazine release (right) and a darker magwell lip.

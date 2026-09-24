@@ -26,8 +26,6 @@ import {
   type ExtraAnimator,
 } from './energyKit';
 
-const P = VIEWMODEL_ART.materials;
-
 const BORE_Y = 0.05;
 /** Sight line: center of the claw ring. */
 const SIGHT_Y = 0.12;
@@ -35,7 +33,7 @@ const GRIP_TILT = -20;
 const GRIP_TOP = { y: 0.006, z: 0.014 } as const;
 const LEDS = 8;
 const JAW_Z = -0.2;
-const RIFT = { z: -0.33, h: 0.036 } as const;
+const RIFT = { z: -0.36, h: 0.046 } as const;
 const CELL = { x: -0.043, y: 0.05, z: -0.1 } as const;
 /** Rift breathing and its flare when fired (model content). */
 const MOTION = { breatheRate: 2.3, breathe: 0.12, flare: 1.8, flareTime: 0.35 } as const;
@@ -54,7 +52,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   const readout = createReadout(readoutSpec);
   const glow = createGlowMaterials(RIFT_COLOR.sight, readout?.texture ?? null, def.glow);
   glow.accent.emissive.set(RIFT_COLOR.accent);
-  const chitin = createChitinMaterial('riftripper', 0x2a1a36, 0xff4fd8);
+  const chitin = createChitinMaterial('riftripper', 0x140a1c, 0x9a2c86);
   const rift = createEnergyMaterial('rift-tear', {
     core: RIFT_COLOR.core,
     rim: RIFT_COLOR.rim,
@@ -106,18 +104,19 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     profileX(
       smoothOutline(
         [
-          [-0.12, 0.034],
-          [-0.1, 0.068],
-          [-0.02, 0.088],
-          [0.08, 0.088],
-          [0.16, 0.078],
-          [0.215, 0.064],
-          [0.225, 0.044],
+          [-0.105, 0.03],
+          [-0.085, 0.05],
+          [-0.03, 0.074],
+          [0.04, 0.088],
+          [0.12, 0.086],
+          [0.19, 0.074],
+          [0.222, 0.06],
+          [0.228, 0.042],
           [0.2, 0.026],
           [0.1, 0.012],
           [0.0, 0.006],
-          [-0.07, 0.004],
-          [-0.115, 0.014],
+          [-0.06, 0.006],
+          [-0.1, 0.016],
         ],
         4,
       ),
@@ -137,6 +136,20 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       b.add(BODY, 'veins', roundedBox(0.03, 0.002, 0.012, 0.0008), { pos: [0, top + 0.0005, z - 0.013] });
       b.add(BODY, 'veins', roundedBox(0.002, 0.018, 0.012, 0.0008), { pos: [-0.0275, top - 0.024, z - 0.013] });
     }
+  }
+  // Membrane windows on the left flank: void fluid glowing behind translucent chitin.
+  for (const [z, len] of [
+    [0.03, 0.05],
+    [-0.035, 0.04],
+  ] as const) {
+    b.add(BODY, 'veins', new SphereGeometry(0.012, 16, 10), { pos: [-0.0262, 0.045, z], scale: [0.25, 1, len / 0.024] });
+    b.add(BODY, 'lens', new SphereGeometry(0.0135, 16, 10), { pos: [-0.0268, 0.045, z], scale: [0.3, 1, len / 0.024], uv: 'keep' });
+    b.add(BODY, 'brass', new TorusGeometry(0.0135, 0.0012, 6, 24), {
+      pos: [-0.0282, 0.045, z],
+      rot: [0, 90, 0],
+      scale: [1, 1, len / 0.024],
+      paint: 0.9,
+    });
   }
   // Rune LEDs along the left top edge.
   for (let i = 0; i < LEDS; i++) {
@@ -160,29 +173,32 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     const rel = (x: number, y: number, z: number): [number, number, number] => [side * x - root[0], y - root[1], z - root[2]];
     const blade = [
       rel(0.022, BORE_Y, JAW_Z),
-      rel(0.045, BORE_Y + 0.004, JAW_Z - 0.05),
-      rel(0.047, BORE_Y + 0.002, JAW_Z - 0.11),
-      rel(0.032, BORE_Y, RIFT.z - 0.026),
-      rel(0.011, BORE_Y - 0.002, RIFT.z - 0.05),
+      rel(0.056, BORE_Y + 0.006, JAW_Z - 0.06),
+      rel(0.062, BORE_Y + 0.003, JAW_Z - 0.13),
+      rel(0.042, BORE_Y, RIFT.z - 0.03),
+      rel(0.012, BORE_Y - 0.003, RIFT.z - 0.066),
     ];
-    b.add(part, 'chitin', bentTube(blade, 0.0068, 30, 10), { pos: root, scale: [1, 2.3, 1] });
-    const edge = blade.map(([x, y, z]): [number, number, number] => [x - side * 0.0058, y, z]);
+    b.add(part, 'chitin', bentTube(blade, 0.0078, 34, 10), { pos: root, scale: [1, 2.4, 1] });
+    const edge = blade.map(([x, y, z]): [number, number, number] => [x - side * 0.0068, y, z]);
     b.add(part, 'veins', bentTube(edge.slice(1), 0.0017, 24, 6), { pos: root, scale: [1, 5.5, 1] });
     for (const [x, z, len] of [
-      [0.046, JAW_Z - 0.04, 0.03],
-      [0.049, JAW_Z - 0.08, 0.036],
-      [0.045, JAW_Z - 0.12, 0.026],
+      [0.054, JAW_Z - 0.045, 0.034],
+      [0.061, JAW_Z - 0.09, 0.042],
+      [0.061, JAW_Z - 0.135, 0.034],
+      [0.05, RIFT.z - 0.02, 0.024],
     ] as const) {
-      b.add(part, 'chitin', crystalZ(0.0042, len, 5), {
-        pos: [side * x, BORE_Y + 0.006, z],
-        rot: [-12, side * -118, 0],
+      b.add(part, 'chitin', crystalZ(0.0048, len, 5), {
+        pos: [side * x, BORE_Y + 0.008, z],
+        rot: [-14, side * -122, 0],
       });
     }
-    b.add(part, 'brass', new TorusGeometry(0.0085, 0.0018, 6, 16), {
-      pos: [side * 0.041, BORE_Y + 0.002, JAW_Z - 0.03],
-      rot: [0, side * 28, 0],
-      paint: 0.9,
-    });
+    for (const z of [JAW_Z - 0.035, JAW_Z - 0.1]) {
+      b.add(part, 'brass', new TorusGeometry(0.0095, 0.002, 6, 16), {
+        pos: [side * (z > JAW_Z - 0.05 ? 0.05 : 0.061), BORE_Y + 0.004, z],
+        rot: [0, side * 24, 0],
+        paint: 0.9,
+      });
+    }
   }
 
   // --- the rift: a vertical tear (breathes; flares on shots) ---

@@ -177,9 +177,13 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
   b.add(
     BODY,
     'gunmetal',
-    profileZ(chamferRectProfile(0.03, FRAME_TOP - STRAP_BOTTOM, RIB_CHAMFER, 0.0005), STRAP_REAR - SHROUD_REAR, {
-      bevel: 0.0018,
-    }),
+    profileZ(
+      chamferRectProfile(0.03, FRAME_TOP - STRAP_BOTTOM, RIB_CHAMFER, 0.0005),
+      STRAP_REAR - SHROUD_REAR,
+      {
+        bevel: 0.0018,
+      },
+    ),
     { pos: [0, (FRAME_TOP + STRAP_BOTTOM) / 2, (STRAP_REAR + SHROUD_REAR) / 2], paint: P.gunmetal.paint },
   );
   // Recoil shield: a darker face just behind the rims, with the firing-pin bushing.
@@ -241,7 +245,9 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
   b.add(
     BODY,
     'gunmetal',
-    profileZ(chamferRectProfile(0.03, FRAME_TOP - RIB_BOTTOM, RIB_CHAMFER, 0.002), shroudLen, { bevel: 0.002 }),
+    profileZ(chamferRectProfile(0.03, FRAME_TOP - RIB_BOTTOM, RIB_CHAMFER, 0.002), shroudLen, {
+      bevel: 0.002,
+    }),
     { pos: [0, (FRAME_TOP + RIB_BOTTOM) / 2, shroudZ], paint: P.gunmetal.paint },
   );
   const front = -SHROUD_FRONT;

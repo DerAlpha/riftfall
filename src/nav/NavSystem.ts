@@ -692,7 +692,8 @@ export class NavSystem implements NavApi {
       const gx = Math.abs(a.center.x - c.x) - a.half.x - h.x;
       const gz = Math.abs(a.center.z - c.z) - a.half.z - h.z;
       const gy = Math.abs(a.center.y - c.y) - a.half.y - h.y;
-      if (gx < A.separation && gz < A.separation && gy < A.separation) used |= 1 << (a.areaId - A.firstAreaId);
+      if (gx < A.separation && gz < A.separation && gy < A.separation)
+        used |= 1 << (a.areaId - A.firstAreaId);
     }
     for (let i = 0; i < A.areaIdCount; i++) if ((used & (1 << i)) === 0) return A.firstAreaId + i;
     log.warn(`Navmesh: more than ${A.areaIdCount} blockable areas side by side – they share polygons`);
@@ -775,7 +776,8 @@ export class NavSystem implements NavApi {
       navMesh.setPolyFlags(ref, flags);
     }
     if (a.mode === 'coarse' && !a.blocked && reapplyCoarse) {
-      for (const b of this.areas) if (b !== a && b.mode === 'coarse' && b.blocked) this.applyAreaFlags(b, false);
+      for (const b of this.areas)
+        if (b !== a && b.mode === 'coarse' && b.blocked) this.applyAreaFlags(b, false);
     }
   }
 

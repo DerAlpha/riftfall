@@ -248,7 +248,10 @@ export const buildBurstrifle: ViewmodelBuilder = (kit) => {
     pos: [-0.039, 0.066, -0.1],
     paint: P.accentPaint.paint,
   });
-  b.add('bolt', 'gunmetal', roundedBox(0.0016, 0.012, 0.022, 0.0006), { pos: [0.0243, 0.06, 0.055], paint: 0.5 });
+  b.add('bolt', 'gunmetal', roundedBox(0.0016, 0.012, 0.022, 0.0006), {
+    pos: [0.0243, 0.06, 0.055],
+    paint: 0.5,
+  });
 
   // --- curved 30-round magazine (behind the grip) ---
   b.add(
@@ -298,7 +301,10 @@ export const buildBurstrifle: ViewmodelBuilder = (kit) => {
     { pos: [0, SIGHT_Y, (SIGHT_REAR + SIGHT_FRONT) / 2], paint: P.gunmetal.paint },
   );
   b.add('sight', 'accent', new BoxGeometry(0.012, 0.0012, 0.02), { pos: [0, SIGHT_Y + 0.0188, -0.021] });
-  b.add('sight', 'lens', new PlaneGeometry(0.028, 0.028), { pos: [0, SIGHT_Y, SIGHT_FRONT + 0.0015], uv: 'keep' });
+  b.add('sight', 'lens', new PlaneGeometry(0.028, 0.028), {
+    pos: [0, SIGHT_Y, SIGHT_FRONT + 0.0015],
+    uv: 'keep',
+  });
   const rz = SIGHT_FRONT + 0.002;
   b.add('sight', 'sight', cylinderZ(0.00055, 0.00055, 0.0003, 10), { pos: [0, SIGHT_Y, rz] });
   for (let i = 0; i < 3; i++) {

@@ -332,11 +332,22 @@ export const buildAutoshotgun: ViewmodelBuilder = (kit) => {
     { pos: [cx + DRUM_W / 2, cy, cz], rot: [0, 90, 0], paint: P.polymer.paint },
   );
   for (const x of [cx - DRUM_W / 2 + 0.008, cx + DRUM_W / 2 - 0.008]) {
-    b.add('magazine', 'darkMetal', latheZHard([[DRUM_R + 0.0012, 0], [DRUM_R + 0.0012, 0.005]], 40), {
-      pos: [x + 0.0025, cy, cz],
-      rot: [0, 90, 0],
-      paint: P.darkMetal.paint,
-    });
+    b.add(
+      'magazine',
+      'darkMetal',
+      latheZHard(
+        [
+          [DRUM_R + 0.0012, 0],
+          [DRUM_R + 0.0012, 0.005],
+        ],
+        40,
+      ),
+      {
+        pos: [x + 0.0025, cy, cz],
+        rot: [0, 90, 0],
+        paint: P.darkMetal.paint,
+      },
+    );
   }
   // Bezel ring of the window + LED ring (a gauge draining around the face).
   b.add('magazine', 'darkMetal', tubeZ(WINDOW_R + 0.0035, WINDOW_R, 0.0016, 40), {
@@ -385,7 +396,10 @@ export const buildAutoshotgun: ViewmodelBuilder = (kit) => {
     }),
     { pos: [0, SIGHT_Y, (SIGHT_REAR + SIGHT_FRONT) / 2], paint: P.gunmetal.paint },
   );
-  b.add('sight', 'lens', new PlaneGeometry(0.026, 0.019), { pos: [0, SIGHT_Y, SIGHT_FRONT + 0.0015], uv: 'keep' });
+  b.add('sight', 'lens', new PlaneGeometry(0.026, 0.019), {
+    pos: [0, SIGHT_Y, SIGHT_FRONT + 0.0015],
+    uv: 'keep',
+  });
   const rz = SIGHT_FRONT + 0.002;
   b.add('sight', 'sight', cylinderZ(0.0006, 0.0006, 0.0003, 10), { pos: [0, SIGHT_Y, rz] });
   for (let i = 0; i < 8; i++) {

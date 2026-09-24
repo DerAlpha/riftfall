@@ -234,19 +234,35 @@ export const buildDoublebarrel: ViewmodelBuilder = (kit) => {
     // Chamber mouths (seen when broken open).
     b.add('barrels', 'bore', cylinderZ(0.0098, 0.0098, 0.001, 18), { pos: [x, BARREL_Y, BREECH_Z + 0.0004] });
     // Sci-fi coil band near the muzzle.
-    b.add('barrels', 'accent', latheZHard([[BARREL_R + 0.0008, 0], [BARREL_R + 0.0008, 0.003]], 22), {
-      pos: [x, BARREL_Y, MUZZLE_Z + 0.05],
-    });
+    b.add(
+      'barrels',
+      'accent',
+      latheZHard(
+        [
+          [BARREL_R + 0.0008, 0],
+          [BARREL_R + 0.0008, 0.003],
+        ],
+        22,
+      ),
+      {
+        pos: [x, BARREL_Y, MUZZLE_Z + 0.05],
+      },
+    );
   }
   // Monoblock around the chambers + extractor.
   b.add('barrels', 'darkMetal', roundedBox(0.05, 0.028, 0.04, 0.003), {
     pos: [0, BARREL_Y - 0.002, BREECH_Z - 0.02],
     paint: P.darkMetal.paint,
   });
-  b.add('barrels', 'darkMetal', profileZ(chamferRectProfile(0.012, 0.006, 0.0015), barrelLen - 0.04, { bevel: 0.0008 }), {
-    pos: [0, RIB_TOP - 0.003, (BREECH_Z + MUZZLE_Z) / 2 - 0.02],
-    paint: P.darkMetal.paint,
-  });
+  b.add(
+    'barrels',
+    'darkMetal',
+    profileZ(chamferRectProfile(0.012, 0.006, 0.0015), barrelLen - 0.04, { bevel: 0.0008 }),
+    {
+      pos: [0, RIB_TOP - 0.003, (BREECH_Z + MUZZLE_Z) / 2 - 0.02],
+      paint: P.darkMetal.paint,
+    },
+  );
   for (let i = 0; i < 9; i++) {
     b.add('barrels', 'heat', new BoxGeometry(0.0085, 0.0012, 0.02), {
       pos: [0, RIB_TOP - 0.0003, BREECH_Z - 0.07 - i * 0.036],
@@ -276,7 +292,9 @@ export const buildDoublebarrel: ViewmodelBuilder = (kit) => {
       uvDensity: VIEWMODEL_ART.knurlDensity,
     });
   }
-  b.add('barrels', 'accent', new BoxGeometry(0.0008, 0.0016, 0.16), { pos: [-0.0269, 0.0455, BREECH_Z - 0.13] });
+  b.add('barrels', 'accent', new BoxGeometry(0.0008, 0.0016, 0.16), {
+    pos: [-0.0269, 0.0455, BREECH_Z - 0.13],
+  });
 
   // --- shells in the chambers (hidden at rest) ---
   for (const x of [-BARREL_X, BARREL_X]) {

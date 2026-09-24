@@ -144,7 +144,11 @@ export interface GameEvents {
     /** Leave a decal (false for flesh exit wounds, penetration exits on thin surfaces, etc.). */
     decal: boolean;
   };
-  'combat:tracer': { from: Vec3Like; to: Vec3Like; weaponId: string };
+  /**
+   * A player tracer. `color` (M5): the effective color (Rift Forge tier, crit shot), else the
+   * def's. `segment` (M5 ricochets): a world-space segment `from` → `to` (not from the muzzle).
+   */
+  'combat:tracer': { from: Vec3Like; to: Vec3Like; weaponId: string; color?: number; segment?: boolean };
   /** Damage dealt to a Damageable (targets, enemies). */
   'combat:damage': {
     targetId: number;
@@ -167,7 +171,17 @@ export interface GameEvents {
    * Generic explosion (grenades, explosive enemies, barrels): VfxBridge → VFX (+ camera shake,
    * shockwave, hit pulse), AudioEventBridge → one positional blast. Deals no damage by itself.
    */
-  'combat:explosion': { position: Vec3Like; radius: number; element: DamageElement };
+  'combat:explosion': {
+    position: Vec3Like;
+    radius: number;
+    element: DamageElement;
+    /**
+     * M5 (ExplosionDef): the blast's VFX preset and sound id – small splashes (plasma) name an
+     * impact preset instead of a full explosion. Absent: by element and radius.
+     */
+    vfx?: string;
+    audio?: string;
+  };
 
   // --- enemies (M3) ---
   'enemy:spawned': { id: number; type: string; position: Vec3Like; elite: boolean };
@@ -237,6 +251,19 @@ export interface GameEvents {
   'weapon:beam': { weaponId: string; active: boolean };
   /** Spin-up weapons: barrel spin (0..1). Reused payload. */
   'weapon:spin': { weaponId: string; amount: number };
+  /**
+   * An arsenal projectile started flying (ProjectileApi; its drawn position per frame:
+   * `positionOf(id)`). `flightAudio`: the def's positional loop (null = silent). Reused payload.
+   */
+  'projectile:spawned': {
+    id: number;
+    weaponId: string;
+    visual: string;
+    flightAudio: string | null;
+    position: Vec3Like;
+  };
+  /** It detonated, stopped or expired (always follows its spawn; also on clear()). */
+  'projectile:ended': { id: number };
   /** A projectile hit something or detonated. Reused payload. */
   'projectile:impact': {
     weaponId: string;

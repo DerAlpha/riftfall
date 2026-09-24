@@ -217,6 +217,18 @@ for (const mapId of ['lab', 'testroom'] as const) {
       for (const d of handle.doors) d.open();
       for (let i = 0; i < 120; i++) handle.fixedUpdate(1 / 60);
       const out = new THREE.Vector3();
+      // Open doors never open a cabinet beside them (the lab's east reception door and its perk
+      // machine have overlapping nav areas): nothing snaps into a cabinet footprint.
+      for (const spot of PERK_MACHINES.placements[mapId] ?? []) {
+        const { width, depth } = PERK_MACHINES.size;
+        const n = facingNormal(spot.facing);
+        const off = PERK_MACHINES.wallGap + depth / 2;
+        const c = { x: spot.position[0] + n.x * off, y: spot.position[1], z: spot.position[2] + n.z * off };
+        const box = propBox(c, facingYaw(spot.facing), width, 1, depth);
+        expect(nav.closestPoint(c, out), spot.id).toBe(true);
+        const inside = Math.abs(out.x - c.x) < box.half.x && Math.abs(out.z - c.z) < box.half.z;
+        expect(inside, `${spot.id}: snapped into the cabinet`).toBe(false);
+      }
       const spawn = level.spawn.position;
       for (const it of handle.interactables) {
         const p = it.position;

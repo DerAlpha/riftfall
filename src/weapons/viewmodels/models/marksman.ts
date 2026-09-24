@@ -433,7 +433,9 @@ export const buildMarksman: ViewmodelBuilder = (kit) => {
     uv: 'keep',
   });
   // Ocular: tint, edge vignette, chevron + drop stadia, depth mask.
-  b.add('sight', 'lens', cylinderZ(OCULAR_R, OCULAR_R, 0.0003, 28), { pos: [0, SIGHT_Y, OCULAR_REAR - 0.002] });
+  b.add('sight', 'lens', cylinderZ(OCULAR_R, OCULAR_R, 0.0003, 28), {
+    pos: [0, SIGHT_Y, OCULAR_REAR - 0.002],
+  });
   b.add(
     'sight',
     'grip',

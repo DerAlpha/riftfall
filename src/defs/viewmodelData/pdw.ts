@@ -4,7 +4,8 @@
  *
  * Top-loaded bullpup: the 50-round magazine lies on the receiver under the reflex housing. Reload:
  * the weapon comes up and cants so the top faces the eye, the magazine is lifted at its rear and
- * pulled back out, the new one drops in front-first and slides forward to click (magIn); on empty
+ * pulled back towards the off hand (down and left, never up through the view), the new one drops
+ * in front-first and slides forward to click (magIn); on empty
  * the left-side charging handle, locked back since the last shot, snaps forward (boltRelease).
  */
 import type { PartMotionDef, WeaponViewmodelDef } from '../viewmodels';
@@ -73,7 +74,7 @@ export const PDW_VIEWMODEL: WeaponViewmodelDef = {
       {
         part: 'magazine',
         type: 'tween',
-        pose: { pos: V(0, 0.11, 0.12), rot: V(-20, 0, 10) },
+        pose: { pos: V(-0.05, 0.03, 0.14), rot: V(-12, 24, 22) },
         duration: 0.28,
         ease: 'in',
         hideAtEnd: true,
@@ -83,7 +84,7 @@ export const PDW_VIEWMODEL: WeaponViewmodelDef = {
       {
         part: 'magazine',
         type: 'tween',
-        from: { pos: V(0, 0.07, 0.07), rot: V(-14, 0, 5) },
+        from: { pos: V(-0.032, 0.045, 0.085), rot: V(-12, 14, 12) },
         pose: {},
         lead: 0.14,
         duration: 0.2,

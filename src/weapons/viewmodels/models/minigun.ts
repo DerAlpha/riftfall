@@ -104,7 +104,18 @@ export const buildMinigun: ViewmodelBuilder = (kit) => {
       paint: P.darkMetal.paint,
     });
   }
-  b.add(BODY, 'accent', latheZHard([[0.0398, 0], [0.037, 0]], 32), { pos: [0, AXIS_Y, HOUSING_FRONT - 0.0002] });
+  b.add(
+    BODY,
+    'accent',
+    latheZHard(
+      [
+        [0.0398, 0],
+        [0.037, 0],
+      ],
+      32,
+    ),
+    { pos: [0, AXIS_Y, HOUSING_FRONT - 0.0002] },
+  );
   // Side access panels with bolts.
   for (const side of [-1, 1]) {
     b.add(BODY, 'darkMetal', roundedBox(0.004, 0.03, 0.05, 0.0012), {
@@ -267,7 +278,10 @@ export const buildMinigun: ViewmodelBuilder = (kit) => {
     }),
     { pos: [0, SIGHT_Y, SIGHT_REAR - SIGHT_LEN / 2], paint: P.gunmetal.paint },
   );
-  b.add(BODY, 'lens', new PlaneGeometry(0.019, 0.015), { pos: [0, SIGHT_Y, SIGHT_REAR - SIGHT_LEN + 0.002], uv: 'keep' });
+  b.add(BODY, 'lens', new PlaneGeometry(0.019, 0.015), {
+    pos: [0, SIGHT_Y, SIGHT_REAR - SIGHT_LEN + 0.002],
+    uv: 'keep',
+  });
   const rz = SIGHT_REAR - SIGHT_LEN + 0.0025;
   b.add(BODY, 'sight', cylinderZ(0.0008, 0.0008, 0.0003, 12), { pos: [0, SIGHT_Y, rz] });
   for (const s of [-1, 1]) {
@@ -320,9 +334,10 @@ export const buildMinigun: ViewmodelBuilder = (kit) => {
       28,
     ),
     {
-    pos: [0, AXIS_Y, -0.3],
-    paint: 0.55,
-  });
+      pos: [0, AXIS_Y, -0.3],
+      paint: 0.55,
+    },
+  );
   b.add(
     'barrels',
     'darkMetal',
@@ -361,14 +376,30 @@ export const buildMinigun: ViewmodelBuilder = (kit) => {
     );
   }
   b.add('barrels', 'accent', ring(0.036, 0.0368, 0.0016, 28), { pos: [0, AXIS_Y, SAW_Z + 0.001] });
-  b.add('barrels', 'gunmetal', latheZHard([[0.009, 0], [0.011, 0.004], [0.011, 0.012], [0.0, 0.016]], 16), {
-    pos: [0, AXIS_Y, SAW_Z - 0.009],
-    paint: 0.6,
-  });
+  b.add(
+    'barrels',
+    'gunmetal',
+    latheZHard(
+      [
+        [0.009, 0],
+        [0.011, 0.004],
+        [0.011, 0.012],
+        [0.0, 0.016],
+      ],
+      16,
+    ),
+    {
+      pos: [0, AXIS_Y, SAW_Z - 0.009],
+      paint: 0.6,
+    },
+  );
   b.add('barrels', 'accent', cylinderZ(0.0046, 0.0046, 0.001, 14), { pos: [0, AXIS_Y, SAW_Z - 0.0255] });
 
   // --- ammo box (left) with lid, hazard band, strap; feed chute into the housing ---
-  b.add('magazine', 'polymer', roundedBox(bw, bh, bd, 0.004, 2), { pos: [bx, by, bz], paint: P.polymer.paint });
+  b.add('magazine', 'polymer', roundedBox(bw, bh, bd, 0.004, 2), {
+    pos: [bx, by, bz],
+    paint: P.polymer.paint,
+  });
   b.add('magazine', 'darkMetal', roundedBox(bw + 0.002, 0.008, bd + 0.002, 0.002), {
     pos: [bx, by + bh / 2 - 0.004, bz],
     paint: P.darkMetal.paint,

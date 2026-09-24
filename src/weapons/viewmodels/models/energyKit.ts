@@ -493,3 +493,20 @@ export function createChitinMaterial(name: string, color: number, sheen: number)
     vertexColors: true,
   });
 }
+
+/** Glassy frost/ice (frost crusts, fins' ice tips): lit, translucent, faintly glowing, per model. */
+export function createIceMaterial(name: string, color: number, glowColor: number): MeshPhysicalMaterial {
+  return new MeshPhysicalMaterial({
+    name: `vm-ice-${name}`,
+    color,
+    metalness: 0,
+    roughness: 0.14,
+    clearcoat: 1,
+    clearcoatRoughness: 0.08,
+    transparent: true,
+    opacity: 0.78,
+    emissive: new Color(glowColor),
+    emissiveIntensity: 0.55,
+    vertexColors: true,
+  });
+}

@@ -14,7 +14,7 @@
  *
  * Each location owns a SolidBlocker (collider, bullets, nav area) that is solid only while the box
  * stands there; a box arriving on top of the player waits until the player stepped off. Bullet
- * decals on the chest go with it when it leaves. The anomaly refunds what its roll cost (a free
+ * decals on the lid go when it swings open, those on the chest when it leaves. The anomaly refunds what its roll cost (a free
  * console roll refunds nothing).
  */
 import type { Vector3 } from 'three';
@@ -357,6 +357,7 @@ export class MysteryBox implements Interactable, MysteryBoxReadout {
     this.result = this._anomaly ? null : this.pickWeapon();
     this.phase = 0;
     this.display = this.nextDisplay();
+    this.clearDecals(this.location, true);
     this.setState('rolling');
     const p = this.location.position;
     const o = this.openedPayload.position;
@@ -391,19 +392,23 @@ export class MysteryBox implements Interactable, MysteryBoxReadout {
     this.setState('leaving');
   }
 
-  /** Bullet holes on the chest (its solid volume grown by BLOCKERS.decalMargin). */
-  private clearDecals(l: BoxLocation): void {
+  /**
+   * Bullet holes on the chest (its solid volume grown by BLOCKERS.decalMargin); `lidOnly`: the
+   * lid slab (it swings open for a roll).
+   */
+  private clearDecals(l: BoxLocation, lidOnly = false): void {
     const decals = this.deps.decals;
     if (!decals) return;
     const m = BLOCKERS.decalMargin;
-    const h = (B.size.height + B.size.lidHeight) / 2;
+    const top = B.size.height + B.size.lidHeight;
+    const bottom = lidOnly ? B.size.height : 0;
     const c = this.decalCenter;
     c.x = l.position.x;
-    c.y = l.position.y + h;
+    c.y = l.position.y + (top + bottom) / 2;
     c.z = l.position.z;
     const half = this.decalHalf;
     half.x = l.halfX + m;
-    half.y = h + m;
+    half.y = (top - bottom) / 2 + m;
     half.z = l.halfZ + m;
     decals.fadeInBox(c, half);
   }

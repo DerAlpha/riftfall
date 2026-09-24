@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { Quaternion, Vector3, type MeshStandardMaterial, type Object3D } from 'three';
+import { Vector3, type MeshStandardMaterial, type Object3D, type Quaternion } from 'three';
 import { EventBus } from '../../core/EventBus';
 import type { GameEvents } from '../../core/events';
 import { DEG2RAD } from '../../core/math';
@@ -265,7 +265,13 @@ describe('ViewmodelAnimator – state drivers and gestures (M5)', () => {
 
   it('dispose unsubscribes the M5 events too', () => {
     anim.dispose();
-    for (const t of ['weapon:spin', 'weapon:charge', 'weapon:beam', 'grenade:thrown', 'ability:used'] as const)
+    for (const t of [
+      'weapon:spin',
+      'weapon:charge',
+      'weapon:beam',
+      'grenade:thrown',
+      'ability:used',
+    ] as const)
       expect(events.listenerCount(t)).toBe(0);
   });
 });

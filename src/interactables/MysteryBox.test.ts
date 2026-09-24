@@ -326,9 +326,16 @@ describe('MysteryBox', () => {
         },
       },
     });
-    expect(withDecals.move()).toBe(true);
+    // The lid swings open for a roll: holes on its top go.
+    expect(withDecals.roll()).toBe(true);
     expect(faded).toHaveLength(1);
-    expect(faded[0]!.x).toBeCloseTo(u.locations[0]!.position.x, 6);
-    expect(faded[0]!.hx).toBeGreaterThan(u.locations[0]!.halfX);
+    expect(faded[0]!.hy).toBeLessThan(B.size.lidHeight);
+    for (let t = 0; t < 20; t += DT) withDecals.fixedUpdate(DT);
+    expect(withDecals.state).toBe('idle');
+    expect(withDecals.move()).toBe(true);
+    expect(faded).toHaveLength(2);
+    expect(faded[1]!.x).toBeCloseTo(u.locations[0]!.position.x, 6);
+    expect(faded[1]!.hx).toBeGreaterThan(u.locations[0]!.halfX);
+    expect(faded[1]!.hy).toBeGreaterThan((B.size.height + B.size.lidHeight) / 2);
   });
 });

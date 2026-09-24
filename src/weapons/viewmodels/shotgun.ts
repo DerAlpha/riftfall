@@ -374,6 +374,13 @@ export function buildShotgun(kit: WeaponMaterialKit): WeaponViewmodelModel {
   b.socket('muzzle', [0, BARREL_Y, -0.664]);
   b.socket('ejectPort', [0.028, 0.056, -0.05], [-40, -110, 0]);
   b.socket('sight', [0, SIGHT_Y, 0.047]);
+  // Attachment mounts (M5): receiver top, breacher tip, under the pump (rides with it), left side of
+  // the barrel clamp (+Y out of the surface), receiver rear.
+  b.mount('optic', [0, 0.08, -0.04]);
+  b.mount('muzzleDevice', [0, BARREL_Y, -0.664]);
+  b.mount('underbarrel', [0, TUBE_Y - 0.02, -0.325], undefined, 'pump');
+  b.mount('laser', [-0.014, (BARREL_Y + TUBE_Y) / 2, -0.572], [0, 0, 90]);
+  b.mount('stock', [0, 0.047, 0.085]);
 
   const built = b.build({ ...kit.materials, ...glow });
   return new ProceduralWeaponModel('shotgun', def, built, glow, readoutSpec, readout);

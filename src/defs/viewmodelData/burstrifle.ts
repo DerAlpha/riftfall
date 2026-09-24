@@ -32,7 +32,11 @@ export const BURSTRIFLE_VIEWMODEL: WeaponViewmodelDef = {
   adsKickScale: 0.4,
   sustained: { perShot: 0.12, decay: 2, pose: { pos: V(0, 0.004, 0.012), rot: V(2.4, 0, 0) } },
   heat: { perShot: 0.06, decay: 0.2 },
-  fire: [cycle('bolt'), cycle('chargingHandle'), { ...TRIGGER_PULL, pose: { rot: V(-15, 0, 0) }, hold: 0.06 }],
+  fire: [
+    cycle('bolt'),
+    cycle('chargingHandle'),
+    { ...TRIGGER_PULL, pose: { rot: V(-15, 0, 0) }, hold: 0.06 },
+  ],
   fireLast: [
     { part: 'bolt', type: 'tween', pose: { pos: V(0, 0, CARRIER_TRAVEL) }, duration: 0.016, ease: 'snap' },
     {

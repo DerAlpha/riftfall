@@ -41,14 +41,16 @@ export const DOUBLEBARREL_VIEWMODEL: WeaponViewmodelDef = {
   adsKickScale: 0.5,
   sustained: { perShot: 0.6, decay: 1.5, pose: { pos: V(0, 0.005, 0.012), rot: V(2.5, 0, 0) } },
   heat: { perShot: 0.42, decay: 0.28 },
+  // The hammer falls and re-cocks well inside the shot interval, so the second shot's latched fall
+  // (fireLast) never stacks on a running pulse.
   fire: [
     {
       part: 'hammers',
       type: 'pulse',
       pose: { rot: V(HAMMER_FALL, 0, 0) },
       duration: 0.02,
-      hold: 0.16,
-      release: 0.22,
+      hold: 0.06,
+      release: 0.12,
       ease: 'snap',
       releaseEase: 'inOut',
     },

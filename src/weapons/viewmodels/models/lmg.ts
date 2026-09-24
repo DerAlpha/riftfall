@@ -373,7 +373,10 @@ export const buildLmg: ViewmodelBuilder = (kit) => {
       paint: 0.35,
     });
   }
-  b.add('sight', 'lens', new PlaneGeometry(0.027, 0.022), { pos: [0, SIGHT_Y, SIGHT_FRONT + 0.0015], uv: 'keep' });
+  b.add('sight', 'lens', new PlaneGeometry(0.027, 0.022), {
+    pos: [0, SIGHT_Y, SIGHT_FRONT + 0.0015],
+    uv: 'keep',
+  });
   const rz = SIGHT_FRONT + 0.002;
   b.add('sight', 'sight', new BoxGeometry(0.0006, 0.0068, 0.0003), { pos: [0, SIGHT_Y - 0.0042, rz] });
   for (const s of [-1, 1]) {
@@ -382,7 +385,10 @@ export const buildLmg: ViewmodelBuilder = (kit) => {
   b.add('sight', 'sight', cylinderZ(0.00045, 0.00045, 0.0003, 10), { pos: [0, SIGHT_Y, rz] });
 
   // --- ammo box (left) with lid, strap and a 10-LED level gauge ---
-  b.add('magazine', 'polymer', roundedBox(bw, bh, bd, 0.004, 2), { pos: [bx, by, bz], paint: P.polymer.paint });
+  b.add('magazine', 'polymer', roundedBox(bw, bh, bd, 0.004, 2), {
+    pos: [bx, by, bz],
+    paint: P.polymer.paint,
+  });
   b.add('magazine', 'darkMetal', roundedBox(bw + 0.002, 0.008, bd + 0.002, 0.002), {
     pos: [bx, by + bh / 2 - 0.004, bz],
     paint: P.darkMetal.paint,

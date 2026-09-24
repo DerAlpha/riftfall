@@ -33,7 +33,12 @@ interface Spec {
   /** Parts hidden at rest. */
   hidden: readonly string[];
   /** Reload markers to exercise when the weapon def is not available (fallback timing). */
-  fallbackReload: { tactical: number; empty: number; tacticalSteps: ReloadMarker[]; emptySteps: ReloadMarker[] };
+  fallbackReload: {
+    tactical: number;
+    empty: number;
+    tacticalSteps: ReloadMarker[];
+    emptySteps: ReloadMarker[];
+  };
 }
 
 const STD_RELOAD = (tactical: number, empty: number): Spec['fallbackReload'] => ({
@@ -185,7 +190,10 @@ describe('C1 viewmodels (revolver, machine pistol, SMG, PDW, KV-9)', () => {
           const nrm = mesh.geometry.getAttribute('normal');
           for (let i = 0; i < pos.count; i++) {
             expect(Number.isFinite(pos.getX(i) + pos.getY(i) + pos.getZ(i))).toBe(true);
-            expect(Number.isFinite(nrm.getX(i) + nrm.getY(i) + nrm.getZ(i)), `${id} ${mesh.name} normal`).toBe(true);
+            expect(
+              Number.isFinite(nrm.getX(i) + nrm.getY(i) + nrm.getZ(i)),
+              `${id} ${mesh.name} normal`,
+            ).toBe(true);
           }
         }
         for (const p of spec.hidden) expect(m.parts[p]!.visible, `${id}.${p} hidden`).toBe(false);
@@ -231,7 +239,8 @@ describe('C1 viewmodels (revolver, machine pistol, SMG, PDW, KV-9)', () => {
         const d = vdef(id);
         const lists: (readonly PartMotionDef[])[] = [d.fire, d.fireLast, d.dryFire];
         for (const l of Object.values(d.reloadSteps)) if (l) lists.push(l);
-        for (const l of lists) for (const mo of l) expect(m.parts[mo.part], `${id}: ${mo.part}`).toBeDefined();
+        for (const l of lists)
+          for (const mo of l) expect(m.parts[mo.part], `${id}: ${mo.part}`).toBeDefined();
         for (const p of d.lockParts) expect(m.parts[p], `${id}: lock ${p}`).toBeDefined();
         for (const dr of d.drivers ?? []) expect(m.parts[dr.part], `${id}: driver ${dr.part}`).toBeDefined();
         for (const l of [d.fire, d.fireLast, d.dryFire]) for (const mo of l) expect(mo.lead).toBeUndefined();
@@ -291,7 +300,8 @@ describe('C1 viewmodels (revolver, machine pistol, SMG, PDW, KV-9)', () => {
       it('every glow clears the bloom threshold + smoothing (accent, heat, sight, readout states)', () => {
         const m = model(id);
         const d = vdef(id);
-        for (const v of [d.glow.accent, d.glow.readout, d.glow.sight, d.glow.heat]) expect(v).toBeGreaterThan(1);
+        for (const v of [d.glow.accent, d.glow.readout, d.glow.sight, d.glow.heat])
+          expect(v).toBeGreaterThan(1);
         const { luminanceThreshold, luminanceSmoothing } = POSTFX.bloom;
         const floor = luminanceThreshold + luminanceSmoothing;
         const glowOf = (name: string): MeshStandardMaterial => {
@@ -303,7 +313,8 @@ describe('C1 viewmodels (revolver, machine pistol, SMG, PDW, KV-9)', () => {
         };
         const lum = (mat: MeshStandardMaterial, rgb?: readonly number[]): number => {
           const c = mat.emissive.clone();
-          if (rgb) c.multiply(new Color().setRGB(rgb[0]! / 255, rgb[1]! / 255, rgb[2]! / 255, SRGBColorSpace));
+          if (rgb)
+            c.multiply(new Color().setRGB(rgb[0]! / 255, rgb[1]! / 255, rgb[2]! / 255, SRGBColorSpace));
           return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) * mat.emissiveIntensity;
         };
         const A = VIEWMODEL_ANIM;
@@ -336,7 +347,8 @@ describe('C1 viewmodels (revolver, machine pistol, SMG, PDW, KV-9)', () => {
         };
         step(0.2);
         const rest = new Map<string, { p: Vector3; v: boolean }>();
-        for (const [name, obj] of Object.entries(m.parts)) rest.set(name, { p: obj.position.clone(), v: obj.visible });
+        for (const [name, obj] of Object.entries(m.parts))
+          rest.set(name, { p: obj.position.clone(), v: obj.visible });
         const V0 = { x: 0, y: 0, z: 0 };
         const fire = (ammoInMag: number): void =>
           events.emit('weapon:fired', {

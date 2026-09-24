@@ -238,9 +238,23 @@ describe('Door', () => {
     // Two holes on the zone A face of the leaves, one on the wall beside the door frame.
     decals.add('bullet.metal', { x: 4.3, y: 1.2, z: face.center.z - face.half.z }, n, 1, 0, 0);
     decals.add('bullet.metal', { x: 3.1, y: 2.6, z: face.center.z - face.half.z }, n, 1, 0, 0);
-    decals.add('bullet.concrete', { x: 4 + s.width / 2 + 0.6, y: 1.5, z: s.position.z - s.depth / 2 }, n, 1, 0, 0);
+    decals.add(
+      'bullet.concrete',
+      { x: 4 + s.width / 2 + 0.6, y: 1.5, z: s.position.z - s.depth / 2 },
+      n,
+      1,
+      0,
+      0,
+    );
     const events = new EventBus<GameEvents>();
-    const door = new Door(s, { events, economy: new FakeEconomy(0), zones: null, blocker: null, price: 0, decals });
+    const door = new Door(s, {
+      events,
+      economy: new FakeEconomy(0),
+      zones: null,
+      blocker: null,
+      price: 0,
+      decals,
+    });
     const die = (i: number): number =>
       (decals.mesh.geometry.getAttribute('aDecal').array as Float32Array)[i * 4 + 2]!;
     expect(die(0)).toBeGreaterThan(1e8);

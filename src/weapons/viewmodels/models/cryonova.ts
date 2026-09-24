@@ -52,8 +52,8 @@ const LEDS = 6;
 const EMITTER = { back: -0.18, front: -0.285 } as const;
 const FIN_R = 0.047;
 const CORE_Z = -0.318;
-/** Canister on the left flank: center, length, radius, tilt (deg, rear end up). */
-const CAN = { x: -0.047, y: 0.052, z: -0.075, len: 0.13, r: 0.017, tilt: 0 } as const;
+/** Canister on the left flank: center, length, radius, tilt (deg, + = front end up). */
+const CAN = { x: -0.047, y: 0.047, z: -0.095, len: 0.13, r: 0.017, tilt: 10 } as const;
 /** Crystal star directions [yaw, pitch] (deg) and lengths. */
 const STAR: readonly (readonly [number, number, number])[] = [
   [0, 0, 0.046],
@@ -82,7 +82,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   const glow = createGlowMaterials(ICE.sight, readout?.texture ?? null, def.glow);
   glow.accent.emissive.set(ICE.accent);
   glow.heat.emissive.set(ICE.deep);
-  const armour = createCeramicMaterial('cryonova', 0xc9d3da);
+  const armour = createCeramicMaterial('cryonova', 0xaebac4);
   const ice = createIceMaterial('cryonova', 0xd4f1ff, 0x2a7aa8);
   const star = createEnergyMaterial('cryo-star', {
     core: 0xf2fdff,

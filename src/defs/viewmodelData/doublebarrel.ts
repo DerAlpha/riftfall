@@ -16,9 +16,9 @@ const HAMMER_FALL = -48;
 const RELOAD_KEYS: readonly PoseKeyDef[] = [
   { t: 0.08, pos: V(-0.03, 0.03, 0.02), rot: V(-6, 12, -20) },
   // Broken open: the stock rises, the open chambers turn towards the eye.
-  { t: 0.2, pos: V(-0.045, 0.046, 0.0), rot: V(-12, 18, -26) },
-  { t: 0.42, pos: V(-0.048, 0.05, 0.004), rot: V(-15, 20, -28) },
-  { t: 0.58, pos: V(-0.05, 0.052, 0.002), rot: V(-13, 20, -29) },
+  { t: 0.2, pos: V(-0.045, 0.04, -0.005), rot: V(-6, 18, -26) },
+  { t: 0.42, pos: V(-0.048, 0.044, -0.002), rot: V(-8, 20, -28) },
+  { t: 0.58, pos: V(-0.05, 0.046, -0.004), rot: V(-7, 20, -29) },
   // Snap shut: the muzzle flicks up.
   { t: 0.74, pos: V(-0.03, 0.03, 0.018), rot: V(-4, 12, -18) },
   { t: 0.8, pos: V(-0.024, 0.026, 0.012), rot: V(5, 9, -12) },

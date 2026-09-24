@@ -33,7 +33,7 @@ src/
   game/              PauseController (pause/pointer-lock/visibility/console state machine),
                      GamePersistence (save wiring, session-only ?preset=, resetsave),
                      MenuPadNavigator (gamepad D-pad/A/B menu navigation), devCommands,
-                     fixedTick (the fixed-tick order, see below)
+                     fixedTick (the fixed-tick order, see below), runReset (the new-run reset order)
   core/              engine-agnostic building blocks (no three.js imports except contracts.ts)
     contracts.ts     ALL public system interfaces (RenderApi, PhysicsApi, InputApi, …) – read this first
     events.ts        GameEvents map for the typed EventBus
@@ -288,7 +288,9 @@ RenderPass(world)                                 (incl. decals, casings, traini
   types compiled in `EnemyRenderer.warmup`. AI: per-target melee token pools (light 3 / heavy 1), per-kind
   attack spacing, lobbed acid flattens under probed ceilings, the player is a parked crowd agent.
 - **Run flow (M3):** RunFlow owns the run (begin/restart/abandon), the death slow motion (real time) and
-  the game over screen; `run:restart` resets enemies, waves, VFX, health, loadout and position.
+  the game over screen; `run:restart` (and main menu → start) runs `game/runReset.ts`: every run
+  system incl. the M4 economy (power-ups → perks → stat table → health, zones → doors, seals, seeds)
+  back to its start state – `runReset.test.ts` checks it against the real systems.
 
 - **Economy (M4):** every player modifier is a `StatModifier` on the StatSystem (perks `perk:<id>`,
   power-ups `powerup:<id>`, later skills/cards); consumers re-read stats on their next tick/frame/damage

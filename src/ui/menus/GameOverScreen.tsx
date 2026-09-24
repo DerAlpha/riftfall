@@ -127,10 +127,13 @@ export function GameOverScreen({
           {G.title}
         </h1>
         {sub ? <div class="gameover__sub">{sub}</div> : null}
-        <div class="gameover__wave" style={delay()}>
-          <span class="gameover__wavelabel">{G.waveLabel}</span>
-          <span class="gameover__wavevalue">{formatCount(stats.wave)}</span>
-        </div>
+        {/* A map without waves (the calibration hall) reaches none: no "Welle erreicht 0". */}
+        {stats.wave > 0 ? (
+          <div class="gameover__wave" style={delay()}>
+            <span class="gameover__wavelabel">{G.waveLabel}</span>
+            <span class="gameover__wavevalue">{formatCount(stats.wave)}</span>
+          </div>
+        ) : null}
         <dl class="gameover__stats">
           {rows.map((r) => (
             <div key={r.key} class={`gameover__stat gameover__stat--${r.key}`} style={delay()}>

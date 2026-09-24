@@ -181,8 +181,22 @@ describe('resetRunSystems', () => {
     expect(pointsRules.repairAllowance).toBe(0);
     expect(zones.active).toContain('lab');
     sys.loop.timeScale = 0.12; // the death slow motion
+    const order: string[] = [];
+    for (const t of ['perk:lost', 'powerup:expired'] as const) s.events.on(t, () => order.push(t));
+    s.events.on('player:healthChanged', (e) => order.push(e.health > 0 ? 'alive' : 'dead'));
 
     resetRunSystems(sys, { seed: 'run:lab:7:123', startWaves: true });
+
+    // The perks and power-ups end before the health reset announces the living player (the economy
+    // audio stays silent after a death until then: no loss / expiry sounds on a restart).
+    expect(order.filter((o) => o !== 'alive' && o !== 'dead')).toEqual([
+      'powerup:expired',
+      'powerup:expired',
+      'powerup:expired',
+      'perk:lost',
+      'perk:lost',
+    ]);
+    expect(order.indexOf('alive')).toBeGreaterThan(order.lastIndexOf('perk:lost'));
 
     // Enemies, their power-up effects, the director (a fresh intermission).
     expect(manager.alive).toBe(0);

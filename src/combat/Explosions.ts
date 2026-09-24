@@ -113,8 +113,11 @@ export class Explosions implements ExplosionApi {
   private propRadius = 0;
   private propImpulse = 0;
   private readonly propCenter = new Vector3();
+  /** Bodies found by the query: Rapier forbids changing bodies inside its query callback. */
+  private readonly propBodies: RAPIER.RigidBody[] = [];
   private readonly visitProp = (collider: RAPIER.Collider): boolean => {
-    this.pushProp(collider);
+    const body = collider.parent();
+    if (body && body.isDynamic() && !this.propBodies.includes(body)) this.propBodies.push(body);
     return true;
   };
 
@@ -283,6 +286,8 @@ export class Explosions implements ExplosionApi {
     this.propRadius = radius;
     this.propImpulse = impulse;
     this.propCenter.copy(center);
+    const bodies = this.propBodies;
+    bodies.length = 0;
     try {
       physics.ensureQueries?.();
       physics.world.intersectionsWithShape(
@@ -293,14 +298,14 @@ export class Explosions implements ExplosionApi {
         physics.rapier.QueryFilterFlags.ONLY_DYNAMIC,
         PROP_QUERY_GROUPS,
       );
+      for (let i = 0; i < bodies.length; i++) this.pushProp(bodies[i]!);
     } catch (err) {
-      log.warn('Prop push query failed', err);
+      log.warn('Prop push failed', err);
     }
+    bodies.length = 0;
   }
 
-  private pushProp(collider: RAPIER.Collider): void {
-    const body = collider.parent();
-    if (!body || !body.isDynamic()) return;
+  private pushProp(body: RAPIER.RigidBody): void {
     const t = body.translation();
     const c = this.propCenter;
     const dx = t.x - c.x;

@@ -8,7 +8,8 @@
  * 2. timed power-ups before the perks before the stat table: each removes its own stat sources
  *    (the power-ups also end their enemy effects: Zeitdehnung's time scale, Instakill), then the
  *    table drops whatever is left – health resets after it (start health at the base max health,
- *    no perk bonus, revives unused);
+ *    no perk bonus, revives unused; the economy audio stays silent after a death until that
+ *    health reset, so the cleared perks and power-ups play no loss / expiry sounds);
  * 3. economy (announces the start balance), points rules (repair cap, console-spawn flags);
  * 4. player at the spawn, looking level; zones before the interactables (closed doors re-block
  *    their navmesh areas), the interaction focus after them, seals intact;

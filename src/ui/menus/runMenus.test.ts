@@ -385,10 +385,15 @@ describe('run menus', () => {
       expect(root.querySelector('.gameover__stat--weakpoints')).toBeNull();
       expect(root.querySelector('.gameover__stat--accuracy dd')!.textContent).toBe('0 %');
       expect(root.querySelector('.gameover__stat--time dd')!.textContent).toBe('0:03');
+      expect(root.querySelector('.gameover__wavevalue')!.textContent).toBe('1');
       // No economy in the stats: no points block (a run that earned 0 still shows it).
       expect(root.querySelector('.gameover__points')).toBeNull();
       act(() => menus.showGameOver({ ...stats, pointsEarned: 0 }));
       expect(root.querySelector('.gameover__pointsvalue')!.textContent).toBe('0');
+      // A map without waves (the calibration hall) reached no wave: no "Welle erreicht 0".
+      act(() => menus.showGameOver({ ...stats, wave: 0 }));
+      expect(root.querySelector('.gameover__wave')).toBeNull();
+      expect(root.querySelector('.gameover__stat--kills')).not.toBeNull();
     });
   });
 

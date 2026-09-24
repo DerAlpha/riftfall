@@ -160,7 +160,7 @@ export const buildDoublebarrel: ViewmodelBuilder = (kit) => {
     { paint: P.darkMetal.paint },
   );
 
-  // --- grip + coach stock with cheek plate, glowing inlay and a side saddle of spare shells ---
+  // --- grip + coach stock with a glowing inlay and a side saddle of spare shells ---
   b.add(BODY, 'polymer', roundedBox(0.031, 0.106, 0.044, 0.007, 3), {
     pos: grip(0.05),
     rot: [GRIP_TILT, 0, 0],
@@ -176,9 +176,10 @@ export const buildDoublebarrel: ViewmodelBuilder = (kit) => {
     'polymer',
     profileX(
       [
+        // Drop at the comb: the stock falls away under the aimed eye.
         [-0.036, 0.062],
-        [-0.3, 0.063],
-        [-0.308, 0.053],
+        [-0.3, 0.047],
+        [-0.308, 0.038],
         [-0.308, -0.058],
         [-0.294, -0.064],
         [-0.12, -0.012],
@@ -189,14 +190,9 @@ export const buildDoublebarrel: ViewmodelBuilder = (kit) => {
     ),
     { paint: P.polymer.paint },
   );
-  b.add(BODY, 'grip', roundedBox(0.042, 0.126, 0.018, 0.004), {
-    pos: [0, 0.0, 0.314],
+  b.add(BODY, 'grip', roundedBox(0.042, 0.112, 0.018, 0.004), {
+    pos: [0, -0.009, 0.314],
     uvDensity: VIEWMODEL_ART.knurlDensity,
-  });
-  // Cheek plate behind the aimed eye (it would fill the sight picture further forward).
-  b.add(BODY, 'darkMetal', roundedBox(0.03, 0.01, 0.09, 0.003), {
-    pos: [0, 0.068, 0.25],
-    paint: P.darkMetal.paint,
   });
   b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0022, 0.14), { pos: [0.0193, 0.04, 0.19] });
   b.add(BODY, 'darkMetal', roundedBox(0.004, 0.028, 0.1, 0.0015), {

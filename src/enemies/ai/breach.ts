@@ -8,6 +8,9 @@
  *             the seal and swings at it with one of its attack animations; every finished tear
  *             (EnemyBreachDef.segmentTime) breaks `segmentsPerTear` segments, the other swings only
  *             flash the seal. Staggers interrupt it (the enemy returns to the seal afterwards).
+ *   reach     a target hugging the open side of the seal within the breach attack's range is
+ *             swiped through the lattice when that attack is a melee attack (normal 'attack' state;
+ *             afterwards the enemy returns to the seal) – repairing under pressure, like CoD windows.
  *   open      no segment left (torn by anyone, or never sealed) → 'active', the brain takes over.
  *             A target standing on the enemy's side of the seal close by frees it as well.
  *

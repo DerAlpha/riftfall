@@ -165,6 +165,8 @@ interface TypeRuntime {
   readonly deathSocket: string | null;
   /** Rift seal tearing (animation + timing). */
   readonly breach: BreachPlan;
+  /** Attack index a tearing enemy swipes through the lattice with (a melee breach attack), -1 = none. */
+  readonly breachReach: number;
 }
 
 export interface EnemyManagerStats {
@@ -1078,6 +1080,11 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
         target !== null &&
         api.frontDistance(point, target.position) < 0 &&
         distXZ(e.position, target.position) <= ENEMY_AI.breach.breakoutDistance;
+      if (!freed && target !== null && this.reachThroughSeal(e, rt, api, point, target)) {
+        // Back to the seal once the swipe is over (setActive re-enters the breach).
+        this.beginAttack(e, rt.breachReach);
+        return;
+      }
       if (!freed) {
         r = stepBreach(e, rt.breach, api, dt);
         separateAtSeal(e, this.active, api, dt);
@@ -1089,6 +1096,27 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     } else if (r === BREACH_SWING) {
       this.emitBreachSwing(e, rt);
     }
+  }
+
+  /**
+   * A target hugging the open side of the seal gets swiped through the lattice (CoD window
+   * pressure): a ready melee breach attack in range, the target's melee burst guard permitting.
+   */
+  private reachThroughSeal(
+    e: Enemy,
+    rt: TypeRuntime,
+    api: EnemyBreachApi,
+    point: string,
+    target: EnemyTargetApi,
+  ): boolean {
+    const i = rt.breachReach;
+    const a = i >= 0 ? e.def.attacks[i] : undefined;
+    if (!a || !this.aiEnabled || !target.alive || this._time < e.attackReady[i]!) return false;
+    if (api.frontDistance(point, target.position) <= 0) return false;
+    if (distXZ(e.position, target.position) > a.range) return false;
+    if (a.melee && Math.abs(target.position.y - e.position.y) > a.melee.height) return false;
+    if (!this.coordinator(e).canStartAttack(this._time)) return false;
+    return !a.requiresLos || this.refreshLos(e, ENEMY_AI.perception.losMaxAge);
   }
 
   /** A tearing swing starts: enemy:attack (attack sound / strike cue) for its animation's attack. */
@@ -1808,6 +1836,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       brain,
       pool,
       breach: createBreachPlan(def, animIndex, animWindup, animStrike),
+      breachReach: breachReachIndex(def),
       navParams: {
         radius: def.nav.radius,
         height: def.nav.height,
@@ -1841,6 +1870,17 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     if (err !== undefined) log.warn(msg, err);
     else log.warn(msg);
   }
+}
+
+/** Index of the type's breach attack when it is a melee attack (swipes through the seal), else -1. */
+function breachReachIndex(def: EnemyTypeDef): number {
+  const id = def.breach?.attack;
+  if (!id) return -1;
+  for (let i = 0; i < def.attacks.length; i++) {
+    const a = def.attacks[i]!;
+    if (a.id === id) return a.kind === 'melee' && a.melee ? i : -1;
+  }
+  return -1;
 }
 
 function finiteOr(v: number | undefined, fallback: number): number {

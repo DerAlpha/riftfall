@@ -27,9 +27,10 @@ function setup(player = { x: 0, y: 0, z: 0 }) {
   const broken: number[] = [];
   let time = 0;
   h.events.on('seal:broken', () => broken.push(time));
-  const tick = (n: number): void =>
+  const tick = (n: number, each?: () => void): void =>
     h.tick(n, (t) => {
       time = t;
+      each?.();
     });
   const spawn = (type: string, at: { x: number; y: number; z: number } = SPAWN.position): Enemy => {
     const id = h.manager.spawn(type, at, { spawnPoint: SPAWN });
@@ -144,6 +145,31 @@ describe('enemies at a sealed rift (breach state)', () => {
     const minD = ENEMIES.swarmer.nav.radius * 2;
     expect(a.position.distanceTo(b.position)).toBeGreaterThan(minD * 0.95);
     for (const e of [a, b]) expect(frontDistance(t.seal.frame, e.position)).toBeLessThan(0);
+  });
+
+  it('a player hugging the seal gets swiped through it; the enemy then goes back to tearing', () => {
+    const plane = SPAWN.position.z + SEALS.gates.rift.offset;
+    const near = setup({ x: 0, y: 0, z: plane + 0.35 });
+    const e = near.spawn('swarmer');
+    near.tick(seconds(ENEMIES.swarmer.emergeTime) + 1);
+    let attacked = false;
+    let backToSeal = false;
+    near.tick(seconds(4), () => {
+      if (e.state === 'attack') attacked = true;
+      else if (attacked && e.state === 'breach') backToSeal = true;
+    });
+    expect(attacked).toBe(true);
+    expect(backToSeal).toBe(true);
+    expect(near.h.player.totalDamage).toBeGreaterThan(0);
+    expect(frontDistance(near.seal.frame, e.position)).toBeLessThan(0);
+
+    // Three meters back the lattice keeps them off.
+    const safe = setup({ x: 0, y: 0, z: plane + 3 });
+    const f = safe.spawn('swarmer');
+    safe.tick(seconds(ENEMIES.swarmer.emergeTime) + seconds(5));
+    expect(f.state).toBe('breach');
+    expect(safe.h.player.totalDamage).toBe(0);
+    expect(safe.seal.up).toBeLessThan(SEALS.segments);
   });
 
   it('a player on their side of the seal frees them at once', () => {

@@ -410,7 +410,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
         flickerRate: 31,
         flickerDepth: 0.3,
       },
-      { material: veins, intensity: 1.9, pulseRate: 1.4, pulseDepth: 0.35, flash: 3, heat: 2 },
+      { material: veins, intensity: 1.9, pulseRate: 1.4, pulseDepth: 0.35, flash: 1.2, heat: 2 },
       { material: shard, intensity: 2, pulseRate: 1.1, pulseDepth: 0.25, flash: 1 },
     ],
     { extras, owned: [chitin], readoutTint: [255, 80, 220] },

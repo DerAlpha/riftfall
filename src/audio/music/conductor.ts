@@ -60,7 +60,8 @@ export class StingLimiter {
   }
 }
 
-const defaultClock = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+const defaultClock = (): number =>
+  (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
 const defaultIsBoss = (type: string): boolean => getEnemyDef(type)?.boss === true;
 
 /** Stings that always play (no global bucket). */
@@ -131,7 +132,15 @@ export class MusicConductor {
         if (this.isBoss(e.type)) {
           this.bosses.set(e.id, e.type);
           const cue = MUSIC_CUES.bossCues[e.type] ?? MUSIC_CUES.boss.id;
-          this.cue(cue, 'boss', e.position, MUSIC_CUES.boss.gain, 0, MUSIC_CUES.boss.maxDistance, MUSIC_CUES.boss.minInterval);
+          this.cue(
+            cue,
+            'boss',
+            e.position,
+            MUSIC_CUES.boss.gain,
+            0,
+            MUSIC_CUES.boss.maxDistance,
+            MUSIC_CUES.boss.minInterval,
+          );
           if (this.auto !== 'gameover' && this.auto !== 'menu') {
             this.sting('bossAppear');
             this.go('boss');
@@ -140,13 +149,29 @@ export class MusicConductor {
           if (this.elites.size >= MUSIC_CUES.elite.maxTracked) this.elites.clear();
           this.elites.add(e.id);
           const C = MUSIC_CUES.elite;
-          this.cue(C.spawn.id, 'elite.spawn', e.position, C.spawn.gain, C.pitchVariance, C.spawn.maxDistance, C.spawn.minInterval);
+          this.cue(
+            C.spawn.id,
+            'elite.spawn',
+            e.position,
+            C.spawn.gain,
+            C.pitchVariance,
+            C.spawn.maxDistance,
+            C.spawn.minInterval,
+          );
         }
       }),
       events.on('enemy:alert', (e) => {
         if (!this.elites.has(e.id)) return;
         const C = MUSIC_CUES.elite;
-        this.cue(C.alert.id, 'elite.alert', e.position, C.alert.gain, C.pitchVariance, C.alert.maxDistance, C.alert.minInterval);
+        this.cue(
+          C.alert.id,
+          'elite.alert',
+          e.position,
+          C.alert.gain,
+          C.pitchVariance,
+          C.alert.maxDistance,
+          C.alert.minInterval,
+        );
       }),
       events.on('enemy:died', (e) => {
         this.elites.delete(e.id);

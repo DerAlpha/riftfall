@@ -260,7 +260,8 @@ function drumBar(style: DrumStyle, c: DrumContext): void {
       const tresillo = euclid(3, 8);
       for (let s = 0; s < n; s++) if (tresillo[s % 8]) b.add('mid', 'kick', s, NATURAL, 1, 0.9, 0);
       euclidHits(c, 'mid', 'tom', 5, 0.7, 0.14, [NATURAL, NATURAL - 5, NATURAL - 8, NATURAL + 3]);
-      for (let s = 0; s < n; s++) b.add('mid', 'hat', s, NATURAL, 1, s % 2 === 0 ? 0.5 : 0.28, s % 2 === 0 ? 0.2 : 0.55);
+      for (let s = 0; s < n; s++)
+        b.add('mid', 'hat', s, NATURAL, 1, s % 2 === 0 ? 0.5 : 0.28, s % 2 === 0 ? 0.2 : 0.55);
       for (let s = beat; s < n; s += beat * 2) b.add('mid', 'snare', s, NATURAL, 1, 0.6, 0.45);
       euclidHits(c, 'mid', 'metal', 3, 0.5, 0.3, [NATURAL, NATURAL + 7, NATURAL + 5]);
       euclidHits(c, 'peak', 'tom', 7, 0.75, 0.82, [NATURAL - 5, NATURAL - 8, NATURAL - 12]);
@@ -382,7 +383,8 @@ function bassBar(
       }
       break;
     case 'octaves':
-      for (let s = 0; s < n; s += 2) b.add('low', 'bass', s, (s / 2) % 2 === 0 ? root : root + 12, 2, 0.75, 0);
+      for (let s = 0; s < n; s += 2)
+        b.add('low', 'bass', s, (s / 2) % 2 === 0 ? root : root + 12, 2, 0.75, 0);
       break;
     case 'tresillo': {
       const t = euclid(3, 8);
@@ -393,7 +395,8 @@ function bassBar(
     case 'sparse':
     default:
       b.add('low', 'bass', 0, root, n, 0.85, 0);
-      if (n >= 12) b.add('low', 'bass', Math.floor(n / 2) + (n % 4 === 0 ? 0 : 1), fifth, Math.floor(n / 2), 0.6, 0.4);
+      if (n >= 12)
+        b.add('low', 'bass', Math.floor(n / 2) + (n % 4 === 0 ? 0 : 1), fifth, Math.floor(n / 2), 0.6, 0.4);
       break;
   }
   if (approach !== null) {
@@ -479,7 +482,12 @@ function degreeWindow(tonic: number, scale: readonly number[], low: number, high
   return [lo, hi];
 }
 
-function composePhrase(def: MusicThemeDef, progression: readonly number[], rng: Rng, motifSeed: Rng): ComposedPhrase {
+function composePhrase(
+  def: MusicThemeDef,
+  progression: readonly number[],
+  rng: Rng,
+  motifSeed: Rng,
+): ComposedPhrase {
   const scale = SCALES[def.scale];
   const tonic = def.key;
   const len = scale.length;
@@ -573,7 +581,8 @@ function composePhrase(def: MusicThemeDef, progression: readonly number[], rng: 
 
     // --- high: arpeggio, strings, (lead below).
     const pool: number[] = [];
-    for (let m = arpLo; m < arpLo + 12 * def.style.arpOctaves; m++) if (pcs.includes(mod(m, 12))) pool.push(m);
+    for (let m = arpLo; m < arpLo + 12 * def.style.arpOctaves; m++)
+      if (pcs.includes(mod(m, 12))) pool.push(m);
     arpIdx = arpBar(def, b, pool, rng, arpIdx);
     if (change) {
       strPrev = voiceLead(strPrev, pcs, strLo, strHi, 3);
@@ -583,7 +592,15 @@ function composePhrase(def: MusicThemeDef, progression: readonly number[], rng: 
     // --- peak: distorted power chords, chord stabs.
     for (let s = 0; s < n; s += 2) {
       if (s % 8 === 6) continue;
-      b.add('peak', 'dist', s, foldAround(rootNote, tonic + 10), 2, s % def.beatSteps === 0 ? 0.9 : 0.7, 0.82);
+      b.add(
+        'peak',
+        'dist',
+        s,
+        foldAround(rootNote, tonic + 10),
+        2,
+        s % def.beatSteps === 0 ? 0.9 : 0.7,
+        0.82,
+      );
     }
     if (change) {
       stabPrev = voiceLead(stabPrev, pcs, stabLo, stabHi, 3);
@@ -621,13 +638,22 @@ function composePhrase(def: MusicThemeDef, progression: readonly number[], rng: 
         if (abs >= total) return;
         let deg = m.degree + shift;
         const lastNote = k === notes.length - 1;
-        if ((abs - offset) % def.beatSteps === 0 || lastNote) deg = nearestChordDegree(deg, chordAtAbs(abs), len);
+        if ((abs - offset) % def.beatSteps === 0 || lastNote)
+          deg = nearestChordDegree(deg, chordAtAbs(abs), len);
         if (cadence && lastNote) deg = nearestChordDegree(deg, [0], len);
         deg = Math.max(lo, Math.min(hi, deg));
         let bar = 0;
         while (bar < bars - 1 && barStart[bar + 1]! <= abs) bar++;
         const dur = Math.min(m.dur, total - abs);
-        builders[bar]!.add('high', 'lead', abs - barStart[bar]!, degreeNote(tonic, scale, deg), dur, 0.75, def.leadTier);
+        builders[bar]!.add(
+          'high',
+          'lead',
+          abs - barStart[bar]!,
+          degreeNote(tonic, scale, deg),
+          dur,
+          0.75,
+          def.leadTier,
+        );
       });
     };
     const shift = chordOf(Math.min(bars - 1, 2)) - chordOf(0);

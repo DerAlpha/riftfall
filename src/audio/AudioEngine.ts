@@ -13,6 +13,11 @@
  * bypasses the pause fader, so menus still click: a UI sound requested while paused wakes the
  * context and it is suspended again once the sound has finished.
  *
+ * M10 music (audio/music/MusicSystem) connects to musicOutput(): 'game' = the music bus, 'menu' =
+ * a second music-volume gain straight to the master (the start screen theme and the game over
+ * drone play on while paused), 'ui' = the ui bus. setMusicHold keeps the context running while
+ * paused as long as such music (or a pause / UI sting) plays.
+ *
  * Sounds resolve to registered asset buffers (registerBuffer) first, then procedural synth
  * buffers (SynthBank, pre-rendered while the game loads). One-shots are voice-limited with
  * stealing (quietest/oldest one-shot first); loops are started/stopped through handles. Volume
@@ -70,6 +75,8 @@ interface Graph {
   buses: Record<AudioBus, GainNode>;
   duck: GainNode;
   reverb: [ReverbSlot, ReverbSlot];
+  /** M10: music volume for music that bypasses the pause fader (menus, game over). */
+  menuMusic: GainNode;
 }
 
 interface ReverbSlot {
@@ -116,6 +123,8 @@ export class AudioEngine implements AudioApi {
   private reverbZone: ReverbZone | null = null;
   private readonly irCache = new Map<ReverbZone, AudioBuffer>();
   private readonly listenerState = new Float64Array(9).fill(Number.NaN);
+  /** M10: music on the menu / ui route keeps the context awake while paused. */
+  private musicHold = false;
   private readonly statsObj = { activeVoices: 0, contextState: 'locked' };
   private disposed = false;
   private readonly onVisibility = (): void => this.updateBackgroundMute();
@@ -314,6 +323,30 @@ export class AudioEngine implements AudioApi {
     return true;
   }
 
+  /**
+   * M10: node the music system connects a route to – 'game' (music bus: pause fade, voice duck),
+   * 'menu' (music volume straight to the master: plays while paused) or 'ui' (the ui bus). Null
+   * before unlock().
+   */
+  musicOutput(route: 'game' | 'menu' | 'ui'): AudioNode | null {
+    const g = this.graph;
+    if (!g) return null;
+    return route === 'game' ? g.buses.music : route === 'menu' ? g.menuMusic : g.buses.ui;
+  }
+
+  /** M10: keep the context running while paused (menu music, pause / UI stings); false releases it. */
+  setMusicHold(hold: boolean): void {
+    if (hold === this.musicHold) return;
+    this.musicHold = hold;
+    if (!this.graph || !this.paused || this.disposed) return;
+    if (hold) {
+      this.cancelSuspend();
+      void this.resumeContext();
+    } else {
+      this.scheduleSuspend();
+    }
+  }
+
   /** The room the sfx reverb models (setReverbZone), null before the first zone. */
   get activeReverbZone(): ReverbZone | null {
     return this.reverbZone;
@@ -404,16 +437,17 @@ export class AudioEngine implements AudioApi {
   private trySuspend(): void {
     const g = this.graph;
     if (!g || !this.paused || this.disposed || this.suspending || this.resumePromise) return;
-    // A menu sound is still playing: its release schedules the suspend again.
-    if (g.ctx.state !== 'running' || this.hasActiveUiVoice()) return;
+    // A menu sound is still playing: its release schedules the suspend again (music: its hold release).
+    if (g.ctx.state !== 'running' || this.hasActiveUiVoice() || this.musicHold) return;
     this.suspending = true;
     void g.ctx
       .suspend()
       .catch(() => undefined)
       .finally(() => {
         this.suspending = false;
-        // Unpaused (or a menu sound queued) while the suspend was in flight.
-        if (!this.disposed && (!this.paused || this.hasActiveUiVoice())) void this.resumeContext();
+        // Unpaused (or a menu sound / held music queued) while the suspend was in flight.
+        if (!this.disposed && (!this.paused || this.hasActiveUiVoice() || this.musicHold))
+          void this.resumeContext();
       });
   }
 
@@ -453,6 +487,9 @@ export class AudioEngine implements AudioApi {
     buses.voice.connect(gameFader);
     // Menus keep clicking while the game is paused.
     buses.ui.connect(master);
+    // M10: menu music (start screen, game over) bypasses the pause fader too.
+    const menuMusic = ctx.createGain();
+    menuMusic.connect(master);
 
     const slot = (): ReverbSlot => {
       const convolver = ctx.createConvolver();
@@ -464,7 +501,7 @@ export class AudioEngine implements AudioApi {
     ctx.onstatechange = () => {
       this.statsObj.contextState = ctx.state;
     };
-    return { ctx, master, gameFader, outFader, limiter, buses, duck, reverb: [slot(), slot()] };
+    return { ctx, master, gameFader, outFader, limiter, buses, duck, reverb: [slot(), slot()], menuMusic };
   }
 
   /** Procedural bank at `sampleRate`; a bank at another rate keeps serving until the new one is rendered. */
@@ -484,6 +521,7 @@ export class AudioEngine implements AudioApi {
     const s = this.settings;
     smoothTo(g.master.gain, s.master, seconds, now);
     smoothTo(g.buses.music.gain, s.music, seconds, now);
+    smoothTo(g.menuMusic.gain, s.music, seconds, now);
     smoothTo(g.buses.sfx.gain, s.sfx, seconds, now);
     smoothTo(g.buses.voice.gain, s.voice, seconds, now);
     smoothTo(g.buses.ui.gain, s.ui, seconds, now);

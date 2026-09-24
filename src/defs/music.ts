@@ -164,15 +164,7 @@ export interface InstrumentDef {
 }
 
 export type DrumStyle =
-  | 'industrial'
-  | 'tribal'
-  | 'sparse'
-  | 'heavy'
-  | 'halftime'
-  | 'broken'
-  | 'electro'
-  | 'heartbeat'
-  | 'boss';
+  'industrial' | 'tribal' | 'sparse' | 'heavy' | 'halftime' | 'broken' | 'electro' | 'heartbeat' | 'boss';
 export type BassStyle = 'pulse8' | 'pulse16' | 'gallop' | 'octaves' | 'sparse' | 'tresillo';
 export type ArpStyle = 'up' | 'down' | 'updown' | 'walk' | 'broken';
 /** Chord tones stacked on each degree: triad, 7th chord, sus2, add9, or a bare power chord. */
@@ -1236,7 +1228,10 @@ export const MUSIC = {
   /** Per-id minimum spacing plus a global token bucket (bursts of achievements at the run's end). */
   stingLimit: { burst: 3, refillPerSecond: 0.5 },
   /** Achievement sting transposition per tier (semitones). */
-  achievementTierSemis: { bronze: 0, silver: 2, gold: 4, platinum: 7 } satisfies Record<AchievementTier, number>,
+  achievementTierSemis: { bronze: 0, silver: 2, gold: 4, platinum: 7 } satisfies Record<
+    AchievementTier,
+    number
+  >,
   /** Wave starts of special kinds (swarm / tank waves) are transposed (semitones). */
   specialWaveSemis: -2,
 

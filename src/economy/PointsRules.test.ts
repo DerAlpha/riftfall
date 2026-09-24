@@ -161,6 +161,22 @@ describe('PointsRules: events', () => {
     expect(t.reasons.slice(-2)).toEqual(['hit:10', `kill:${KILL}`]);
   });
 
+  it('a melee bash on the world does not make the next non-melee kill (perk blast, burst) a melee kill', () => {
+    const t = setup();
+    // The bash hit a wall: impact, no damage event follows.
+    t.impact('melee');
+    // A later blast / chain burst without an impact of its own kills an enemy elsewhere.
+    t.damage(3, { weaponId: 'perk.kinetic', point: { x: 5, y: 0.4, z: 2 }, killed: true });
+    t.events.emit('combat:kill', {
+      targetId: 3,
+      zone: 'body',
+      weaponId: 'perk.kinetic',
+      position: { x: 5, y: 1, z: 2 },
+      source: 'player',
+    });
+    expect(t.reasons).toEqual([`kill:${KILL}`]);
+  });
+
   it('elite bonus, nuke kills and the wave bonus', () => {
     const t = setup();
     t.kill(20);
@@ -245,12 +261,18 @@ describe('PointsRules: kill credit per enemy kind (defs/enemies points)', () => 
     expect(t.reasons.at(-1)).toBe(`melee:${tank.kill + P.meleeKillBonus}`);
   });
 
-  it('hits pay the kind\'s hit value; unknown ids fall back to the default table', () => {
-    const t = setup({ rewardOf: (id) => (id === 7 ? { hit: 15, kill: 80, headshotBonus: 0, weakpointBonus: 0 } : null) });
+  it("hits pay the kind's hit value; unknown ids fall back to the default table", () => {
+    const t = setup({
+      rewardOf: (id) => (id === 7 ? { hit: 15, kill: 80, headshotBonus: 0, weakpointBonus: 0 } : null),
+    });
     t.damage(7);
     t.damage(8);
     t.kill(8, 'head');
-    expect(t.reasons).toEqual(['hit:15', `hit:${P.fallback.hit}`, `headshot:${P.fallback.kill + P.fallback.headshotBonus}`]);
+    expect(t.reasons).toEqual([
+      'hit:15',
+      `hit:${P.fallback.hit}`,
+      `headshot:${P.fallback.kill + P.fallback.headshotBonus}`,
+    ]);
   });
 });
 

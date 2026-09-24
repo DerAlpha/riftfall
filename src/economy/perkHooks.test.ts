@@ -8,7 +8,8 @@ import { PERK_TUNING } from '../defs/perks';
 import { createEnemyHarness } from '../enemies/testFakes';
 import { PlayerHealth } from '../player/PlayerHealth';
 import { StatSystem } from '../stats/StatSystem';
-import { blastFalloff, blastSize, missingFraction } from './perkHooks';
+import { getEffectPreset } from '../defs/vfx';
+import { blastFalloff, blastSize, createPerkBlastFx, missingFraction } from './perkHooks';
 import { PerkSystem } from './PerkSystem';
 
 const DT = 1 / 60;
@@ -55,7 +56,7 @@ function setup() {
     combat,
     player,
     seed: 'hooks',
-    blastFx: (p, radius, element, hook) => blasts.push({ radius, element, hook, y: p.y }),
+    blastFx: (p, radius, def, hook) => blasts.push({ radius, element: def.fxElement, hook, y: p.y }),
     dropAmmo: (p) => drops.push({ ...p }),
   });
   const tick = (seconds: number): void => {
@@ -100,6 +101,49 @@ describe('perk blast math', () => {
     expect(missingFraction(15, 30)).toBe(0.5);
     expect(missingFraction(31, 30)).toBe(0);
     expect(missingFraction(0, 0)).toBe(1);
+  });
+});
+
+describe('perk blast FX', () => {
+  it('each blast has its own smoke-free preset; the FX spawns it scaled, with shockwave and sound', () => {
+    for (const def of [PERK_TUNING.nova, PERK_TUNING.kinetic, PERK_TUNING.phoenix]) {
+      const preset = getEffectPreset(def.fx.effect);
+      expect(preset, def.fx.effect).toBeDefined();
+      // Smoke / dust clouds at the player's feet would bury the first-person view.
+      for (const e of preset!.emitters) expect(['smoke', 'smokeB', 'mist']).not.toContain(e.sprite);
+      expect(preset!.groundDecal, def.fx.effect).toBeUndefined();
+      expect(preset!.shake?.trauma ?? 0).toBeLessThan(0.6);
+    }
+    const spawned: { id: string; y: number; scale: number }[] = [];
+    const waves: number[][] = [];
+    const sounds: { id: string; x: number; volume: number; pitch: number }[] = [];
+    const fx = createPerkBlastFx({
+      vfx: { spawn: (id, p, _n, scale = 1) => spawned.push({ id, y: p.y, scale }) },
+      audio: {
+        play: (id, o) => sounds.push({ id, x: o!.position!.x, volume: o!.volume!, pitch: o!.pitch! }),
+      },
+      shockwave: (_p, r, strength) => waves.push([r, strength]),
+    });
+    const def = PERK_TUNING.nova;
+    const pos = { x: 3, y: 0.15, z: -2 };
+    fx(pos, def.fx.referenceRadius * 1.5, def, 'nova');
+    expect(spawned).toEqual([{ id: def.fx.effect, y: 0.15, scale: 1.5 }]);
+    expect(waves).toEqual([[def.fx.referenceRadius * 1.5 * def.fx.shockwaveRadius, def.fx.shockwave]]);
+    expect(sounds).toEqual([{ id: def.fx.sound, x: 3, volume: def.fx.volume, pitch: def.fx.pitch }]);
+    // Headless (no VFX / audio / render): nothing to show, nothing breaks.
+    createPerkBlastFx({ vfx: null, audio: null, shockwave: null })(pos, 4, def, 'nova');
+    // Accessibility: the screen-shake setting scales the screen distortion (0 = none).
+    let shake = 0.5;
+    const scaled = createPerkBlastFx({
+      vfx: null,
+      audio: null,
+      shockwave: (_p, _r, strength) => waves.push([strength]),
+      shockwaveScale: () => shake,
+    });
+    scaled(pos, 4, def, 'nova');
+    shake = 0;
+    scaled(pos, 4, def, 'nova');
+    expect(waves.slice(1)).toEqual([[def.fx.shockwave * 0.5]]);
   });
 });
 
@@ -307,7 +351,12 @@ describe('Phoenix-Protokoll', () => {
     t.perks.fixedUpdate(DT);
     expect(t.combat.dealt.map((d) => d.id)).toEqual([near.id]);
     const info = t.combat.dealt[0]!.info;
-    expect(info).toMatchObject({ source: 'player', element: 'fire', kind: 'explosion', weaponId: 'perk.phoenix' });
+    expect(info).toMatchObject({
+      source: 'player',
+      element: 'fire',
+      kind: 'explosion',
+      weaponId: 'perk.phoenix',
+    });
     expect(info.amount).toBeGreaterThan(0);
     expect(info.impulse).toBeGreaterThan(0);
     // Pushed away from the player.

@@ -10,8 +10,10 @@
  * (`flagNoReward`: dev-console spawns): training dummies (ids from 1_000_000) never pay.
  *
  * Melee kills: combat events carry no damage kind, but the weapon system emits the melee blow's
- * combat:impact (kind 'melee') right before its dealDamage – that impact arms a flag the very next
- * player damage event consumes. Any other impact, shot, reload or swing start disarms it.
+ * combat:impact (kind 'melee') right before its dealDamage, at the same hit point – that impact arms
+ * a flag the very next damage event consumes, and it counts only when that event is the blow
+ * (same weapon, same point): a bash that hit a wall must not turn a later blast or chain burst kill
+ * into a melee kill. Any other impact, shot, reload or swing start disarms it.
  *
  * Repairs (seals, M4 interactables): `awardRepair(planks)` pays ECONOMY.repair.perPlank each, capped
  * per wave (the cap resets on wave:start).
@@ -65,6 +67,9 @@ export class PointsRules {
   private readonly unsubscribe: (() => void)[];
   private readonly noReward = new Set<number>();
   private meleeArmed = false;
+  /** Weapon and point of the arming melee impact (the blow's damage event repeats both). */
+  private meleeWeapon = '';
+  private readonly meleePoint: Vec3Like = { x: 0, y: 0, z: 0 };
   private repairThisWave = 0;
   private readonly pos: Vec3Like = { x: 0, y: 0, z: 0 };
 
@@ -75,6 +80,9 @@ export class PointsRules {
     this.unsubscribe = [
       ev.on('combat:impact', (e) => {
         this.meleeArmed = e.kind === 'melee';
+        if (!this.meleeArmed) return;
+        this.meleeWeapon = e.weaponId;
+        copy(e.point, this.meleePoint);
       }),
       ev.on('weapon:fired', () => {
         this.meleeArmed = false;
@@ -146,7 +154,7 @@ export class PointsRules {
 
   private onDamage(e: GameEvents['combat:damage']): void {
     // The blow the melee impact announced is this event (kill or not): consume the flag.
-    const melee = this.meleeArmed;
+    const melee = this.meleeArmed && e.weaponId === this.meleeWeapon && samePoint(e.point, this.meleePoint);
     this.meleeArmed = false;
     if (e.killed) {
       // combat:kill follows synchronously and pays the kill.
@@ -180,6 +188,10 @@ export class PointsRules {
       this.stats.elite += this.economy.earn(p.eliteKillBonus, 'kill', copy(e.position, this.pos));
     }
   }
+}
+
+function samePoint(a: Vec3Like, b: Vec3Like): boolean {
+  return a.x === b.x && a.y === b.y && a.z === b.z;
 }
 
 function copy(from: Vec3Like, to: Vec3Like): Vec3Like {

@@ -14,12 +14,13 @@
  */
 import type { EconomyApi, PerkApi } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
-import type { DamageElement, GameEvents, Vec3Like } from '../core/events';
+import type { GameEvents, Vec3Like } from '../core/events';
 import { createLogger } from '../core/log';
 import { Rng } from '../core/Rng';
 import { PERK_IDS, getPerkDef, perkSource, type PerkDef, type PerkHookId } from '../defs/perks';
 import {
   PERK_HOOKS,
+  type PerkBlastFx,
   type PerkCombatApi,
   type PerkHook,
   type PerkHookContext,
@@ -37,8 +38,8 @@ export interface PerkSystemDeps {
   player?: { readonly position: Vec3Like } | null;
   /** Seed of the hooks' gameplay randomness (Aasgeier drops). */
   seed?: string | number;
-  /** Hook blast VFX; default emits combat:explosion (VFX + sound + shake). */
-  blastFx?: PerkHookContext['blastFx'];
+  /** Hook blast VFX + sound (createPerkBlastFx); default emits combat:explosion (frag explosion). */
+  blastFx?: PerkBlastFx | null;
   /** Aasgeier ammo pickup spawner (power-up system); null = the perk only raises dropChance. */
   dropAmmo?: ((position: Vec3Like) => void) | null;
   /** Perk table lookup override (tests). */
@@ -74,11 +75,11 @@ export class PerkSystem implements PerkApi {
       rng: new Rng(deps.seed ?? 'perks'),
       blastFx:
         deps.blastFx ??
-        ((position: Vec3Like, radius: number, element: DamageElement) =>
+        ((position, radius, def) =>
           events.emit('combat:explosion', {
             position: { x: position.x, y: position.y, z: position.z },
             radius,
-            element,
+            element: def.fxElement,
           })),
       // Late-bound: the power-up system may be built after the perks.
       ammoDrop: () => this.dropAmmo,

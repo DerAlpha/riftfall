@@ -321,13 +321,34 @@ export interface RangeDef {
   readonly max: number;
 }
 
+/**
+ * Look and sound of a perk blast (perkHooks createPerkBlastFx, wired by Game): its own VFX preset –
+ * a floor-level burst without the frag explosion's smoke, scorch and full-strength shake, which
+ * would bury the first-person camera at the player's feet on every reload – plus an optional
+ * screen shockwave and a positional sound.
+ */
+export interface PerkBlastFxDef {
+  /** VFX preset id (defs/vfx.ts VFX_EFFECTS); effect scale = blast radius ÷ referenceRadius. */
+  readonly effect: string;
+  readonly referenceRadius: number;
+  /** Screen-space shockwave strength (0 = none); world radius = blast radius × shockwaveRadius. */
+  readonly shockwave: number;
+  readonly shockwaveRadius: number;
+  /** Positional sound id (null = silent), its volume and playback rate. */
+  readonly sound: string | null;
+  readonly volume: number;
+  readonly pitch: number;
+  readonly pitchVariance: number;
+}
+
 /** Area damage of a perk hook: full damage within innerFraction × radius, linear to minFalloff at the edge. */
 export interface PerkBlastDef {
   /** DamageInfo.weaponId of the blast (combat:damage consumers; not a weapon def). */
   readonly weaponId: string;
   readonly element: DamageElement;
-  /** Element of the blast VFX (combat:explosion tint). */
+  /** Element of the fallback VFX (combat:explosion tint when no blast FX is wired: tests, tools). */
   readonly fxElement: DamageElement;
+  readonly fx: PerkBlastFxDef;
   readonly radius: RangeDef;
   readonly damage: RangeDef;
   readonly innerFraction: number;
@@ -359,6 +380,16 @@ export const PERK_TUNING = {
     centerHeight: 1,
     fxHeight: 0.15,
     cooldown: 1.5,
+    fx: {
+      effect: 'perk.nova',
+      referenceRadius: 4,
+      shockwave: 0.35,
+      shockwaveRadius: 1.2,
+      sound: 'explosion',
+      volume: 0.4,
+      pitch: 1.7,
+      pitchVariance: 0.08,
+    },
   } satisfies PerkBlastDef,
   /** Kinetikpanzer: landing shock wave; strength by impact speed between the two thresholds. */
   kinetic: {
@@ -373,6 +404,16 @@ export const PERK_TUNING = {
     centerHeight: 0.4,
     fxHeight: 0.1,
     cooldown: 1,
+    fx: {
+      effect: 'perk.kinetic',
+      referenceRadius: 4.5,
+      shockwave: 0.6,
+      shockwaveRadius: 1.3,
+      sound: 'enemy.tank.slam',
+      volume: 0.9,
+      pitch: 1.1,
+      pitchVariance: 0.06,
+    },
     /** m/s downward: MOVEMENT.landing.heavyImpactSpeed (a double-jump landing) and full strength. */
     minImpactSpeed: 12,
     fullImpactSpeed: 24,
@@ -394,6 +435,16 @@ export const PERK_TUNING = {
     centerHeight: 1,
     fxHeight: 0.15,
     cooldown: 0,
+    fx: {
+      effect: 'perk.phoenix',
+      referenceRadius: 4.5,
+      shockwave: 0.7,
+      shockwaveRadius: 1.3,
+      sound: 'explosion',
+      volume: 0.75,
+      pitch: 0.85,
+      pitchVariance: 0.05,
+    },
   } satisfies PerkBlastDef,
   /** Aasgeier: chance per player kill (× dropChance stat) to drop a small ammo pickup. */
   scavenger: {

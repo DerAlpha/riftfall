@@ -70,6 +70,7 @@ import { EconomySystem } from '../economy/EconomySystem';
 import { PointsRules } from '../economy/PointsRules';
 import { PerkSystem } from '../economy/PerkSystem';
 import { createEconomyCommands } from '../economy/economyCommands';
+import { createPerkBlastFx } from '../economy/perkHooks';
 import { ZoneSystem } from '../interactables/ZoneSystem';
 import { InteractionSystem } from '../interactables/InteractionSystem';
 import { placeInteractables, type InteractablesHandle } from '../interactables/placeInteractables';
@@ -376,7 +377,20 @@ export class Game {
     weapons.setStats(stats);
     // The calibration hall starts with a sandbox budget (economy.reset() restores it).
     const economy = new EconomySystem({ events, stats }, startPointsFor(map));
-    const perks = new PerkSystem({ events, stats, combat, player, seed: `perks:${runSeed}` });
+    const perks = new PerkSystem({
+      events,
+      stats,
+      combat,
+      player,
+      seed: `perks:${runSeed}`,
+      // Nova / Kinetik / Phoenix blasts: their own floor-level VFX, screen shockwave and sound.
+      blastFx: createPerkBlastFx({
+        vfx,
+        audio,
+        shockwave: (p, r, s) => render.addShockwave(p, r, s),
+        shockwaveScale: () => settings.current.accessibility.screenShake,
+      }),
+    });
 
     let gameRef: Game | null = null;
     const runFlow = new RunFlow({

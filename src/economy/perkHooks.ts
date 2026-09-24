@@ -17,13 +17,21 @@
  *   happens inside an enemy attack: no damage/raycasts nested in the enemy tick).
  *
  * Blasts damage enemies only (team 'enemy', static line of sight from the blast center), as
- * source 'player' – they pay points like any other player damage – and show their VFX through
- * `blastFx` (default: a combat:explosion event, which VfxBridge/AudioEventBridge turn into an
- * element-tinted explosion with sound and shake).
+ * source 'player' – they pay points like any other player damage – and show themselves through
+ * `blastFx`: Game wires createPerkBlastFx (the blast's own VFX preset, screen shockwave and sound,
+ * PerkBlastDef.fx); without it a combat:explosion event (frag explosion tinted by fxElement).
  */
-import type { CombatWorldApi, Damageable, DamageInfo, StatsApi } from '../core/contracts';
+import type {
+  AudioApi,
+  CombatWorldApi,
+  Damageable,
+  DamageInfo,
+  PlayOptions,
+  StatsApi,
+  VfxApi,
+} from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
-import type { DamageElement, GameEvents, Vec3Like } from '../core/events';
+import type { GameEvents, Vec3Like } from '../core/events';
 import type { Rng } from '../core/Rng';
 import { clamp01, lerp } from '../core/math';
 import { PERK_TUNING, perkSource, type PerkBlastDef, type PerkHookId } from '../defs/perks';
@@ -34,6 +42,9 @@ export type PerkStatsApi = StatsApi & Pick<StatSystem, 'batch' | 'setSource'>;
 
 export type PerkCombatApi = Pick<CombatWorldApi, 'queryRadius' | 'dealDamage' | 'lineOfSight'>;
 
+/** Shows a blast of `radius` m at `position` (scratch: copy it). */
+export type PerkBlastFx = (position: Vec3Like, radius: number, def: PerkBlastDef, hook: PerkHookId) => void;
+
 export interface PerkHookContext {
   readonly events: EventBus<GameEvents>;
   readonly stats: PerkStatsApi;
@@ -42,8 +53,8 @@ export interface PerkHookContext {
   /** Player feet (live vector); null = no position-based effects. */
   readonly player: { readonly position: Vec3Like } | null;
   readonly rng: Rng;
-  /** Blast VFX (position is a scratch vector: copy it). */
-  readonly blastFx: (position: Vec3Like, radius: number, element: DamageElement, hook: PerkHookId) => void;
+  /** Blast VFX + sound (position is a scratch vector: copy it). */
+  readonly blastFx: PerkBlastFx;
   /**
    * Aasgeier: the current ammo pickup spawner (the power-up system; `position` is scratch: copy
    * it), null = not wired.
@@ -161,8 +172,53 @@ export function perkBlast(
   fx.x = feet.x;
   fx.y = feet.y + def.fxHeight;
   fx.z = feet.z;
-  ctx.blastFx(fx, radius, def.fxElement, hook);
+  ctx.blastFx(fx, radius, def, hook);
   return hits;
+}
+
+export interface PerkBlastFxDeps {
+  vfx: Pick<VfxApi, 'spawn'> | null;
+  audio: Pick<AudioApi, 'play'> | null;
+  /** Screen-space shockwave (RenderApi.addShockwave); null = none. */
+  shockwave: ((position: Vec3Like, radius: number, strength: number) => void) | null;
+  /**
+   * Shockwave strength factor, read per blast: accessibility.screenShake (0..1, like VfxSystem's
+   * explosions). Default 1.
+   */
+  shockwaveScale?: (() => number) | null;
+}
+
+const UP: Vec3Like = { x: 0, y: 1, z: 0 };
+
+/** The blasts' own look and sound (PerkBlastDef.fx): VFX preset, screen shockwave, positional sound. */
+export function createPerkBlastFx(deps: PerkBlastFxDeps): PerkBlastFx {
+  const sound: PlayOptions & { position: Vec3Like } = {
+    position: { x: 0, y: 0, z: 0 },
+    volume: 1,
+    pitch: 1,
+    pitchVariance: 0,
+    bus: 'sfx',
+  };
+  return (position, radius, def) => {
+    const fx = def.fx;
+    const scale = fx.referenceRadius > 0 ? radius / fx.referenceRadius : 1;
+    deps.vfx?.spawn(fx.effect, position, UP, scale);
+    const k = deps.shockwaveScale ? clamp01(deps.shockwaveScale()) : 1;
+    if (fx.shockwave > 0 && k > 0) deps.shockwave?.(position, radius * fx.shockwaveRadius, fx.shockwave * k);
+    if (fx.sound && deps.audio) {
+      copyTo(position, sound.position);
+      sound.volume = fx.volume;
+      sound.pitch = fx.pitch;
+      sound.pitchVariance = fx.pitchVariance;
+      deps.audio.play(fx.sound, sound);
+    }
+  };
+}
+
+function copyTo(from: Vec3Like, to: Vec3Like): void {
+  to.x = from.x;
+  to.y = from.y;
+  to.z = from.z;
 }
 
 // ---------------------------------------------------------------------------

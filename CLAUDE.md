@@ -292,9 +292,13 @@ RenderPass(world)                                 (incl. decals, casings, traini
 
 - **Economy (M4):** every player modifier is a `StatModifier` on the StatSystem (perks `perk:<id>`,
   power-ups `powerup:<id>`, later skills/cards); consumers re-read stats on their next tick/frame/damage
-  call, so removing a source restores the exact previous value. Points only for player damage; nuke kills
-  pay nothing each (the power-up pays a flat bonus); repairs are capped per wave. Only Phoenix is lost on a
-  revive; `run kill` uses `health.kill()` (bypasses revives and damage stats).
+  call, so removing a source restores the exact previous value. Points only for player damage, per enemy
+  kind (`EnemyTypeDef.points`: swarmer = CoD 10/60/100, melee +70; tank kill 250); nuke kills pay nothing
+  each (the power-up pays a flat bonus); dev-console spawns pay and drop nothing; repairs are capped per
+  wave; `economy/pacing.test.ts` guards the wave 1–10 rhythm (a door per wave, box ~3–4, perk ~4–6). The
+  calibration hall starts with `ECONOMY.sandboxStartPoints`. Only Phoenix is lost on a revive (its fire
+  burst goes off on the next perk tick); perk blasts use their own floor-level VFX presets (`perk.*`), not
+  the frag explosion; `run kill` uses `health.kill()` (bypasses revives and damage stats).
 - **Doors block the navmesh (M4):** NavSystem.setAreaBlocked regenerates the tiles under a door box once
   (the doorway gets its own polygons), then blocking is an instant poly-flag toggle that queries and the
   crowd filter respect; blocked areas are re-applied after a rebuild. Perk machines and box spots are

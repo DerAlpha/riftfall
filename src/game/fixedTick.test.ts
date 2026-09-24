@@ -105,6 +105,7 @@ describe('runFixedTick', () => {
     s.perks = null;
     s.projectiles = null;
     s.fields = null;
+    s.status = null;
     s.player.position.y = PHYSICS.killPlaneY - 1;
     runFixedTick(s, DT);
     expect(calls).toEqual(['player', 'weapons', 'teleport', 'physics', 'health', 'level']);

@@ -5,7 +5,7 @@
  * the regulator), a long heat-shielded wand whose vent slots glow while it burns, and a flared nozzle
  * with swirl vanes and a pilot burner whose small blue-orange flame never stops flickering.
  * Parts: tank (the magazine), nozzle, swirl (vanes, spin with the beam), flare (tongue that pushes
- * out of the bell with the beam), pilot (flame), trigger, sight (rear notch).
+ * out of the bell with the beam), pilot (flame), trigger, sight (rear ghost ring).
  */
 import { BoxGeometry, CylinderGeometry, TorusGeometry } from 'three';
 import { FLAMETHROWER_VIEWMODEL } from '../../../defs/viewmodelData/flamethrower';
@@ -20,7 +20,7 @@ import { EnergyWeaponModel, bentTube, createEnergyMaterial } from './energyKit';
 const P = VIEWMODEL_ART.materials;
 
 const BORE_Y = 0.05;
-/** Sight line: rear notch floor = front post top. */
+/** Sight line: rear ghost-ring center = front post dot. */
 const SIGHT_Y = 0.113;
 const GRIP_TILT = -17;
 const GRIP_TOP = { y: 0.004, z: 0.012 } as const;
@@ -476,24 +476,22 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     { paint: 0.5 },
   );
 
-  // --- rear notch sight ---
-  b.add('sight', 'darkMetal', roundedBox(0.022, SIGHT_Y - 0.0845, 0.008, 0.0012), {
-    pos: [0, (SIGHT_Y + 0.0845) / 2 - 0.0026, 0.01],
+  // --- rear ghost-ring sight (fast target pick-up at flamethrower range) ---
+  b.add('sight', 'darkMetal', roundedBox(0.012, SIGHT_Y - 0.09, 0.009, 0.0015), {
+    pos: [0, (SIGHT_Y + 0.078) / 2, 0.01],
     paint: P.darkMetal.paint,
   });
-  for (const x of [-0.0065, 0.0065]) {
-    b.add('sight', 'darkMetal', roundedBox(0.007, 0.0052, 0.008, 0.0008), {
-      pos: [x, SIGHT_Y - 0.0026 + 0.0026, 0.01],
-      paint: P.darkMetal.paint,
-    });
-    b.add('sight', 'sight', new BoxGeometry(0.002, 0.002, 0.0006), { pos: [x, SIGHT_Y - 0.0015, 0.0143] });
-  }
+  b.add('sight', 'gunmetal', tubeZ(0.0082, 0.0046, 0.005, 24), {
+    pos: [0, SIGHT_Y, 0.0125],
+    paint: P.gunmetal.paint,
+  });
+  b.add('sight', 'accent', new TorusGeometry(0.0064, 0.0005, 4, 28), { pos: [0, SIGHT_Y, 0.0128] });
 
   // --- sockets & mounts ---
   b.socket('muzzle', [0, BORE_Y, NOZZLE_Z - 0.056]);
   // No casings: the regulator valve stands in for the ejection port.
   b.socket('ejectPort', [-0.04, 0.05, -0.105], [0, 90, 0]);
-  b.socket('sight', [0, SIGHT_Y, 0.0145]);
+  b.socket('sight', [0, SIGHT_Y, 0.0135]);
   b.mount('optic', [0, 0.083, -0.04]);
   b.mount('laser', [WAND.r + 0.004, BORE_Y, WAND.back - 0.04]);
   b.mount('underbarrel', [0, BORE_Y - WAND.r, -0.24]);

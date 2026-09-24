@@ -39,7 +39,7 @@ import { stripStyleIndex } from './StripBatch';
 const RND = 256;
 const RND_BRANCH = 160;
 const RND_ARC = 200;
-const MAX_ARC_SEGMENTS = 16;
+const MAX_ARC_SEGMENTS = 24;
 
 const _p = { x: 0, y: 0, z: 0 };
 const _n = { x: 0, y: 0, z: 0 };
@@ -522,7 +522,7 @@ export class ArsenalBeams {
         const r = ctx.rand;
         sampleCone(dx, dy, dz, cosMax, r(), r(), _dir);
         const life = lerpRange(s.life, r());
-        const reach = len * lerpRange(s.reach, Math.sqrt(r()));
+        const reach = len * lerpRange(s.reach, r());
         const drag = s.drag;
         const speed = (reach * drag) / (1 - Math.exp(-drag * life));
         const lead = r() * 0.15;

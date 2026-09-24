@@ -11,7 +11,10 @@ import { ELEMENTS, STATUS_ELEMENTS, STATUS_IDS, STATUS_NAMES, type StatusElement
 import type { StatusEffectSystem } from './StatusEffectSystem';
 
 export interface StatusCommandDeps {
-  status: Pick<StatusEffectSystem, 'applyElement' | 'reset' | 'has' | 'stacksOf' | 'stats' | 'slots' | 'capacity'>;
+  status: Pick<
+    StatusEffectSystem,
+    'applyElement' | 'reset' | 'has' | 'stacksOf' | 'stats' | 'slots' | 'capacity'
+  >;
   combat: { readonly targets: readonly Damageable[] };
   /** Player feet position. */
   player: () => Vec3Like;

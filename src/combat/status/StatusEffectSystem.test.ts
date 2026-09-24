@@ -20,8 +20,13 @@ class Dummy implements Damageable {
   readonly hitboxes: Hitbox[];
   readonly aimPoint: Vector3;
   health: number;
-  readonly taken: { amount: number; element: DamageElement; kind: ImpactKind; weaponId: string; source: string }[] =
-    [];
+  readonly taken: {
+    amount: number;
+    element: DamageElement;
+    kind: ImpactKind;
+    weaponId: string;
+    source: string;
+  }[] = [];
 
   constructor(
     readonly id: number,
@@ -33,7 +38,9 @@ class Dummy implements Damageable {
     this.health = health;
     this.boundsCenter = new Vector3(x, 1, z);
     this.aimPoint = new Vector3(x, 1.3, z);
-    this.hitboxes = [{ shape: 'sphere', zone: 'body', a: new Vector3(x, 1, z), b: new Vector3(), radius: 0.4 }];
+    this.hitboxes = [
+      { shape: 'sphere', zone: 'body', a: new Vector3(x, 1, z), b: new Vector3(), radius: 0.4 },
+    ];
   }
 
   applyDamage(info: DamageInfo): DamageResult {
@@ -57,7 +64,9 @@ class Dummy implements Damageable {
   }
 }
 
-function setup(opts: { resist?: Record<number, StatusResistDef>; toughness?: number; capacity?: number } = {}) {
+function setup(
+  opts: { resist?: Record<number, StatusResistDef>; toughness?: number; capacity?: number } = {},
+) {
   const events = new EventBus<GameEvents>();
   const combat = new CombatWorld({ events });
   const vfx: string[] = [];
@@ -126,7 +135,21 @@ function setup(opts: { resist?: Record<number, StatusResistDef>; toughness?: num
   const tick = (n = 1): void => {
     for (let i = 0; i < n; i++) status.fixedUpdate(DT);
   };
-  return { events, combat, status, vfx, flashes, blasts, clouds, statusEvents, comboEvents, explosionEvents, add, hit, tick };
+  return {
+    events,
+    combat,
+    status,
+    vfx,
+    flashes,
+    blasts,
+    clouds,
+    statusEvents,
+    comboEvents,
+    explosionEvents,
+    add,
+    hit,
+    tick,
+  };
 }
 
 describe('StatusEffectSystem – build-up', () => {
@@ -292,7 +315,7 @@ describe('StatusEffectSystem – statuses', () => {
     expect(h.explosionEvents).toHaveLength(1);
     expect(h.explosionEvents[0]).toMatchObject({ element: 'ice', vfx: S.vfx, audio: S.audio });
     const bonus = d.taken.find((x) => x.element === 'ice' && x.kind === 'explosion');
-    expect(bonus?.amount).toBeCloseTo(S.damage + S.hitFraction * (4 * S.minHit) / 3, 3);
+    expect(bonus?.amount).toBeCloseTo(S.damage + (S.hitFraction * (4 * S.minHit)) / 3, 3);
   });
 
   it('frozen: any blast or melee blow shatters, whatever its damage', () => {
@@ -352,7 +375,11 @@ describe('StatusEffectSystem – statuses', () => {
     h.tick();
     expect(h.clouds).toHaveLength(1);
     expect(h.clouds[0]).toMatchObject({ x: 3, z: 4, def: P.cloud.field });
-    expect(h.clouds[0]!.from).toMatchObject({ weaponId: 'smg', source: 'player', statusBuildup: P.cloud.statusBuildup });
+    expect(h.clouds[0]!.from).toMatchObject({
+      weaponId: 'smg',
+      source: 'player',
+      statusBuildup: P.cloud.statusBuildup,
+    });
     expect(h.status.slots).toBe(0);
   });
 

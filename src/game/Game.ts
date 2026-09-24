@@ -897,7 +897,11 @@ export class Game {
         player: () => ({ position: player.position, yaw: player.yaw }),
       }),
       ...createFireCommands({ weapons, arsenal: this.sys.arsenal }),
-      ...createStatusCommands({ status: this.sys.status, combat: this.sys.combat, player: () => player.position }),
+      ...createStatusCommands({
+        status: this.sys.status,
+        combat: this.sys.combat,
+        player: () => player.position,
+      }),
     ];
     for (const c of commands) devConsole.register(c);
   }

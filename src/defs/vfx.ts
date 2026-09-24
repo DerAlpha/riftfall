@@ -2391,8 +2391,8 @@ export const VFX_EFFECTS = {
   },
   'field.fire.flames': {
     emitters: [
-      tongues([1, 1], [0.26, 0.42], [0.3, 0.55], [1.2, 2.4], 3.4, { minCount: 1, stretch: 0.16 }),
-      flames([0, 1], [0.2, 0.32], [0.3, 0.5], [0.6, 1.4], 2.4, { spread: 15, sizeEnd: 1.6 }),
+      tongues([1, 1], [0.3, 0.5], [0.45, 0.75], [2, 3.4], 3.4, { minCount: 1, stretch: 0.18, drag: 2.2 }),
+      flames([0, 1], [0.25, 0.4], [0.35, 0.6], [0.8, 1.6], 2.4, { spread: 15, sizeEnd: 1.8 }),
       motes([1, 0.55, 0.16], [0, 1], [0.8, 2.5], [0.6, 1.2], 9, { axis: 'up', spread: 40, gravity: -0.3 }),
     ],
   },
@@ -2408,7 +2408,7 @@ export const VFX_EFFECTS = {
   },
   'field.poison.mist': {
     emitters: [
-      billow('smoke', POISON_MIST, [1, 1], [0.8, 1.3], 2.2, [2.5, 4], [0.1, 0.4], 0.55, {
+      billow('smoke', [0.3, 0.52, 0.14], [1, 1], [1.1, 1.7], 2.2, [2.5, 4], [0.1, 0.4], 0.6, {
         minCount: 1,
         axis: 'up',
         drag: 0.8,
@@ -2424,11 +2424,11 @@ export const VFX_EFFECTS = {
         speed: [0.05, 0.3],
         axis: 'up',
         spread: 60,
-        size: [0.9, 1.4],
+        size: [1, 1.5],
         sizeEnd: 2,
         color: POISON_C,
-        intensity: 0.14,
-        intensityEnd: 0.05,
+        intensity: 0.3,
+        intensityEnd: 0.08,
         fadeIn: 0.3,
         fadeOut: 0.5,
         alpha: 1,

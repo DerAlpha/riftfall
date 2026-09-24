@@ -72,7 +72,10 @@ export const ELEMENTS = {
   team: 'enemy',
   buildup: {
     /** Build-up per status trigger (spent on each trigger). */
-    threshold: { fire: 100, ice: 85, shock: 110, poison: 70, void: 140 } satisfies Record<StatusElement, number>,
+    threshold: { fire: 100, ice: 85, shock: 110, poison: 70, void: 140 } satisfies Record<
+      StatusElement,
+      number
+    >,
     /** Seconds without new build-up of an element before it decays, and the decay (points/s). */
     decayDelay: 1.2,
     decayPerSecond: 55,
@@ -163,7 +166,14 @@ export const ELEMENTS = {
   },
   /** Enemy rim light per status (priority: first active wins) – linear hex, strength 0..1. */
   rim: {
-    priority: ['frozen', 'shocked', 'burn', 'voidMark', 'poisoned', 'chill'] as const satisfies readonly StatusId[],
+    priority: [
+      'frozen',
+      'shocked',
+      'burn',
+      'voidMark',
+      'poisoned',
+      'chill',
+    ] as const satisfies readonly StatusId[],
     frozen: { color: 0x9fd8ff, strength: 1, pulse: 0.08, rate: 2 },
     shocked: { color: 0x7cc4ff, strength: 0.95, pulse: 0.55, rate: 31 },
     burn: { color: 0xff5010, strength: 0.9, pulse: 0.25, rate: 13 },
@@ -425,7 +435,8 @@ export const ELEMENT_MODS: readonly ElementModDef[] = [
     cost: 2500,
     color: 0x7cc8ff,
     css: '#8fd4ff',
-    glyph: 'M12 2.5V21.5 M3.8 7.25 20.2 16.75 M3.8 16.75 20.2 7.25 M9.5 3.5 12 6 14.5 3.5 M9.5 20.5 12 18 14.5 20.5',
+    glyph:
+      'M12 2.5V21.5 M3.8 7.25 20.2 16.75 M3.8 16.75 20.2 7.25 M9.5 3.5 12 6 14.5 3.5 M9.5 20.5 12 18 14.5 20.5',
     audio: 'element.install',
   },
   {
@@ -453,7 +464,8 @@ export const ELEMENT_MODS: readonly ElementModDef[] = [
     cost: 2500,
     color: 0x58ff28,
     css: '#7dff4a',
-    glyph: 'M12 3C12 3 5.5 10.5 5.5 14.5A6.5 6.5 0 0 0 18.5 14.5C18.5 10.5 12 3 12 3Z M9.2 15A2.8 2.8 0 0 0 12 17.8',
+    glyph:
+      'M12 3C12 3 5.5 10.5 5.5 14.5A6.5 6.5 0 0 0 18.5 14.5C18.5 10.5 12 3 12 3Z M9.2 15A2.8 2.8 0 0 0 12 17.8',
     audio: 'element.install',
   },
   {

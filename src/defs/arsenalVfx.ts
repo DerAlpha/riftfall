@@ -107,8 +107,8 @@ export interface ProjectileVisualDef {
 
 const PLASMA: Rgb = [0.3, 0.78, 1];
 const PLASMA_CORE: Rgb = [0.75, 0.95, 1];
-const SHOCK: Rgb = [0.5, 0.7, 1];
-const SHOCK_CORE: Rgb = [0.85, 0.92, 1];
+const SHOCK: Rgb = [0.35, 0.55, 1];
+const SHOCK_CORE: Rgb = [0.7, 0.85, 1];
 const VOID: Rgb = [0.62, 0.22, 1];
 const VOID_DEEP: Rgb = [0.34, 0.06, 0.8];
 const FROST: Rgb = [0.55, 0.85, 1];
@@ -228,8 +228,8 @@ export const PROJECTILE_VISUALS = {
   /** Äther-Harfe: a white-blue orb wrapped in crackling filaments. */
   'projectile.shockorb': {
     glows: [
-      { shape: 'orb', size: 0.22, color: SHOCK_CORE, intensity: 6 },
-      { shape: 'electric', size: 0.8, color: SHOCK, intensity: 2.6, spin: 2 },
+      { shape: 'orb', size: 0.2, color: SHOCK_CORE, intensity: 4 },
+      { shape: 'electric', size: 0.8, color: SHOCK, intensity: 2.2, spin: 2 },
       { shape: 'orb', size: 1.1, color: SHOCK, intensity: 0.45 },
     ],
     body: null,
@@ -237,8 +237,8 @@ export const PROJECTILE_VISUALS = {
   /** Kryo-Nova: a faceted ice star around a cold white core. */
   'projectile.cryoorb': {
     glows: [
-      { shape: 'orb', size: 0.26, color: FROST_CORE, intensity: 5 },
-      { shape: 'crystal', size: 0.9, color: FROST, intensity: 2.2, spin: 1.5 },
+      { shape: 'orb', size: 0.24, color: FROST_CORE, intensity: 3 },
+      { shape: 'crystal', size: 0.9, color: [0.4, 0.78, 1], intensity: 1.5, spin: 1.5 },
       { shape: 'orb', size: 1.2, color: FROST, intensity: 0.4 },
     ],
     body: null,
@@ -487,9 +487,9 @@ export const BEAM_STYLES = {
       haloIntensity: 1.1,
     },
     arc: {
-      segmentLength: 0.45,
+      segmentLength: 0.3,
       minSegments: 5,
-      jitter: 0.08,
+      jitter: 0.05,
       jitterMin: 0.06,
       width: 0.03,
       color: SHOCK_CORE,
@@ -514,11 +514,11 @@ export const BEAM_STYLES = {
     kind: 'flame',
     rate: 170,
     life: [0.28, 0.46],
-    reach: [0.45, 1],
-    spreadDeg: 8,
-    drag: 3.2,
+    reach: [0.3, 1],
+    spreadDeg: 9,
+    drag: 1.6,
     size: [0.07, 0.11],
-    sizeEnd: 8,
+    sizeEnd: 9,
     stretch: 0.018,
     color: [1, 0.72, 0.34],
     colorEnd: [0.72, 0.1, 0.02],
@@ -551,7 +551,7 @@ export const BEAM_STYLES = {
     haloWidth: 0.6,
     haloColor: VOID_DEEP,
     haloIntensity: 0.6,
-    startGlow: { shape: 'void', size: 0.14, color: VOID, intensity: 3, spin: 6 },
+    startGlow: { shape: 'void', size: 0.08, color: VOID, intensity: 3, spin: 6 },
     endGlow: { shape: 'void', size: 0.8, color: VOID, intensity: 2.6, spin: -5 },
     fade: 0.35,
     fadeWidth: 1.8,
@@ -563,11 +563,11 @@ export const BEAM_STYLES = {
     kind: 'ray',
     style: 'rail',
     width: 0.1,
-    color: [0.8, 0.95, 1],
-    intensity: 14,
+    color: [0.45, 0.82, 1],
+    intensity: 8,
     haloWidth: 0.5,
-    haloColor: [0.2, 0.6, 1],
-    haloIntensity: 1.2,
+    haloColor: [0.12, 0.45, 1],
+    haloIntensity: 1.3,
     startGlow: { shape: 'orb', size: 0.16, color: PLASMA_CORE, intensity: 4 },
     endGlow: { shape: 'ring', size: 1.2, color: PLASMA, intensity: 3 },
     fade: 0.55,
@@ -707,7 +707,7 @@ export const FIELD_VISUALS = {
     glows: [],
     coreHeight: 0,
     ambient: [
-      { effect: 'field.fire.flames', rate: 70, area: 'disc', height: [0, 0.05], scale: 1 },
+      { effect: 'field.fire.flames', rate: 90, area: 'disc', height: [0, 0.05], scale: 1 },
       { effect: 'field.fire.smoke', rate: 5, area: 'disc', height: [0.5, 1.1], scale: 1 },
     ],
     infall: null,
@@ -718,7 +718,7 @@ export const FIELD_VISUALS = {
   },
   /** Toxic cloud: a bubbling puddle under a slow, murky green fog. */
   'field.damage.poison': {
-    disc: { style: 'poison', color: POISON, intensity: 0.8, radiusScale: 1, maxRadius: 6, ground: true },
+    disc: { style: 'poison', color: POISON, intensity: 1.2, radiusScale: 1, maxRadius: 6, ground: true },
     glows: [],
     coreHeight: 0,
     ambient: [

@@ -1558,7 +1558,10 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       e.statusRim = true;
       if (st.has(e.id, 'shocked') && !st.has(e.id, 'frozen')) {
         const T = ELEMENTS.twitch;
-        pose.stagger = Math.max(pose.stagger, T.amplitude * Math.abs(Math.sin(this._time * T.rate + e.serial)));
+        pose.stagger = Math.max(
+          pose.stagger,
+          T.amplitude * Math.abs(Math.sin(this._time * T.rate + e.serial)),
+        );
       }
     } else if (e.statusRim) {
       const E = ENEMY_AI.elite;

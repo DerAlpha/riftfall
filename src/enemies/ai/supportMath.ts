@@ -99,7 +99,13 @@ export function spotBehind(
  * Flee direction k (0 = straight away from the target, then ±arc, ±2·arc, … alternating) as a
  * unit XZ vector into `out` (y = 0). `awayX/awayZ`: unit vector from the target to the enemy.
  */
-export function fleeDirection(awayX: number, awayZ: number, k: number, arcRad: number, out: Vec3Out): Vec3Out {
+export function fleeDirection(
+  awayX: number,
+  awayZ: number,
+  k: number,
+  arcRad: number,
+  out: Vec3Out,
+): Vec3Out {
   const step = Math.ceil(k / 2);
   const side = k % 2 === 1 ? 1 : -1;
   const a = k === 0 ? 0 : side * step * arcRad;

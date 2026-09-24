@@ -94,7 +94,7 @@ export const BERSERKER_VISUAL: EnemyVisualDef | null = {
       metalness: 0,
       clearcoat: 1,
       emissive: [1, 0.16, 0.05],
-      emissiveIntensity: 5,
+      emissiveIntensity: 6.5,
       glow: 0.6,
       pulse: 0.5,
       veins: 0,

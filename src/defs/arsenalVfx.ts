@@ -439,8 +439,10 @@ export interface FlameBeamDef {
   readonly fadeInReach: number;
   /**
    * A short stream (a wall or an enemy right in front) packs all its particles and the light
-   * next to the eye: below `length` m the particle / hit spawn rates scale down to `rate` and the
-   * light to `light` (linear in the length) – the same fire, not a white-out.
+   * next to the eye and the target: below `length` m the particle / hit spawn rates scale down
+   * linearly to `rate`, the light with the square of the length (the light sits on the stream, so
+   * the target's irradiance stays that of a `length` m stream) down to `light` – the same fire,
+   * not a white-out.
    */
   readonly closeRange: { readonly length: number; readonly rate: number; readonly light: number };
   readonly color: Rgb;
@@ -543,7 +545,7 @@ export const BEAM_STYLES = {
     stretch: 0.018,
     fadeInDistance: 1.6,
     fadeInReach: 0.45,
-    closeRange: { length: 5, rate: 0.35, light: 0.25 },
+    closeRange: { length: 5, rate: 0.35, light: 0.04 },
     color: [1, 0.72, 0.34],
     colorEnd: [0.72, 0.1, 0.02],
     intensity: 1.7,
@@ -599,6 +601,129 @@ export const BEAM_STYLES = {
     fadeWidth: 2.4,
     along: { effect: 'beam.rail.sparks', spacing: 1.1, rate: 0 },
     light: null,
+  },
+  // --- M6 enemy beams (enemies/EnemyBeams via attackKinds/beam + summon) ---
+  /** Heiler tether: a green core wound by a slow helix, motes drifting along, a halo on the ally. */
+  'enemy.heal': {
+    kind: 'ray',
+    style: 'rail',
+    width: 0.06,
+    color: [0.5, 1, 0.5],
+    intensity: 4.5,
+    haloWidth: 0.4,
+    haloColor: [0.12, 0.85, 0.25],
+    haloIntensity: 0.55,
+    startGlow: { shape: 'orb', size: 0.2, color: [0.45, 1, 0.5], intensity: 3 },
+    endGlow: { shape: 'halo', size: 0.9, color: [0.3, 1, 0.4], intensity: 1.4, spin: 2 },
+    fade: 0.3,
+    fadeWidth: 1.5,
+    along: { effect: 'enemy.heal.motes', spacing: 1, rate: 10 },
+    light: { color: [0.3, 1, 0.4], intensity: 22, range: 5, interval: 0.12, flicker: 0.1 },
+  },
+  /**
+   * Späher aim line: a thin red laser with a glinting flare at the lens and a small dot at its end
+   * (short of the player's chest); a red light on the target's surroundings.
+   */
+  'enemy.laser.aim': {
+    kind: 'ray',
+    style: 'glow',
+    width: 0.02,
+    color: [1, 0.08, 0.05],
+    intensity: 6,
+    haloWidth: 0.12,
+    haloColor: [1, 0.05, 0.03],
+    haloIntensity: 0.3,
+    startGlow: {
+      shape: 'flare',
+      size: 0.2,
+      color: [1, 0.3, 0.18],
+      intensity: 9,
+      pulse: { rate: 4, depth: 0.35 },
+      spin: 1,
+    },
+    endGlow: { shape: 'orb', size: 0.05, color: [1, 0.12, 0.08], intensity: 4 },
+    fade: 0.2,
+    fadeWidth: 1,
+    along: null,
+    light: { color: [1, 0.1, 0.06], intensity: 10, range: 4, interval: 0.12, flicker: 0.1 },
+  },
+  /** Locked: brighter, wider, flickering – dodge now. */
+  'enemy.laser.lock': {
+    kind: 'ray',
+    style: 'electric',
+    width: 0.04,
+    color: [1, 0.3, 0.2],
+    intensity: 10,
+    haloWidth: 0.22,
+    haloColor: [1, 0.06, 0.03],
+    haloIntensity: 0.65,
+    startGlow: {
+      shape: 'flare',
+      size: 0.2,
+      color: [1, 0.55, 0.4],
+      intensity: 14,
+      pulse: { rate: 14, depth: 0.5 },
+      spin: 3,
+    },
+    endGlow: { shape: 'orb', size: 0.07, color: [1, 0.3, 0.2], intensity: 6 },
+    fade: 0.2,
+    fadeWidth: 1,
+    along: null,
+    light: { color: [1, 0.12, 0.06], intensity: 24, range: 5, interval: 0.06, flicker: 0.3 },
+  },
+  /** The fired laser: a blinding red slug in a helix that lingers and widens. */
+  'enemy.laser.shot': {
+    kind: 'ray',
+    style: 'rail',
+    width: 0.08,
+    color: [1, 0.42, 0.3],
+    intensity: 10,
+    haloWidth: 0.45,
+    haloColor: [1, 0.06, 0.03],
+    haloIntensity: 1.2,
+    startGlow: { shape: 'orb', size: 0.2, color: [1, 0.5, 0.35], intensity: 6 },
+    endGlow: { shape: 'ring', size: 0.6, color: [1, 0.2, 0.1], intensity: 3 },
+    fade: 0.5,
+    fadeWidth: 2.2,
+    along: { effect: 'enemy.laser.sparks', spacing: 1.4, rate: 0 },
+    light: null,
+  },
+  /** Beschwörer channel: violet rift lightning from the raised hands into the floor. */
+  'enemy.summon.channel': {
+    kind: 'lightning',
+    bolt: {
+      segmentLength: 0.3,
+      minSegments: 6,
+      jitter: 0.07,
+      jitterMin: 0.05,
+      width: 0.03,
+      color: [0.85, 0.6, 1],
+      intensity: 7,
+      haloWidth: 7,
+      haloIntensity: 0.8,
+    },
+    arc: {
+      segmentLength: 0.3,
+      minSegments: 4,
+      jitter: 0.06,
+      jitterMin: 0.05,
+      width: 0.025,
+      color: [0.85, 0.6, 1],
+      intensity: 7,
+      haloWidth: 5,
+      haloIntensity: 0.5,
+    },
+    haloColor: [0.45, 0.15, 1],
+    rerollRate: 14,
+    branches: { count: 2, length: [0.15, 0.35], segments: 4 },
+    muzzleGlow: { shape: 'void', size: 0.2, color: [0.7, 0.35, 1], intensity: 4, spin: 5 },
+    hitGlow: { shape: 'swirl', size: 1.2, color: [0.6, 0.25, 1], intensity: 2.2, spin: -4 },
+    muzzleEffect: 'beam.void.motes',
+    muzzleRate: 6,
+    hitEffect: 'beam.void.motes',
+    hitRate: 10,
+    arcRate: 0,
+    light: { color: [0.6, 0.3, 1], intensity: 35, range: 6, interval: 0.08, flicker: 0.35 },
   },
 } as const satisfies Record<string, BeamStyleDef>;
 

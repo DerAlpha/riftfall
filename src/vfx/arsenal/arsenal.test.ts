@@ -427,8 +427,33 @@ describe('ArsenalVfx pools and handles', () => {
     const wall = burn({ x: 0, y: 1.4, z: -1.5 });
     const cr = BEAM_STYLES['beam.flame'].closeRange;
     expect(wall.n).toBeLessThan(open.n * (cr.rate + 0.25));
-    expect(wall.light).toBeLessThan(open.light * (cr.light + 0.2));
+    // The target 1 m away gets no more light than from a full-strength `closeRange.length` stream
+    // (the light sits `lightAlong` down the stream).
+    const style = BEAM_STYLES['beam.flame'];
+    const irradiance = (light: number, len: number) => light / ((1 - style.lightAlong) * len) ** 2;
+    expect(irradiance(wall.light, 1)).toBeLessThan(irradiance(style.light.intensity, cr.length) * 1.05);
+    expect(open.light).toBeGreaterThan(style.light.intensity * 0.6);
     expect(wall.light).toBeGreaterThan(0);
+  });
+
+  it('more lasting lights than pool lights: the pool lights stay put (no frame-by-frame hopping)', () => {
+    const { arsenal, lights } = rig();
+    for (let k = 0; k < VFX.lights.count + 2; k++)
+      arsenal.fieldStart('field.damage.fire', { x: k * 6, y: 0, z: -5 }, 3, 5);
+    let hops = 0;
+    const last = lights.lights.map((l) => l.position.x);
+    for (let i = 0; i < 120; i++) {
+      lights.update(1 / 60);
+      lights.endFrame();
+      arsenal.update(1 / 60);
+      lights.lights.forEach((l, j) => {
+        if (i > 30 && Math.abs(l.position.x - last[j]!) > 1) hops++;
+        last[j] = l.position.x;
+      });
+    }
+    expect(lights.lights.every((l) => l.intensity > 0)).toBe(true);
+    expect(hops).toBe(0);
+    arsenal.dispose();
   });
 
   it('flameFadeIn solves the flight time under linear drag', () => {

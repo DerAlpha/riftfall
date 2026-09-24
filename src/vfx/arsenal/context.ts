@@ -232,13 +232,22 @@ export function sustainLight(
   if (!def || !ctx.lights || !(scale > 0)) return;
   const interval = Math.max(def.interval, 1e-3);
   const depth = Math.min(1, Math.max(0, def.flicker ?? ARSENAL_VFX.sustainFlicker)) * ctx.flicker;
+  const owned = state.handle > 0 && ctx.lights.slots.slotOf(state.handle) >= 0;
   state.timer -= dt;
-  if (state.timer <= 0) {
+  const due = state.timer <= 0;
+  if (due) {
     state.timer = state.timer + interval > 0 ? state.timer + interval : interval;
     state.from = state.to;
     state.to = 1 - depth * ctx.rand();
   }
   if (depth <= 0) state.from = state.to = 1;
+  if (!owned) {
+    // Without a light: ask for one at the interval cadence only, at the bottom of the flicker –
+    // a pool light is stolen only when dimmer than that, so equal lasting effects never take
+    // turns in the (few) pool lights frame by frame.
+    if (!due) return;
+    state.from = state.to = 1 - depth;
+  }
   const u = 1 - Math.min(1, Math.max(0, state.timer / interval));
   const level = state.from + (state.to - state.from) * u;
   state.handle = ctx.lights.sustain(state.handle, flashDefOf(def, priority), position, normal, scale * level);

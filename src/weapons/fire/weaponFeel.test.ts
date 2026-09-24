@@ -16,6 +16,7 @@ import { FakeCamera, FakePlayer, FakeWeaponInput, fakeRenderCamera } from '../te
 import { WeaponSystem } from '../WeaponSystem';
 import { hitDamage } from '../damage';
 import { resolveWeapon } from '../resolveWeapon';
+import { attachmentsFor } from '../../defs/attachments';
 import { Arsenal } from './Arsenal';
 import { AudioEventBridge, type AudioBridgeTarget } from '../../audio/AudioEventBridge';
 import { AUDIO } from '../../defs/audio';
@@ -403,5 +404,161 @@ describe('range mods', () => {
       if (k > 1) expect(after, `${id}+${att}`).toBeGreaterThan(before);
       else expect(after, `${id}+${att}`).toBeCloseTo(before, 6);
     }
+  });
+});
+
+describe('crit rhythm (critBurst counts the rounds of the magazine in hand)', () => {
+  /** Damage per shot on one far-off dummy (1 event per shot: precise aim, one zone). */
+  function forged(id: 'burstrifle' | 'doublebarrel' | 'revolver') {
+    const t = setup({ [id]: precise(WEAPONS[id]) }, [id]);
+    t.equip();
+    t.weapons.setWeaponMods(id, { tier: 1 });
+    const target = new FakeTarget({ x: 0, y: 0.35, z: -10 }, 1e9);
+    t.combat.register(target);
+    const def = t.weapons.currentDef!;
+    const gap = Math.ceil((60 / def.rpm + (def.burst ? (def.burst.count - 1) * (60 / def.burst.rpm) : 0)) / DT) + 2;
+    const pull = (n = 1): void => {
+      for (let i = 0; i < n; i++) {
+        t.input.tap('fire');
+        t.frame(gap);
+      }
+    };
+    const settle = (): void => {
+      for (let i = 0; i < 900 && t.weapons.state !== 'idle'; i++) t.frame();
+    };
+    /** Crit flags of the shots since `from` (a crit hits far above the plain round). */
+    const crits = (from: number): boolean[] => {
+      const amounts = target.received.slice(from).map((d) => d.amount);
+      const plain = Math.min(...amounts);
+      return amounts.map((a) => a > plain * 1.3);
+    };
+    return { t, target, def, pull, settle, crits };
+  }
+
+  it('BR-3 „Dreifaltigkeit“: the third round of every burst crits – also after a cut-short burst', () => {
+    const { t, target, def, pull, settle, crits } = forged('burstrifle');
+    // Its magazine (+ the chambered round) is no multiple of three: the last burst is cut short.
+    expect((def.magazine + 1) % def.burst!.count).not.toBe(0);
+    for (let i = 0; i < 40 && t.weapons.state !== 'reloading'; i++) pull();
+    settle();
+    const from = target.received.length;
+    pull(3);
+    expect(crits(from)).toEqual([false, false, true, false, false, true, false, false, true]);
+  });
+
+  it('DB-2 „Kain und Abel“: the second barrel hits harder – also after reloading a single barrel', () => {
+    const { t, target, pull, settle, crits } = forged('doublebarrel');
+    pull();
+    t.input.tap('reload');
+    t.frame();
+    expect(t.weapons.state).toBe('reloading');
+    settle();
+    const from = target.received.length;
+    pull(2);
+    expect(crits(from)).toEqual([false, true]);
+  });
+
+  it('RM-44 „Urteil“: the sixth chamber pronounces the verdict – also after a tactical reload', () => {
+    const { t, target, def, pull, settle, crits } = forged('revolver');
+    pull(4);
+    t.input.tap('reload');
+    t.frame();
+    settle();
+    expect(t.weapons.ammo!.mag).toBe(def.magazine);
+    const from = target.received.length;
+    pull(def.magazine);
+    expect(crits(from)).toEqual([false, false, false, false, false, true]);
+  });
+
+  it('a burst cut short by a sprint does not shift the crit off the third round', () => {
+    const { t, target, def, pull, crits } = forged('burstrifle');
+    t.input.tap('fire');
+    t.frame(Math.ceil(60 / def.burst!.rpm / DT) + 2);
+    // The second round is out: sprint (the weapon lowers, the rest of the burst is dropped).
+    t.player.sprinting = true;
+    t.frame(10);
+    t.player.sprinting = false;
+    t.frame(Math.ceil((def.sprintToFireTime + 60 / def.rpm) / DT) + 2);
+    const from = target.received.length;
+    expect(from).toBe(2);
+    pull(2);
+    expect(crits(from)).toEqual([false, false, true, false, false, true]);
+  });
+});
+
+describe('blast radius mods', () => {
+  it('widen the collapse blast of a projectile field (SX-0 singularity), not only the orb burst', () => {
+    const base = WEAPONS.blackhole as WeaponDef;
+    const p = base.projectile!;
+    for (const [state, k] of [
+      [{ attachments: ['heavyload'] }, 1.25],
+      [{ tier: 1 }, 1.15],
+      [{ tier: 3 }, 1.15 * 1.4],
+    ] as const) {
+      const d = resolveWeapon(base, state).projectile!;
+      expect(d.explosion!.radius, JSON.stringify(state)).toBeCloseTo(p.explosion!.radius * k, 6);
+      expect(d.field!.collapse!.radius, JSON.stringify(state)).toBeCloseTo(p.field!.collapse!.radius * k, 6);
+      // The pull's reach is the singularity's, not a blast.
+      expect(d.field!.radius).toBe(p.field!.radius);
+    }
+  });
+});
+
+/**
+ * Single-target sustained damage per second of an effective def (body hits, one magazine plus an
+ * empty reload): bullets / pellets / beam ticks, a projectile's own blast, field and collapse, the
+ * explosive-rounds blast on the target, crits on average. Crowd-only effects (arcs, split shots,
+ * fields on kill) are left out.
+ */
+function singleTargetDps(d: WeaponDef): number {
+  const p = d.kind === 'projectile' ? d.projectile : null;
+  let perShot = d.damage.base * d.pellets;
+  if (p) {
+    const f = p.field;
+    const area = (p.explosion?.damage ?? 0) + (f ? f.dps * f.duration + (f.collapse?.damage ?? 0) : 0);
+    perShot = (d.damage.base + area) * d.pellets;
+  }
+  const s = d.special;
+  if (s?.kind === 'explosiveRounds') perShot += s.chance * s.explosion.damage;
+  if (s?.kind === 'critBurst') perShot *= 1 + (s.multiplier - 1) / s.everyNth;
+  let rate = d.rpm / 60;
+  if (d.fireMode === 'burst' && d.burst) {
+    rate = d.burst.count / (((d.burst.count - 1) * 60) / d.burst.rpm + 60 / d.rpm);
+  }
+  if (d.kind === 'charge' && d.charge) rate = 1 / (d.charge.time + 60 / d.rpm);
+  if (d.kind === 'beam' && d.beam) rate = d.beam.tickRate;
+  const shots = d.kind === 'beam' && d.beam ? (d.magazine / d.beam.ammoPerSecond) * rate : d.magazine;
+  const r = d.reload;
+  const reload = r.perShell ? r.perShell.start + r.perShell.shell * d.magazine + r.perShell.emptyEnd : r.empty;
+  return (perShot * shots) / (shots / rate + reload);
+}
+
+describe('Rift Forge progression', () => {
+  it('no tier lowers the single-target damage output of the one before', () => {
+    const drops: string[] = [];
+    for (const base of Object.values(WEAPONS) as WeaponDef[]) {
+      let last = singleTargetDps(base);
+      for (const tier of [1, 2, 3]) {
+        const dps = singleTargetDps(resolveWeapon(base, { tier }));
+        if (dps < last * (1 - 1e-9)) drops.push(`${base.id} t${tier}: ${last.toFixed(0)} → ${dps.toFixed(0)}`);
+        last = dps;
+      }
+    }
+    expect(drops).toEqual([]);
+  });
+});
+
+describe('optics', () => {
+  it('no magnifying optic is sold for a weapon whose own sights magnify as much (a pure handling penalty)', () => {
+    const traps: string[] = [];
+    for (const base of Object.values(WEAPONS) as WeaponDef[]) {
+      for (const att of attachmentsFor(base, 'optic')) {
+        // The thermal sight trades magnification for its heat view.
+        if (!att.optic?.zoom || att.optic.reticle === 'thermal') continue;
+        const d = resolveWeapon(base, { attachments: [att.id] });
+        if (!(d.ads.zoom < base.ads.zoom - 1e-6)) traps.push(`${base.id}+${att.id}`);
+      }
+    }
+    expect(traps).toEqual([]);
   });
 });

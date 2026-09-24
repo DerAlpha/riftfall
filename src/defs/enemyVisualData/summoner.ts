@@ -327,7 +327,14 @@ export const SUMMONER_VISUAL: EnemyVisualDef | null = {
       ellipse: [1, 0.78],
       lumpy: 0.012,
     },
-    { shape: 'ellipsoid', bone: 'chest', zone: 'heart', center: [0, 1.42, 0.1], radii: [0.08, 0.1, 0.06], lumpy: 0.006 },
+    {
+      shape: 'ellipsoid',
+      bone: 'chest',
+      zone: 'heart',
+      center: [0, 1.42, 0.1],
+      radii: [0.08, 0.1, 0.06],
+      lumpy: 0.006,
+    },
     {
       shape: 'tube',
       bone: 'chest',

@@ -564,7 +564,14 @@ export const SNIPER_VISUAL: EnemyVisualDef | null = {
     { bone: 'head', shape: 'capsule', zone: 'head', a: [0, 1.76, 0.66], b: [0, 1.77, 1.04], radius: 0.09 },
     { bone: 'neck', shape: 'capsule', zone: 'body', a: [0, 1.57, 0.2], b: [0, 1.73, 0.6], radius: 0.08 },
     { bone: 'thorax', shape: 'capsule', zone: 'body', a: [0, 1.47, -0.2], b: [0, 1.48, 0.26], radius: 0.22 },
-    { bone: 'abdomen', shape: 'capsule', zone: 'body', a: [0, 1.44, -0.3], b: [0, 1.42, -0.78], radius: 0.17 },
+    {
+      bone: 'abdomen',
+      shape: 'capsule',
+      zone: 'body',
+      a: [0, 1.44, -0.3],
+      b: [0, 1.42, -0.78],
+      radius: 0.17,
+    },
     {
       bone: 'legF_L',
       shape: 'capsule',

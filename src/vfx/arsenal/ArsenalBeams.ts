@@ -636,7 +636,7 @@ export class ArsenalBeams {
     _p.x = f.x + dx * len * s.lightAlong;
     _p.y = f.y + dy * len * s.lightAlong;
     _p.z = f.z + dz * len * s.lightAlong;
-    this.light(ch, s.light, dt, _p, null, cr.light + (1 - cr.light) * near);
+    this.light(ch, s.light, dt, _p, null, Math.max(cr.light, near * near));
   }
 
   private drawRay(ch: BeamChannel, s: RayBeamDef, dt: number): void {

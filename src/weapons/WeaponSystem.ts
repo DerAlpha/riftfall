@@ -207,7 +207,12 @@ interface WeaponInstance {
   tracerCounter: number;
   /** Sim time its fire cycle (pump, bolt, rpm cap) ends: survives switching away and back. */
   readyAt: number;
-  /** Shots fired (critBurst: every Nth). */
+  /**
+   * Rounds fired from the magazine in hand (critBurst: every Nth). A reload that feeds it (magIn,
+   * the first shell) and a forge refill start the count again, and each burst starts on a
+   * multiple of its length: positional crits (the sixth chamber, the second barrel, the third
+   * round of a burst) stay on their round whatever the reloads and cut-short bursts before.
+   */
   shotCount: number;
   /** Beam weapons: fraction of a round drained but not yet taken from the magazine. */
   readonly drain: { acc: number };
@@ -742,6 +747,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     if (upgraded && FORGE.refillOnUpgrade) {
       w.mag = Math.max(w.mag, fullMag(w.def));
       w.reserve = w.def.reserve;
+      w.shotCount = 0;
     }
     if (slot === this.currentSlot) this.emitAmmo();
     this.events.emit('weapon:modsChanged', {
@@ -1296,7 +1302,11 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
         this.fireCooldown = 0;
         break;
       }
-      if (def.fireMode === 'burst' && this.burstLeft <= 0) this.burstLeft = def.burst?.count ?? 1;
+      if (def.fireMode === 'burst' && this.burstLeft <= 0) {
+        const count = Math.max(1, Math.floor(def.burst?.count ?? 1));
+        this.burstLeft = count;
+        w.shotCount = Math.ceil(w.shotCount / count) * count;
+      }
       this.fireShot(w);
       shots++;
       let interval = 60 / (def.rpm * rate);
@@ -2231,6 +2241,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     this.reloadCommitted = true;
     const take = Math.max(0, Math.min(capacity(w.def, this.reloadEmpty) - w.mag, w.reserve));
     w.mag += take;
+    w.shotCount = 0;
     if (!this.infiniteAmmo) w.reserve -= take;
     this.emitAmmo();
   }
@@ -2264,6 +2275,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
         if (!this.shellInserted && this.shellTimer >= ps.insertAt) {
           this.shellInserted = true;
           if (w.reserve > 0 && w.mag < cap) {
+            if (!this.reloadCommitted) w.shotCount = 0;
             w.mag++;
             if (!this.infiniteAmmo) w.reserve--;
             this.reloadCommitted = true;

@@ -116,7 +116,8 @@ export const ATTACHMENTS = {
     cost: 1250,
     mods: { adsTime: 1.2, hipSpread: 1.05 },
     model: 'att.acog',
-    categories: ['smg', 'rifle', 'lmg', 'marksman', 'energy'],
+    // Not the DM-8: its built-in optic is already 2.5× (the ACOG would only slow its aim).
+    categories: ['smg', 'rifle', 'lmg', 'energy'],
     optic: { zoom: 0.48, reticle: 'chevron', color: AMBER },
   },
   scope4x: {

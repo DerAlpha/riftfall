@@ -151,7 +151,15 @@ function planSpot(e: Enemy, host: AiHost, target: EnemyTargetApi, S: SupportBeha
   if (n > 0) {
     spotBehind(_anchor, target.position, S.packBehind, S.bandMin, S.bandMax, e.position, _c);
   } else {
-    spotBehind(e.position, target.position, S.bandPreferred - distXZ(e.position, target.position), S.bandMin, S.bandMax, e.position, _c);
+    spotBehind(
+      e.position,
+      target.position,
+      S.bandPreferred - distXZ(e.position, target.position),
+      S.bandMin,
+      S.bandMax,
+      e.position,
+      _c,
+    );
   }
   _c.y = e.position.y;
   e.spotValid = host.nav.closestPoint(_c, e.spot);
@@ -173,7 +181,11 @@ export const supportBrain: EnemyBrain = {
 
     // 2. Flee.
     if (dist < S.fleeDistance) {
-      if (e.mode !== SUPPORT_FLEE || now >= e.nextActionTime || distXZ(e.position, e.spot) <= S.arriveDistance) {
+      if (
+        e.mode !== SUPPORT_FLEE ||
+        now >= e.nextActionTime ||
+        distXZ(e.position, e.spot) <= S.arriveDistance
+      ) {
         planFlee(e, host, target, S);
       }
       if (e.spotValid) host.moveTo(e, e.spot, e.def.movement.runSpeed);

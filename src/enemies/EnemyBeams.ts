@@ -77,10 +77,7 @@ export class EnemyBeams implements EnemyBeamsApi {
   private queued = 0;
   private _open = 0;
 
-  constructor(
-    capacity: number = ENEMY_AI.beams.capacity,
-    shotQueue: number = ENEMY_AI.beams.shotQueue,
-  ) {
+  constructor(capacity: number = ENEMY_AI.beams.capacity, shotQueue: number = ENEMY_AI.beams.shotQueue) {
     for (let i = 0; i < Math.max(1, capacity); i++) this.slots.push(new BeamSlot());
     for (let i = 0; i < Math.max(1, shotQueue); i++) this.queue.push(new QueuedShot());
   }

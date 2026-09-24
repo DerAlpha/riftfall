@@ -2923,6 +2923,167 @@ export const VFX_EFFECTS = {
     light: bodyLight([0.6, 0.3, 1], 110, 0.4),
     shake: { trauma: 0.3, range: 10 },
   },
+  // --- M6 support enemies (healer tether, summoner rift channel, sniper laser; attackKinds/beam, summon) ---
+  /** Healed ally: green motes well up from the body, a soft green bloom (every ~0.3 s – no flash). */
+  'enemy.heal.pulse': {
+    emitters: [
+      motes([0.35, 1, 0.4], [3, 5], [0.3, 1.1], [0.5, 0.9], 7, {
+        minCount: 1,
+        jitter: 0.28,
+        gravity: -0.45,
+        drag: 1.2,
+        size: [0.025, 0.045],
+      }),
+      {
+        blend: 'add',
+        sprite: 'glow',
+        count: [1, 1],
+        minCount: 1,
+        life: [0.3, 0.34],
+        speed: [0, 0],
+        spread: 0,
+        size: [0.9, 1.1],
+        sizeEnd: 1.3,
+        color: [0.3, 1, 0.4],
+        intensity: 0.9,
+        intensityEnd: 0,
+        alpha: 0.7,
+      },
+    ],
+  },
+  /** Drifting along the healing tether. */
+  'enemy.heal.motes': {
+    emitters: [motes([0.4, 1, 0.45], [1, 2], [0.1, 0.5], [0.5, 0.9], 7, { gravity: -0.2, drag: 1 })],
+  },
+  /** Rift channel at the summon point: motes and streaks falling into the floor, a violet haze. */
+  'enemy.summon.channel': {
+    emitters: [
+      streaks(VOID_C, [2, 3], [-4, -2.5], [0.2, 0.3], 9, 70, {
+        minCount: 1,
+        axis: 'up',
+        shell: 0.9,
+        drag: 0,
+        gravity: 0,
+        stretch: 0.035,
+      }),
+      motes(VOID_C, [1, 3], [0.3, 1.2], [0.6, 1.2], 8, {
+        axis: 'up',
+        spread: 35,
+        gravity: -0.3,
+        jitter: 0.5,
+      }),
+      billow('mist', VOID_SMOKE, [0, 1], [0.35, 0.5], 2.2, [0.8, 1.2], [0.1, 0.4], 0.45, {
+        axis: 'up',
+        spread: 60,
+        jitter: 0.4,
+      }),
+    ],
+  },
+  /** The rift erupts: minions claw out of it. */
+  'enemy.summon.burst': {
+    emitters: [
+      flashGlow([0.75, 0.45, 1], 1.8, 0.35, 5, 0.3),
+      shockRing(VOID_C, 0.4, 7, 0.45, 4, 0.05),
+      streaks(VOID_C, [16, 24], [3, 8], [0.25, 0.6], 10, 70, { axis: 'up', minCount: 4 }),
+      motes(VOID_C, [10, 16], [1, 4], [0.8, 1.6], 8, { axis: 'up', spread: 60, gravity: -0.2 }),
+      billow('mist', VOID_SMOKE, [2, 3], [0.6, 0.9], 2.5, [1, 1.6], [0.3, 1], 0.6, {
+        axis: 'up',
+        spread: 70,
+      }),
+    ],
+    light: {
+      color: [0.6, 0.3, 1],
+      intensity: 120,
+      range: 9,
+      duration: 0.55,
+      flicker: 0.25,
+      offset: 0.4,
+      priority: 1,
+    },
+  },
+  /** Sniper aim start: a red star glint at the lens and a red light pop. */
+  'enemy.sniper.glint': {
+    emitters: [
+      {
+        blend: 'add',
+        sprite: 'star',
+        count: [1, 1],
+        minCount: 1,
+        life: [0.4, 0.45],
+        speed: [0, 0],
+        spread: 0,
+        size: [0.34, 0.38],
+        sizeEnd: 1.5,
+        color: [1, 0.3, 0.18],
+        intensity: 16,
+        intensityEnd: 0,
+        alphaEnd: 0,
+        offset: 0.05,
+        flash: true,
+      },
+      flashGlow([1, 0.15, 0.08], 0.7, 0.4, 3, 0.05),
+    ],
+    light: {
+      color: [1, 0.12, 0.06],
+      intensity: 50,
+      range: 6,
+      duration: 0.5,
+      flicker: 0.15,
+      offset: 0.2,
+      priority: 1,
+    },
+  },
+  /** Sniper lock: a sharper, whiter glint – the shot comes in a moment. */
+  'enemy.sniper.lock': {
+    emitters: [
+      {
+        blend: 'add',
+        sprite: 'star',
+        count: [1, 1],
+        minCount: 1,
+        life: [0.3, 0.34],
+        speed: [0, 0],
+        spread: 0,
+        size: [0.5, 0.55],
+        sizeEnd: 1.2,
+        color: [1, 0.62, 0.5],
+        intensity: 22,
+        intensityEnd: 0,
+        alphaEnd: 0,
+        offset: 0.05,
+        flash: true,
+      },
+      flashGlow([1, 0.25, 0.12], 0.9, 0.3, 4, 0.05),
+    ],
+    light: { color: [1, 0.2, 0.1], intensity: 70, range: 7, duration: 0.4, offset: 0.2, priority: 1 },
+  },
+  /** Sniper shot: a hot red muzzle flash with sparks. */
+  'enemy.sniper.muzzle': {
+    emitters: [
+      flashGlow([1, 0.4, 0.25], 0.9, 0.12, 8, 0.1),
+      streaks([1, 0.45, 0.3], [5, 8], [3, 8], [0.08, 0.18], 12, 25, { minCount: 2, gravity: 0.2 }),
+      billow('smoke', [0.3, 0.2, 0.2], [1, 2], [0.14, 0.22], 3, [0.5, 0.9], [0.3, 0.8], 0.35, { spread: 25 }),
+    ],
+    light: { color: [1, 0.25, 0.12], intensity: 90, range: 9, duration: 0.14, offset: 0.3, priority: 1 },
+  },
+  /** Laser shot hitting a surface: red-hot sparks and a scorch glow. */
+  'enemy.laser.impact': {
+    emitters: [
+      { ...IMPACT_STAR, color: [1, 0.45, 0.3], intensity: 12, size: [0.2, 0.28] },
+      streaks([1, 0.4, 0.22], [6, 10], [2, 7], [0.1, 0.3], 12, 70, { minCount: 3 }),
+      motes([1, 0.3, 0.15], [2, 4], [0.3, 1.2], [0.4, 0.8], 7, { gravity: -0.1 }),
+    ],
+    light: { ...IMPACT_LIGHT, color: [1, 0.25, 0.1], intensity: 6 },
+  },
+  /** Along a fired laser: ionised red sparks. */
+  'enemy.laser.sparks': {
+    emitters: [
+      streaks([1, 0.35, 0.2], [1, 2], [0.5, 2], [0.12, 0.3], 10, 180, { gravity: 0.3 }),
+      billow('mist', [0.5, 0.2, 0.2], [0, 1], [0.08, 0.14], 3, [0.5, 0.9], [0.05, 0.2], 0.18, {
+        spread: 180,
+      }),
+    ],
+  },
 } as const satisfies Record<string, EffectPreset>;
 
 export type VfxEffectId = keyof typeof VFX_EFFECTS;

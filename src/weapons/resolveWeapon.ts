@@ -16,7 +16,7 @@
  * - Kind data follows the stats: damage scales projectile blasts, field dps/collapses and nothing
  *   else absolute (special damages are tier data) – the shooter's share of a blast stays the base
  *   def's (× the selfDamage factor), damage mods never make the player's own blasts deadlier; rpm scales a beam's tick and drain rates;
- *   projectileSpeed / blastRadius / chargeTime scale their kind data; an element mod turns a
+ *   projectileSpeed / blastRadius (blasts and field collapses) / chargeTime scale their kind data; an element mod turns a
  *   projectile's blast of the weapon's own element into that element (convention VFX/audio ids).
  * - Range scales the damage falloff distances with the hitscan/beam reach.
  * - Handling: adsTime (in/out), adsZoom (the ADS sensitivity follows it: the aim keeps its speed
@@ -191,12 +191,22 @@ function scaleExplosion(
   };
 }
 
-function scaleField(f: FieldDef | null, damage: number): FieldDef | null {
-  if (!f || damage === 1) return f;
+/**
+ * A projectile's field after the factors: damage scales its dps and collapse, the blast radius
+ * factor widens the collapse (a blast) – not the field's own reach (the singularity's pull).
+ */
+function scaleField(
+  f: FieldDef | null,
+  damage: number,
+  radius: number,
+  self: number,
+  baseElement: DamageElement,
+): FieldDef | null {
+  if (!f || (damage === 1 && radius === 1 && self === 1)) return f;
   return {
     ...f,
     dps: f.dps * damage,
-    collapse: f.collapse ? { ...f.collapse, damage: f.collapse.damage * damage } : null,
+    collapse: scaleExplosion(f.collapse, damage, radius, self, baseElement, baseElement),
   };
 }
 
@@ -211,7 +221,7 @@ function scaleProjectile(
     ...p,
     speed: p.speed * f.projectileSpeed,
     explosion: scaleExplosion(p.explosion, f.damage, f.blastRadius, f.selfDamage, baseElement, element),
-    field: scaleField(p.field, f.damage),
+    field: scaleField(p.field, f.damage, f.blastRadius, f.selfDamage, baseElement),
   };
 }
 

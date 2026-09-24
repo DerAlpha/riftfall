@@ -576,7 +576,13 @@ export const HEALER_VISUAL: EnemyVisualDef | null = {
       rot: [-8, 0, 0],
       bend: 0.025,
     },
-    { shape: 'ellipsoid', bone: 'head', zone: 'eyes', center: [0, 1.88, 0.238], radii: [0.016, 0.022, 0.012] },
+    {
+      shape: 'ellipsoid',
+      bone: 'head',
+      zone: 'eyes',
+      center: [0, 1.88, 0.238],
+      radii: [0.016, 0.022, 0.012],
+    },
     {
       shape: 'ellipsoid',
       bone: 'head',

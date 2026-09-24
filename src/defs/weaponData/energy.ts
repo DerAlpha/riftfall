@@ -27,8 +27,8 @@
  * - SX-0 „Ereignishorizont“ (projectile): a slow void orb (14 m/s) that bursts on the first body or
  *   wall it touches (or after 1.6 s) into a 7 m singularity: pulls the horde in for 3.5 s, then
  *   collapses (600 void).
- *   Three per cell. Forge: Singularität (void marks) → Schwarzschild (crit rhythm) → Urknall
- *   (kills inside spawn more singularities).
+ *   Three per cell. Forge: Singularität (void marks, four per cell) → Schwarzschild (the last orb
+ *   of every cell doubles) → Urknall (kills inside spawn more singularities).
  */
 import type { WeaponDef } from '../weapons';
 import {
@@ -831,7 +831,9 @@ export const ENERGY = {
         2,
         'SX-0 „Schwarzschild“',
         { damage: 1.35, projectileSpeed: 1.3, reloadTime: 0.8 },
-        { kind: 'critBurst', everyNth: 3, multiplier: 2.5 },
+        // The last orb of every (four-orb) cell goes supermassive. ×2.5 on every third was +50 %
+        // on everything the orb does – more than tier 3 adds, so „Urknall“ would hit softer.
+        { kind: 'critBurst', everyNth: 4, multiplier: 2 },
       ),
       forgeTier(
         3,

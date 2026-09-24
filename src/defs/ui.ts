@@ -241,10 +241,11 @@ export const ECONOMY_HUD = {
     padFace: { [PAD.A]: 'a', [PAD.B]: 'b', [PAD.X]: 'x', [PAD.Y]: 'y' } as Readonly<Record<number, string>>,
   },
   perks: {
-    /** Pooled perk icons (perkSlots stat, 4 by default; room for more from later milestones). */
-    maxSlots: 6,
-    /** Acquire pop + glow, and the removal animation before the row closes up (s). */
-    acquireSeconds: 0.9,
+    /**
+     * Removal animation before the row closes up (s, game time; the CSS `is-leaving` keyframes
+     * match it). The row pools one icon per perk STAT_DEFS.perkSlots.max allows; the acquire pop
+     * + glow is CSS only (0.9 s).
+     */
     removeSeconds: 0.4,
   },
   powerUps: {

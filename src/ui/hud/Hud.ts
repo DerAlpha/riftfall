@@ -17,8 +17,8 @@
  * - M4 economy (EconomyHud): points counter + popups, interaction prompt, perk row, power-up
  *   timers, economy banners, nuke flash, slow-motion tint (events listed in EconomyHud.ts).
  * Game.ts feeds per frame: setSpreadCone(weapons.spreadDegrees, render.camera.fov),
- * setAds(weapons.adsAmount), setInteractHold(interaction.holdProgress, hold), update(dt, yaw);
- * once: setCamera(render.camera) – damage numbers are projected with it –,
+ * setAds(weapons.adsAmount), setInteractHold(interaction.holdProgress, hold, usable),
+ * update(dt, yaw); once: setCamera(render.camera) – damage numbers are projected with it –,
  * setWaveCountdownSource(() => waves.intermissionLeft), setPowerUpSource(powerUps),
  * setZoneNames(level zones), setInputDevice(input.device); the power-up fx.timeTint → setTimeTint;
  * resetRun() when a new run starts.
@@ -386,11 +386,12 @@ export class Hud {
   }
 
   /**
-   * Per frame: hold progress 0..1 of the focused interactable (InteractionApi.holdProgress) and
-   * whether it is a hold interaction (seal repair) – the prompt's key cap shows the ring then.
+   * Per frame: hold progress 0..1 of the focused interactable (InteractionApi.holdProgress),
+   * whether it is a hold interaction (seal repair) – the prompt's key cap shows the ring then – and
+   * whether it can be used now (InteractionSystem.offering; false: the prompt only informs, no key).
    */
-  setInteractHold(progress: number, hold: boolean): void {
-    this.economy.setHold(progress, hold);
+  setInteractHold(progress: number, hold: boolean, usable = true): void {
+    this.economy.setHold(progress, hold, usable);
   }
 
   /** Power-up timer clock (PowerUpSystem: remaining / duration per type); null counts frame time. */

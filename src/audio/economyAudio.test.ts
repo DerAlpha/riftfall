@@ -11,6 +11,7 @@ import { AudioEventBridge, type AudioBridgeTarget } from './AudioEventBridge';
 import {
   doorSoundId,
   perkJingleId,
+  pickupLifetime,
   pickupLoopSeconds,
   pointsTickPitch,
   powerUpStingerId,
@@ -254,7 +255,7 @@ interface Played {
 class FakeAudio implements AudioBridgeTarget {
   readonly plays: Played[] = [];
   readonly loops = new Map<number, { id: string; opts: LoopOptions }>();
-  readonly stopped: number[] = [];
+  readonly stopped: { handle: number; fade: number | undefined }[] = [];
   unlocked = true;
   private next = 1;
   play(id: string, opts?: PlayOptions): void {
@@ -266,8 +267,8 @@ class FakeAudio implements AudioBridgeTarget {
     this.loops.set(h, { id, opts: { ...opts, position: opts?.position ? { ...opts.position } : undefined } });
     return h;
   }
-  stopLoop(handle: number): void {
-    this.stopped.push(handle);
+  stopLoop(handle: number, fadeSeconds?: number): void {
+    this.stopped.push({ handle, fade: fadeSeconds });
     this.loops.delete(handle);
   }
   ids(): string[] {
@@ -278,6 +279,10 @@ class FakeAudio implements AudioBridgeTarget {
   }
   loopIds(): string[] {
     return [...this.loops.values()].map((l) => l.id);
+  }
+  /** Handles of the running pickup loops (without the machine hums). */
+  pickupLoops(): number[] {
+    return [...this.loops.entries()].filter(([, l]) => l.id === EA.powerUps.loop.id).map(([h]) => h);
   }
   clear(): void {
     this.plays.length = 0;
@@ -489,11 +494,45 @@ describe('AudioEventBridge – economy', () => {
 
   it('never tracks more pickup loops than pickups can exist', () => {
     const { events, audio, bridge } = setup();
+    expect(EA.powerUps.maxLoops).toBe(POWERUPS.capacity);
     for (let i = 0; i < EA.powerUps.maxLoops + 3; i++) {
       events.emit('powerup:spawned', { id: i, type: 'doublePoints', position: at(i, 0, 0) });
     }
     expect(bridge.economy.activePickupLoops).toBe(EA.powerUps.maxLoops);
     expect(audio.loops.size).toBe(EA.powerUps.maxLoops);
+  });
+
+  it('fades a pickup loop out when its pickup despawns (game time) instead of a hard cut', () => {
+    const { events, audio, bridge, frame } = setup();
+    events.emit('powerup:spawned', { id: 1, type: 'ammoScrap', position: at(1, 0, 0) });
+    events.emit('powerup:spawned', { id: 2, type: 'nuke', position: at(2, 0, 0) });
+    const [scrap, nuke] = [...audio.loops.keys()];
+    // The engine's maxDuration is only a late safety net (it stops without a fade).
+    expect(audio.loops.get(scrap!)!.opts.maxDuration).toBeGreaterThan(pickupLifetime('ammoScrap'));
+    frame(pickupLifetime('ammoScrap') - 0.05);
+    expect(audio.pickupLoops()).toEqual([scrap, nuke]);
+    frame(0.1);
+    expect(audio.pickupLoops()).toEqual([nuke]);
+    expect(audio.stopped).toEqual([{ handle: scrap, fade: EA.powerUps.loop.fadeOut }]);
+    expect(bridge.economy.activePickupLoops).toBe(1);
+    frame(pickupLifetime('nuke'));
+    expect(audio.pickupLoops()).toEqual([]);
+  });
+
+  it('replaces the loop of the pickup the power-up system replaces in a full pool (scraps first)', () => {
+    const { events, audio, frame } = setup();
+    events.emit('powerup:spawned', { id: 1, type: 'nuke', position: at(0, 0, 0) });
+    frame(12);
+    for (let i = 2; i < POWERUPS.capacity; i++) {
+      events.emit('powerup:spawned', { id: i, type: 'maxAmmo', position: at(i, 0, 0) });
+    }
+    // Despawns after the first nuke, but a scrap goes before any real drop.
+    events.emit('powerup:spawned', { id: 99, type: 'ammoScrap', position: at(9, 0, 9) });
+    expect(audio.pickupLoops().length).toBe(POWERUPS.capacity);
+    const scrap = [...audio.loops.entries()].find(([, l]) => l.opts.position?.z === 9)![0];
+    events.emit('powerup:spawned', { id: 100, type: 'doublePoints', position: at(5, 0, 5) });
+    expect(audio.stopped.map((s) => s.handle)).toEqual([scrap]);
+    expect(audio.pickupLoops().length).toBe(POWERUPS.capacity);
   });
 
   it('ticks the last seconds of a timed power-up from its clock', () => {

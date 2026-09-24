@@ -2,8 +2,9 @@
  * Interaction prompt (center, below the crosshair and the ammo prompt): key cap of the interact
  * binding for the active device, the interactable's German prompt and its price (red when
  * unaffordable), a hold ring around the key cap for hold interactions (seal repairs) and a
- * "Nicht genug Punkte" line + shake after a refused purchase. Fed by interact:focus (on change
- * only), setHold() per frame (quantized) and economy:purchase ok=false.
+ * "Nicht genug Punkte" line + shake after a refused purchase. A focus that only informs (an owned
+ * perk's "Bereits aktiv", a full perk limit) shows no key cap: nothing happens on a press. Fed by
+ * interact:focus (on change only), setHold() per frame (quantized) and economy:purchase ok=false.
  */
 import { ECONOMY_HUD } from '../../defs/ui';
 import { h, restartAnim, setText, svgEl } from './dom';
@@ -32,6 +33,7 @@ export class InteractPrompt {
   private cost: CostState = 'free';
   private capClass = '';
   private hold = false;
+  private usable = true;
   private shownProgress = -1;
   private denyLeft = 0;
 
@@ -117,8 +119,15 @@ export class InteractPrompt {
     }
   }
 
-  /** Per frame: hold progress 0..1 of the focus; `hold` = it is a hold interaction (ring track). */
-  setHold(progress: number, hold: boolean): void {
+  /**
+   * Per frame: hold progress 0..1 of the focus; `hold` = it is a hold interaction (ring track);
+   * `usable` = it can be used right now (else the prompt only informs: no key cap).
+   */
+  setHold(progress: number, hold: boolean, usable = true): void {
+    if (usable !== this.usable) {
+      this.usable = usable;
+      this.rowEl.classList.toggle('is-info', !usable);
+    }
     if (hold !== this.hold) {
       this.hold = hold;
       this.keyEl.classList.toggle('is-hold', hold);

@@ -9,7 +9,8 @@
  * - `perk:acquired` / `perk:lost` (row + perk banner), `player:revived` (Phoenix banner),
  * - `powerup:collected` / `powerup:expired` (timers, multiplier badge, banner, nuke flash),
  * - `zone:activated` (zone banner, display names via setZoneNames), `box:resolved` (box banner).
- * Game feeds per frame: setHold(interaction.holdProgress, focus is a hold interaction); once:
+ * Game feeds per frame: setHold(interaction.holdProgress, focus is a hold interaction, focus is
+ * usable now – interaction.offering); once:
  * setPowerUpSource(powerUps), setZoneNames(level zones), setInputDevice(input.device); the
  * PowerUpSystem's fx.timeTint → setTimeTint.
  */
@@ -169,9 +170,12 @@ export class EconomyHud {
     this.powerUps.setSource(source);
   }
 
-  /** Per frame: hold progress of the focused interactable and whether it is a hold interaction. */
-  setHold(progress: number, hold: boolean): void {
-    this.prompt.setHold(progress, hold);
+  /**
+   * Per frame: hold progress of the focused interactable, whether it is a hold interaction and
+   * whether it can be used right now (InteractionApi: holdProgress, holdTime() > 0, canInteract()).
+   */
+  setHold(progress: number, hold: boolean, usable = true): void {
+    this.prompt.setHold(progress, hold, usable);
   }
 
   setTimeTint(amount: number): void {

@@ -46,6 +46,18 @@ export type StatusId = 'burn' | 'chill' | 'frozen' | 'shocked' | 'poisoned' | 'v
 
 export type ImpactKind = 'bullet' | 'pellet' | 'projectile' | 'melee' | 'explosion' | 'beam';
 
+/** Where player XP came from (M9 meta progression, defs/progression.ts). */
+export type XpSource = 'kill' | 'wave' | 'survival' | 'challenge' | 'achievement' | 'dev';
+
+/** Achievement rarity tier (reward size, frame colour). */
+export type AchievementTier = 'bronze' | 'silver' | 'gold' | 'platinum';
+
+/** Challenge rotation period (UTC day / UTC week starting Monday). */
+export type ChallengePeriod = 'daily' | 'weekly';
+
+/** Kinds of cosmetic unlocks (defs/cosmetics.ts). */
+export type UnlockKind = 'camo' | 'charm' | 'crosshair' | 'killEffect' | 'emblem';
+
 export interface GameEvents {
   // --- lifecycle ---
   'game:ready': Record<string, never>;
@@ -302,6 +314,28 @@ export interface GameEvents {
   'ability:used': { abilityId: string; cooldown: number; duration: number };
   'ability:ready': { abilityId: string };
   'ability:ended': { abilityId: string };
+
+  // --- meta progression (M9, src/progression) ---
+  /** XP credited (after the prestige bonus). Reused payload: fires per kill. */
+  'progression:xp': { amount: number; source: XpSource; level: number; xp: number; xpToNext: number };
+  'progression:levelUp': { level: number; previous: number; prestige: number; skillPoints: number };
+  'progression:prestige': { prestige: number; xpBonus: number };
+  'progression:weaponLevelUp': { weaponId: string; level: number; maxLevel: number };
+  /** The skill tree changed: a node gained a rank (`nodeId`), or a respec / reset (`nodeId` null). */
+  'progression:skills': { nodeId: string | null; rank: number; available: number };
+  /** A cosmetic was unlocked; camos name their weapon (`weaponId`, null = every weapon). */
+  'progression:unlock': { kind: UnlockKind; id: string; name: string; weaponId: string | null };
+  'achievement:unlocked': {
+    id: string;
+    name: string;
+    description: string;
+    tier: AchievementTier;
+    hidden: boolean;
+    xp: number;
+  };
+  'challenge:completed': { id: string; period: ChallengePeriod; name: string; xp: number; currency: number };
+  /** A new daily / weekly challenge set is active (UTC day / week boundary). */
+  'challenge:rotated': { period: ChallengePeriod; key: string };
 
   // --- ui ---
   'ui:console': { open: boolean };

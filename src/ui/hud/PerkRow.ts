@@ -1,10 +1,12 @@
 /**
  * Perk icon row (bottom left, above dash + vitals): one neon glyph per owned perk in its colour
  * (defs/perks.ts PERK_GLYPHS / perkCssColor), in acquisition order. perk:acquired pops the icon in
- * with a glow; perk:lost plays a short removal before the row closes up. Icon elements are pooled
- * (ECONOMY_HUD.perks.maxSlots); a slot is rewritten only when the perk it shows changes.
+ * with a glow; perk:lost plays a short removal before the row closes up. Icon elements are pooled,
+ * one per perk the perkSlots stat can ever allow (STAT_DEFS.perkSlots.max); a slot is rewritten
+ * only when the perk it shows changes.
  */
 import { PERK_GLYPHS, getPerkDef, perkCssColor } from '../../defs/perks';
+import { STAT_DEFS } from '../../defs/stats';
 import { ECONOMY_HUD } from '../../defs/ui';
 import { glyphIcon, h, restartAnim } from './dom';
 
@@ -32,7 +34,7 @@ export class PerkRow {
 
   constructor(corner: HTMLElement) {
     this.el = h('div', 'hud-perks');
-    for (let i = 0; i < PK.maxSlots; i++) {
+    for (let i = 0; i < STAT_DEFS.perkSlots.max; i++) {
       const el = h('div', 'hud-perk', this.el);
       const path = glyphIcon('hud-perk__glyph', el);
       el.hidden = true;
@@ -56,7 +58,12 @@ export class PerkRow {
       this.dirty = true;
       return;
     }
-    if (this.owned.length >= this.slots.length) return;
+    if (this.owned.length >= this.slots.length) {
+      // Full only with icons still animating out: the new perk takes a leaving one's place now.
+      const i = this.owned.findIndex((o) => o.leaving >= 0);
+      if (i < 0) return;
+      this.owned.splice(i, 1);
+    }
     this.owned.push({ id: perkId, leaving: -1 });
     this.render();
     const slot = this.slots[this.owned.length - 1]!;

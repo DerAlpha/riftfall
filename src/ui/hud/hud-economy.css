@@ -129,9 +129,12 @@
 }
 
 /* --- perk row (bottom left, above dash + vitals) --- */
+/* Wraps into a second row only beyond the vitals' width (perkSlots above the default 4). */
 .hud-perks {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  max-width: 360px;
   margin: 0 0 12px 2px;
 }
 .hud-perk {
@@ -221,6 +224,16 @@
   border-left: 2px solid var(--hud-accent);
   box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.16);
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+}
+/* Information only ("Bereits aktiv", perk limit): nothing to press. */
+.hud-interact__row.is-info {
+  padding-left: 12px;
+}
+.hud-interact__row.is-info .hud-key {
+  display: none;
+}
+.hud-interact__row.is-info .hud-interact__text {
+  color: var(--rf-text);
 }
 .hud-interact__row.is-deny-a {
   animation: rf-eco-deny-a 0.38s ease-out;

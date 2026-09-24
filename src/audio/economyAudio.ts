@@ -14,8 +14,8 @@
  *   then their jingle when the player stands close; perk:acquired: the acquire sting (2D) and the
  *   perk's jingle from its machine a moment later; perk:lost: a glitch; player:revived: the
  *   Phoenix revive.
- * - powerup:spawned: a positional shimmer + a quiet loop while the pickup floats (stopped when it
- *   is collected, else it ends with the pickup's lifetime); powerup:collected: a stinger per type;
+ * - powerup:spawned: a positional shimmer + a quiet loop while the pickup floats (faded out when
+ *   it is collected or despawns); powerup:collected: a stinger per type;
  *   the last seconds of timed power-ups tick (polled from the power-up source), powerup:expired:
  *   a power-down.
  * - seal:broken / seal:repaired: crackle / zap at the bar (token bucket: the carpenter restores
@@ -60,17 +60,27 @@ export function doorSoundId(blast: boolean): string {
   return blast ? EA.door.blastId : EA.door.id;
 }
 
-/** Points tick pitch: a little higher for bigger earnings (+pitchPerDecade per ×10 over 10). */
+/** Points tick pitch: a little higher for bigger earnings (+pitchPerDecade per ×10 over pitchFrom). */
 export function pointsTickPitch(delta: number): number {
-  if (!(delta > 10)) return 1;
-  return 1 + EA.pointsTick.pitchPerDecade * Math.min(2, Math.log10(delta / 10));
+  const T = EA.pointsTick;
+  if (!(delta > T.pitchFrom)) return 1;
+  return 1 + T.pitchPerDecade * Math.min(T.pitchMaxDecades, Math.log10(delta / T.pitchFrom));
 }
 
-/** Seconds a floating pickup's loop may run at most (its lifetime + the collect animation). */
-export function pickupLoopSeconds(type: string): number {
+/** Seconds a pickup of `type` floats before it despawns (game time). */
+export function pickupLifetime(type: string): number {
   const def = getPowerUpDef(type);
-  const life = def && def.lifetime > 0 ? def.lifetime : POWERUPS.pickup.lifetime;
-  return life + POWERUPS.pickup.collectTime;
+  return def && def.lifetime > 0 ? def.lifetime : POWERUPS.pickup.lifetime;
+}
+
+/**
+ * The engine's safety stop of a pickup loop (maxDuration, audio clock – a hard cut). A loop fades
+ * out when its pickup is collected or despawns (game time, update()); the safety stop only ends
+ * one whose pickup vanished without an event, and it is generous because game time can run slower
+ * than the audio clock (capped frame time, slow motion).
+ */
+export function pickupLoopSeconds(type: string): number {
+  return pickupLifetime(type) * EA.powerUps.loop.safetyScale + POWERUPS.pickup.collectTime;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,10 +88,12 @@ export function pickupLoopSeconds(type: string): number {
 interface PickupLoop {
   handle: number;
   type: string;
+  /** An uncounted perk scrap: replaced before real drops when the pool is full. */
+  scrap: boolean;
   x: number;
   y: number;
   z: number;
-  /** Game time the loop ends by itself (maxDuration). */
+  /** Game time the pickup despawns (the loop fades out then). */
   ends: number;
 }
 
@@ -131,7 +143,7 @@ export class EconomyAudio {
     private readonly random: () => number,
   ) {
     for (let i = 0; i < EA.powerUps.maxLoops; i++) {
-      this.loops.push({ handle: 0, type: '', x: 0, y: 0, z: 0, ends: 0 });
+      this.loops.push({ handle: 0, type: '', scrap: false, x: 0, y: 0, z: 0, ends: 0 });
     }
     this.offs.push(
       events.on('economy:points', (e) => {
@@ -275,8 +287,12 @@ export class EconomyAudio {
       this.updateHums();
     }
     this.updateTicks();
-    // Loops that ran out with their pickup's lifetime free their slot.
-    for (const l of this.loops) if (l.handle !== 0 && this.gameTime >= l.ends) l.handle = 0;
+    // Pickups that despawned uncollected (no event): their loops fade out with them.
+    for (const l of this.loops) {
+      if (l.handle === 0 || this.gameTime < l.ends) continue;
+      this.audio.stopLoop(l.handle, EA.powerUps.loop.fadeOut);
+      l.handle = 0;
+    }
   }
 
   /**
@@ -422,15 +438,17 @@ export class EconomyAudio {
   private onPickupSpawned(type: string, position: Vec3Like): void {
     const P = EA.powerUps;
     this.playAt(P.spawn.id, position, P.spawn.gain, 0);
-    // A free slot, else the one ending soonest (the power-up system replaces its oldest too).
-    let slot = this.loops[0]!;
+    // A free slot, else the pickup the power-up system replaces in its full pool (it sends no
+    // event for it): a scrap before a real drop, then the one closest to despawning.
+    let slot: PickupLoop | null = null;
     for (const l of this.loops) {
       if (l.handle === 0) {
         slot = l;
         break;
       }
-      if (l.ends < slot.ends) slot = l;
+      if (!slot || (l.scrap && !slot.scrap) || (l.scrap === slot.scrap && l.ends < slot.ends)) slot = l;
     }
+    if (!slot) return;
     if (slot.handle !== 0) this.audio.stopLoop(slot.handle, P.loop.fadeOut);
     const o = this.loopOpts;
     o.position.x = position.x;
@@ -441,14 +459,14 @@ export class EconomyAudio {
     o.fadeIn = P.loop.fadeIn;
     o.pitch = 1;
     o.pitchVariance = 0;
-    const seconds = pickupLoopSeconds(type);
-    o.maxDuration = seconds;
+    o.maxDuration = pickupLoopSeconds(type);
     slot.handle = this.audio.startLoop(P.loop.id, o);
     slot.type = type;
+    slot.scrap = getPowerUpDef(type)?.counted === false;
     slot.x = position.x;
     slot.y = position.y;
     slot.z = position.z;
-    slot.ends = this.gameTime + seconds;
+    slot.ends = this.gameTime + pickupLifetime(type);
   }
 
   private stopPickupLoop(type: string, p: Vec3Like): void {

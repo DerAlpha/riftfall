@@ -4,7 +4,8 @@ import type { SettingsStore } from '../../core/contracts';
 import { EventBus } from '../../core/EventBus';
 import type { GameEvents, PointsReason } from '../../core/events';
 import { DEFAULT_BINDINGS, PAD } from '../../defs/input';
-import { PERKS, PERK_GLYPHS } from '../../defs/perks';
+import { PERKS, PERK_GLYPHS, PERK_IDS } from '../../defs/perks';
+import { STAT_DEFS } from '../../defs/stats';
 import { POWERUP_DEFS } from '../../defs/powerups';
 import { ECONOMY_HUD } from '../../defs/ui';
 import { WEAPONS } from '../../defs/weapons';
@@ -209,6 +210,24 @@ describe('EconomyHud (through Hud)', () => {
       hud.setInteractHold(0, false);
       expect(key.classList.contains('is-hold')).toBe(false);
     });
+
+    it('drops the key cap while the focus only informs ("Bereits aktiv") and brings it back', () => {
+      events.emit('interact:focus', {
+        id: 'perk:titan',
+        prompt: 'Bereits aktiv',
+        cost: null,
+        affordable: true,
+      });
+      const row = q(root, '.hud-interact__row');
+      hud.setInteractHold(0, false, false);
+      expect(row.classList.contains('is-info')).toBe(true);
+      events.emit('interact:focus', { id: 'perk:nova', prompt: 'Nova kaufen', cost: 2000, affordable: true });
+      hud.setInteractHold(0, false, true);
+      expect(row.classList.contains('is-info')).toBe(false);
+      hud.setInteractHold(0, false, false);
+      hud.resetRun();
+      expect(row.classList.contains('is-info')).toBe(false);
+    });
   });
 
   describe('perk row', () => {
@@ -236,6 +255,24 @@ describe('EconomyHud (through Hud)', () => {
         false,
       );
       expect(after[0]!.classList.contains('is-leaving')).toBe(false);
+    });
+
+    it('shows every perk the perkSlots stat allows, also while a lost one is still leaving', () => {
+      const max = STAT_DEFS.perkSlots.max;
+      const ids = PERK_IDS.slice(0, max);
+      const shownIds = (): (string | undefined)[] =>
+        [...root.querySelectorAll<HTMLElement>('.hud-perk')]
+          .filter((p) => !p.hidden)
+          .map((p) => p.dataset.perk);
+      ids.forEach((perkId, slot) => events.emit('perk:acquired', { perkId, slot }));
+      expect(shownIds()).toEqual(ids);
+      // One lost and another bought at once: the new icon must not wait for (or lose to) the removal.
+      events.emit('perk:lost', { perkId: ids[0]! });
+      const next = PERK_IDS[max]!;
+      events.emit('perk:acquired', { perkId: next, slot: max - 1 });
+      expect(shownIds()).toContain(next);
+      hud.update(ECONOMY_HUD.perks.removeSeconds + 0.01, 0);
+      expect(shownIds()).toEqual([...ids.slice(1), next]);
     });
 
     it('announces the perk with its name, slogan and colour', () => {

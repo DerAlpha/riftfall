@@ -367,7 +367,10 @@ export const AUDIO = {
       gain: 0.13,
       minInterval: 0.07,
       pitchVariance: 0.03,
+      /** +pitchPerDecade per ×10 over `pitchFrom` points, at most `pitchMaxDecades` decades. */
       pitchPerDecade: 0.08,
+      pitchFrom: 10,
+      pitchMaxDecades: 2,
     },
     /** A new interaction focus: a quiet UI blip. */
     focus: { id: 'ui.hover', gain: 0.16, minInterval: 0.15 },
@@ -420,7 +423,11 @@ export const AUDIO = {
     powerUps: {
       /** One-shot shimmer when a pickup materializes + a quiet loop while it floats. */
       spawn: { id: 'powerup.spawn', gain: 0.55 },
-      loop: { id: 'powerup.loop', gain: 0.32, fadeIn: 0.5, fadeOut: 0.25 },
+      /**
+       * Floating loop; it fades out when its pickup is collected or despawns (game time). The
+       * engine's hard maxDuration stop is only a safety net at `safetyScale` × the lifetime.
+       */
+      loop: { id: 'powerup.loop', gain: 0.32, fadeIn: 0.5, fadeOut: 0.25, safetyScale: 2 },
       /** Pickup stinger per type (2D); unknown types play `defaultStinger`. */
       stingers: {
         nuke: 'powerup.nuke',

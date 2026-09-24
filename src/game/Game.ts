@@ -913,9 +913,14 @@ export class Game {
     // The crosshair gap shows the real cone: projected with this frame's FOV (after playerCamera).
     hud.setSpreadCone(weapons.spreadDegrees, render.camera.fov);
     hud.setAds(weapons.adsAmount);
-    // The prompt's hold ring (seal repairs): progress of the focus, drawn for hold interactions only.
+    // The prompt's hold ring (seal repairs): progress of the focus, drawn for hold interactions only;
+    // a focus that cannot be used now ("Bereits aktiv") shows no key cap.
     const focus = interaction.focused;
-    hud.setInteractHold(interaction.holdProgress, focus !== null && focus.holdTime() > 0);
+    hud.setInteractHold(
+      interaction.holdProgress,
+      focus !== null && focus.holdTime() > 0,
+      interaction.offering,
+    );
     hud.update(dt, player.yaw);
   }
 

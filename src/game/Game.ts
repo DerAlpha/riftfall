@@ -18,6 +18,7 @@ import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { POSTFX } from '../defs/postfx';
 import { TEST_ROOM } from '../defs/maps';
 import { RUN } from '../defs/waves';
+import { startPointsFor } from '../defs/economy';
 import { SaveSystem } from '../save/SaveSystem';
 import { SettingsStore } from '../save/SettingsStore';
 import type { QualityPreset } from '../save/settingsSchema';
@@ -373,8 +374,8 @@ export class Game {
     player.setStats(stats);
     health.setStats(stats);
     weapons.setStats(stats);
-    const economy = new EconomySystem({ events, stats });
-    const pointsRules = new PointsRules({ events, economy });
+    // The calibration hall starts with a sandbox budget (economy.reset() restores it).
+    const economy = new EconomySystem({ events, stats }, startPointsFor(map));
     const perks = new PerkSystem({ events, stats, combat, player, seed: `perks:${runSeed}` });
 
     let gameRef: Game | null = null;
@@ -402,7 +403,7 @@ export class Game {
       get yaw() {
         return player.yaw;
       },
-      damage: (amount, direction) => health.damage(amount, direction),
+      damage: (amount, direction, kind) => health.damage(amount, direction, kind),
     };
     const enemies = new EnemyManager({
       events,
@@ -416,6 +417,12 @@ export class Game {
       seed: runSeed,
     });
     for (const [type, count] of ENEMY_PREWARM) enemies.prewarm(type, count);
+    // Kill credit per enemy kind: the def's point table (a killed enemy is still found at combat:kill).
+    const pointsRules = new PointsRules({
+      events,
+      economy,
+      rewardOf: (id) => enemies.getEnemy(id)?.def.points,
+    });
     const zones = ZoneSystem.forLevel(level, events);
     const waves = new WaveDirector({
       events,
@@ -756,6 +763,11 @@ export class Game {
       ...createEnemyCommands({
         manager: enemies,
         player: () => ({ position: player.position, yaw: player.yaw }),
+        // Console spawns are test subjects: no points, no power-up drops.
+        onSpawned: (id) => {
+          this.sys.pointsRules.flagNoReward(id);
+          this.sys.powerUps.flagNoDrop(id);
+        },
       }),
       ...createWaveCommands({ waves }),
       ...createRunCommands({ run: runFlow }),

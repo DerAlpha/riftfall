@@ -347,6 +347,95 @@ export const AUDIO = {
     waveComplete: { id: 'sting.wave.complete', gain: 0.65, bus: 'music' },
     gameOver: { id: 'sting.gameover', gain: 0.9, bus: 'ui' },
   },
+
+  /**
+   * Economy sounds (M4, AudioEventBridge → EconomyAudio; recipes in audio/economySynth.ts). HUD-like
+   * feedback (purchase, denial, points tick) is dry on the ui bus; world objects (doors, the box,
+   * perk machines, seals, pickups) are positional (HRTF) on the sfx bus; power-up stingers and perk
+   * stings are 2D sfx; the zone unlock swell rides the music bus. `minInterval`s (s) merge bursts.
+   */
+  economy: {
+    purchase: { id: 'econ.purchase', gain: 0.55 },
+    denied: { id: 'econ.denied', gain: 0.5, minInterval: 0.25 },
+    /** Subtle tick per earning (not for dev grants / the start balance); pitch rises a little with the amount. */
+    pointsTick: { id: 'econ.points', gain: 0.13, minInterval: 0.07, pitchVariance: 0.03, pitchPerDecade: 0.08 },
+    /** A new interaction focus: a quiet UI blip. */
+    focus: { id: 'ui.hover', gain: 0.16, minInterval: 0.15 },
+    door: { id: 'door.open', blastId: 'door.open.blast', gain: 0.85, pitchVariance: 0.03 },
+    box: {
+      open: 'box.open',
+      /** Music-box arpeggio over the roll (MYSTERY_BOX.rollDuration). */
+      roll: 'box.roll',
+      resolve: 'box.resolve',
+      anomaly: 'box.anomaly',
+      arrive: 'box.arrive',
+      gain: 0.8,
+      rollGain: 0.5,
+    },
+    perks: {
+      acquire: { id: 'perk.acquire', gain: 0.6 },
+      lost: { id: 'perk.lost', gain: 0.5 },
+      revive: { id: 'perk.revive', gain: 0.85 },
+      /** `perk.jingle.<perkId>`: from the machine after a purchase (this much later, s), else 2D. */
+      jinglePrefix: 'perk.jingle.',
+      jingleGain: 0.55,
+      jingleDelay: 0.5,
+      /**
+       * Machine hum loops (positional): at most `maxVoices`, nearest first, started within
+       * `startDistance` m and stopped beyond `stopDistance` m (hysteresis), checked every
+       * `checkInterval` s of game time.
+       */
+      hum: {
+        id: 'perk.hum',
+        gain: 0.2,
+        startDistance: 7,
+        stopDistance: 9,
+        maxVoices: 2,
+        checkInterval: 0.25,
+        fadeIn: 0.8,
+        fadeOut: 0.6,
+      },
+      /** A machine within `distance` m plays its jingle now and then (CoD style), game time (s). */
+      idleJingle: { distance: 5, interval: [35, 80] as readonly [number, number], gain: 0.32 },
+    },
+    powerUps: {
+      /** One-shot shimmer when a pickup materializes + a quiet loop while it floats. */
+      spawn: { id: 'powerup.spawn', gain: 0.55 },
+      loop: { id: 'powerup.loop', gain: 0.32, fadeIn: 0.5, fadeOut: 0.25 },
+      /** Pickup stinger per type (2D); unknown types play `defaultStinger`. */
+      stingers: {
+        nuke: 'powerup.nuke',
+        doublePoints: 'powerup.doublePoints',
+        instakill: 'powerup.instakill',
+        maxAmmo: 'powerup.maxAmmo',
+        carpenter: 'powerup.carpenter',
+        slowmo: 'powerup.slowmo',
+        ammoScrap: 'powerup.ammoScrap',
+      } as Readonly<Record<string, string>>,
+      defaultStinger: 'powerup.collect',
+      stingerGain: 0.75,
+      /** Clock ticks during the last `seconds` of a timed power-up, and its power-down. */
+      tick: { id: 'powerup.tick', gain: 0.3, seconds: 3 },
+      expire: { id: 'powerup.expire', gain: 0.5 },
+      /** Pickup loops tracked at most (POWERUPS.capacity). */
+      maxLoops: 8,
+      /** A collection matches its pickup loop within this distance (m). */
+      matchDistance: 0.05,
+    },
+    seals: {
+      break: 'seal.break',
+      repair: 'seal.repair',
+      breakGain: 0.7,
+      repairGain: 0.55,
+      pitchVariance: 0.06,
+      /** Token bucket: the carpenter restores every seal in one tick. */
+      burst: 3,
+      refillPerSecond: 10,
+    },
+    zone: { id: 'zone.unlock', gain: 0.55, mergeSeconds: 0.5 },
+    /** Loop lengths of the procedural hum / shimmer (s, + AUDIO.synth.slideLoopCrossfade). */
+    synth: { humLoopSeconds: 2.4, shimmerLoopSeconds: 2.4 },
+  },
 } as const;
 
 export interface EnemyAudioBudgetDef {

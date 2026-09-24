@@ -651,18 +651,7 @@ kbd {
   animation: none;
 }
 
-/* --- points / ammo --- */
-.hud-points {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 10px;
-}
-.hud-points__value {
-  font-size: 28px;
-  font-weight: 700;
-  color: #ffd76b;
-}
+/* --- ammo (points: hud/hud-economy.css) --- */
 .hud-ammo {
   display: flex;
   align-items: baseline;

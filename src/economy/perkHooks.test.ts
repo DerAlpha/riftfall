@@ -1,10 +1,11 @@
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { FakeTarget } from '../combat/testFakes';
-import type { DamageInfo, DamageResult, Damageable } from '../core/contracts';
+import type { DamageInfo, DamageResult, Damageable, EnemyTargetApi } from '../core/contracts';
 import { EventBus } from '../core/EventBus';
 import type { DamageElement, GameEvents, Vec3Like } from '../core/events';
 import { PERK_TUNING } from '../defs/perks';
+import { createEnemyHarness } from '../enemies/testFakes';
 import { PlayerHealth } from '../player/PlayerHealth';
 import { StatSystem } from '../stats/StatSystem';
 import { blastFalloff, blastSize, missingFraction } from './perkHooks';
@@ -171,6 +172,42 @@ describe('Kinetikpanzer', () => {
     expect(t.blasts[0]!.radius).toBeCloseTo(PERK_TUNING.kinetic.radius.max);
     land(t.events, PERK_TUNING.kinetic.fullImpactSpeed);
     expect(t.combat.dealt).toHaveLength(1);
+  });
+
+  it("a spitter's sac burst is explosion damage: with the perk it does not hurt", () => {
+    const taken = (perk: string | null): number => {
+      const events = new EventBus<GameEvents>();
+      const stats = new StatSystem({ events });
+      const health = new PlayerHealth({ events });
+      health.setStats(stats);
+      const perks = new PerkSystem({ events, stats });
+      if (perk) perks.grant(perk);
+      const target: EnemyTargetApi = {
+        position: new Vector3(0, 0, 0),
+        eyePosition: new Vector3(0, 1.6, 0),
+        velocity: new Vector3(),
+        alive: true,
+        damage: (amount, direction, kind) => health.damage(amount, direction, kind),
+      };
+      const h = createEnemyHarness({ manager: { target } });
+      const id = h.manager.spawn('spitter', { x: 0, y: 0, z: -2.5 })!;
+      h.tick(2);
+      const before = health.health + health.armor;
+      h.combat.dealDamage(h.manager.getEnemy(id)!, {
+        amount: 1000,
+        zone: 'weakpoint',
+        point: { x: 0, y: 1, z: -2.5 },
+        direction: { x: 0, y: 0, z: -1 },
+        weaponId: 'rifle',
+        element: 'physical',
+        source: 'player',
+        kind: 'bullet',
+      });
+      h.tick(1);
+      return before - (health.health + health.armor);
+    };
+    expect(taken(null)).toBeGreaterThan(0);
+    expect(taken('kinetic')).toBe(0);
   });
 });
 

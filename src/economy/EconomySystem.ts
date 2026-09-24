@@ -35,6 +35,8 @@ export function roundPoints(v: number, step: number = ECONOMY.roundTo): number {
 export class EconomySystem implements EconomyApi {
   private readonly events: EventBus<GameEvents>;
   private stats: Pick<StatsApi, 'value'> | null;
+  /** The map's start value (constructor): what reset() restores by default. */
+  private readonly startPoints: number;
   private _points: number;
   private readonly _totals: EconomyTotals = { earned: 0, spent: 0, purchases: 0 };
   private readonly pointsPayload: GameEvents['economy:points'] = { delta: 0, total: 0, reason: 'dev' };
@@ -43,7 +45,8 @@ export class EconomySystem implements EconomyApi {
   constructor(deps: EconomyDeps, startPoints: number = ECONOMY.startPoints) {
     this.events = deps.events;
     this.stats = deps.stats ?? null;
-    this._points = sanitizeStart(startPoints);
+    this.startPoints = sanitizeStart(startPoints);
+    this._points = this.startPoints;
   }
 
   get points(): number {
@@ -110,7 +113,8 @@ export class EconomySystem implements EconomyApi {
     return applied;
   }
 
-  reset(startPoints: number = ECONOMY.startPoints): void {
+  /** New run: the given start points, else the constructor's (the map's start value). */
+  reset(startPoints: number = this.startPoints): void {
     this._points = sanitizeStart(startPoints);
     this._totals.earned = 0;
     this._totals.spent = 0;

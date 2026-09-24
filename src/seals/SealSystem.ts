@@ -7,7 +7,8 @@
  *   fallen bar emits `seal:broken`. Once no bar stands they enter normally.
  * - Player: every seal is an Interactable (register through InteractionApi, `attach`): holding
  *   'interact' restores one bar per hold (SEALS.repair.holdTime), pays points through the
- *   RepairRewardsApi (ECONOMY.repair per bar, capped per wave) and emits `seal:repaired`.
+ *   RepairRewardsApi (economy/PointsRules: ECONOMY.repair per bar, capped per wave) and emits
+ *   `seal:repaired`.
  * - Carpenter power-up: repairAll() restores every bar (no repair points: the power-up pays its own).
  * - reset(): new run, every seal intact, silently.
  *
@@ -20,7 +21,6 @@ import type { EventBus } from '../core/EventBus';
 import type { GameEvents, Vec3Like } from '../core/events';
 import { SEALS, sealGateDef } from '../defs/seals';
 import type { EnemyBreachApi } from '../enemies/ai/breach';
-import type { RepairRewardsApi } from './RepairRewards';
 import { Seal, type SealHost } from './Seal';
 import {
   alongPlane,
@@ -32,6 +32,17 @@ import {
   type SealProbe,
 } from './sealGeometry';
 import { SealView } from './SealView';
+
+/**
+ * Points for restored bars (economy/PointsRules implements it: ECONOMY.repair.perPlank per bar
+ * through EconomyApi.earn 'repair', at most ECONOMY.repair.capPerWave per wave – anti-farming).
+ */
+export interface RepairRewardsApi {
+  /** Pay for `segments` restored bars within the per-wave cap; returns the points credited. */
+  awardRepair(segments: number, position?: Vec3Like): number;
+  /** Points (before the multiplier) still payable this wave (prompt hint); optional. */
+  readonly repairAllowance?: number;
+}
 
 /** InteractionApi as the seals use it (focus / hold progress drive the repair ghost). */
 export type SealInteraction = Pick<InteractionApi, 'register' | 'unregister'> &
@@ -46,7 +57,7 @@ export interface SealSystemDeps {
   /** Lit pylons → render.setupMaterial. */
   setupMaterial?: ((m: Material) => void) | null;
   vfx?: Pick<VfxApi, 'spawn'> | null;
-  /** Repair points (RepairRewards or PointsRules); null = repairs pay nothing. */
+  /** Repair points (PointsRules); null = repairs pay nothing. */
   rewards?: RepairRewardsApi | null;
   /** Static-world ray probe: fits each gate into its room at build time (null: def sizes). */
   probe?: SealProbe | null;
@@ -228,9 +239,10 @@ export class SealSystem implements EnemyBreachApi, SealHost {
     return best;
   }
 
-  /** New run: every seal intact at once, no events. */
+  /** New run: every seal intact at once, no events (the view too: a reset runs behind a menu). */
   reset(): void {
     for (const s of this._seals) s.resetFull();
+    this.view?.update(0);
   }
 
   /** Per frame: bar animations, the repair ghost of the focused seal, the view. */

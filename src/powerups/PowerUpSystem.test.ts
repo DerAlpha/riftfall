@@ -338,11 +338,58 @@ describe('PowerUpSystem effects', () => {
     t.sys.dropAmmo({ x: 0, y: 0, z: 0 });
     expect(t.sys.stats.dropped).toBe(0);
     t.run(DT);
-    expect(t.scraps).toEqual([0.25]);
-    const u = setup({ weapons: { refillAmmo: (fill) => void u2.push(fill ?? false) } });
+    expect(t.scraps).toEqual([POWERUP_DEFS.ammoScrap!.effect.kind === 'ammoScrap' ? 0.25 : -1]);
+    // Weapons without a fractional refill: no scraps at all (never a full reserve refill).
     const u2: boolean[] = [];
+    const u = setup({ weapons: { refillAmmo: (fill) => void u2.push(fill ?? false) } });
+    u.sys.dropAmmo({ x: 0, y: 0, z: 0 });
+    expect(u.sys.pickupCount).toBe(0);
     u.sys.activate('ammoScrap');
-    expect(u2).toEqual([false]);
+    expect(u2).toEqual([]);
+  });
+
+  it('a full pool: real drops replace scraps first, scraps never replace a real drop', () => {
+    const t = setup({ capacity: 2 });
+    t.player.position.set(-50, 0, 0);
+    t.sys.rollDrop({ x: 10, y: 0, z: 0 }, 'nuke');
+    t.sys.dropAmmo({ x: 20, y: 0, z: 0 });
+    t.run(1);
+    // Full: the scrap goes although the nuke is older.
+    expect(t.sys.rollDrop({ x: 30, y: 0, z: 0 }, 'instakill')).toBeUndefined();
+    const spawned = () => (t.byType('powerup:spawned') as { type: string }[]).map((e) => e.type);
+    expect(spawned()).toEqual(['nuke', 'ammoScrap', 'instakill']);
+    t.player.position.set(20, 0, 0);
+    t.run(DT);
+    expect(t.scraps).toEqual([]);
+    t.player.position.set(10, 0, 0);
+    t.run(DT);
+    expect(t.enemies.killAllCalls).toBe(1);
+    // The collected nuke's slot (implode animation) goes first, then only real drops remain:
+    // a scrap finds no slot it may take.
+    t.player.position.set(-50, 0, 0);
+    t.sys.rollDrop({ x: 40, y: 0, z: 0 }, 'maxAmmo');
+    expect(t.sys.pickupCount).toBe(2);
+    expect(t.sys.spawn('ammoScrap', { x: 0, y: 0, z: 0 })).toBe(-1);
+    expect(t.sys.pickupCount).toBe(2);
+  });
+
+  it('a nuke collected with the Aasgeier hook firing on its kills reports the pickup spot', () => {
+    const h = createEnemyHarness();
+    for (let i = 0; i < 3; i++) h.manager.spawn('swarmer', { x: i * 2, y: 0, z: -10 });
+    h.tick(3);
+    const t = setup({ enemies: h.manager, vfx: { spawn: () => 0 } }, h.events);
+    // The perk hook spawns a scrap at every nuke kill (spawn() reuses its scratch position).
+    h.events.on('enemy:died', (e) => t.sys.dropAmmo({ x: e.position.x, y: 0, z: e.position.z }));
+    const points: { x: number; z: number }[] = [];
+    h.events.on('economy:points', (e) => void points.push({ x: e.position!.x, z: e.position!.z }));
+    t.player.position.set(-50, 0, 0);
+    t.sys.rollDrop({ x: 7, y: 0, z: 3 }, 'nuke');
+    t.player.position.set(7, 0, 3);
+    t.run(DT);
+    expect(h.manager.alive).toBe(0);
+    expect(points).toEqual([{ x: 7, z: 3 }]);
+    const collected = t.byType('powerup:collected') as { position: { x: number; z: number } }[];
+    expect(collected[0]!.position).toMatchObject({ x: 7, z: 3 });
   });
 
   it('clear() ends every timed effect, removes pickups and resets the drop state', () => {

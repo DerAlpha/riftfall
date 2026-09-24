@@ -59,10 +59,11 @@ export class Seal implements Interactable {
     this.flash = new Float32Array(this.segments);
     const f = frame;
     const mid = (f.right - f.left) / 2;
+    const R = SEALS.repair;
     this.position.set(
-      f.cx + f.sx * mid + f.fx * 0.05,
-      f.cy + Math.min(SEALS.repair.anchorHeight, f.height),
-      f.cz + f.sz * mid + f.fz * 0.05,
+      f.cx + f.sx * mid + f.fx * R.anchorFront,
+      f.cy + Math.min(R.anchorHeight, f.height),
+      f.cz + f.sz * mid + f.fz * R.anchorFront,
     );
   }
 

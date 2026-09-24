@@ -752,8 +752,12 @@ export interface EnemyTargetApi {
    * view direction; without it they use the aim of the last shot / the movement direction.
    */
   readonly yaw?: number;
-  damage(amount: number, direction?: Vec3Like): number;
+  /** `kind` selects the damage-taken stat on top of damageTaken (M4: blasts are 'explosion'). */
+  damage(amount: number, direction?: Vec3Like, kind?: PlayerDamageKind): number;
 }
+
+/** What hurt the player: 'explosion' and 'fall' get their damage-taken stats on top (PlayerHealth). */
+export type PlayerDamageKind = 'generic' | 'explosion' | 'fall';
 
 export interface EnemySpawnOptions {
   /** Elite affix ids (M6). */

@@ -261,8 +261,14 @@ export const POWERUPS = {
     shaftWidth: 1.1,
     floorRadius: 1.3,
     intensity: { glyph: 4.5, ring: 2.2, shaft: 1.4, floor: 0.9, flash: 5 },
-    /** Canvas atlas: cell size (px), columns, stroke width (glyph units), glow blur (px). */
-    atlas: { cell: 128, cols: 4, stroke: 1.9, glowBlur: 7 },
+    /** Reduced flashing: the materialize / collect white flash is scaled by this. */
+    reducedFlash: 0.3,
+    /**
+     * Canvas atlas: cell size (px), columns, stroke width (glyph units), glow blur (px), share of a
+     * cell the 24×24 glyph box fills (the rest pads the blur and the mip chain), the soft glow pass
+     * under the crisp stroke (width × stroke, opacity).
+     */
+    atlas: { cell: 128, cols: 4, stroke: 1.9, glowBlur: 7, fill: 0.78, glowWidth: 1.5, glowAlpha: 0.32 },
     renderOrder: 3,
   },
   effects: {

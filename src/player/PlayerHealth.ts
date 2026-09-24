@@ -10,13 +10,12 @@
  * `damage`). Without stats everything follows the def.
  */
 import { EventBus } from '../core/EventBus';
-import type { StatsApi } from '../core/contracts';
+import type { PlayerDamageKind, StatsApi } from '../core/contracts';
 import type { GameEvents, Vec3Like } from '../core/events';
 import { PLAYER, type PlayerHealthDef } from '../defs/player';
 import { statRatio } from '../stats/StatSystem';
 
-/** What hurt the player: 'explosion' and 'fall' get their damage-taken stats on top. */
-export type PlayerDamageKind = 'generic' | 'explosion' | 'fall';
+export type { PlayerDamageKind };
 
 type MutableHealthDef = { -readonly [K in keyof PlayerHealthDef]: PlayerHealthDef[K] };
 

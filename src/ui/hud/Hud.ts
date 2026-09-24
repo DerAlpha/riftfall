@@ -14,10 +14,14 @@
  *   `weapon:equipped` (weapon name + slot chips, switched when the new weapon comes up),
  * - `wave:*`, `run:over`, `run:restart` (M3, WaveHud): wave counter (tally marks → numeral),
  *   remaining enemies, intermission countdown, wave start / complete banners.
+ * - M4 economy (EconomyHud): points counter + popups, interaction prompt, perk row, power-up
+ *   timers, economy banners, nuke flash, slow-motion tint (events listed in EconomyHud.ts).
  * Game.ts feeds per frame: setSpreadCone(weapons.spreadDegrees, render.camera.fov),
- * setAds(weapons.adsAmount), update(dt, yaw);
- * once: setCamera(render.camera) – damage numbers are projected with it – and
- * setWaveCountdownSource(() => waves.intermissionLeft); resetRun() when a new run starts.
+ * setAds(weapons.adsAmount), setInteractHold(interaction.holdProgress, hold), update(dt, yaw);
+ * once: setCamera(render.camera) – damage numbers are projected with it –,
+ * setWaveCountdownSource(() => waves.intermissionLeft), setPowerUpSource(powerUps),
+ * setZoneNames(level zones), setInputDevice(input.device); the power-up fx.timeTint → setTimeTint;
+ * resetRun() when a new run starts.
  */
 import type { Camera } from 'three';
 import type { SettingsStore } from '../../core/contracts';
@@ -29,6 +33,8 @@ import { HUD } from '../../defs/ui';
 import type { Settings } from '../../save/settingsSchema';
 import { coneRadiusPx } from '../../weapons/spread';
 import { CombatHud } from './CombatHud';
+import { EconomyHud } from './EconomyHud';
+import type { PowerUpTimerSource } from './PowerUpHud';
 import { WaveHud } from './WaveHud';
 import { WeaponHud } from './WeaponHud';
 import './hud-combat.css';
@@ -87,7 +93,8 @@ export class Hud {
   private readonly fpsEl: HTMLDivElement;
   private readonly combat: CombatHud;
   private readonly weapon: WeaponHud;
-  private readonly pointsValue: HTMLSpanElement;
+  /** M4: points, interaction prompt, perks, power-ups, economy banners. */
+  readonly economy: EconomyHud;
   private readonly waves: WaveHud;
   private readonly indicators: DamageIndicator[] = [];
 
@@ -198,13 +205,22 @@ export class Hud {
     this.healthFill = h('div', 'hud-bar__fill', healthTrack);
     this.healthValue = h('span', 'hud-bar__value', this.healthBar);
 
-    // --- bottom right: points (placeholder until M4), weapon + ammo ---
+    // --- bottom right: points (EconomyHud, on top), weapon + ammo ---
     const br = h('div', 'hud-corner hud-corner--br', this.el);
-    const points = h('div', 'hud-points hud-placeholder', br);
-    h('span', 'hud-label', points).textContent = 'PUNKTE';
-    this.pointsValue = h('span', 'hud-points__value', points);
-    this.pointsValue.textContent = '—';
     this.weapon = new WeaponHud(br, this.el);
+
+    // --- M4 economy: perk row (bottom left), points (bottom right), prompt, timers, banners ---
+    this.economy = new EconomyHud(
+      {
+        layer: this.el,
+        bottomLeft: bl,
+        bottomRight: br,
+        tintParent: root.parentElement,
+        tintBefore: root.parentElement ? root : null,
+      },
+      events,
+      settings,
+    );
 
     // --- bottom center: movement readout ---
     this.movementEl = h('div', 'hud-movement', this.el);
@@ -357,10 +373,37 @@ export class Hud {
     this.weapon.setAmmo(mag, reserve, magSize);
   }
 
-  /** M4+: points (null shows the placeholder). */
+  /** Points total without animation (null shows the placeholder). Normally fed by economy:points. */
   setPoints(points: number | null): void {
-    this.setPlaceholderText(this.pointsValue, points === null ? '—' : points.toLocaleString('de-DE'));
-    this.pointsValue.parentElement?.classList.toggle('hud-placeholder', points === null);
+    this.economy.points.setTotal(points);
+  }
+
+  /**
+   * Per frame: hold progress 0..1 of the focused interactable (InteractionApi.holdProgress) and
+   * whether it is a hold interaction (seal repair) – the prompt's key cap shows the ring then.
+   */
+  setInteractHold(progress: number, hold: boolean): void {
+    this.economy.setHold(progress, hold);
+  }
+
+  /** Power-up timer clock (PowerUpSystem: remaining / duration per type); null counts frame time. */
+  setPowerUpSource(source: PowerUpTimerSource | null): void {
+    this.economy.setPowerUpSource(source);
+  }
+
+  /** Zone display names for the zone unlock banner (map zones). */
+  setZoneNames(zones: readonly { readonly id: string; readonly name: string }[]): void {
+    this.economy.setZoneNames(zones);
+  }
+
+  /** Active input device (key cap of the interaction prompt); later changes arrive as events. */
+  setInputDevice(device: 'kbm' | 'gamepad'): void {
+    this.economy.setInputDevice(device);
+  }
+
+  /** Slow-motion screen tint 0..1 (PowerUpSystem fx.timeTint). */
+  setTimeTint(amount: number): void {
+    this.economy.setTimeTint(amount);
   }
 
   /**
@@ -393,6 +436,7 @@ export class Hud {
       }
     }
     this.combat.numbers.clear();
+    this.economy.reset();
   }
 
   setVisible(visible: boolean): void {
@@ -409,6 +453,7 @@ export class Hud {
     this.combat.update(d, this.viewportW, this.viewportH);
     this.weapon.update(d);
     this.waves.update(d);
+    this.economy.update(d);
   }
 
   dispose(): void {
@@ -417,6 +462,7 @@ export class Hud {
     if (typeof window !== 'undefined') window.removeEventListener('resize', this.onResize);
     this.combat.setCamera(null);
     this.waves.dispose();
+    this.economy.dispose();
     this.el.remove();
   }
 
@@ -447,6 +493,7 @@ export class Hud {
     this.shownSpreadPx = -1;
     this.reduceFlashing = a.reduceFlashing;
     this.el.classList.toggle('hud--reduce-flashing', a.reduceFlashing);
+    this.economy.configure(a.reduceFlashing);
     this.combat.configure({
       hitmarkers: g.hitmarkers !== false,
       damageNumbers: g.damageNumbers !== false,

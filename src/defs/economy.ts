@@ -39,6 +39,11 @@ export interface WaveBonusDef {
 export const ECONOMY = {
   /** Points at the start of a run (CoD: 500). */
   startPoints: 500,
+  /**
+   * Start points on a movement-sandbox map (the calibration hall: no waves, dummies pay nothing):
+   * enough to try every perk machine, wall buy and the box without the dev console.
+   */
+  sandboxStartPoints: 50_000,
   /** Points are whole numbers: earnings (after the multiplier) round to this step. */
   roundTo: 1,
 
@@ -91,6 +96,11 @@ export const ECONOMY = {
     carpenterBonus: 200,
   },
 } as const;
+
+/** Start points of a run on `map` (a movement sandbox gets the sandbox budget). */
+export function startPointsFor(map: { readonly movementSandbox?: boolean }): number {
+  return map.movementSandbox === true ? ECONOMY.sandboxStartPoints : ECONOMY.startPoints;
+}
 
 /** Completed-wave bonus (points before the multiplier). */
 export function waveBonus(wave: number, def: WaveBonusDef = ECONOMY.points.wave): number {

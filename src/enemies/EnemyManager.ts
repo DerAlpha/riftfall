@@ -1636,7 +1636,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       _dir.x = dx / len;
       _dir.y = dy / len;
       _dir.z = dz / len;
-      t.damage(b.playerDamage * f * e.damageMult, _dir);
+      t.damage(b.playerDamage * f * e.damageMult, _dir, 'explosion');
       if (b.shake > 0) this.shake(b.shake * f);
     }
     // Other enemies (chain reactions, credited to whoever killed this one).

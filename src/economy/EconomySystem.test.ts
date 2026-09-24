@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/events';
-import { ECONOMY, ammoCost, doorCost, waveBonus, weaponCost } from '../defs/economy';
+import { ECONOMY, ammoCost, doorCost, startPointsFor, waveBonus, weaponCost } from '../defs/economy';
 import { WEAPONS } from '../defs/weapons';
 import { StatSystem } from '../stats/StatSystem';
 import { EconomySystem, roundPoints } from './EconomySystem';
@@ -95,11 +95,12 @@ describe('EconomySystem', () => {
     expect(economy.points).toBe(0);
     expect(economy.adjust(-10)).toBe(0);
     economy.earn(10, 'hit');
+    // Back to the constructor's start value (the map's).
     economy.reset();
-    expect(economy.points).toBe(ECONOMY.startPoints);
+    expect(economy.points).toBe(100);
     expect(economy.totals).toEqual({ earned: 0, spent: 0, purchases: 0 });
     // The HUD sets the total without a popup.
-    expect(points.at(-1)).toMatchObject({ delta: 0, total: ECONOMY.startPoints });
+    expect(points.at(-1)).toMatchObject({ delta: 0, total: 100 });
     economy.reset(2000);
     expect(economy.points).toBe(2000);
   });
@@ -115,6 +116,15 @@ describe('EconomySystem', () => {
     // A refund beyond what was spent (dev, content error) still never makes the totals negative.
     economy.earn(100, 'refund');
     expect(economy.totals).toEqual({ earned: 100, spent: 0, purchases: 0 });
+  });
+
+  it("reset restores the map's start value (the calibration hall's sandbox budget)", () => {
+    expect(startPointsFor({ movementSandbox: true })).toBe(ECONOMY.sandboxStartPoints);
+    expect(startPointsFor({})).toBe(ECONOMY.startPoints);
+    const { economy } = setup(startPointsFor({ movementSandbox: true }));
+    economy.spend(950, 'box', 'box');
+    economy.reset();
+    expect(economy.points).toBe(ECONOMY.sandboxStartPoints);
   });
 
   it('works without stats (×1)', () => {

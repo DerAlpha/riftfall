@@ -244,7 +244,7 @@ export class PickupView {
         uRingI: { value: V.intensity.ring },
         uShaftI: { value: V.intensity.shaft },
         uFloorI: { value: V.intensity.floor },
-        uFlashI: { value: V.intensity.flash },
+        uFlashI: { value: V.intensity.flash * (reduceFlashing ? V.reducedFlash : 1) },
         fogParams: HEIGHT_FOG_PARAMS,
       },
       transparent: true,
@@ -276,11 +276,12 @@ export class PickupView {
   }
 
   setReducedFlashing(on: boolean): void {
+    const V = POWERUPS.visual;
     this.reduced = on;
-    this.material.uniforms.uFlashI!.value = POWERUPS.visual.intensity.flash * (on ? 0.3 : 1);
+    this.material.uniforms.uFlashI!.value = V.intensity.flash * (on ? V.reducedFlash : 1);
   }
 
-  /** Per frame: pack the live pickups densely. */
+  /** Per frame: pack the live pickups densely (dt 0 repacks without advancing the animation). */
   update(dt: number, pickups: readonly PickupVisual[]): void {
     if (dt > 0 && Number.isFinite(dt)) this.time += dt;
     this.material.uniforms.uTime!.value = this.time;

@@ -15,13 +15,8 @@ export interface GlyphAtlas {
   readonly rows: number;
 }
 
-/** Glyph units of the path data (24 × 24 box). */
+/** Glyph units of the path data (24 × 24 box, the POWERUP_GLYPHS format). */
 const GLYPH_BOX = 24;
-/** Share of a cell the glyph box fills (the rest pads the blur and the mip chain). */
-const GLYPH_FILL = 0.78;
-/** The glow pass: stroke width multiplier and opacity. */
-const GLOW_WIDTH = 1.5;
-const GLOW_ALPHA = 0.32;
 
 /** Atlas cell of a glyph id (-1 if unknown). */
 export function glyphCell(glyph: string): number {
@@ -55,8 +50,8 @@ export function createGlyphAtlas(): GlyphAtlas | null {
     const ctx = canvas ? (canvas.getContext('2d') as Ctx | null) : null;
     if (!canvas || !ctx) return null;
     ctx.clearRect(0, 0, w, h);
-    const k = (A.cell * GLYPH_FILL) / GLYPH_BOX;
-    const pad = (A.cell * (1 - GLYPH_FILL)) / 2;
+    const k = (A.cell * A.fill) / GLYPH_BOX;
+    const pad = (A.cell * (1 - A.fill)) / 2;
     POWERUP_GLYPH_IDS.forEach((id, i) => {
       const path = new Path2D(POWERUP_GLYPHS[id]);
       const cx = (i % cols) * A.cell + pad;
@@ -69,8 +64,8 @@ export function createGlyphAtlas(): GlyphAtlas | null {
       ctx.strokeStyle = '#ffffff';
       ctx.shadowColor = '#ffffff';
       ctx.shadowBlur = A.glowBlur;
-      ctx.globalAlpha = GLOW_ALPHA;
-      ctx.lineWidth = A.stroke * GLOW_WIDTH;
+      ctx.globalAlpha = A.glowAlpha;
+      ctx.lineWidth = A.stroke * A.glowWidth;
       ctx.stroke(path);
       ctx.shadowBlur = 0;
       ctx.globalAlpha = 1;

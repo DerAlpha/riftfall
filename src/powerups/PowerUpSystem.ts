@@ -7,7 +7,8 @@
  * give the same drops (daily challenge). `rollDrop(p, type)` forces one; `dropAmmo` is the Aasgeier
  * perk's small-ammo hook (PerkSystem.setAmmoDropHandler).
  *
- * Pickups: pooled (POWERUPS.capacity, the oldest is replaced when full), snapped to the floor,
+ * Pickups: pooled (POWERUPS.capacity; when full the one closest to despawning is replaced, ammo
+ * scraps first, and a scrap never replaces a real drop), snapped to the floor,
  * float for `lifetime` s (blinking at the end), collected in fixedUpdate when the player's feet come
  * within the pickup radius; the view (PickupView) draws them.
  *
@@ -18,7 +19,8 @@
  *   maxAmmo        weapons.refillAmmo
  *   carpenter      seals.repairAll(), armor refill, flat points ('carpenter')
  *   enemyTimeScale timed enemies.timeScale (Slow Motion ×0.4) + fx.timeTint (eased per frame)
- *   ammoScrap      weapons.addReserveFraction (else a reserve refill)
+ *   ammoScrap      weapons.addReserveFraction (without it no scraps drop: a full reserve refill
+ *                  every few kills would turn the Aasgeier perk into a permanent Max Ammo)
  * Timed effects last duration × powerUpDuration stat; collecting one again refreshes the timer.
  * Expiry (and clear()) undoes exactly what the start applied (stat sources are removed as a whole).
  *
@@ -64,7 +66,10 @@ export interface PowerUpEnemies {
 
 export interface PowerUpWeapons {
   refillAmmo(fillMagazines?: boolean): void;
-  /** Add `fraction` of every carried weapon's full reserve (ammo scraps). Optional. */
+  /**
+   * Add `fraction` of every carried weapon's full reserve, capped at full (ammo scraps). Optional:
+   * without it the Aasgeier scraps are not dropped.
+   */
   addReserveFraction?(fraction: number): void;
 }
 
@@ -159,6 +164,7 @@ export class PowerUpSystem implements PowerUpApi {
   private tint = 0;
   private tintTarget = 0;
   private disposed = false;
+  private warnedScrap = false;
   private readonly spawnedPayload: GameEvents['powerup:spawned'] = {
     id: 0,
     type: '',
@@ -170,6 +176,8 @@ export class PowerUpSystem implements PowerUpApi {
     duration: 0,
   };
   private readonly expiredPayload: GameEvents['powerup:expired'] = { type: '' };
+  /** Where the power-up being applied was picked up (own copy: effects re-enter spawn()). */
+  private readonly at: Vec3Like = { x: 0, y: 0, z: 0 };
   private readonly expire = (id: string): void => this.endEffect(id);
   private readonly conditionMet = (c: PowerUpCondition): boolean => this.condition(c);
 
@@ -284,6 +292,8 @@ export class PowerUpSystem implements PowerUpApi {
       this.tintTarget = 0;
       this.deps.fx?.timeTint?.(0);
     }
+    // Now, not next frame: a new run is prepared behind a menu (no update() while paused).
+    this.view?.update(0, this.pickups);
   }
 
   // -------------------------------------------------------------------------
@@ -319,17 +329,25 @@ export class PowerUpSystem implements PowerUpApi {
 
   /** Aasgeier perk hook (PerkSystem.setAmmoDropHandler): a small ammo pickup. */
   readonly dropAmmo = (position: Vec3Like): void => {
-    this.spawn('ammoScrap', position);
+    if (this.deps.weapons?.addReserveFraction) this.spawn('ammoScrap', position);
+    else if (!this.warnedScrap) {
+      this.warnedScrap = true;
+      log.warn('Ammo scraps need weapons.addReserveFraction – Aasgeier drops disabled');
+    }
   };
 
-  /** Place a pickup of `type` (no drop rules). Returns its id, -1 for an unknown type. */
+  /**
+   * Place a pickup of `type` (no drop rules). Returns its id; -1 for an unknown type or when the
+   * pool is full of real drops and `type` is an ammo scrap (scraps never replace a real drop).
+   */
   spawn(type: string, position: Vec3Like): number {
     const def = getPowerUpDef(type);
     if (!def || this.disposed) {
       if (!def) log.warn(`Unknown power-up "${type}"`);
       return -1;
     }
-    const pk = this.freePickup();
+    const pk = this.freePickup(def.counted);
+    if (!pk) return -1;
     const P = POWERUPS.pickup;
     let y = position.y;
     if (this.deps.snapToFloor?.(position, _v) && Math.abs(_v.y - position.y) <= P.snapMaxDrop) y = _v.y;
@@ -369,8 +387,10 @@ export class PowerUpSystem implements PowerUpApi {
    */
   activate(type: string, position?: Vec3Like): boolean {
     const def = getPowerUpDef(type);
-    if (!def) return false;
-    const at = position ?? this.deps.player.position;
+    if (!def || this.disposed) return false;
+    // Copied first: a nuke's kills reach the Aasgeier hook (dropAmmo → spawn) mid-effect.
+    const src = position ?? this.deps.player.position;
+    const at = setPos(this.at, src.x, src.y, src.z);
     const d = this.deps;
     const fx = def.effect;
     let duration = 0;
@@ -390,12 +410,9 @@ export class PowerUpSystem implements PowerUpApi {
         if (fx.points > 0) d.economy?.earn(fx.points, 'carpenter', at);
         break;
       }
-      case 'ammoScrap': {
-        const w = d.weapons;
-        if (w?.addReserveFraction) w.addReserveFraction(fx.reserveFraction);
-        else w?.refillAmmo(false);
+      case 'ammoScrap':
+        d.weapons?.addReserveFraction?.(fx.reserveFraction);
         break;
-      }
       case 'stat':
       case 'instakill':
       case 'enemyTimeScale': {
@@ -516,20 +533,28 @@ export class PowerUpSystem implements PowerUpApi {
     }
   }
 
-  /** A free slot, else the pickup closest to despawning (never one playing its collect animation). */
-  private freePickup(): Pickup {
+  /**
+   * A free slot, else the cheapest pickup to lose, closest to despawning first: one playing its
+   * collect animation (its effect is applied), then an ammo scrap, then – only for a real drop
+   * (`counted`) – another real drop. Null: a scrap finds only real drops (it is not placed).
+   */
+  private freePickup(counted: boolean): Pickup | null {
     let best: Pickup | null = null;
+    let bestRank = Number.POSITIVE_INFINITY;
     let bestLeft = Number.POSITIVE_INFINITY;
     for (const pk of this.pickups) {
       if (!pk.active) return pk;
-      if (pk.collecting >= 0) continue;
+      // 0: collected (animation only), 1: a floating scrap, 2: a floating real drop.
+      const rank = pk.collecting >= 0 ? 0 : pk.def.counted ? 2 : 1;
+      if (rank === 2 && !counted) continue;
       const left = pk.lifetime - pk.age;
-      if (left < bestLeft) {
+      if (rank < bestRank || (rank === bestRank && left < bestLeft)) {
+        bestRank = rank;
         bestLeft = left;
         best = pk;
       }
     }
-    return best ?? this.pickups[0]!;
+    return best;
   }
 }
 

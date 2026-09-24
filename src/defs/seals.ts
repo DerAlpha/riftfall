@@ -4,7 +4,7 @@
  * `offset` m in front of the spawn point across its emerge direction. Enemies emerging there are
  * held in the pen behind it and tear the bars down (per-type timing: defs/enemies.ts `breach`);
  * the player repairs one bar per hold of 'interact' (points: defs/economy.ts ECONOMY.repair, capped
- * per wave). The lattice never stops bullets (it is no `level:` mesh): shoot the breachers through it.
+ * per wave by economy/PointsRules). The lattice never stops bullets (it is no `level:` mesh): shoot the breachers through it.
  *
  * Meters, seconds. Colors: linear RGB, multiplied by the HDR intensities (bars bloom).
  */
@@ -60,9 +60,13 @@ export const SEALS = {
   repair: {
     /** Hold 'interact' this long per restored bar (s). */
     holdTime: 0.55,
-    /** Use range from the eye to the prompt anchor (m); the anchor sits this high on the plane. */
+    /**
+     * Use range from the eye to the prompt anchor (m); the anchor sits this high on the plane,
+     * this far in front of it (the open side).
+     */
     range: 2.9,
     anchorHeight: 1.1,
+    anchorFront: 0.05,
   },
 
   /** HUD prompts (German). */

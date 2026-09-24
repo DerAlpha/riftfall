@@ -135,11 +135,11 @@ const lightningStrike: Recipe = (g, t) => {
 const lightningLoop: Recipe = (g, t) => {
   const k = kitOf(g);
   const tonal = k.loopBus(t);
-  tonal.drone(t, LD, 100, 0.22, { type: 'sawtooth', lowpass: 900, detune: 10, tremolo: { rate: 13, depth: 0.3 } });
-  tonal.drone(t, LD, 50, 0.14, { type: 'square', lowpass: 300 });
+  tonal.drone(t, LD, 100, 0.16, { type: 'sawtooth', lowpass: 900, detune: 10, tremolo: { rate: 13, depth: 0.3 } });
+  tonal.drone(t, LD, 50, 0.1, { type: 'square', lowpass: 300 });
   tonal.drone(t, LD, 300, 0.04, { type: 'sawtooth', lowpass: 2400, tremolo: { rate: 23, depth: 0.8 } });
   k.bed(t, LD, 'white', 'highpass', 4500, 0.7, 0.08, { gainLfo: { rate: 23, depth: 0.6 } });
-  k.crackle(t, LD, 90, 3800, 3, 0.55, 0.8, 0.25);
+  k.crackle(t, LD, 90, 3800, 3, 0.7, 0.8, 0.25);
   const snaps = Math.round(LD * 6);
   for (let i = 0; i < snaps; i++) {
     const at = t + k.rng.next() * (LD - 0.05);
@@ -266,14 +266,14 @@ const flameIgnite: Recipe = (g, t) => {
 /** The roar: turbulent combustion (fluttering low-mid noise, decorrelated L/R), gas hiss, pops, rumble. */
 const flameLoop: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.bed(t, LD, 'brown', 'lowpass', 700, 0.5, 0.9, {
+  k.bed(t, LD, 'brown', 'lowpass', 700, 0.5, 0.7, {
     freqLfo: { rate: 3.5, depth: 250 },
     gainLfo: { rate: 11, depth: 0.25 },
   });
-  k.bed(t, LD, 'pink', 'bandpass', 900, 0.7, 0.45, { freqLfo: { rate: 1.5, depth: 400 }, gainLfo: { rate: 9, depth: 0.3 }, pan: -0.55 });
-  k.bed(t, LD, 'pink', 'bandpass', 1300, 0.7, 0.35, { freqLfo: { rate: 2.5, depth: 500 }, gainLfo: { rate: 13, depth: 0.3 }, pan: 0.55 });
-  k.bed(t, LD, 'white', 'highpass', 4000, 0.7, 0.06);
-  k.bed(t, LD, 'brown', 'lowpass', 120, 0.7, 0.5);
+  k.bed(t, LD, 'pink', 'bandpass', 900, 0.7, 0.7, { freqLfo: { rate: 1.5, depth: 400 }, gainLfo: { rate: 9, depth: 0.3 }, pan: -0.55 });
+  k.bed(t, LD, 'pink', 'bandpass', 1300, 0.7, 0.55, { freqLfo: { rate: 2.5, depth: 500 }, gainLfo: { rate: 13, depth: 0.3 }, pan: 0.55 });
+  k.bed(t, LD, 'white', 'highpass', 4000, 0.7, 0.1);
+  k.bed(t, LD, 'brown', 'lowpass', 120, 0.7, 0.4);
   k.crackle(t, LD, 25, 2500, 2, 0.35, 0.6, 0.5);
 };
 
@@ -647,10 +647,10 @@ const minigunSpin: Recipe = (g, t) => {
   const k = kitOf(g);
   const tonal = k.loopBus(t);
   tonal.drone(t, LD, 240, 0.18, { type: 'sawtooth', lowpass: 1800, detune: 12 });
-  tonal.drone(t, LD, 960, 0.06);
-  tonal.drone(t, LD, 1440, 0.03);
-  k.bed(t, LD, 'pink', 'bandpass', 1100, 1.5, 0.6, { gainLfo: { rate: 36, depth: 0.8 } });
-  k.bed(t, LD, 'brown', 'lowpass', 150, 0.7, 0.4, { gainLfo: { rate: 18, depth: 0.3 } });
+  tonal.drone(t, LD, 960, 0.1);
+  tonal.drone(t, LD, 1440, 0.05);
+  k.bed(t, LD, 'pink', 'bandpass', 1100, 1.5, 0.7, { gainLfo: { rate: 36, depth: 0.8 } });
+  k.bed(t, LD, 'brown', 'lowpass', 150, 0.7, 0.25, { gainLfo: { rate: 18, depth: 0.3 } });
   k.crackle(t, LD, 60, 3500, 4, 0.12, 0.5);
   k.bed(t, LD, 'white', 'highpass', 5000, 0.7, 0.03);
 };

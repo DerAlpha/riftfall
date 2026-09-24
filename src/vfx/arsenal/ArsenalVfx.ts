@@ -33,12 +33,15 @@ import { ArsenalProjectiles } from './ArsenalProjectiles';
 import { BodyMeshes } from './BodyMeshes';
 import { ChargeGlow } from './ChargeGlow';
 import {
+  HAZE_STRIDE,
   LENS_STRIDE,
+  createHazeQueue,
   createLensQueue,
   createSustainState,
   sustainLight,
   type ArsenalContext,
   type EffectSpawner,
+  type HazeSink,
   type LensSink,
   type SustainState,
 } from './context';
@@ -46,7 +49,7 @@ import { DiscBatch } from './DiscBatch';
 import { GlowSprites } from './GlowSprites';
 import { StripBatch } from './StripBatch';
 
-export type { EffectSpawner, LensSink };
+export type { EffectSpawner, HazeSink, LensSink };
 
 export interface ArsenalVfxDeps {
   render: Pick<RenderApi, 'scene' | 'camera' | 'setupMaterial'>;
@@ -62,6 +65,8 @@ export interface ArsenalVfxDeps {
   sockets?: () => VfxSocketSource | null;
   /** Screen-space lens (singularities); null = none. */
   lens?: LensSink | null;
+  /** Screen-space heat haze (flame streams); null = none. */
+  haze?: HazeSink | null;
   random?: Rand;
 }
 
@@ -96,6 +101,9 @@ export class ArsenalVfx implements ArsenalVfxApi {
   private readonly sockets: () => VfxSocketSource | null;
   private readonly camera: THREE.Camera;
   private readonly lens: LensSink | null;
+  private readonly haze: HazeSink | null;
+  /** Haze slots fed last frame (turned off once unused). */
+  private hazeUsed = 0;
   /** Lens slots fed last frame (turned off once unused). */
   private lensUsed = 0;
   private readonly pending: PendingShot[] = [];
@@ -132,10 +140,13 @@ export class ArsenalVfx implements ArsenalVfxApi {
       time: 0,
       lensQueue: createLensQueue(),
       lensCount: 0,
+      hazeQueue: createHazeQueue(),
+      hazeCount: 0,
     };
     this.camera = deps.render.camera;
     this.sockets = deps.sockets ?? (() => null);
     this.lens = deps.lens ?? null;
+    this.haze = deps.haze ?? null;
     this.projectiles = new ArsenalProjectiles(this.ctx);
     this.beams = new ArsenalBeams(this.ctx);
     this.fields = new ArsenalFields(this.ctx);
@@ -214,6 +225,7 @@ export class ArsenalVfx implements ArsenalVfxApi {
     ctx.discs.begin();
     ctx.bodies.begin();
     ctx.lensCount = 0;
+    ctx.hazeCount = 0;
 
     this.flushShots();
     this.projectiles.update(step);
@@ -227,6 +239,7 @@ export class ArsenalVfx implements ArsenalVfxApi {
     ctx.discs.end();
     ctx.bodies.end();
     this.flushLenses();
+    this.flushHazes();
     this.epoch++;
   }
 
@@ -246,7 +259,9 @@ export class ArsenalVfx implements ArsenalVfxApi {
     ctx.bodies.begin();
     ctx.bodies.end();
     ctx.lensCount = 0;
+    ctx.hazeCount = 0;
     this.flushLenses();
+    this.flushHazes();
   }
 
   // -------------------------------------------------------------------------
@@ -381,5 +396,24 @@ export class ArsenalVfx implements ArsenalVfxApi {
     }
     for (let i = ctx.lensCount; i < this.lensUsed; i++) sink(i, _lens, 0, 0);
     this.lensUsed = ctx.lensCount;
+  }
+
+  private flushHazes(): void {
+    const sink = this.haze;
+    const ctx = this.ctx;
+    if (!sink) return;
+    const q = ctx.hazeQueue;
+    for (let i = 0; i < ctx.hazeCount; i++) {
+      const o = i * HAZE_STRIDE;
+      _from.x = q[o]!;
+      _from.y = q[o + 1]!;
+      _from.z = q[o + 2]!;
+      _to.x = q[o + 3]!;
+      _to.y = q[o + 4]!;
+      _to.z = q[o + 5]!;
+      sink(i, _from, _to, q[o + 6]!, q[o + 7]!, q[o + 8]!);
+    }
+    for (let i = ctx.hazeCount; i < this.hazeUsed; i++) sink(i, _from, _to, 0, 0, 0);
+    this.hazeUsed = ctx.hazeCount;
   }
 }

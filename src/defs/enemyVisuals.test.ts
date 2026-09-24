@@ -23,7 +23,9 @@ describe('enemy visual defs', () => {
         const swarm: readonly string[] = mode.swarm?.types ?? [];
         const share = swarm.includes(t.id) ? 1 : maxWeight(t.id) / weightSum;
         const def = getEnemyVisualDef(t.id)!;
-        expect(def.capacity, `${mode.id}: ${t.id}`).toBeGreaterThanOrEqual(headroom(Math.ceil(alive * share)));
+        expect(def.capacity, `${mode.id}: ${t.id}`).toBeGreaterThanOrEqual(
+          headroom(Math.ceil(alive * share)),
+        );
       }
       for (const sp of mode.specials) {
         const def = getEnemyVisualDef(sp.id)!;

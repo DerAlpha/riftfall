@@ -658,7 +658,8 @@ describe('StatusEffectSystem – lifecycle', () => {
     const els: DamageElement[] = ['fire', 'ice', 'shock', 'poison', 'void'];
     let ms = 0;
     for (let k = 0; k < 600; k++) {
-      if (k % 30 === 0) for (const d of ds) h.status.applyElement(d, els[(k / 30) % els.length]!, 60, 'player');
+      if (k % 30 === 0)
+        for (const d of ds) h.status.applyElement(d, els[(k / 30) % els.length]!, 60, 'player');
       const t0 = performance.now();
       h.tick();
       ms += performance.now() - t0;

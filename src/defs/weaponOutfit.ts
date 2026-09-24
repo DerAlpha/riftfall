@@ -81,8 +81,16 @@ export const ATTACHMENT_ART = {
     bandAt: 0.35,
     bandWidth: 0.012,
   },
-  /** Ammo band colors (emissive, sRGB): overpressure, armor piercing. */
-  bands: { overpressure: 0xff5a1a, apround: 0x6ad8ff, bandIntensity: 3.5 },
+  /** Glowing bands of the magazine add-ons per attachment id (emissive, sRGB hex). */
+  bands: {
+    colors: { overpressure: 0xff5a1a, apround: 0x6ad8ff, capacitor: 0x40e0ff, heavyload: 0xffa020 } as Readonly<
+      Record<string, number>
+    >,
+    fallback: 0x36e4ff,
+    intensity: 3.5,
+  },
+  /** The library's own accent (swapped for the host weapon's accent material when fitted). */
+  accentIntensity: 2.2,
 } as const;
 
 /** World-space laser sight (LaserSight): dot and beam of a fitted laser. */

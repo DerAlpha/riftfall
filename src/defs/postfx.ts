@@ -141,6 +141,10 @@ export const POSTFX = {
      */
     maxLenses: 4,
     lensEinstein: 0.34,
+    /** M5 heat haze (flamethrower streams, ShockwaveEffect.setHaze): slots, noise cells per UV, scroll (1/s). */
+    maxHazes: 2,
+    hazeFrequency: 38,
+    hazeScroll: 3,
   },
   smaaPreset: 'HIGH',
 } as const;

@@ -178,6 +178,11 @@ export class StatusEffectSystem implements StatusEffectsApi, CombatStatusHook {
 
   // --- per tick ---
   private comboBudget = 0;
+  /** Start times of the latest full-size combo bursts (ELEMENTS.combos.vfx). */
+  private readonly burstTimes = new Float64Array(ELEMENTS.combos.vfx.fullBursts).fill(
+    Number.NEGATIVE_INFINITY,
+  );
+  private burstCursor = 0;
   /** End times of the death clouds alive (ELEMENTS.poisoned.cloud.maxActive). */
   private readonly cloudEnds = new Float64Array(ELEMENTS.poisoned.cloud.maxActive);
   private vfxBudget = 0;
@@ -396,6 +401,7 @@ export class StatusEffectSystem implements StatusEffectsApi, CombatStatusHook {
   reset(): void {
     while (this.count > 0) this.release(this.count - 1);
     this.cloudEnds.fill(0);
+    this.burstTimes.fill(Number.NEGATIVE_INFINITY);
     this.vfxCursor = 0;
   }
 
@@ -648,7 +654,7 @@ export class StatusEffectSystem implements StatusEffectsApi, CombatStatusHook {
     p.combo = combo.id;
     copyVec(_center, p.position);
     this.events.emit('combat:combo', p);
-    this.vfx?.spawn(combo.vfx, _center, UP, combo.vfxScale);
+    this.vfx?.spawn(combo.vfx, _center, UP, combo.vfxScale * this.burstScale());
 
     this.deal(t, damage, combo.element, 'explosion', src, wpn);
     if (combo.area) {
@@ -666,6 +672,16 @@ export class StatusEffectSystem implements StatusEffectsApi, CombatStatusHook {
       this.arcFrom(t, arcs.count, arcs.range, arcs.damage * tough, combo.element, el, arcs.buildup, src, wpn);
     }
     this.picks.fill(STUB);
+  }
+
+  /** Full size while few bursts played lately, else the crowded scale (a horde reacting at once). */
+  private burstScale(): number {
+    const V = ELEMENTS.combos.vfx;
+    const n = this.burstTimes.length;
+    if (n === 0 || this.now - this.burstTimes[this.burstCursor]! < V.window) return V.crowdedScale;
+    this.burstTimes[this.burstCursor] = this.now;
+    this.burstCursor = (this.burstCursor + 1) % n;
+    return 1;
   }
 
   /** Voidrupture: the other statuses restart at full length and their damage over time is multiplied. */

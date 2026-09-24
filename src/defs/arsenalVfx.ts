@@ -125,10 +125,10 @@ const OLIVE: Rgb = [0.12, 0.13, 0.08];
 function led(color: Rgb, rate: number, offset: number): GlowLayerDef {
   return {
     shape: 'flare',
-    size: 0.26,
+    size: 0.34,
     color,
-    intensity: 6,
-    pulse: { rate, depth: 0.92, square: true },
+    intensity: 7,
+    pulse: { rate, depth: 0.85, square: true },
     offset,
   };
 }
@@ -137,8 +137,8 @@ export const PROJECTILE_VISUALS = {
   /** PL-2 plasma bolt: a white-hot stretched core in a cyan sheath. */
   'projectile.plasma': {
     glows: [
-      { shape: 'bolt', size: 0.1, color: PLASMA_CORE, intensity: 9, stretch: 0.012, maxStretch: 0.9 },
-      { shape: 'bolt', size: 0.3, color: PLASMA, intensity: 2.2, stretch: 0.012, maxStretch: 0.9 },
+      { shape: 'bolt', size: 0.1, color: PLASMA_CORE, intensity: 6, stretch: 0.012, maxStretch: 0.9 },
+      { shape: 'bolt', size: 0.3, color: PLASMA, intensity: 3, stretch: 0.012, maxStretch: 0.9 },
       { shape: 'orb', size: 0.7, color: PLASMA, intensity: 0.55, offset: 0.05 },
     ],
     body: null,
@@ -448,6 +448,8 @@ export interface FlameBeamDef {
   readonly light: SustainLightDef;
   /** The light sits this fraction along the flame. */
   readonly lightAlong: number;
+  /** Heat shimmer behind the stream: UV displacement, radius (m) at the nozzle and at the end. */
+  readonly haze: { readonly strength: number; readonly radiusFrom: number; readonly radiusTo: number } | null;
 }
 
 export interface RayBeamDef {
@@ -540,6 +542,7 @@ export const BEAM_STYLES = {
     hitRate: 14,
     light: { color: [1, 0.5, 0.18], intensity: 70, range: 8, interval: 0.06 },
     lightAlong: 0.45,
+    haze: { strength: 0.006, radiusFrom: 0.06, radiusTo: 1.1 },
   },
   /** Void ray (SX-0 family, Riss-Zerreißer shots): a violet band with a dark spiralling heart. */
   'beam.void': {
@@ -849,6 +852,8 @@ export const ARSENAL_VFX = {
   reducedFlashingScale: 0.6,
   /** Screen-space lenses at once (singularity fields + void orbs; ShockwaveEffect slots). */
   lenses: POSTFX.shockwave.maxLenses,
+  /** Screen-space heat hazes at once (flame streams; ShockwaveEffect slots). */
+  hazes: POSTFX.shockwave.maxHazes,
   /** Dev preview (`fx` console command, vfx/arsenal/arsenalCommands.ts). */
   preview: {
     /** Seconds a previewed beam fires, a field lasts, a charge takes (then it fires a rail shot). */

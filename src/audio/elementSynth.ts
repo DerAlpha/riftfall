@@ -15,7 +15,7 @@
 import type { StatusId } from '../core/events';
 import type { ComboId } from '../defs/elements';
 import { LOOP_DURATION, LOOP_SECONDS, LOOP_XF, kitOf, loopHz, midi, type Kit, type Recipe } from './arsenalKit';
-import { iceCascade, icePing } from './energySynth';
+import { iceCascade } from './energySynth';
 import type { SynthDef } from './synth';
 
 const LD = LOOP_DURATION;
@@ -199,10 +199,11 @@ const explosionVoidSmall: Recipe = (g, t) => {
 const fieldPullVoid: Recipe = (g, t) => {
   const k = kitOf(g);
   k.bed(t, LD, 'brown', 'lowpass', 220, 0.7, 0.7, { freqLfo: { rate: 1, depth: 90 }, gainLfo: { rate: 2, depth: 0.35 } });
-  k.bed(t, LD, 'pink', 'bandpass', 700, 5, 0.35, { freqLfo: { rate: 0.5, depth: 450 } });
-  k.bed(t, LD, 'pink', 'bandpass', 1400, 6, 0.2, { freqLfo: { rate: 1.5, depth: 600 } });
+  k.bed(t, LD, 'pink', 'bandpass', 700, 5, 0.6, { freqLfo: { rate: 0.5, depth: 450 } });
+  k.bed(t, LD, 'pink', 'bandpass', 1400, 6, 0.4, { freqLfo: { rate: 1.5, depth: 600 } });
+  k.bed(t, LD, 'white', 'bandpass', 3200, 2, 0.08, { gainLfo: { rate: 2, depth: 0.8 } });
   const tonal = k.loopBus(t);
-  tonal.drone(t, LD, 38, 0.5, { tremolo: { rate: 2, depth: 0.7 } });
+  tonal.drone(t, LD, 38, 0.4, { tremolo: { rate: 2, depth: 0.7 } });
   tonal.drone(t, LD, 57, 0.2, { tremolo: { rate: 2, depth: 0.5 } });
   tonal.drone(t, LD, 220, 0.03, { type: 'triangle', vibrato: { rate: 4, depth: 12 } });
 };
@@ -249,7 +250,9 @@ const fieldSlowIce: Recipe = (g, t) => {
   }
   const pings = Math.round(LD * 5);
   for (let i = 0; i < pings; i++) {
-    icePing(k, t + k.rng.next() * (LD - 0.2), k.r(3000, 8000), k.r(0.15, 0.3), k.r(0.08, 0.15));
+    const at = t + k.rng.next() * (LD - 0.2);
+    const f = k.r(3000, 8000);
+    k.note(at, 'sine', f, f, 0.004, 0.004, k.r(0.15, 0.3), k.r(0.08, 0.15));
   }
 };
 
@@ -296,11 +299,12 @@ const flightGrenade: Recipe = (g, t) => {
 const flightVoid: Recipe = (g, t) => {
   const k = kitOf(g);
   const tonal = k.loopBus(t);
-  tonal.drone(t, LD, 45, 0.6, { tremolo: { rate: 3, depth: 0.8 } });
-  tonal.drone(t, LD, 67.5, 0.3, { detune: 12 });
-  tonal.drone(t, LD, 880, 0.03, { vibrato: { rate: 5, depth: 20 } });
-  k.bed(t, LD, 'pink', 'bandpass', 320, 2, 0.5, { freqLfo: { rate: 0.5, depth: 150 } });
-  k.bed(t, LD, 'pink', 'bandpass', 1200, 3, 0.15, { gainLfo: { rate: 1.5, depth: 0.7 } });
+  tonal.drone(t, LD, 45, 0.4, { tremolo: { rate: 3, depth: 0.8 } });
+  tonal.drone(t, LD, 67.5, 0.2, { detune: 12 });
+  tonal.drone(t, LD, 880, 0.05, { vibrato: { rate: 5, depth: 20 } });
+  k.bed(t, LD, 'pink', 'bandpass', 320, 2, 0.6, { freqLfo: { rate: 0.5, depth: 150 } });
+  k.bed(t, LD, 'pink', 'bandpass', 700, 3, 0.4, { freqLfo: { rate: 1, depth: 300 }, gainLfo: { rate: 3, depth: 0.5 } });
+  k.bed(t, LD, 'pink', 'bandpass', 1500, 3, 0.25, { gainLfo: { rate: 1.5, depth: 0.7 } });
 };
 
 /** Shock orb (aether harp): the chord's tones shimmering, crackle and a low hum. */
@@ -321,7 +325,10 @@ const flightCryo: Recipe = (g, t) => {
   tonal.drone(t, LD, 110, 0.05);
   k.bed(t, LD, 'white', 'bandpass', 3200, 1.5, 0.25, { freqLfo: { rate: 0.5, depth: 800 } });
   const pings = Math.round(LD * 8);
-  for (let i = 0; i < pings; i++) icePing(k, t + k.rng.next() * (LD - 0.1), k.r(3000, 8000), k.r(0.05, 0.15), k.r(0.05, 0.12));
+  for (let i = 0; i < pings; i++) {
+    const f = k.r(3000, 8000);
+    k.note(t + k.rng.next() * (LD - 0.1), 'sine', f, f, 0.004, 0.004, k.r(0.05, 0.15), k.r(0.05, 0.12));
+  }
 };
 
 // ---------------------------------------------------------------------------
@@ -597,6 +604,7 @@ export const ELEMENT_SYNTH_ALIASES: Readonly<Record<string, keyof typeof ELEMENT
   'field.damage.ice': 'field.slow.ice',
   'field.damage.physical': 'field.damage.fire',
   'field.slow.physical': 'field.slow.void',
+  'field.slow.chrono': 'field.slow.void',
   'field.slow.fire': 'field.damage.fire',
   'field.slow.shock': 'field.damage.shock',
   'field.slow.poison': 'field.damage.poison',

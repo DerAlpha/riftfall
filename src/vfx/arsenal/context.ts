@@ -26,6 +26,19 @@ export type EffectSpawner = (effect: string, position: Vec3Like, normal: Vec3Lik
  */
 export type LensSink = (slot: number, position: Vec3Like, radius: number, strength: number) => void;
 
+/**
+ * Screen-space heat-haze sink (RenderSystem.setHaze): `slot` < ARSENAL_VFX.hazes; a capsule from →
+ * to widening from radiusFrom to radiusTo m; strength (UV displacement) 0 turns a slot off.
+ */
+export type HazeSink = (
+  slot: number,
+  from: Vec3Like,
+  to: Vec3Like,
+  radiusFrom: number,
+  radiusTo: number,
+  strength: number,
+) => void;
+
 export interface ArsenalContext {
   /** World camera position this frame (discs tilt towards it). */
   readonly eye: THREE.Vector3;
@@ -48,12 +61,43 @@ export interface ArsenalContext {
   /** Lens requests of this frame (x, y, z, radius, strength per entry). */
   readonly lensQueue: Float32Array;
   lensCount: number;
+  /** Haze requests of this frame (from xyz, to xyz, radiusFrom, radiusTo, strength per entry). */
+  readonly hazeQueue: Float32Array;
+  hazeCount: number;
 }
 
 export const LENS_STRIDE = 5;
+export const HAZE_STRIDE = 9;
 
 export function createLensQueue(): Float32Array {
   return new Float32Array(ARSENAL_VFX.lenses * LENS_STRIDE);
+}
+
+export function createHazeQueue(): Float32Array {
+  return new Float32Array(ARSENAL_VFX.hazes * HAZE_STRIDE);
+}
+
+/** Queue a heat haze for this frame (dropped when all slots are taken). */
+export function requestHaze(
+  ctx: ArsenalContext,
+  from: Vec3Like,
+  to: Vec3Like,
+  radiusFrom: number,
+  radiusTo: number,
+  strength: number,
+): void {
+  if (ctx.hazeCount >= ARSENAL_VFX.hazes || !(strength > 0)) return;
+  const o = ctx.hazeCount++ * HAZE_STRIDE;
+  const q = ctx.hazeQueue;
+  q[o] = from.x;
+  q[o + 1] = from.y;
+  q[o + 2] = from.z;
+  q[o + 3] = to.x;
+  q[o + 4] = to.y;
+  q[o + 5] = to.z;
+  q[o + 6] = radiusFrom;
+  q[o + 7] = radiusTo;
+  q[o + 8] = strength;
 }
 
 /** Queue a screen lens for this frame (dropped when all slots are taken). */

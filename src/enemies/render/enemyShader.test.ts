@@ -83,9 +83,9 @@ describe('enemy shader ↔ CPU pose math consistency', () => {
       expect(u.rfLook.value.y).toBeCloseTo(rig.lookPitchMax, 6);
       // No reach given: per-instance culling is off.
       expect(u.rfCullRadius.value).toBe(0);
-      expect(createEnemyMaterials(id, rig, def, tex, createSharedUniforms(null), 2.5).uniforms.rfCullRadius.value).toBe(
-        2.5,
-      );
+      expect(
+        createEnemyMaterials(id, rig, def, tex, createSharedUniforms(null), 2.5).uniforms.rfCullRadius.value,
+      ).toBe(2.5);
       expect(set.material.customProgramCacheKey()).toBe(
         createEnemyMaterials(id, rig, def, tex, createSharedUniforms(null)).material.customProgramCacheKey(),
       );
@@ -170,7 +170,9 @@ describe('shader patches (three r186 chunks)', () => {
     expect(color).toContain('rfZone = 0.0;');
     for (const d of depth) {
       expect(d).toContain('transformed = vec3( 0.0 );');
-      expect(d).toContain('if ( rfInstanceVisible() ) rfDeform( position, vec3( 0.0, 1.0, 0.0 ), transformed');
+      expect(d).toContain(
+        'if ( rfInstanceVisible() ) rfDeform( position, vec3( 0.0, 1.0, 0.0 ), transformed',
+      );
     }
     for (const src of [color, ...depth]) {
       expect(src.indexOf('bool rfInstanceVisible()')).toBeLessThan(src.indexOf('if ( rfInstanceVisible() )'));

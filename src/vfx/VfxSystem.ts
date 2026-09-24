@@ -65,7 +65,7 @@ import {
   type Rgb,
 } from '../defs/vfx';
 import type { AccessibilitySettings, GraphicsSettings, QualityLevel } from '../save/settingsSchema';
-import { ArsenalVfx, type LensSink } from './arsenal/ArsenalVfx';
+import { ArsenalVfx, type HazeSink, type LensSink } from './arsenal/ArsenalVfx';
 import { CasingSystem, type ClinkCallback } from './CasingSystem';
 import {
   createDecalAtlas,
@@ -98,6 +98,8 @@ export interface VfxDeps {
   shockwave?: ((position: Vec3Like, radius: number, strength: number) => void) | null;
   /** Screen-space lens slots (RenderSystem.setLens): singularities bend the image around them. */
   lens?: LensSink | null;
+  /** Screen-space heat-haze slots (RenderSystem.setHaze): flame streams shimmer. */
+  haze?: HazeSink | null;
   /** Casing bounce sound hook (position, sound id, impact speed m/s) → AudioEventBridge.playCasing. */
   onClink?: ClinkCallback | null;
   /** Cosmetic randomness (default Math.random). */
@@ -268,6 +270,7 @@ export class VfxSystem implements VfxWeaponApi {
     this.muzzleFlash = new MuzzleFlash(this.spriteAtlas, this.rand);
 
     const lens = deps.lens ?? null;
+    const haze = deps.haze ?? null;
     this.arsenal = new ArsenalVfx({
       render: this.render,
       particles: this.particles,
@@ -275,9 +278,12 @@ export class VfxSystem implements VfxWeaponApi {
       spawn: (effect, position, normal, scale) => this.spawn(effect, position, normal, scale),
       physics: this.physics,
       sockets: () => this.sockets,
-      // Lens distortion follows the screen-shake accessibility option like the shockwave.
+      // Lens / haze distortion follow the screen-shake accessibility option like the shockwave.
       lens: lens
         ? (slot, p, radius, strength) => lens(slot, p, radius, strength * this.shockwaveScale)
+        : null,
+      haze: haze
+        ? (slot, a, b, r0, r1, strength) => haze(slot, a, b, r0, r1, strength * this.shockwaveScale)
         : null,
       random: this.rand,
     });

@@ -11,6 +11,11 @@
  * ViewmodelAnimator (weapon:* events). Persistent socket anchors (muzzle / ejectPort / sight)
  * follow whatever model is shown, so effects can attach to them once.
  * Light count never changes with the model, so swapping models does not recompile shaders.
+ *
+ * M5 (Rift Forge / Werkbank): a ViewmodelOutfitter dresses the shown model in its weapon's mod
+ * state (setModsSource: attachments, forge look, laser sight); a fitted optic moves the ADS sight
+ * point (and eye relief), a muzzle device the muzzle anchor. setStowed lowers the weapon out of
+ * view while the forge holds it. The accent light follows the animator's driver boost.
  */
 import {
   DirectionalLight,
@@ -40,6 +45,12 @@ import {
   type WeaponViewmodelModel,
 } from '../weapons/viewmodels';
 import { adsOffsetFromSight, mapViewPointBetweenProjections } from '../weapons/viewmodels/socketMath';
+import {
+  ViewmodelOutfitter,
+  type LaserRaycast,
+  type ModsSource,
+} from '../weapons/viewmodels/attachments/ViewmodelOutfitter';
+import { OUTFIT_RIG } from '../defs/weaponOutfit';
 import { springImpulseForPeak, stepSpringSubstepped } from './cameraMath';
 import type { PlayerCamera } from './PlayerCamera';
 import type { PlayerController } from './PlayerController';
@@ -121,17 +132,29 @@ function modelSpacePosition(obj: Object3D, root: Object3D, out: Vector3): Vector
   return out;
 }
 
-function resolveWeaponPose(model: WeaponViewmodelModel): WeaponPose {
+function resolveWeaponPose(
+  model: WeaponViewmodelModel,
+  sightOverride: Object3D | null = null,
+  eyeDistance: number | null = null,
+): WeaponPose {
   const def: WeaponViewmodelDef = model.def;
   const v = (x = 0, y = 0, z = 0): Vector3 => new Vector3(x, y, z);
-  const sight = modelSpacePosition(model.sight, model.root, new Vector3()).multiplyScalar(def.scale ?? 1);
+  // A fitted optic (M5) takes over the sight line: its reticle point and, magnified, its eye relief.
+  const sight = modelSpacePosition(sightOverride ?? model.sight, model.root, new Vector3()).multiplyScalar(
+    def.scale ?? 1,
+  );
   const r = def.hip.rot;
   const sp = def.sprint.pos;
   const sr = def.sprint.rot;
   return {
     hip: v(def.hip.pos.x, def.hip.pos.y, def.hip.pos.z),
     hipRot: v((r?.x ?? 0) * DEG2RAD, (r?.y ?? 0) * DEG2RAD, (r?.z ?? 0) * DEG2RAD),
-    ads: adsOffsetFromSight(sight, def.adsEyeDistance, new Vector3(), def.adsNudge),
+    ads: adsOffsetFromSight(
+      sight,
+      eyeDistance ?? def.adsEyeDistance,
+      new Vector3(),
+      sightOverride ? undefined : def.adsNudge,
+    ),
     sprintPos: v(sp?.x, sp?.y, sp?.z),
     sprintRot: v((sr?.x ?? 0) * DEG2RAD, (sr?.y ?? 0) * DEG2RAD, (sr?.z ?? 0) * DEG2RAD),
   };
@@ -163,6 +186,11 @@ export class ViewmodelRig {
   private readonly missingModels = new Set<string>();
   private readonly anchors: Record<ViewmodelSocket, Object3D>;
   private readonly unsubscribers: (() => void)[] = [];
+  /** M5: attachments, forge look and laser sight of the shown weapon. */
+  private readonly outfitter: ViewmodelOutfitter;
+  /** M5 Rift Forge: 0..1 how far the weapon is lowered out of view, and where it is going. */
+  private stow = 0;
+  private stowTarget = 0;
 
   private readonly swayX = spring();
   private readonly swayY = spring();
@@ -240,6 +268,7 @@ export class ViewmodelRig {
     this.attachAnchors();
     this.applyLightsForModel();
 
+    this.outfitter = new ViewmodelOutfitter(() => (this.kit ??= new WeaponMaterialKit()), this.render.scene);
     this.animator = new ViewmodelAnimator({
       events: deps.events,
       showModel: (id) => this.displayWeapon(id),
@@ -279,6 +308,29 @@ export class ViewmodelRig {
   /** Use another ADS source (the weapon system); null restores the player's input ADS. */
   setAdsSource(source: { readonly adsAmount: number } | null): void {
     this.adsSource = source ?? this.player;
+  }
+
+  /** M5: where the shown weapon's mod state comes from (WeaponSystem.modsOf); null = none. */
+  setModsSource(source: ModsSource | null): void {
+    this.outfitter.setModsSource(source);
+  }
+
+  /** M5: ray query for a fitted laser's dot (null = no dot, beam only). */
+  setLaserRaycast(raycast: LaserRaycast | null): void {
+    this.outfitter.setLaserRaycast(raycast);
+  }
+
+  /** M5: the laser sight draws on RENDER.volumetricLayer (OR it into the volumetric probe). */
+  get hasVolumetricContent(): boolean {
+    return this.outfitter.hasVolumetricContent;
+  }
+
+  /**
+   * M5 Rift Forge: lower the weapon out of view (true) while a machine holds it, raise it again
+   * (false). A new forge look waits until the weapon is out of view.
+   */
+  setStowed(stowed: boolean): void {
+    this.stowTarget = stowed ? 1 : 0;
   }
 
   /**

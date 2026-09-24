@@ -29,6 +29,7 @@ import { createParticleSpawn } from '../ParticleBuffer';
 import {
   createSustainState,
   pushGlow,
+  requestHaze,
   sustainLight,
   type ArsenalContext,
   type SustainState,
@@ -597,6 +598,7 @@ export class ArsenalBeams {
       ch.hitAcc -= 1;
       ctx.spawn(s.hitEffect, t, _n, 1);
     }
+    if (s.haze) requestHaze(ctx, f, t, s.haze.radiusFrom, s.haze.radiusTo, s.haze.strength);
     _p.x = f.x + dx * len * s.lightAlong;
     _p.y = f.y + dy * len * s.lightAlong;
     _p.z = f.z + dz * len * s.lightAlong;

@@ -450,6 +450,22 @@ export class RenderSystem implements RenderApi {
     this.post.setLens(slot, position, radius, strength);
   }
 
+  /**
+   * Heat-haze `slot` (M5 flamethrower streams): the image shimmers in a capsule from `from` to `to`
+   * widening from `radiusFrom` to `radiusTo` m; strength 0 clears it. Set every frame.
+   */
+  setHaze(
+    slot: number,
+    from: Vec3Like,
+    to: Vec3Like,
+    radiusFrom: number,
+    radiusTo: number,
+    strength: number,
+  ): void {
+    if (this.disposed) return;
+    this.post.setHaze(slot, from, to, radiusFrom, radiusTo, strength);
+  }
+
   setHealthFraction(f: number): void {
     if (!Number.isFinite(f)) return;
     this.healthTarget = clamp01(f);

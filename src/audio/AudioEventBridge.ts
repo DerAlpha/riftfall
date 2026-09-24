@@ -29,17 +29,27 @@
  * Rift-Kiste, perk machines (hums, jingles, perk stings), power-up pickups, stingers and expiry,
  * rift seals. World anchors (doors, machines, the box, the power-up clock) come from
  * setEconomySources; update() and resetRun() drive it too.
+ *
+ * Arsenal (M5, ArsenalAudio in arsenalAudio.ts): beam / charge / spin loops of the weapon in hand,
+ * positional flight and field loops (nearest first, voice budgets; positions from
+ * setArsenalSources), bounces, statuses, combos, grenades, abilities, forge and bench. Here: beam
+ * ticks play no gunshot (the loop is their sound), gunshot tails follow the room (the engine's
+ * reverb zone), the mechanical layer and the tail of one weapon thin out at very high rates,
+ * energy weapons hit with their impact profile (impact.plasma …) instead of the surface sound,
+ * explosions play their own `audio` id (else explosion.<element>) through a token bucket.
  */
 import type { PlayOptions } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
 import type { FleshSurface, GameEvents, HitZone, SurfaceType, Vec3Like } from '../core/events';
-import { AUDIO, type EnemyAudioBudgetDef, type EnemyAudioKind } from '../defs/audio';
+import { AUDIO, type EnemyAudioBudgetDef, type EnemyAudioKind, type ReverbZone } from '../defs/audio';
 import { getEnemyAttackDef, getEnemyDef } from '../defs/enemies';
 import { MOVEMENT } from '../defs/movement';
 import { getWeaponDef, type ReloadStep } from '../defs/weapons';
 import { remapClamped } from './dsp';
-import type { LoopOptions } from './AudioEngine';
+import type { LoopOptions, LoopUpdate } from './AudioEngine';
+import { ArsenalAudio, isBenchMenu, roomTail, type ArsenalAudioSources } from './arsenalAudio';
 import { EconomyAudio, type EconomyAudioSources } from './economyAudio';
+import { TokenBucket } from './tokenBucket';
 
 /** The engine surface the bridge needs (AudioEngine implements it; tests use a fake). */
 export interface AudioBridgeTarget {
@@ -53,6 +63,10 @@ export interface AudioBridgeTarget {
    * gesture). Optional: without it the bridge assumes it can play.
    */
   readonly unlocked?: boolean;
+  /** Retune a running loop (M5: charge/spin pitch, flight positions); false when it is gone. Optional. */
+  updateLoop?(handle: number, u: LoopUpdate): boolean;
+  /** The room the reverb models (gunshot tails follow it). Optional. */
+  readonly activeReverbZone?: ReverbZone | null;
 }
 
 const M = AUDIO.movement;
@@ -60,6 +74,7 @@ const B = AUDIO.bridge;
 const W = AUDIO.weapons;
 const E = AUDIO.enemies;
 const ST = AUDIO.stings;
+const AR = AUDIO.arsenal;
 const TAU = Math.PI * 2;
 
 // ---------------------------------------------------------------------------
@@ -139,28 +154,7 @@ export function lowAmmoThreshold(magSize: number): number {
   return Math.min(L.maxRounds, Math.ceil(magSize * L.fraction));
 }
 
-/** Token bucket rate limiter (`now` in seconds). */
-export class TokenBucket {
-  private tokens: number;
-  private last = Number.NaN;
-
-  constructor(
-    private readonly capacity: number,
-    private readonly refillPerSecond: number,
-  ) {
-    this.tokens = capacity;
-  }
-
-  take(now: number): boolean {
-    if (Number.isFinite(this.last) && now > this.last) {
-      this.tokens = Math.min(this.capacity, this.tokens + (now - this.last) * this.refillPerSecond);
-    }
-    this.last = now;
-    if (this.tokens < 1) return false;
-    this.tokens -= 1;
-    return true;
-  }
-}
+export { TokenBucket };
 
 /**
  * Fixed voice budget with priority + distance preemption (pure; `now` in seconds). A request
@@ -304,6 +298,11 @@ export class AudioEventBridge {
   private readonly lastSpawn = { x: 0, y: 0, z: 0, time: Number.NEGATIVE_INFINITY, id: '' };
   /** M4 economy sounds (doors, box, perks, power-ups, seals, purchases). */
   readonly economy: EconomyAudio;
+  /** M5 arsenal sounds (weapon loops, projectiles, fields, elements, grenades, abilities, forge). */
+  readonly arsenal: ArsenalAudio;
+  /** Gunshot layer spacing (AUDIO.arsenal.fireLayerMinInterval): last play per layer index, per weapon. */
+  private readonly layerLastAt = new Float64Array(8).fill(Number.NEGATIVE_INFINITY);
+  private layerWeapon = '';
 
   /**
    * Casing bounce hook with the VFX ClinkCallback signature (position, sound id, impact speed) –
@@ -358,6 +357,8 @@ export class AudioEventBridge {
       events.on('ui:console', (e) => this.play(e.open ? 'ui.click' : 'ui.back', B.uiGain, 0, 'ui')),
       // The ui bus keeps playing while the game is paused, so the pause menu clicks too.
       events.on('ui:menu', (e) => {
+        // Bench menus sound through ArsenalAudio (drawer + chirp).
+        if (isBenchMenu(e.menu)) return;
         if (e.open) {
           if (!B.menuSilentOpen.includes(e.menu)) this.play('ui.click', B.uiGain, 0, 'ui');
         } else if (!B.menuSilentClose.includes(e.menu)) this.play('ui.back', B.uiGain, 0, 'ui');
@@ -366,6 +367,12 @@ export class AudioEventBridge {
     this.wireWeapons(events);
     this.wireEnemies(events);
     this.economy = new EconomyAudio(events, audio, now, random);
+    this.arsenal = new ArsenalAudio(events, audio, now);
+  }
+
+  /** World sources of the M5 arsenal loops: drawn projectile positions, moving fields. */
+  setArsenalSources(sources: ArsenalAudioSources): void {
+    this.arsenal.setSources(sources);
   }
 
   /** World anchors of the economy sounds: doors, perk machines, the box, the power-up clock. */
@@ -408,6 +415,7 @@ export class AudioEventBridge {
     this.frame++;
     this.updateStrikes();
     this.economy.update(dt, this.hasListener ? this.listener : null);
+    this.arsenal.update(dt, this.hasListener ? this.listener : null);
     const list = this.enemySource?.enemies;
     if (!list) return;
     for (let i = 0; i < list.length; i++) {
@@ -424,6 +432,7 @@ export class AudioEventBridge {
     this.stopSlide();
     this.enemySource = null;
     this.economy.dispose();
+    this.arsenal.dispose();
   }
 
   // -------------------------------------------------------------------------
@@ -701,6 +710,7 @@ export class AudioEventBridge {
     }
     this.lastSpawn.time = Number.NEGATIVE_INFINITY;
     this.economy.resetRun();
+    this.arsenal.resetRun();
   }
 
   // -------------------------------------------------------------------------
@@ -711,12 +721,25 @@ export class AudioEventBridge {
     const has = this.has;
     this.offs.push(
       events.on('weapon:fired', (e) => {
+        // Beam damage ticks (10–12/s): the beam loop is their sound (ArsenalAudio).
+        if (this.arsenal.absorbsFire(e.weaponId)) return;
         const layers = fireSoundLayers(e.weaponId);
         // One pitch for all layers of a shot: independent per-layer detune smears the transient
         // (crack, body and mechanics drift apart) and reads as several guns (cosmetic randomness).
         const pitch = 1 + (this.random() * 2 - 1) * W.firePitchVariance;
+        const now = this.now();
+        if (e.weaponId !== this.layerWeapon) {
+          this.layerWeapon = e.weaponId;
+          this.layerLastAt.fill(Number.NEGATIVE_INFINITY);
+        }
+        // Tails follow the room: shorter and quieter in small rooms, longer in halls.
+        const room = roomTail(this.audio.activeReverbZone);
         for (let i = 0; i < layers.length; i++) {
-          this.play(layers[i]!, W.fireGain * fireLayerGain(i), 0, 'sfx', pitch);
+          if (!this.layerDue(i, now)) continue;
+          const id = layers[i]!;
+          const tail = id.startsWith(AR.tailPrefix);
+          const gain = W.fireGain * fireLayerGain(i) * (tail ? room.gain : 1);
+          this.play(id, gain, 0, 'sfx', tail ? pitch * room.pitch : pitch);
         }
         const extra = extraFireSoundLayers(e.weaponId);
         for (let i = 0; i < extra.length; i++) {
@@ -782,17 +805,30 @@ export class AudioEventBridge {
           this.playEnemy('splash', PROJECTILE_BUDGET, splash, e.point);
           return;
         }
+        // A projectile that stops on a surface / body is no bounce (projectile:impact follows).
+        if (e.kind === 'projectile') this.arsenal.noteProjectileImpact(e.weaponId);
         const kindGain = W.impactKindGain[e.kind] ?? 1;
-        if (!(kindGain > 0) || !this.impactBucket.take(this.now())) return;
-        this.playAt(impactSoundId(e.surface), e.point, W.impactGain * kindGain, W.impactPitchVariance);
+        if (!(kindGain > 0)) return;
+        if (e.kind === 'beam' && !this.arsenal.takeBeamImpact()) return;
+        if (!this.impactBucket.take(this.now())) return;
+        // Energy weapons hit with their own impact profile (impact.plasma, impact.shock …).
+        const energy = this.arsenal.impactSoundFor(e.weaponId);
+        if (energy !== null) {
+          const gain = W.impactGain * kindGain * AR.impacts.energyGain;
+          this.playAt(energy, e.point, gain, W.impactPitchVariance);
+        } else {
+          this.playAt(impactSoundId(e.surface), e.point, W.impactGain * kindGain, W.impactPitchVariance);
+        }
         // The blow itself (2D): only melee impacts come from the player's own arm in M2.
         if (e.kind === 'melee') this.play(W.meleeHitId, W.meleeHitGain, W.handlingPitchVariance);
       }),
       events.on('combat:explosion', (e) => {
+        // Chains of small blasts (explosive rounds, shatters) share a token bucket.
+        if (!this.arsenal.takeExplosion()) return;
         const X = W.explosion;
         const size = e.radius / X.referenceRadius;
         const k = Number.isFinite(size) ? Math.min(X.radiusGain[1], Math.max(X.radiusGain[0], size)) : 1;
-        this.playAt(X.id, e.position, X.gain * k, X.pitchVariance);
+        this.playAt(this.arsenal.explosionSound(e.audio, e.element), e.position, X.gain * k, X.pitchVariance);
       }),
       events.on('combat:damage', (e) => {
         if (e.source !== 'player' || e.killed || !(e.amount > 0)) return;
@@ -813,6 +849,16 @@ export class AudioEventBridge {
         if (isCritZone(e.zone)) this.play(W.hitSounds.crit, W.critKillLayerGain, 0, 'ui');
       }),
     );
+  }
+
+  /** May fire layer `index` of the current weapon play now (AUDIO.arsenal.fireLayerMinInterval)? */
+  private layerDue(index: number, now: number): boolean {
+    const gaps = AR.fireLayerMinInterval;
+    const gap = gaps.length === 0 ? 0 : gaps[Math.min(index, gaps.length - 1)]!;
+    const slot = Math.min(index, this.layerLastAt.length - 1);
+    if (now - this.layerLastAt[slot]! < gap) return false;
+    this.layerLastAt[slot] = now;
+    return true;
   }
 
   private playEquip(weaponId: string): void {

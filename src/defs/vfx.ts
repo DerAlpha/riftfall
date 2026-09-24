@@ -1922,10 +1922,14 @@ export const VFX_EFFECTS = {
   // --- M5 element impacts (played on top of the surface effect by the weapon's impact profile) ---
   'impact.plasma': {
     emitters: [
-      flashGlow(PLASMA_C, 0.35, 0.1, 5, 0.03),
-      { ...IMPACT_STAR, color: PLASMA_HOT, intensity: 14 },
-      streaks(PLASMA_HOT, [6, 10], [3, 8], [0.15, 0.35], 14, 65, { axis: 'reflect', gravity: 0.8 }),
-      shockRing(PLASMA_C, 0.08, 4, 0.14, 4, 0.03),
+      flashGlow(PLASMA_C, 0.35, 0.1, 3, 0.03),
+      { ...IMPACT_STAR, color: PLASMA_C, intensity: 8 },
+      streaks(PLASMA_HOT, [6, 10], [3, 8], [0.15, 0.35], 10, 65, {
+        axis: 'reflect',
+        gravity: 0.8,
+        colorEnd: PLASMA_C,
+      }),
+      shockRing(PLASMA_C, 0.08, 4, 0.14, 3, 0.03),
       motes(PLASMA_C, [2, 4], [0.5, 1.5], [0.4, 0.8], 5, { gravity: -0.2 }),
     ],
     light: impactLight([0.4, 0.8, 1], 3),
@@ -1973,8 +1977,8 @@ export const VFX_EFFECTS = {
         bounce: 0.3,
       },
       billow('mist', FROST_MIST, [1, 2], [0.1, 0.16], 3.5, [0.5, 0.9], [0.3, 0.9], 0.35, { gravity: 0.05 }),
-      motes(FROST_HOT, [2, 3], [0.8, 2.5], [0.3, 0.6], 8, { sprite: 'star', gravity: 0.5 }),
-      flashGlow(FROST_C, 0.26, 0.08, 3.5, 0.03),
+      motes(FROST_HOT, [2, 3], [0.8, 2.5], [0.3, 0.6], 6, { sprite: 'star', gravity: 0.5 }),
+      flashGlow(FROST_C, 0.26, 0.08, 2.2, 0.03),
     ],
     light: impactLight([0.6, 0.85, 1], 2.5),
   },
@@ -2280,7 +2284,8 @@ export const VFX_EFFECTS = {
   },
   'trail.smoke.puff': {
     emitters: [
-      billow('smoke', [0.4, 0.39, 0.37], [1, 1], [0.1, 0.16], 4.5, [0.9, 1.5], [0.1, 0.4], 0.42, {
+      // Light grey (lit): a dark puff vanishes against the concrete.
+      billow('smoke', [0.75, 0.73, 0.7], [1, 1], [0.14, 0.2], 4.5, [1, 1.7], [0.1, 0.4], 0.5, {
         minCount: 1,
         gravity: -0.05,
       }),
@@ -2398,7 +2403,7 @@ export const VFX_EFFECTS = {
         drag: 2.2,
         sizeEnd: 0.35,
       }),
-      flames([1, 1], [0.4, 0.7], [0.4, 0.7], [1, 2], 1.8, {
+      flames([1, 1], [0.4, 0.7], [0.4, 0.7], [1, 2], 2, {
         minCount: 1,
         spread: 15,
         sizeEnd: 1.6,

@@ -335,6 +335,18 @@ export class PostFXPipeline {
     this.shockwave.setLens(slot, position, radius, strength);
   }
 
+  /** Set / clear (strength 0) heat-haze `slot` (M5 flame streams, ShockwaveEffect). */
+  setHaze(
+    slot: number,
+    from: Vec3Like,
+    to: Vec3Like,
+    radiusFrom: number,
+    radiusTo: number,
+    strength: number,
+  ): void {
+    this.shockwave.setHaze(slot, from, to, radiusFrom, radiusTo, strength);
+  }
+
   /**
    * Tells whether anything besides the level volumetrics draws on RENDER.volumetricLayer this
    * frame (VFX particles/tracers). With level volumetrics off and no such content the volumetric

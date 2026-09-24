@@ -165,6 +165,11 @@ export const ELEMENTS = {
     perTick: 4,
     /** Area damage falls off to this fraction at the radius. */
     minFalloff: 0.5,
+    /**
+     * A horde reacting at once must stay readable: only `fullBursts` combo bursts per `window`
+     * seconds play at full size (flash, light, shake); the others play at `crowdedScale`.
+     */
+    vfx: { window: 0.4, fullBursts: 2, crowdedScale: 0.4 },
   },
   /** Enemy rim light per status (priority: first active wins) – linear hex, strength 0..1. */
   rim: {

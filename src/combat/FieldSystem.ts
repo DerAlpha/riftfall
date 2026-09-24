@@ -272,6 +272,15 @@ export class FieldSystem implements FieldApi {
     return true;
   }
 
+  /** Center of live field `id` (field loops follow moved fields); false when it is gone. */
+  positionOf(id: number, out: { set(x: number, y: number, z: number): unknown }): boolean {
+    const k = this.indexOf(id);
+    if (k < 0) return false;
+    const o = this.activeList[k]! * 3;
+    out.set(this.pos[o]!, this.pos[o + 1]!, this.pos[o + 2]!);
+    return true;
+  }
+
   /** End live field `id` early: visual and field:ended, no collapse. */
   end(id: number): boolean {
     const k = this.indexOf(id);

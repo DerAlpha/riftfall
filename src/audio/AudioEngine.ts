@@ -38,6 +38,16 @@ export interface LoopOptions extends PlayOptions {
   maxDuration?: number;
 }
 
+/**
+ * New values for a running loop (updateLoop, M5 arsenal loops): absolute volume and pitch
+ * (playback rate), and the world position of a loop started with one. Omitted fields keep theirs.
+ */
+export interface LoopUpdate {
+  volume?: number;
+  pitch?: number;
+  position?: Vec3Like;
+}
+
 interface Voice {
   handle: number;
   source: AudioBufferSourceNode | null;
@@ -260,6 +270,53 @@ export class AudioEngine implements AudioApi {
     if (handle <= 0) return;
     const voice = this.active.find((v) => v.handle === handle);
     if (voice) this.fadeAndStop(voice, fadeSeconds);
+  }
+
+  /**
+   * Retune a running loop (charge/spin pitch, flight positions, Doppler): volume and pitch glide
+   * there within `seconds`, a position within one frame (AUDIO.listenerRamp). False when the loop
+   * is gone (stopped, stolen, ended by its maxDuration).
+   */
+  updateLoop(handle: number, u: LoopUpdate, seconds: number = AUDIO.arsenal.retune): boolean {
+    const g = this.graph;
+    if (!g || handle <= 0) return false;
+    let voice: Voice | null = null;
+    for (let i = 0; i < this.active.length; i++) {
+      if (this.active[i]!.handle === handle) {
+        voice = this.active[i]!;
+        break;
+      }
+    }
+    const src = voice?.source;
+    if (!voice || !src || !voice.loop) return false;
+    const now = g.ctx.currentTime;
+    if (u.volume !== undefined && Number.isFinite(u.volume)) {
+      voice.volume = u.volume;
+      voice.gain.gain.cancelScheduledValues(now);
+      smoothTo(voice.gain.gain, u.volume, seconds, now);
+    }
+    if (u.pitch !== undefined && Number.isFinite(u.pitch)) {
+      src.playbackRate.cancelScheduledValues(now);
+      smoothTo(src.playbackRate, Math.max(0.05, u.pitch), seconds, now);
+    }
+    const p = voice.panner;
+    const pos = u.position;
+    if (p && pos) {
+      if (p.positionX) {
+        const end = now + AUDIO.listenerRamp;
+        p.positionX.linearRampToValueAtTime(pos.x, end);
+        p.positionY.linearRampToValueAtTime(pos.y, end);
+        p.positionZ.linearRampToValueAtTime(pos.z, end);
+      } else {
+        p.setPosition(pos.x, pos.y, pos.z);
+      }
+    }
+    return true;
+  }
+
+  /** The room the sfx reverb models (setReverbZone), null before the first zone. */
+  get activeReverbZone(): ReverbZone | null {
+    return this.reverbZone;
   }
 
   setReverbZone(zone: ReverbZone): void {

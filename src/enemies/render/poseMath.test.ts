@@ -592,7 +592,9 @@ describe('per-instance frustum culling (CPU mirror of the vertex shader test)', 
         cam.lookAt((next() - 0.5) * 30, 0, (next() - 0.5) * 30);
         cam.updateMatrixWorld();
         mv.multiplyMatrices(cam.matrixWorldInverse, mesh);
-        frustum.setFromProjectionMatrix(new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+        frustum.setFromProjectionMatrix(
+          new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse),
+        );
         const scale = 0.6 + next();
         const pos = new Vector3((next() - 0.5) * 50, next() * 4, (next() - 0.5) * 50);
         inst.compose(pos, rot.setFromAxisAngle(UP, next() * Math.PI * 2), new Vector3(scale, scale, scale));
@@ -620,7 +622,11 @@ describe('per-instance frustum culling (CPU mirror of the vertex shader test)', 
     const cam = new PerspectiveCamera(70, 1, 0.1, 10);
     cam.updateMatrixWorld();
     const far = new Matrix4().makeTranslation(0, 0, 500);
-    expect(instanceInFrustum(cam.projectionMatrix.elements, cam.matrixWorldInverse.elements, far.elements, 0)).toBe(true);
-    expect(instanceInFrustum(cam.projectionMatrix.elements, cam.matrixWorldInverse.elements, far.elements, 1)).toBe(false);
+    expect(
+      instanceInFrustum(cam.projectionMatrix.elements, cam.matrixWorldInverse.elements, far.elements, 0),
+    ).toBe(true);
+    expect(
+      instanceInFrustum(cam.projectionMatrix.elements, cam.matrixWorldInverse.elements, far.elements, 1),
+    ).toBe(false);
   });
 });

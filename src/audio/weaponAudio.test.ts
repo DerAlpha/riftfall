@@ -202,15 +202,15 @@ describe('weapon synth recipes', () => {
 describe('weapon sound mapping', () => {
   it('uses the weapon def fire layers, a convention id for unknown weapons', () => {
     expect(fireSoundLayers('rifle')).toBe(WEAPONS.rifle.audio.fire);
-    const f = fireSoundLayers('railgun');
-    expect(f).toEqual(['weapon.railgun.fire']);
-    expect(fireSoundLayers('railgun')).toBe(f); // cached, no allocation per shot
+    const f = fireSoundLayers('nope');
+    expect(f).toEqual(['weapon.nope.fire']);
+    expect(fireSoundLayers('nope')).toBe(f); // cached, no allocation per shot
     expect(fireLayerGain(0)).toBe(W.fireLayerGains[0]);
     expect(fireLayerGain(99)).toBe(W.fireLayerGains[W.fireLayerGains.length - 1]);
     // Extra layers are weapon data (WeaponAudioDef.extraFire), not keyed by id in the audio defs.
     expect(extraFireSoundLayers('shotgun')).toBe(WEAPONS.shotgun.audio.extraFire);
     expect(extraFireSoundLayers('pistol')).toEqual([]);
-    expect(extraFireSoundLayers('railgun')).toBe(extraFireSoundLayers('pistol')); // shared, no allocation
+    expect(extraFireSoundLayers('nope')).toBe(extraFireSoundLayers('pistol')); // shared, no allocation
   });
 
   it('prefers the per-weapon id when the engine knows it, else the def id', () => {
@@ -218,7 +218,7 @@ describe('weapon sound mapping', () => {
     expect(weaponSoundId('pistol', 'dry', knows)).toBe('weapon.pistol.dry');
     expect(weaponSoundId('pistol', 'dry')).toBe(WEAPONS.pistol.audio.dry);
     expect(weaponSoundId('pistol', 'holster', knows)).toBe(WEAPONS.pistol.audio.holster);
-    expect(weaponSoundId('railgun', 'equip')).toBe('weapon.railgun.equip');
+    expect(weaponSoundId('nope', 'equip')).toBe('weapon.nope.equip');
     expect(reloadStepSoundId('pistol', 'boltRelease', knows)).toBe('weapon.pistol.boltRelease');
     expect(reloadStepSoundId('pistol', 'boltRelease')).toBe(WEAPONS.pistol.audio.steps.boltRelease);
     expect(reloadStepSoundId('shotgun', 'shellIn', knows)).toBe('weapon.shotgun.shellIn');
@@ -460,7 +460,8 @@ describe('AudioEventBridge – weapons', () => {
     const boom = (radius: number): void =>
       events.emit('combat:explosion', { position: { x: 4, y: 1, z: -2 }, radius, element: 'fire' });
     boom(X.referenceRadius);
-    expect(audio.ids()).toEqual([X.id]);
+    // Without an `audio` id the element's blast plays (M5: explosion.<element>).
+    expect(audio.ids()).toEqual(['explosion.fire']);
     expect(resolveSynthId(X.id)).not.toBeNull();
     expect(audio.plays[0]!.opts.position).toEqual({ x: 4, y: 1, z: -2 });
     expect(audio.plays[0]!.opts.bus).toBe('sfx');

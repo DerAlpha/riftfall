@@ -341,6 +341,7 @@ export class Game {
       events,
       shockwave: (p, r, s) => render.addShockwave(p, r, s),
       lens: (slot, p, r, s) => render.setLens(slot, p, r, s),
+      haze: (slot, a, b, r0, r1, s) => render.setHaze(slot, a, b, r0, r1, s),
       onClink: audioBridge.onCasingClink,
     });
     const vfxBridge = new VfxBridge({ events, vfx });
@@ -396,6 +397,8 @@ export class Game {
       heal: (amount) => health.heal(amount),
       seed: `arsenal:${level.id}:${Date.now()}`,
     });
+    // Flight loops follow the drawn projectiles; field loops follow fields that move (Chronofeld).
+    audioBridge.setArsenalSources({ projectiles: arsenal.projectiles, fields: arsenal.fields });
     const weapons = new WeaponSystem({
       events,
       input,

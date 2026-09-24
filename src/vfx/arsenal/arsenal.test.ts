@@ -79,6 +79,7 @@ interface Rig {
   render: ReturnType<typeof fakeRender>;
   spawned: string[];
   lenses: [number, number][];
+  hazes: [number, number][];
   sockets: FakeSockets;
   particles: ParticleSystem;
   lights: LightPool;
@@ -88,6 +89,7 @@ function rig(): Rig {
   const render = fakeRender();
   const spawned: string[] = [];
   const lenses: [number, number][] = [];
+  const hazes: [number, number][] = [];
   const sockets = new FakeSockets(render.viewmodelScene);
   const particles = new ParticleSystem(atlas, seeded(3));
   const lights = new LightPool(render.scene, seeded(4));
@@ -99,10 +101,11 @@ function rig(): Rig {
     physics: new FakePhysics().asApi(),
     sockets: () => sockets,
     lens: (slot, _p, _r, strength) => lenses.push([slot, strength]),
+    haze: (slot, _a, _b, _r0, _r1, strength) => hazes.push([slot, strength]),
     random: seeded(7),
   });
   render.scene.add(arsenal.object);
-  return { arsenal, render, spawned, lenses, sockets, particles, lights };
+  return { arsenal, render, spawned, lenses, hazes, sockets, particles, lights };
 }
 
 function explosionsOf(def: ReturnType<typeof getWeaponDef>): ExplosionDef[] {
@@ -321,7 +324,7 @@ describe('ArsenalVfx pools and handles', () => {
   });
 
   it('flame particles are budget scaled and particles off still draw the core', () => {
-    const { arsenal, particles } = rig();
+    const { arsenal, particles, hazes } = rig();
     const fire = (): void => {
       for (let i = 0; i < 20; i++) {
         arsenal.beam('beam.flame', { x: 0, y: 1.4, z: -0.5 }, { x: 0, y: 1.2, z: -9 }, [], 0);
@@ -338,6 +341,10 @@ describe('ArsenalVfx pools and handles', () => {
     arsenal.beam('beam.flame', { x: 0, y: 1.4, z: -0.5 }, { x: 0, y: 1.2, z: -9 }, [], 0);
     arsenal.update(1 / 60);
     expect(arsenal.stats.segments).toBeGreaterThan(0);
+    // The stream shimmers the background while it burns; the haze slot is cleared after.
+    expect(hazes.at(-1)![1]).toBeGreaterThan(0);
+    arsenal.update(1 / 60);
+    expect(hazes.at(-1)).toEqual([0, 0]);
     arsenal.dispose();
   });
 
@@ -473,6 +480,16 @@ describe('arsenal building blocks', () => {
     expect(fx.active).toBe(false);
     fx.setLens(9, ZERO, 1, 1);
     fx.setLens(1, { x: NaN, y: 0, z: 0 }, 1, 1);
+    expect(fx.active).toBe(false);
+    // Heat haze: projected when both ends are in front of the camera.
+    fx.setHaze(0, { x: 0, y: -0.2, z: -1 }, { x: 0, y: 0, z: -8 }, 0.05, 1, 0.006);
+    expect(fx.active).toBe(true);
+    fx.advance(1 / 60);
+    expect((fx.uniforms.get('hazeCount') as THREE.Uniform<number>).value).toBe(1);
+    fx.setHaze(0, { x: 0, y: 0, z: 2 }, { x: 0, y: 0, z: -8 }, 0.05, 1, 0.006);
+    fx.advance(1 / 60);
+    expect((fx.uniforms.get('hazeCount') as THREE.Uniform<number>).value).toBe(0);
+    fx.clear();
     expect(fx.active).toBe(false);
   });
 });

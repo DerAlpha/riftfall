@@ -2,8 +2,9 @@
  * UI tuning: HUD behaviour, debug overlay, dev console, loading screen and menu ranges.
  * Visual styling lives in src/ui/styles.css; values here are the ones TS code needs.
  */
-import type { HitZone } from '../core/events';
+import type { HitZone, PointsReason } from '../core/events';
 import { CAMERA } from './camera';
+import { PAD } from './input';
 
 export const HUD = {
   /** Health fraction below which the health bar turns into a warning state. */
@@ -148,6 +149,136 @@ export const HUD = {
       swarm: 'SCHWARMWELLE',
       tank: 'EIN KOLOSS NÄHERT SICH',
     } as Readonly<Record<string, string>>,
+  },
+} as const;
+
+/** Colour class of a points popup (hud-economy.css `.hud-pop--<tone>`). */
+export type PointsPopupTone = 'normal' | 'head' | 'repair' | 'bonus' | 'wave' | 'spend';
+
+/**
+ * Economy HUD (M4, src/ui/hud/EconomyHud): points counter (roll + floating popups + multiplier
+ * badge), interaction prompt (key cap, cost, hold ring, denial), perk row, power-up timers, banners
+ * and the slow-motion tint. Colours live in hud-economy.css; this holds timing, pool sizes and the
+ * player-facing texts (German).
+ */
+export const ECONOMY_HUD = {
+  points: {
+    /** Roll animation length: clamp(minSeconds + perDecade × log10(|delta|), min, max) (s). */
+    roll: { minSeconds: 0.22, maxSeconds: 0.95, perDecade: 0.2 },
+    label: 'PUNKTE',
+    placeholder: '—',
+    /**
+     * Gains of at least `bumpMinDelta` bump the number (CSS keyframes – single hits only roll, a
+     * machine gun would keep it shaking); spending flashes it red for `spendFlashSeconds` (s).
+     */
+    bumpMinDelta: 50,
+    spendFlashSeconds: 0.45,
+    /** Multiplier badge text ({n} = the multiplier). */
+    multiplier: '×{n}',
+  },
+  popups: {
+    /** Pooled popup elements (the oldest is reused when all are busy). */
+    pool: 10,
+    lifetime: 1.2,
+    fadeTime: 0.45,
+    /** Earnings of one tone within this window add up in the newest popup (a shotgun blast) (s). */
+    mergeWindow: 0.14,
+    /** A merge rewinds the popup's age to at most this fraction of the lifetime. */
+    mergeAgeCap: 0.25,
+    risePx: 58,
+    /** Horizontal lanes (px, negative = left): consecutive popups alternate, they do not stack. */
+    lanesPx: [0, -22, -9, -31] as readonly number[],
+    popScale: 1.4,
+    popTime: 0.1,
+    /** Screen changes below these are not written to the DOM. */
+    pxEpsilon: 0.35,
+    opacityEpsilon: 0.02,
+    /** Popup colour per points reason (negative deltas are always 'spend'). */
+    tones: {
+      hit: 'normal',
+      kill: 'normal',
+      melee: 'normal',
+      headshot: 'head',
+      repair: 'repair',
+      wave: 'wave',
+      nuke: 'bonus',
+      carpenter: 'bonus',
+      purchase: 'spend',
+      refund: 'repair',
+      dev: 'normal',
+    } as Readonly<Record<PointsReason, PointsPopupTone>>,
+  },
+  prompt: {
+    /** "Nicht genug Punkte" line + shake after a refused purchase (s). */
+    denySeconds: 1.5,
+    deny: 'NICHT GENUG PUNKTE',
+    /** Hold ring progress changes below this are not written. */
+    holdQuantum: 0.01,
+    /** Key cap of an unbound interact action. */
+    unbound: '—',
+    /** Short mouse button labels (Linke / Mittlere / Rechte Maustaste, Maustaste 4/5). */
+    mouseLabels: ['LMT', 'MMT', 'RMT', 'M4', 'M5'] as readonly string[],
+    wheelLabels: { up: 'RAD ↑', down: 'RAD ↓' },
+    /** Pad button glyph names (W3C standard mapping); `face` buttons get a round coloured cap. */
+    padLabels: {
+      [PAD.A]: 'A',
+      [PAD.B]: 'B',
+      [PAD.X]: 'X',
+      [PAD.Y]: 'Y',
+      [PAD.LB]: 'LB',
+      [PAD.RB]: 'RB',
+      [PAD.LT]: 'LT',
+      [PAD.RT]: 'RT',
+      [PAD.SELECT]: '⧉',
+      [PAD.START]: '≡',
+      [PAD.LS]: 'L3',
+      [PAD.RS]: 'R3',
+      [PAD.UP]: '↑',
+      [PAD.DOWN]: '↓',
+      [PAD.LEFT]: '←',
+      [PAD.RIGHT]: '→',
+    } as Readonly<Record<number, string>>,
+    padFace: { [PAD.A]: 'a', [PAD.B]: 'b', [PAD.X]: 'x', [PAD.Y]: 'y' } as Readonly<Record<number, string>>,
+  },
+  perks: {
+    /** Pooled perk icons (perkSlots stat, 4 by default; room for more from later milestones). */
+    maxSlots: 6,
+    /** Acquire pop + glow, and the removal animation before the row closes up (s). */
+    acquireSeconds: 0.9,
+    removeSeconds: 0.4,
+  },
+  powerUps: {
+    /** Timers flash during the last seconds. */
+    warnSeconds: 3,
+    /** Ring fraction changes below this are not written. */
+    ringQuantum: 0.003,
+    /** Timer slot leaving animation (s). */
+    removeSeconds: 0.3,
+    /** Nuke screen flash (CSS keyframes, s); reduced flashing: dimmer and slower. */
+    nukeFlashSeconds: 0.85,
+    reducedNukeFlashSeconds: 1.3,
+    /** Slow-motion tint overlay: opacity changes below this are not written. */
+    tintQuantum: 0.01,
+  },
+  banners: {
+    /** Waiting banners at most (the oldest waiting one is dropped). */
+    queue: 4,
+    /** A banner stays at least this long when others wait (s). */
+    minSeconds: 1.1,
+    /** Banners of one kind arriving within this time merge (a door opening two zones) (s). */
+    mergeSeconds: 0.25,
+    seconds: { powerUp: 2.4, zone: 3.2, perk: 3, box: 2.6, revive: 3.2 },
+    labels: {
+      zone: 'BEREICH FREIGESCHALTET',
+      perk: 'IMPLANTAT AKTIVIERT',
+      powerUp: 'RIFT-ENERGIE',
+      box: 'RIFT-KISTE',
+      anomaly: 'RISS-ANOMALIE',
+      anomalySub: 'Die Kiste wandert weiter – Punkte erstattet',
+      revive: 'WIEDERBELEBT',
+    },
+    /** Kicker colour of zone / box banners (sRGB hex; perks and power-ups use their own). */
+    colors: { zone: 0x00e5ff, box: 0xb98cff, anomaly: 0xff4dd2, revive: 0xff6a1f },
   },
 } as const;
 

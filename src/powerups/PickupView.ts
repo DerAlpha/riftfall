@@ -138,9 +138,10 @@ void main() {
     float g = 0.0;
     if (uHasAtlas > 0.5) {
       if (g2.x >= 0.0 && g2.x <= 1.0 && g2.y >= 0.0 && g2.y <= 1.0) {
-        float cell = vS.x;
-        float cx = mod(cell, uCells.x);
-        float cy = floor(cell / uCells.x);
+        // Interpolated varyings are not exact: round before splitting into column / row.
+        float cell = floor(vS.x + 0.5);
+        float cy = floor((cell + 0.5) / uCells.x);
+        float cx = cell - cy * uCells.x;
         vec2 auv = vec2((cx + g2.x) / uCells.x, (uCells.y - 1.0 - cy + g2.y) / uCells.y);
         g = texture2D(uAtlas, auv).a;
       }

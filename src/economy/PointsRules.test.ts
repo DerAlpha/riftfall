@@ -4,7 +4,7 @@ import { FakeTarget, buildTestLevel } from '../combat/testFakes';
 import { EventBus } from '../core/EventBus';
 import type { GameEvents, HitZone } from '../core/events';
 import { ECONOMY, waveBonus } from '../defs/economy';
-import { ENEMY_AI } from '../defs/enemies';
+import { ENEMY_AI, getEnemyDef } from '../defs/enemies';
 import { WEAPONS } from '../defs/weapons';
 import { fakeSettings } from '../player/testHelpers';
 import { StatSystem } from '../stats/StatSystem';
@@ -12,16 +12,16 @@ import { FakeCamera, FakePlayer, FakeWeaponInput, fakeRenderCamera } from '../we
 import { WeaponSystem } from '../weapons/WeaponSystem';
 import { TARGET_ID_BASE } from '../world/TrainingTargets';
 import { EconomySystem } from './EconomySystem';
-import { PointsRules, isRewardableId, killPoints } from './PointsRules';
+import { PointsRules, isRewardableId, killPoints, type PointsRulesDeps } from './PointsRules';
 
 const P = ECONOMY.points;
 const DT = 1 / 60;
 
-function setup() {
+function setup(deps: Partial<Pick<PointsRulesDeps, 'rewardOf'>> = {}) {
   const events = new EventBus<GameEvents>();
   const stats = new StatSystem({ events });
   const economy = new EconomySystem({ events, stats }, 0);
-  const rules = new PointsRules({ events, economy });
+  const rules = new PointsRules({ events, economy, ...deps });
   const reasons: string[] = [];
   events.on('economy:points', (e) => reasons.push(`${e.reason}:${e.delta}`));
   const damage = (targetId: number, opts: Partial<GameEvents['combat:damage']> = {}): void => {
@@ -194,6 +194,51 @@ describe('PointsRules: events', () => {
     t.rules.dispose();
     t.kill(2);
     expect(t.economy.points).toBe(10 * ECONOMY.repair.perPlank + P.hit);
+  });
+});
+
+describe('PointsRules: kill credit per enemy kind (defs/enemies points)', () => {
+  const kinds = new Map<number, string>([
+    [1, 'swarmer'],
+    [2, 'spitter'],
+    [3, 'tank'],
+    [4, 'tank'],
+    [5, 'spitter'],
+    [6, 'tank'],
+  ]);
+  const rewardOf = (id: number) => getEnemyDef(kinds.get(id) ?? '')?.points ?? null;
+
+  it('each kind pays its own kill value and precision bonus', () => {
+    const t = setup({ rewardOf });
+    const swarmer = getEnemyDef('swarmer')!.points;
+    const spitter = getEnemyDef('spitter')!.points;
+    const tank = getEnemyDef('tank')!.points;
+    expect(tank.kill).toBeGreaterThan(spitter.kill);
+    expect(spitter.kill).toBeGreaterThan(swarmer.kill);
+    t.kill(1);
+    t.kill(2, 'head');
+    t.kill(3);
+    t.kill(4, 'weakpoint');
+    t.kill(5, 'weakpoint');
+    expect(t.reasons).toEqual([
+      `kill:${swarmer.kill}`,
+      `headshot:${spitter.kill + spitter.headshotBonus}`,
+      `kill:${tank.kill}`,
+      `headshot:${tank.kill + tank.weakpointBonus}`,
+      `headshot:${spitter.kill + spitter.weakpointBonus}`,
+    ]);
+    // Melee: the kind's kill value plus the melee bonus.
+    t.impact('melee');
+    t.kill(6);
+    expect(t.reasons.at(-1)).toBe(`melee:${tank.kill + P.meleeKillBonus}`);
+  });
+
+  it('hits pay the kind\'s hit value; unknown ids fall back to the default table', () => {
+    const t = setup({ rewardOf: (id) => (id === 7 ? { hit: 15, kill: 80, headshotBonus: 0, weakpointBonus: 0 } : null) });
+    t.damage(7);
+    t.damage(8);
+    t.kill(8, 'head');
+    expect(t.reasons).toEqual(['hit:15', `hit:${P.fallback.hit}`, `headshot:${P.fallback.kill + P.fallback.headshotBonus}`]);
   });
 });
 

@@ -5,6 +5,7 @@ import type { DamageInfo, DamageResult, Damageable } from '../core/contracts';
 import { EventBus } from '../core/EventBus';
 import type { DamageElement, GameEvents, Vec3Like } from '../core/events';
 import { PERK_TUNING } from '../defs/perks';
+import { PlayerHealth } from '../player/PlayerHealth';
 import { StatSystem } from '../stats/StatSystem';
 import { blastFalloff, blastSize, missingFraction } from './perkHooks';
 import { PerkSystem } from './PerkSystem';
@@ -249,5 +250,40 @@ describe('Adrenalinschub', () => {
     expect(t.stats.value('moveSpeed')).toBeCloseTo(1.08 * (1 + PERK_TUNING.adrenaline.perStack));
     t.perks.revoke('adrenaline');
     expect(t.stats.value('moveSpeed')).toBeCloseTo(1.08);
+  });
+});
+
+describe('Phoenix-Protokoll', () => {
+  it('the revive it pays for bursts out: nearby enemies are burnt and thrown back', () => {
+    const t = setup();
+    const health = new PlayerHealth({ events: t.events });
+    health.setStats(t.stats);
+    const near = new FakeTarget({ x: 1.2, y: 0, z: 0 }, 10_000);
+    const far = new FakeTarget({ x: 0, y: 0, z: 30 }, 10_000);
+    t.combat.targets.push(near, far);
+    t.perks.grant('phoenix');
+    health.damage(10_000);
+    expect(health.dead).toBe(false);
+    expect(t.perks.has('phoenix')).toBe(false);
+    expect(t.combat.dealt.map((d) => d.id)).toEqual([near.id]);
+    const info = t.combat.dealt[0]!.info;
+    expect(info).toMatchObject({ source: 'player', element: 'fire', kind: 'explosion', weaponId: 'perk.phoenix' });
+    expect(info.amount).toBeGreaterThan(0);
+    expect(info.impulse).toBeGreaterThan(0);
+    // Pushed away from the player.
+    expect(info.direction.x).toBeGreaterThan(0);
+    expect(t.blasts).toEqual([expect.objectContaining({ hook: 'phoenix', element: 'fire' })]);
+  });
+
+  it('a revive charge from elsewhere (no Phoenix owned) bursts nothing', () => {
+    const t = setup();
+    const health = new PlayerHealth({ events: t.events });
+    health.setStats(t.stats);
+    t.stats.addModifier({ source: 'skill:secondWind', stat: 'reviveCharges', op: 'add', value: 1 });
+    t.combat.targets.push(new FakeTarget({ x: 1, y: 0, z: 0 }, 10_000));
+    health.damage(10_000);
+    expect(health.dead).toBe(false);
+    expect(t.combat.dealt).toHaveLength(0);
+    expect(t.blasts).toHaveLength(0);
   });
 });

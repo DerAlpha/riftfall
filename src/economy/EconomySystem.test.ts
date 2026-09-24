@@ -103,6 +103,19 @@ describe('EconomySystem', () => {
     expect(economy.points).toBe(2000);
   });
 
+  it('a refund undoes the purchase in the run totals instead of counting as earnings', () => {
+    const { economy, stats, points } = setup(1000);
+    stats.addModifier({ source: 'powerup:doublePoints', stat: 'pointsMultiplier', op: 'mul', value: 2 });
+    expect(economy.spend(950, 'box', 'box')).toBe(true);
+    expect(economy.earn(950, 'refund')).toBe(950);
+    expect(economy.points).toBe(1000);
+    expect(points.at(-1)).toMatchObject({ delta: 950, total: 1000, reason: 'refund' });
+    expect(economy.totals).toEqual({ earned: 0, spent: 0, purchases: 0 });
+    // A refund beyond what was spent (dev, content error) still never makes the totals negative.
+    economy.earn(100, 'refund');
+    expect(economy.totals).toEqual({ earned: 100, spent: 0, purchases: 0 });
+  });
+
   it('works without stats (×1)', () => {
     const events = new EventBus<GameEvents>();
     const economy = new EconomySystem({ events });

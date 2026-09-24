@@ -11,6 +11,9 @@ import type { GameEvents } from '../../core/events';
 import { CombatWorld } from '../../combat/CombatWorld';
 import { FakeTarget, buildTestLevel } from '../../combat/testFakes';
 import { WEAPONS, getWeaponDef, type WeaponDef } from '../../defs/weapons';
+import { ENEMIES } from '../../defs/enemies';
+import { WAVES } from '../../defs/waves';
+import { waveMultiplier } from '../../spawning/waveFormula';
 import { fakeSettings } from '../../player/testHelpers';
 import { FakeCamera, FakePlayer, FakeWeaponInput, fakeRenderCamera } from '../testFakes';
 import { WeaponSystem } from '../WeaponSystem';
@@ -549,6 +552,30 @@ describe('Rift Forge progression', () => {
       }
     }
     expect(drops).toEqual([]);
+  });
+
+  it('time to kill keeps pace with the waves: every weapon at the tier a run affords by then', () => {
+    // defs/forge.ts economy target: tier 1 around wave 8, tier 2 around 14, tier 3 around 20.
+    const stages = [
+      [0, 1],
+      [1, 8],
+      [2, 14],
+      [3, 20],
+    ] as const;
+    const slow: string[] = [];
+    for (const [tier, wave] of stages) {
+      const hp = waveMultiplier(WAVES.classic.health, wave);
+      for (const base of Object.values(WEAPONS) as WeaponDef[]) {
+        const dps = singleTargetDps(resolveWeapon(base, { tier }));
+        // Sustained body fire (reloads included): a Schwärmer within a second, a Koloss within 12 s.
+        const swarmer = (ENEMIES.swarmer.health * hp) / dps;
+        const tank = (ENEMIES.tank.health * hp) / dps;
+        if (swarmer > 1 || tank > 12) {
+          slow.push(`${base.id} t${tier} w${wave}: ${swarmer.toFixed(2)} s / ${tank.toFixed(1)} s`);
+        }
+      }
+    }
+    expect(slow).toEqual([]);
   });
 });
 

@@ -385,6 +385,9 @@ export const STATUS_RESIST = {
     // M6: the berserker's rage shortens freezes and stuns; the exploder's bile barely burns.
     berserker: { buildup: {}, control: 0.6, slow: 0.8, freeze: true },
     exploder: { buildup: { fire: 0.5 }, control: 1, slow: 1, freeze: true },
+    // M6 support: the healer's green ichor resists toxins, the rift-caller the void.
+    healer: { buildup: { poison: 0.5 }, control: 1, slow: 1, freeze: true },
+    summoner: { buildup: { void: 0.5 }, control: 1, slow: 1, freeze: true },
   } as Readonly<Record<string, StatusResistDef>>,
 } as const;
 

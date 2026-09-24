@@ -207,6 +207,10 @@ export const PROGRESSION = {
     berserker: 50,
     mite: 3,
     exploder: 15,
+    // M6 support package: priority targets that hang back.
+    healer: 30,
+    summoner: 35,
+    sniper: 30,
   } as Readonly<Record<string, number>>,
   killDefault: 15,
   eliteMultiplier: 2,

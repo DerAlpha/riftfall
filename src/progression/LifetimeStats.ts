@@ -29,10 +29,6 @@ export interface RunCommitInfo {
   died: boolean;
 }
 
-export function createLifetimeStats(): LifetimeStatsData {
-  return { counters: {}, killsByEnemy: {}, killsByWeapon: {}, highestWave: {}, bestScore: {} };
-}
-
 const COUNTER_INDEX: ReadonlyMap<string, readonly number[]> = (() => {
   const m = new Map<string, number[]>();
   LIFETIME_COUNTER_IDS.forEach((id, i) => {
@@ -134,6 +130,11 @@ export class LifetimeStats implements LifetimeStatsView {
 
   get killsByWeapon(): Readonly<Record<string, number>> {
     return this.data.killsByWeapon;
+  }
+
+  /** Highest wave per `${mapId}:${modeId}`. */
+  get highestWaves(): Readonly<Record<string, number>> {
+    return this.data.highestWave;
   }
 
   get accuracy(): number {

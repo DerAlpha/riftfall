@@ -257,8 +257,3 @@ const INDEX: ReadonlyMap<string, AchievementDef> = new Map(ACHIEVEMENTS.map((a) 
 export function getAchievementDef(id: string): AchievementDef | undefined {
   return INDEX.get(id);
 }
-
-/** Target of a condition (count / level / distinct values). */
-export function conditionTarget(c: ProgressCondition): number {
-  return c.target;
-}

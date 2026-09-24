@@ -74,6 +74,8 @@ const report = {
   consoleErrors: [],
 };
 const t0 = Date.now();
+/** The game page (module scope: the report reads its event log even after a failure). */
+let page = null;
 
 /** Record a check (never throws: the scenario goes on to collect every failure). */
 function check(name, ok, detail = {}) {
@@ -97,7 +99,7 @@ const browser = await chromium.launch({
   ],
 });
 try {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   page.on('pageerror', (e) => report.pageErrors.push(String(e?.stack || e)));
   page.on('console', (m) => m.type() === 'error' && report.consoleErrors.push(m.text()));
   await page.goto(`${base}?autostart=1&nolock=1&smoke=1&map=${map}&preset=${preset}`);
@@ -204,6 +206,32 @@ try {
   check('start: HUD shows 500 points', hudStart, { hud: await h(() => window.__h.hudPoints()) });
   check('start: only the start zone is active', startInfo.zones.length === 1, { zones: startInfo.zones });
   await shot('00-start');
+  // Too poor for the door: the purchase is refused (economy:purchase ok=false), nothing changes.
+  {
+    const d = await h(() => window.__h.firstDoor());
+    if (d && startInfo.points < d.price) {
+      const focusedPoor = await approach(d.id, d.anchor, d.out, STAND.door);
+      const prompt = await h(() => window.__log.filter((e) => e.t === 'interact:focus').pop() ?? null);
+      const before = await count('economy:purchase');
+      await pressInteract();
+      const tried = await untilEvent('economy:purchase', before, 15_000);
+      const attempt = (await events('economy:purchase', 'start')).pop();
+      check(
+        'start: unaffordable door refused (economy:purchase ok=false)',
+        focusedPoor && prompt?.affordable === false && tried && attempt?.ok === false,
+        { prompt, attempt },
+      );
+      check(
+        'start: refused door stays closed, points unchanged',
+        (await h((id) => window.__h.doorState(id), d.id)) === 'closed' &&
+          (await info()).points === startInfo.points,
+        { points: (await info()).points },
+      );
+      await shot('00-door-refused');
+      await h(() => window.__h.backToSpawn());
+      await frames(2);
+    }
+  }
 
   // =============================================================================================
   // 2. Wave 1: enemies breach a seal, the pistol earns points
@@ -638,7 +666,8 @@ try {
       20_000,
     );
     await exec('enemy spawn tank 1 9');
-    await until(() => window.__RIFTFALL__.game.sys.enemies.alive >= 1, null, 20_000);
+    // Console spawns rise out of the floor first: wait until the tank can be seen (and hit).
+    await until(() => window.__h.nearestEnemy() !== null, null, 120_000, 250);
     const tank = await h(() => window.__h.nearestEnemy());
     let tankDead = false;
     let shots = 0;
@@ -739,18 +768,27 @@ try {
   report.beforeDeath = await info();
   await exec('god off');
   await h(() => window.__h.powerUpLane());
-  await exec('enemy spawn tank 2 3');
-  await exec('enemy spawn swarmer 6 3');
-  let died = await until(() => (window.__ev['player:died'] ?? 0) >= 1, null, 150_000);
-  report.deathCause = died ? 'enemies' : 'console';
+  await exec('enemy spawn swarmer 4 3');
+  // God mode is off: the enemies hurt the player for real.
+  const hurtByEnemies = await until(
+    () => window.__log.some((e) => e.t === 'player:damaged' && e.phase === 'death'),
+    null,
+    150_000,
+  );
+  check('death: enemies hurt the player without god mode', hurtByEnemies, { hp: (await info()).hp });
+  // Regeneration outpaces the melee cadence at SwiftShader frame rates (a natural death takes
+  // minutes): give the enemies a moment, then finish through the regular damage path.
+  let died = await until(() => (window.__ev['player:died'] ?? 0) >= 1, null, 20_000);
+  report.deathCause = died ? 'enemies' : 'hurt';
   if (!died) {
-    note('the enemies did not kill the player in time – `run kill`');
+    await exec('hurt 100000');
+    died = await until(() => (window.__ev['player:died'] ?? 0) >= 1, null, 20_000);
+  }
+  if (!died) {
+    report.deathCause = 'console';
+    note('`hurt` did not kill the player – `run kill`');
     await exec('run kill');
-    died = await until(
-      () => (window.__ev['run:over'] ?? 0) >= 1 || (window.__ev['player:died'] ?? 0) >= 1,
-      null,
-      30_000,
-    );
+    died = await until(() => (window.__ev['run:over'] ?? 0) >= 1, null, 30_000);
   }
   const over = await until(() => (window.__ev['run:over'] ?? 0) >= 1, null, 60_000);
   check('death: player dies → game over (run:over)', died && over, { cause: report.deathCause });
@@ -817,12 +855,15 @@ try {
     },
   );
   await shot('19-restart');
-
-  report.events = await h(() => window.__ev);
-  report.end = await info();
 } catch (err) {
   report.fatal = String(err?.stack || err);
 } finally {
+  if (page) {
+    const state = await page
+      .evaluate(() => ({ events: window.__ev, log: window.__log, end: window.__h?.info() }))
+      .catch(() => null);
+    if (state) Object.assign(report, state);
+  }
   report.durationMs = Date.now() - t0;
   report.failed = report.checks.filter((c) => !c.ok).map((c) => c.name);
   report.ok =
@@ -889,6 +930,8 @@ function installHarness() {
     'enemy:died': (e) => ({ id: e.id, type: e.type, weaponId: e.weaponId, zone: e.zone, source: e.source }),
     'combat:kill': (e) => ({ targetId: e.targetId, zone: e.zone, weaponId: e.weaponId }),
     'weapon:equipped': (e) => ({ weaponId: e.weaponId, slot: e.slot }),
+    'interact:focus': (e) => ({ id: e.id, prompt: e.prompt, cost: e.cost, affordable: e.affordable }),
+    'player:damaged': (e) => ({ amount: e.amount }),
     'player:died': () => ({}),
     'run:over': (e) => ({ wave: e.wave, kills: e.kills, score: e.score }),
     'run:restart': () => ({}),
@@ -901,9 +944,7 @@ function installHarness() {
     'weapon:fired',
     'weapon:reloadEnd',
     'combat:damage',
-    'player:damaged',
     'wave:intermission',
-    'interact:focus',
   ];
   for (const [t, copy] of Object.entries(COPY)) {
     s.events.on(t, (e) => {

@@ -17,6 +17,7 @@ Keep this file current: update **Milestone status** and **Decisions** whenever a
 | `npm run assets`                                                                                       | Download CC0 assets (Poly Haven) into `public/assets/` (idempotent, optional)                            |
 | `npm run smoke`                                                                                        | Headless Chromium smoke test (build must exist): boots the game, moves, screenshots into `smoke-output/` |
 | `npm run smoke:waves`                                                                                  | Wave scenario on the research lab (build must exist): waves, enemies, kills, wave complete, game over    |
+| `npm run smoke:economy`                                                                                | M4 loop on the lab (build must exist, ~15 min): points, door, wall buy, box, perk, seals, power-ups      |
 | `node tools/photo.mjs --preset ultra [--hud] [--spots '[[x,y,z,yaw,pitch]]'] [--exec '["noclip on"]']` | Art-direction screenshots (build must exist)                                                             |
 
 URL parameters (dev/testing): `?map=lab|testroom` map to build (else the last played / recommended map),

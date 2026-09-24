@@ -40,6 +40,8 @@ export interface RunResetSystems {
   powerUps: { clear(): void; reseed(seed: string | number): void };
   perks: { clear(): void };
   stats: { reset(): void };
+  /** M9 skill tree: its stat modifiers again right after the stat table's reset; optional. */
+  progression?: { applyRunStart(): void } | null;
   economy: { reset(): void };
   pointsRules: { reset(): void };
   health: { reset(): void };
@@ -80,6 +82,8 @@ export function resetRunSystems(s: RunResetSystems, opts: RunResetOptions): void
   s.powerUps.clear();
   s.perks.clear();
   s.stats.reset();
+  // Before health and loadout read the stats (skill max health, magazine size).
+  s.progression?.applyRunStart();
   // powerUps.clear() ended Zeitdehnung / Instakill; a value left behind any other way (console,
   // a later effect) must not slow or one-shot the next run's enemies.
   s.enemies.timeScale = 1;

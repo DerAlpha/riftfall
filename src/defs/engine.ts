@@ -18,7 +18,7 @@ export const ENGINE = {
   /** Render layer used by the viewmodel scene objects. */
   viewmodelLayer: 1,
   /** Save format version, bump together with a migration in src/save/migrations.ts. */
-  saveVersion: 1,
+  saveVersion: 2,
   /** IndexedDB database / store names. */
   saveDbName: 'riftfall',
   saveStoreName: 'saves',

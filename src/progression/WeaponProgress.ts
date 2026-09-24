@@ -6,7 +6,7 @@
  * Only roster weapons (defs/weapons) are tracked; grenades, abilities and the nuke are not.
  */
 import type { WeaponProgressData, WeaponProgressView } from '../core/contracts';
-import { CAMOS, getCamoDef, isAnimatedCamo, type CamoDef } from '../defs/cosmetics';
+import { CAMOS, getCamoDef, type CamoDef } from '../defs/cosmetics';
 import {
   PROGRESSION,
   PROGRESSION_LIMITS,
@@ -201,5 +201,3 @@ function weaponCamoMet(camo: CamoDef, e: WeaponProgressData): boolean {
       return false;
   }
 }
-
-export { isAnimatedCamo };

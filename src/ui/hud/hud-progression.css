@@ -1,0 +1,115 @@
+/* ------------------------------------------------------------------------------------------ */
+/* Progression toasts (M9, top right): level up, prestige, achievements, challenges, weapon    */
+/* levels, cosmetic unlocks. ProgressionToasts writes text/classes on entry and exit; the      */
+/* entry slide and exit fade animate here (transform / opacity only).                          */
+/* ------------------------------------------------------------------------------------------ */
+.hud-ptoasts {
+  position: absolute;
+  right: var(--rf-safe-r);
+  top: calc(var(--rf-safe-t) + 22px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  width: 300px;
+  scale: var(--hud-scale);
+  transform-origin: 100% 0;
+  pointer-events: none;
+}
+
+.hud-ptoast {
+  --pt: var(--rf-cyan);
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 14px 9px 16px;
+  background: linear-gradient(90deg, rgba(6, 13, 19, 0.92) 0%, rgba(6, 13, 19, 0.72) 100%);
+  border: 1px solid color-mix(in srgb, var(--pt) 38%, transparent);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  text-align: left;
+}
+.hud-ptoast::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--pt);
+  box-shadow: 0 0 10px var(--pt);
+}
+.hud-ptoast__kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--pt);
+}
+.hud-ptoast__title {
+  margin-top: 2px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--rf-text-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hud-ptoast__sub {
+  margin-top: 2px;
+  font-family: var(--rf-font-ui);
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--rf-text-dim);
+}
+.hud-ptoast--prestige .hud-ptoast__title,
+.hud-ptoast--level .hud-ptoast__title {
+  font-size: 20px;
+  color: var(--pt);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--pt) 55%, transparent);
+}
+
+.hud-ptoast.is-in-a {
+  animation: rf-ptoast-in-a 0.42s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.hud-ptoast.is-in-b {
+  animation: rf-ptoast-in-b 0.42s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.hud-ptoast.is-out {
+  opacity: 0;
+  transform: translateX(24px);
+  transition:
+    opacity 0.3s ease-in,
+    transform 0.3s ease-in;
+}
+
+@keyframes rf-ptoast-in-a {
+  from {
+    opacity: 0;
+    transform: translateX(36px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes rf-ptoast-in-b {
+  from {
+    opacity: 0;
+    transform: translateX(36px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-ptoast.is-in-a,
+  .hud-ptoast.is-in-b {
+    animation-name: rf-fade-in;
+  }
+  .hud-ptoast.is-out {
+    transform: none;
+  }
+}

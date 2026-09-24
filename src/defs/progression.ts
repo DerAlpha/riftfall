@@ -22,6 +22,7 @@
  */
 import type { AchievementTier, DamageElement, HitZone, ImpactKind } from '../core/events';
 import { PERK_GLYPHS } from './perks';
+import { RUN } from './waves';
 
 // ---------------------------------------------------------------------------
 // Signals and conditions
@@ -250,7 +251,7 @@ export const PROGRESSION = {
 } as const;
 
 /** Mode id of runs without a mode (M8 adds modes). */
-export const DEFAULT_MODE = 'classic';
+export const DEFAULT_MODE: string = RUN.defaultMode;
 
 /** Leaderboard / highest-wave key of a map + mode. */
 export function boardKey(mapId: string, mode: string = DEFAULT_MODE): string {

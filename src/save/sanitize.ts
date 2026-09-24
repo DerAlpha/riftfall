@@ -24,6 +24,7 @@ import {
 } from '../defs/input';
 import { MENU } from '../defs/ui';
 import { createDefaultProfile } from './defaults';
+import { sanitizeProgressionFields } from './sanitizeProgression';
 import {
   createDefaultSettings,
   type AccessibilitySettings,
@@ -427,5 +428,7 @@ export function sanitizeProfile(raw: unknown, now: number = Date.now()): Profile
     },
     qualityAutoDetected: toBoolean(src.qualityAutoDetected) ?? d.qualityAutoDetected,
     qualityBenchmarked: toBoolean(src.qualityBenchmarked) ?? d.qualityBenchmarked,
+    // M9 meta progression (save v2): sanitizeProgression.ts.
+    ...sanitizeProgressionFields(src),
   };
 }

@@ -95,6 +95,10 @@ import { createGrenadeCommands } from '../grenades/grenadeCommands';
 import { AbilitySystem } from '../abilities/AbilitySystem';
 import { AbilityVisuals } from '../abilities/AbilityVisuals';
 import { createAbilityCommands } from '../abilities/abilityCommands';
+import { ProgressionSystem } from '../progression/ProgressionSystem';
+import { createProgressionCommands } from '../progression/progressionCommands';
+import { ABILITY_RULES } from '../defs/abilities';
+import { GRENADE_RULES } from '../defs/grenades';
 import { GamePersistence } from './GamePersistence';
 import { MenuPadNavigator } from './MenuPadNavigator';
 import { PauseController } from './PauseController';
@@ -198,6 +202,9 @@ export interface GameSystems {
   grenades: GrenadeSystem;
   abilities: AbilitySystem;
   abilityVisuals: AbilityVisuals;
+  // M9
+  /** Meta progression: level/prestige, skills, weapon levels, achievements, challenges, stats. */
+  progression: ProgressionSystem;
 }
 
 export class Game {
@@ -680,6 +687,25 @@ export class Game {
         abilityVisuals.hasVolumetricContent,
     );
 
+    // M9 meta progression on the loaded profile: XP, skills, weapon levels, achievements,
+    // challenges, lifetime stats, leaderboards. The skill tree's stat modifiers apply now (the
+    // first run's loadout reads them) and after every stat reset (runReset).
+    const progression = new ProgressionSystem({
+      events,
+      profile: saveData.profile,
+      save: () => void persistence.saveNow(),
+      doorCount: () => interactables.doors.length,
+      perkSlots: () => ({ owned: perks.owned.length, max: perks.maxPerks }),
+      runTime: () => runFlow.stats.timeSurvived,
+      loadout: () => ({
+        weapons: weapons.slotIds.filter((id): id is string => id !== null),
+        perks: [...perks.owned],
+      }),
+      refund: (amount) => void economy.earn(amount, 'refund'),
+    });
+    progression.setLiveStats(stats);
+    progression.applyRunStart();
+
     const hud = new Hud(el('hud'), events, settings);
     hud.setCamera(render.camera);
     // The countdown shows the director's clock (fixed ticks; frozen while the player is dead).
@@ -770,10 +796,13 @@ export class Game {
       grenades,
       abilities,
       abilityVisuals,
+      progression,
     });
     gameRef = game;
     game.registerCommands();
     game.wireEvents();
+
+    game.applyMovementUnlocks();
 
     // Every weapon-event listener (animator, audio, VFX, HUD) exists now: hand out the loadout.
     const loadout = getLoadout(level.id);
@@ -982,6 +1011,7 @@ export class Game {
         onSpawned: (id) => {
           this.sys.pointsRules.flagNoReward(id);
           this.sys.powerUps.flagNoDrop(id);
+          this.sys.progression.flagNoReward(id);
         },
       }),
       ...createWaveCommands({ waves }),
@@ -1000,6 +1030,7 @@ export class Game {
       ...createFireCommands({ weapons, arsenal: this.sys.arsenal }),
       ...createGrenadeCommands({ grenades: this.sys.grenades }),
       ...createAbilityCommands({ abilities: this.sys.abilities }),
+      ...createProgressionCommands({ progression: this.sys.progression, mapId: () => level.id }),
       ...createStatusCommands({
         status: this.sys.status,
         combat: this.sys.combat,
@@ -1062,6 +1093,7 @@ export class Game {
     // Covers "Neu starten" and the dev console `run restart`.
     this.sys.events.on('run:restart', () => {
       this.resetRunSystems();
+      this.beginProgressionRun();
       // `run restart` typed behind the game over screen: the restarted run waits behind the pause
       // menu ("Fortsetzen" takes the lock) instead of a stale game over screen.
       if (this.sys.menus.view === 'gameover') {
@@ -1070,9 +1102,16 @@ export class Game {
       }
     });
 
-    // Only pending settings are written on unload: profile changes are saved when they happen, and
-    // an unconditional write would resurrect a wiped save or let a stale tab overwrite newer data.
-    const persistNow = (): void => this.sys.settings.flush();
+    // M9: skill tree purchases grant dash / double jump at once.
+    this.sys.events.on('progression:skills', () => this.applyMovementUnlocks());
+
+    // Only pending settings are written on unload: profile changes are saved when they happen (M9
+    // progress: coalesced, so a pending one is flushed too), and an unconditional write would
+    // resurrect a wiped save or let a stale tab overwrite newer data.
+    const persistNow = (): void => {
+      this.sys.settings.flush();
+      this.sys.progression.flush();
+    };
     // pagehide is the reliable signal on mobile Safari; beforeunload covers desktop browsers.
     window.addEventListener('pagehide', persistNow);
     window.addEventListener('beforeunload', persistNow);
@@ -1096,6 +1135,7 @@ export class Game {
     if (this.runDirty) this.resetRunSystems(false);
     this.runDirty = true;
     runFlow.begin(level.id);
+    this.beginProgressionRun();
     // Fresh gameplay randomness per run (a reset reseeds the box and the drops as well).
     this.sys.nav.setRandomSeed(this.nextRunSeed());
     if (map.waves) this.sys.waves.start(1);
@@ -1112,6 +1152,7 @@ export class Game {
   /** Game over "Hauptmenü": abandon the run and show the start screen (map selection). */
   toMainMenu(): void {
     this.sys.runFlow.abandon();
+    this.sys.progression.endRun();
     this.resetRunSystems(false);
     this.pause('menu');
     this.sys.menus.showStart();
@@ -1172,7 +1213,50 @@ export class Game {
 
   /** Dev console `resetsave`: wipe storage and continue with defaults (applied live). */
   resetSave(): Promise<void> {
-    return this.sys.persistence.reset(this.sys.settings);
+    return this.sys.persistence.reset(this.sys.settings).then(() => {
+      // The profile object was replaced: progression re-binds (skills re-applied, unlocks reset).
+      this.sys.progression.attach(this.saveData.profile);
+      this.applyMovementUnlocks();
+    });
+  }
+
+  /**
+   * M9: a run starts – progression tracking (ranked on wave maps) and the skill tree's run
+   * bonuses: start points, the licensed start grenade / ability, extra grenades, movement.
+   */
+  private beginProgressionRun(): void {
+    const { progression, map, level, runFlow, economy, grenades, abilities } = this.sys;
+    progression.beginRun({ mapId: level.id, mode: runFlow.mode, seed: null, ranked: map.waves });
+    const bonus = progression.skills.bonuses;
+    const choice = progression.skills.loadout;
+    const mapLoadout = getLoadout(level.id);
+    grenades.setStart(
+      choice.grenade !== null
+        ? { id: choice.grenade, count: mapLoadout.grenade?.count ?? GRENADE_RULES.start.count }
+        : (mapLoadout.grenade ?? null),
+    );
+    grenades.reset();
+    if (bonus.startGrenades > 0) grenades.add(grenades.selected, bonus.startGrenades);
+    abilities.setStartAbility(
+      choice.ability ?? (mapLoadout.ability === undefined ? ABILITY_RULES.defaultAbility : mapLoadout.ability),
+    );
+    abilities.reset();
+    if (bonus.startPoints > 0) economy.reset(startPointsFor(map) + bonus.startPoints);
+    this.applyMovementUnlocks();
+  }
+
+  /** Dash / double jump: the profile's unlocks, the skill tree's, or everything in a sandbox. */
+  applyMovementUnlocks(): void {
+    const u = this.sys.player.unlocks;
+    if (this.movementSandbox) {
+      u.dash = true;
+      u.doubleJump = true;
+      return;
+    }
+    const profile = this.saveData.profile.unlocks;
+    const skills = this.sys.progression.skills.bonuses;
+    u.dash = profile.dash || skills.dash;
+    u.doubleJump = profile.doubleJump || skills.doubleJump;
   }
 
   /** True when the current level grants every movement ability regardless of the profile. */

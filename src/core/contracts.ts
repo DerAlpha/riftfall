@@ -1337,7 +1337,8 @@ export interface LifetimeStatsView {
 
 export interface ProgressionApi {
   readonly level: number;
-  readonly prestige: number;
+  /** 0..PROGRESSION.prestige.maxRank. */
+  readonly prestigeRank: number;
   /** XP into the current level and the XP the next level needs (0 at the max level). */
   readonly xp: number;
   readonly xpToNext: number;

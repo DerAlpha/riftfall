@@ -20,7 +20,8 @@
     "check": "npm run typecheck && npm run lint && npm run test",
     "assets": "node scripts/fetch-assets.mjs",
     "smoke": "node tools/smoke.mjs",
-    "smoke:waves": "node tools/waves.mjs"
+    "smoke:waves": "node tools/waves.mjs",
+    "smoke:economy": "node tools/economy.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",

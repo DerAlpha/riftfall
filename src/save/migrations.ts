@@ -7,6 +7,9 @@
  *    fov: 100, masterVolume: 0.7, invertY: false, createdAt: 1700000000000 }`. The flat fields were the
  *    source of truth for those values and override `settings`.
  *  - v1: `SaveData` from src/core/contracts.ts: `{ version: 1, settings, profile }`.
+ *  - v2 (M9 meta progression): the profile gains `progression`, `skills`, `weaponProgress`,
+ *    `achievements`, `challenges`, `cosmetics`, `lifetimeStats` and `leaderboards`. The migration
+ *    fills their defaults and keeps every v1 field (settings, unlocks, quality flags).
  *
  * Adding a version: bump ENGINE.saveVersion and add MIGRATIONS[n] (n -> n+1). Migrations operate on
  * plain JSON objects; the final object is always validated with sanitizeSettings/sanitizeProfile.
@@ -14,7 +17,7 @@
 import type { SaveData } from '../core/contracts';
 import { createLogger } from '../core/log';
 import { ENGINE } from '../defs/engine';
-import { createDefaultSave } from './defaults';
+import { createDefaultProgressionFields, createDefaultSave } from './defaults';
 import { cloneJson, isRecord, sanitizeProfile, sanitizeSettings } from './sanitize';
 
 const log = createLogger('Save');
@@ -64,8 +67,18 @@ function migrateV0toV1(data: JsonObject, now: number): JsonObject {
   };
 }
 
+function migrateV1toV2(data: JsonObject): JsonObject {
+  const profile: JsonObject = isRecord(data.profile) ? cloneJson(data.profile) : {};
+  const fresh = createDefaultProgressionFields() as unknown as JsonObject;
+  // Fill what is missing; a (pre-release) v1 profile that already carries a field keeps it for the
+  // sanitizer to validate.
+  for (const key of Object.keys(fresh)) if (!Object.prototype.hasOwnProperty.call(profile, key)) profile[key] = fresh[key];
+  return { ...data, version: 2, profile };
+}
+
 export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   0: migrateV0toV1,
+  1: migrateV1toV2,
 };
 
 export type MigrationStatus = 'empty' | 'current' | 'migrated' | 'corrupt' | 'future';

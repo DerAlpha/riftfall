@@ -38,6 +38,7 @@ import { EconomyHud } from './EconomyHud';
 import type { PowerUpTimerSource } from './PowerUpHud';
 import { WaveHud } from './WaveHud';
 import { WeaponHud } from './WeaponHud';
+import { ProgressionToasts } from './ProgressionToasts';
 import './hud-combat.css';
 
 const CROSSHAIR_STYLES = ['dot', 'cross', 'circle', 'chevron'] as const;
@@ -98,6 +99,8 @@ export class Hud {
   readonly economy: EconomyHud;
   /** M5: ability cooldown ring, grenade chip, running-ability overlays (bottom left). */
   readonly arsenal: ArsenalHud;
+  /** M9: level up / achievement / challenge / unlock toasts (top right). */
+  readonly toasts: ProgressionToasts;
   private readonly waves: WaveHud;
   private readonly indicators: DamageIndicator[] = [];
 
@@ -226,6 +229,7 @@ export class Hud {
     );
     // --- M5 arsenal: ability ring + grenade chip below the perk row, ability overlays ---
     this.arsenal = new ArsenalHud(bl, this.el, events, settings);
+    this.toasts = new ProgressionToasts(this.el, events);
 
     // --- bottom center: movement readout ---
     this.movementEl = h('div', 'hud-movement', this.el);
@@ -471,6 +475,7 @@ export class Hud {
     this.waves.update(d);
     this.economy.update(d);
     this.arsenal.update(d);
+    this.toasts.update(d);
   }
 
   dispose(): void {
@@ -481,6 +486,7 @@ export class Hud {
     this.waves.dispose();
     this.economy.dispose();
     this.arsenal.dispose();
+    this.toasts.dispose();
     this.el.remove();
   }
 

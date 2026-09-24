@@ -319,6 +319,15 @@ export class PowerUpSystem implements PowerUpApi {
     return n;
   }
 
+  /**
+   * The pickup of powerup:spawned `id` still floats (not collected, despawned or replaced in a
+   * full pool – those send no event). The economy audio ends its floating loop by this.
+   */
+  hasPickup(id: number): boolean {
+    for (const pk of this.pickups) if (pk.active && pk.collecting < 0 && pk.serial === id) return true;
+    return false;
+  }
+
   /** Holograms draw on the volumetric layer while any pickup exists. */
   get hasVolumetricContent(): boolean {
     return this.view !== null && this.view.visible;

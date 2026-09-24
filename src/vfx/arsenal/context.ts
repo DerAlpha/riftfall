@@ -114,7 +114,10 @@ export function requestLens(ctx: ArsenalContext, p: Vec3Like, radius: number, st
   q[o + 4] = strength;
 }
 
-/** Pulse factor of a glow layer at time t (s); `flicker` 0 turns hard blinks into soft pulses. */
+/**
+ * Pulse factor of a glow layer at time t (s); `flicker` 0 (reduce flashing) turns hard blinks
+ * into soft pulses no faster than ARSENAL_VFX.reducedPulseRate.
+ */
 export function pulseFactor(layer: GlowLayerDef, t: number, flicker = 1): number {
   const p = layer.pulse;
   if (!p) return 1;
@@ -122,7 +125,8 @@ export function pulseFactor(layer: GlowLayerDef, t: number, flicker = 1): number
     const phase = t * p.rate - Math.floor(t * p.rate);
     return phase < 0.5 ? 1 : 1 - p.depth;
   }
-  return 1 - p.depth * (0.5 + 0.5 * Math.sin(t * p.rate * Math.PI * 2));
+  const rate = flicker > 0 ? p.rate : Math.min(p.rate, ARSENAL_VFX.reducedPulseRate);
+  return 1 - p.depth * (0.5 + 0.5 * Math.sin(t * rate * Math.PI * 2));
 }
 
 /**

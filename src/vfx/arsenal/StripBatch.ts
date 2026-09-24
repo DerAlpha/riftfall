@@ -75,6 +75,7 @@ void main() {
 
 const FRAGMENT = /* glsl */ `
 uniform float uTime;
+uniform float uFlicker;
 varying vec3 vColor;
 varying vec2 vUv;
 varying vec2 vStyle;
@@ -92,7 +93,8 @@ void main() {
     a = across * across * 0.55 + pow(across, 8.0) * 0.8;
     core = pow(across, 18.0);
   } else if (style == 1) {
-    float fl = 0.7 + 0.3 * aNoise(vec2(u * 3.0 + seed * 17.0, floor(uTime * 30.0)));
+    // 30 Hz crackle; steady with reduce flashing (uFlicker 0).
+    float fl = mix(0.85, 0.7 + 0.3 * aNoise(vec2(u * 3.0 + seed * 17.0, floor(uTime * 30.0))), uFlicker);
     a = (exp(-y * y * 16.0) + exp(-y * y * 2.5) * 0.22) * fl;
     core = exp(-y * y * 70.0);
   } else if (style == 2) {
@@ -142,6 +144,8 @@ export class StripBatch {
   private readonly material: THREE.ShaderMaterial;
   private readonly viewportHeight = { value: 1080 };
   private readonly time: { value: number };
+  /** 1: electric strips crackle; 0 with reduce flashing (ArsenalVfx.setFlashScale). */
+  readonly flicker = { value: 1 };
   private n = 0;
   private warming = false;
   /** The strip being built: buffered points (PF floats each). */
@@ -198,6 +202,7 @@ export class StripBatch {
         uMinPx: { value: ARSENAL_VFX.strips.minPixelWidth },
         uMaxAngular: { value: ARSENAL_VFX.strips.maxAngularWidth },
         uTime: this.time,
+        uFlicker: this.flicker,
         fogParams: HEIGHT_FOG_PARAMS,
       },
       transparent: true,

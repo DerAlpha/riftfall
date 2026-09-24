@@ -10,7 +10,9 @@ import { POWER, type GeneratorSpotDef } from '../defs/mapEvents';
 import { facingNormal, facingYaw } from '../interactables/shapes';
 import { createBeamMaterial, createLightPool, type BeamMaterial, type PoolMaterial } from '../interactables/visuals/holo';
 import { toVolumetric } from '../maps/kit/energy';
-import type { KitAudio, KitVisuals } from '../maps/kit/kitTypes';
+import type { KitAudio, KitBlockers, KitVisuals } from '../maps/kit/kitTypes';
+import { SolidBlocker } from '../interactables/SolidBlocker';
+import { propBox, propNavBox } from '../interactables/shapes';
 import type { PropBuilder } from '../maps/kit/PropBuilder';
 
 const G = POWER.generator;
@@ -32,12 +34,14 @@ export class GeneratorPanel implements Interactable {
   private readonly okColor = new Color(G.okColor[0], G.okColor[1], G.okColor[2]);
   private readonly alarmColor = new Color(G.alarmColor[0], G.alarmColor[1], G.alarmColor[2]);
   private crankTimer = 0;
+  private readonly blocker: SolidBlocker | null = null;
 
   constructor(
     readonly spot: GeneratorSpotDef,
     visuals: KitVisuals | null,
     props: PropBuilder | null,
     private readonly audio: KitAudio | null,
+    blockers: KitBlockers | null = null,
   ) {
     this.id = `generator:${spot.id}`;
     const n = facingNormal(spot.facing);
@@ -50,6 +54,14 @@ export class GeneratorPanel implements Interactable {
     const a = d / 2 + G.anchor.offset;
     this.position = new Vector3(cx + n.x * a, y + G.anchor.y, czz + n.z * a);
     this.base.set(cx + n.x * (d / 2 + 0.6), y, czz + n.z * (d / 2 + 0.6));
+    if (blockers) {
+      const box = propBox({ x: cx, y, z: czz }, yaw, w, h, d);
+      this.blocker = new SolidBlocker(
+        blockers,
+        { collider: box, bullets: { box, materialId: G.materials.body }, nav: propNavBox(box) },
+        true,
+      );
+    }
     if (!visuals || !props) return;
 
     // Cabinet: plinth, body, front panel with vents, hazard frame, cable ducts to the ceiling.
@@ -188,6 +200,7 @@ export class GeneratorPanel implements Interactable {
   }
 
   dispose(): void {
+    this.blocker?.dispose();
     for (const o of this.objects) {
       o.removeFromParent();
       const m = o as Mesh;

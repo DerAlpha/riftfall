@@ -42,7 +42,11 @@ describe('M6 ground types perf smoke', () => {
     for (const m of meshes) root.add(m);
     combat.setLevel(root);
     const player = new FakePlayer(0, 0, 5);
-    const visuals = new EnemyRenderer({ scene: new Scene(), render: { setupMaterial() {} }, surfaceTexture: false });
+    const visuals = new EnemyRenderer({
+      scene: new Scene(),
+      render: { setupMaterial() {} },
+      surfaceTexture: false,
+    });
     const manager = new EnemyManager({ events, combat, nav, visuals, target: player, seed: 'perf-ground' });
     let spawned = 0;
     for (const [type, count] of MIX) {

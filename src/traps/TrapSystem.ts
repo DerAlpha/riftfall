@@ -16,7 +16,7 @@ import type { GameEvents, Vec3Like } from '../core/events';
 import { createLogger } from '../core/log';
 import { Rng } from '../core/Rng';
 import type { TrapSlotDef } from '../defs/traps';
-import type { KitAudio, KitCombat, KitPlayer, KitVfx, KitVisuals } from '../maps/kit/kitTypes';
+import type { KitAudio, KitBlockers, KitCombat, KitPlayer, KitVfx, KitVisuals } from '../maps/kit/kitTypes';
 import { PropBuilder } from '../maps/kit/PropBuilder';
 import { FanTrap } from './FanTrap';
 import { FenceTrap } from './FenceTrap';
@@ -38,6 +38,7 @@ export interface TrapSystemDeps {
   audio?: KitAudio | null;
   /** Null: logic only (tests, headless). */
   visuals?: KitVisuals | null;
+  blockers?: KitBlockers | null;
   seed?: string | number;
 }
 
@@ -79,6 +80,7 @@ export class TrapSystem implements TrapApi {
       economy: deps.economy,
       visuals,
       props,
+      blockers: deps.blockers ?? null,
       onKill: () => {
         this._kills++;
       },

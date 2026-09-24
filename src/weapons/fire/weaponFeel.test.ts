@@ -416,7 +416,8 @@ describe('crit rhythm (critBurst counts the rounds of the magazine in hand)', ()
     const target = new FakeTarget({ x: 0, y: 0.35, z: -10 }, 1e9);
     t.combat.register(target);
     const def = t.weapons.currentDef!;
-    const gap = Math.ceil((60 / def.rpm + (def.burst ? (def.burst.count - 1) * (60 / def.burst.rpm) : 0)) / DT) + 2;
+    const gap =
+      Math.ceil((60 / def.rpm + (def.burst ? (def.burst.count - 1) * (60 / def.burst.rpm) : 0)) / DT) + 2;
     const pull = (n = 1): void => {
       for (let i = 0; i < n; i++) {
         t.input.tap('fire');
@@ -529,7 +530,9 @@ function singleTargetDps(d: WeaponDef): number {
   if (d.kind === 'beam' && d.beam) rate = d.beam.tickRate;
   const shots = d.kind === 'beam' && d.beam ? (d.magazine / d.beam.ammoPerSecond) * rate : d.magazine;
   const r = d.reload;
-  const reload = r.perShell ? r.perShell.start + r.perShell.shell * d.magazine + r.perShell.emptyEnd : r.empty;
+  const reload = r.perShell
+    ? r.perShell.start + r.perShell.shell * d.magazine + r.perShell.emptyEnd
+    : r.empty;
   return (perShot * shots) / (shots / rate + reload);
 }
 
@@ -540,7 +543,8 @@ describe('Rift Forge progression', () => {
       let last = singleTargetDps(base);
       for (const tier of [1, 2, 3]) {
         const dps = singleTargetDps(resolveWeapon(base, { tier }));
-        if (dps < last * (1 - 1e-9)) drops.push(`${base.id} t${tier}: ${last.toFixed(0)} → ${dps.toFixed(0)}`);
+        if (dps < last * (1 - 1e-9))
+          drops.push(`${base.id} t${tier}: ${last.toFixed(0)} → ${dps.toFixed(0)}`);
         last = dps;
       }
     }

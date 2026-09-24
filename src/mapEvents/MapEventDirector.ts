@@ -39,7 +39,15 @@ import {
   type PowerOutageEventDef,
 } from '../defs/mapEvents';
 import type { GravityZones } from '../maps/kit/GravityZones';
-import { PositionalLoop, type KitAudio, type KitBanner, type KitPlayer, type KitVfx, type KitVisuals } from '../maps/kit/kitTypes';
+import {
+  PositionalLoop,
+  type KitAudio,
+  type KitBanner,
+  type KitBlockers,
+  type KitPlayer,
+  type KitVfx,
+  type KitVisuals,
+} from '../maps/kit/kitTypes';
 import type { PowerGrid } from '../maps/kit/PowerGrid';
 import { PropBuilder } from '../maps/kit/PropBuilder';
 import { AnomalyView } from './AnomalyView';
@@ -75,6 +83,8 @@ export interface MapEventDirectorDeps {
   /** Screen-space shockwave (RenderApi.addShockwave). */
   shockwave?: ((position: Vec3Like, radius: number, strength: number) => void) | null;
   visuals?: KitVisuals | null;
+  /** Generator cabinets are solid (collider, bullets, nav area); null = not solid. */
+  blockers?: KitBlockers | null;
   seed?: string | number;
 }
 
@@ -146,7 +156,9 @@ export class MapEventDirector implements MapEventApi {
     this.cooldownUntil = new Int32Array(this.defs.length);
     const v = deps.visuals ?? null;
     const props = v ? new PropBuilder() : null;
-    this.generators = deps.generators.map((g) => new GeneratorPanel(g, v, props, deps.audio ?? null));
+    this.generators = deps.generators.map(
+      (g) => new GeneratorPanel(g, v, props, deps.audio ?? null, deps.blockers ?? null),
+    );
     for (const g of this.generators) {
       deps.interaction.register(g);
       this.alarmLoops.push(

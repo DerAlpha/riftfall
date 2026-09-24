@@ -1162,7 +1162,16 @@ export const MUSIC = {
     radius: 24,
     near: 7,
     /** Threat of one enemy per type (unknown: 1), elites ×elite. */
-    typeWeight: { swarmer: 0.6, spitter: 1, tank: 2.4 } as Readonly<Record<string, number>>,
+    typeWeight: {
+      swarmer: 0.6,
+      spitter: 1,
+      tank: 2.4,
+      // M6 ground package (a mite swarm must not max the score on its own).
+      leaper: 0.9,
+      berserker: 1.8,
+      mite: 0.2,
+      exploder: 1.3,
+    } as Readonly<Record<string, number>>,
     eliteWeight: 2,
     /** Threat → intensity: 1 − exp(−threat / threatScale), times `threat` below. */
     threatScale: 4,

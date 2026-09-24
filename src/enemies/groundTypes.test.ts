@@ -13,7 +13,11 @@ import { DT, createEnemyHarness } from './testFakes';
 
 type Harness = ReturnType<typeof createEnemyHarness>;
 
-function info(amount: number, zone: DamageInfo['zone'] = 'body', kind: DamageInfo['kind'] = 'bullet'): DamageInfo {
+function info(
+  amount: number,
+  zone: DamageInfo['zone'] = 'body',
+  kind: DamageInfo['kind'] = 'bullet',
+): DamageInfo {
   return {
     amount,
     zone,
@@ -196,7 +200,9 @@ describe('Springer', () => {
 
   it('clears low cover between it and the player (arc lane)', () => {
     // A 1.2 m crate wall: above the body-height lane ray, well below the arc.
-    const h = createEnemyHarness({ boxes: [{ center: { x: 0, y: 0.6, z: -5 }, size: { x: 6, y: 1.2, z: 0.5 } }] });
+    const h = createEnemyHarness({
+      boxes: [{ center: { x: 0, y: 0.6, z: -5 }, size: { x: 6, y: 1.2, z: 0.5 } }],
+    });
     const e = spawn(h, 'leaper', 0, -10);
     h.manager.aiEnabled = false;
     h.tick(seconds(1.2));

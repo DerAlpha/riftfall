@@ -19,6 +19,7 @@ import { TRAPS, trapTiming, type TrapKind, type TrapSlotDef, type TrapState } fr
 import {
   PositionalLoop,
   type KitAudio,
+  type KitBlockers,
   type KitCombat,
   type KitPlayer,
   type KitVfx,
@@ -43,6 +44,8 @@ export interface TrapContext {
   readonly visuals: KitVisuals | null;
   /** Static bodies of every trap, merged per material (null without visuals). */
   readonly props: PropBuilder | null;
+  /** Solid trap bodies (fan housings); null = nothing solid. */
+  readonly blockers: KitBlockers | null;
   /** A trap killed something (run stats). */
   onKill(trap: Trap, target: Damageable): void;
 }

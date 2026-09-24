@@ -1501,7 +1501,15 @@ export const VFX_EFFECTS = {
       },
       flashGlow([0.35, 0.85, 1], 0.5, 0.45, 4, 0.04),
     ],
-    light: { color: [0.35, 0.8, 1], intensity: 45, range: 6, duration: 0.6, flicker: 0.2, offset: 0.1, priority: 1 },
+    light: {
+      color: [0.35, 0.8, 1],
+      intensity: 45,
+      range: 6,
+      duration: 0.6,
+      flicker: 0.2,
+      offset: 0.1,
+      priority: 1,
+    },
   },
   /** Exploder fuse: the sac burns brighter and brighter, embers boil off, an amber light flickers. */
   'enemy.telegraph.fuse': {
@@ -1525,7 +1533,15 @@ export const VFX_EFFECTS = {
       },
       motes([1, 0.6, 0.15], [10, 14], [0.4, 1.2], [0.6, 1.1], 6, { axis: 'up', spread: 70, jitter: 0.3 }),
     ],
-    light: { color: [1, 0.5, 0.12], intensity: 90, range: 8, duration: 1.15, flicker: 0.55, offset: 0.3, priority: 1 },
+    light: {
+      color: [1, 0.5, 0.12],
+      intensity: 90,
+      range: 8,
+      duration: 1.15,
+      flicker: 0.55,
+      offset: 0.3,
+      priority: 1,
+    },
   },
   /** Berserker overhead crush: a red flare in its eyes. */
   'enemy.telegraph.crush': {
@@ -1548,7 +1564,15 @@ export const VFX_EFFECTS = {
         flash: true,
       },
     ],
-    light: { color: [1, 0.25, 0.08], intensity: 50, range: 6, duration: 0.5, flicker: 0.3, offset: 0.2, priority: 1 },
+    light: {
+      color: [1, 0.25, 0.08],
+      intensity: 50,
+      range: 6,
+      duration: 0.5,
+      flicker: 0.3,
+      offset: 0.2,
+      priority: 1,
+    },
   },
   /** Berserker enrage: red light and embers around the rearing head. */
   'enemy.telegraph.roar': {
@@ -1556,7 +1580,15 @@ export const VFX_EFFECTS = {
       flashGlow([1, 0.22, 0.06], 1.2, 0.6, 3, 0.1),
       motes([1, 0.3, 0.08], [16, 22], [1, 3], [0.6, 1.2], 8, { spread: 120, jitter: 0.25 }),
     ],
-    light: { color: [1, 0.2, 0.06], intensity: 110, range: 9, duration: 1, flicker: 0.4, offset: 0.2, priority: 1 },
+    light: {
+      color: [1, 0.2, 0.06],
+      intensity: 110,
+      range: 9,
+      duration: 1,
+      flicker: 0.4,
+      offset: 0.2,
+      priority: 1,
+    },
   },
   /** Berserker roar peak (strike, on the floor under its head): dust blown outwards, a red ring. */
   'enemy.berserker.roar': {

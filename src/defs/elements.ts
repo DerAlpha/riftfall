@@ -382,6 +382,9 @@ export const STATUS_RESIST = {
     spitter: { buildup: { poison: 0.4 }, control: 1, slow: 1, freeze: true },
     // Heavy armor: slow to chill and shock, shorter freezes and stuns.
     tank: { buildup: { ice: 0.6, shock: 0.6 }, control: 0.5, slow: 0.6, freeze: true },
+    // M6: the berserker's rage shortens freezes and stuns; the exploder's bile barely burns.
+    berserker: { buildup: {}, control: 0.6, slow: 0.8, freeze: true },
+    exploder: { buildup: { fire: 0.5 }, control: 1, slow: 1, freeze: true },
   } as Readonly<Record<string, StatusResistDef>>,
 } as const;
 

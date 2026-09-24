@@ -66,8 +66,15 @@ describe('M6 ground types: defs are consistent', () => {
       if (d.death.burst) expect(vis.sockets[d.death.burst.socket], `${id} burst`).toBeDefined();
       expect(getEffectPreset(vis.effects.spawn), id).toBeDefined();
       expect(getEffectPreset(vis.effects.death), id).toBeDefined();
-      expect(vis.hitboxes.map((h) => h.zone), id).toContain('body');
-      if (d.breach) expect(d.attacks.some((a) => a.id === d.breach!.attack), id).toBe(true);
+      expect(
+        vis.hitboxes.map((h) => h.zone),
+        id,
+      ).toContain('body');
+      if (d.breach)
+        expect(
+          d.attacks.some((a) => a.id === d.breach!.attack),
+          id,
+        ).toBe(true);
     }
   });
 
@@ -107,7 +114,10 @@ describe('M6 ground types: defs are consistent', () => {
         expect(a.sound, tag).toMatch(new RegExp(`^enemy\\.${id}\\.`));
       }
       // Something the brain can pick.
-      expect(d.attacks.some((a) => !a.scripted), id).toBe(true);
+      expect(
+        d.attacks.some((a) => !a.scripted),
+        id,
+      ).toBe(true);
       for (const s of Object.values(d.audio)) if (typeof s === 'string') expect(s).toMatch(/^enemy\./);
     }
   });
@@ -231,7 +241,9 @@ describe('M6 ground visuals', () => {
       const def = getEnemyVisualDef(id)!;
       for (const [name, z] of Object.entries(def.zones)) {
         if (z.glow > 0.5)
-          expect(luminance(z.emissive) * z.emissiveIntensity * z.glow, `${id}:${name}`).toBeGreaterThan(bloom);
+          expect(luminance(z.emissive) * z.emissiveIntensity * z.glow, `${id}:${name}`).toBeGreaterThan(
+            bloom,
+          );
         if (z.veins > 0.4)
           expect(luminance(z.emissive) * z.emissiveIntensity * z.veins, `${id}:${name}`).toBeGreaterThan(
             bloom * 0.5,

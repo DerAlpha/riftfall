@@ -1000,6 +1000,8 @@ export const ARSENAL_VFX = {
   charge: { renderOrder: 51 },
   /** Glow / beam / charge brightness with the reduce-flashing option (lights: VFX.lights). */
   reducedFlashingScale: 0.6,
+  /** Glow pulses (GlowLayerDef.pulse) run at most this fast (Hz) with reduce flashing. */
+  reducedPulseRate: 2,
   /** Default flicker depth of sustained lights (SustainLightDef.flicker). */
   sustainFlicker: 0.2,
   /** Screen-space lenses at once (singularity fields + void orbs; ShockwaveEffect slots). */

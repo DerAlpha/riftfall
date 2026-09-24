@@ -33,6 +33,7 @@ import { createSpriteAtlas } from '../spriteAtlas';
 import { FakePhysics, FakeSockets, fakeRender, seeded } from '../testFakes';
 import { particleAlpha } from '../ParticleBuffer';
 import { buildBolt, flameFadeIn } from './ArsenalBeams';
+import { pulseFactor } from './context';
 import { ArsenalVfx } from './ArsenalVfx';
 import { createArsenalCommands } from './arsenalCommands';
 import { StripBatch } from './StripBatch';
@@ -324,7 +325,7 @@ describe('ArsenalVfx pools and handles', () => {
     arsenal.dispose();
   });
 
-  it('reduce flashing holds the full-charge pulse steady (no 9 Hz throb at the muzzle)', () => {
+  it('reduce flashing holds the full-charge pulse and the electric crackle steady', () => {
     const { arsenal, sockets } = rig();
     const flicker = (): number => {
       arsenal.charge('charge.rail', 1);
@@ -332,9 +333,15 @@ describe('ArsenalVfx pools and handles', () => {
       const glow = sockets.anchors.muzzle.children.find((c) => c.name === 'ArsenalChargeGlow') as THREE.Mesh;
       return (glow.material as THREE.ShaderMaterial).uniforms.uFlicker!.value as number;
     };
+    const strips = () =>
+      ((arsenal.object.getObjectByName('ArsenalStrips') as THREE.Mesh).material as THREE.ShaderMaterial)
+        .uniforms.uFlicker!.value as number;
     expect(flicker()).toBe(1);
+    expect(strips()).toBe(1);
     arsenal.setFlashScale(ARSENAL_VFX.reducedFlashingScale);
     expect(flicker()).toBe(0);
+    // Electric strips (lightning bolts, arcs) stop their 30 Hz crackle too.
+    expect(strips()).toBe(0);
     arsenal.dispose();
   });
 
@@ -454,6 +461,30 @@ describe('ArsenalVfx pools and handles', () => {
     expect(lights.lights.every((l) => l.intensity > 0)).toBe(true);
     expect(hops).toBe(0);
     arsenal.dispose();
+  });
+
+  it('reduce flashing slows fast glow pulses below the photosensitive range', () => {
+    const layer: GlowLayerDef = {
+      shape: 'flare',
+      size: 0.2,
+      color: [1, 0.3, 0.2],
+      intensity: 9,
+      pulse: { rate: 14, depth: 0.5 },
+    };
+    /** Crossings of the mean over one second (2 per cycle). */
+    const crossings = (flicker: number): number => {
+      let n = 0;
+      let prev = pulseFactor(layer, 0.001, flicker) - 0.75;
+      for (let i = 1; i <= 960; i++) {
+        const v = pulseFactor(layer, 0.001 + i / 960, flicker) - 0.75;
+        if (Math.sign(v) !== Math.sign(prev)) n++;
+        prev = v;
+      }
+      return n;
+    };
+    expect(crossings(1)).toBeGreaterThanOrEqual(26);
+    expect(crossings(0)).toBeLessThanOrEqual(ARSENAL_VFX.reducedPulseRate * 2 + 1);
+    expect(ARSENAL_VFX.reducedPulseRate).toBeLessThan(3);
   });
 
   it('flameFadeIn solves the flight time under linear drag', () => {

@@ -737,6 +737,8 @@ export class Game {
           seconds,
         }),
       shockwave: (p, r, s) => render.addShockwave(p, r, s),
+      // Generator cabinets, the quest socket and fan housings: collider, bullets, nav area.
+      blockers: { physics, combat, nav },
       visuals: { scene: render.scene, materials, setupMaterial: (m) => render.setupMaterial(m), reduceFlashing },
       seed: runSeed,
     });

@@ -198,7 +198,16 @@ export const PROGRESSION = {
     currency: 250,
   },
   /** XP per kill by enemy type; types without an entry (new M6 enemies) use `killDefault`. */
-  killXp: { swarmer: 10, spitter: 25, tank: 75 } as Readonly<Record<string, number>>,
+  killXp: {
+    swarmer: 10,
+    spitter: 25,
+    tank: 75,
+    // M6 ground package: mites come by the dozen (summoners) – next to nothing each.
+    leaper: 20,
+    berserker: 50,
+    mite: 3,
+    exploder: 15,
+  } as Readonly<Record<string, number>>,
   killDefault: 15,
   eliteMultiplier: 2,
   headshotBonus: 5,

@@ -42,7 +42,7 @@ import { TrapSystem } from '../../traps/TrapSystem';
 import { isMapLevel, type BossArenaDef, type MapLevelInstance } from '../types';
 import { createGravityCommands } from './gravityCommands';
 import { GravityZones } from './GravityZones';
-import type { KitAudio, KitBanner, KitCombat, KitPlayer, KitVfx, KitVisuals } from './kitTypes';
+import type { KitAudio, KitBanner, KitBlockers, KitCombat, KitPlayer, KitVfx, KitVisuals } from './kitTypes';
 import {
   resolveBossArena,
   resolveEventDefs,
@@ -89,6 +89,8 @@ export interface MapKitDeps {
   vfx?: KitVfx | null;
   banner?: KitBanner | null;
   shockwave?: ((position: Vec3Like, radius: number, strength: number) => void) | null;
+  /** Solid kit props (generators, the quest socket, fan housings); null = not solid. */
+  blockers?: Omit<KitBlockers, 'parent'> | null;
   /** Null: logic only (tests / headless). */
   visuals?: {
     scene: Object3D;
@@ -138,6 +140,8 @@ export class MapKit {
       this.root = null;
       this.visuals = null;
     }
+    // Hidden bullet meshes of solid props hang under the kit root (or nowhere without visuals).
+    const blockers: KitBlockers | null = deps.blockers ? { ...deps.blockers, parent: this.root } : null;
     const zoneNames = new Map<string, string>(isMapLevel(level) ? level.zones.map((z) => [z.id, z.name]) : []);
     this.traps = new TrapSystem({
       slots: resolveTrapSlots(level, mapId),
@@ -150,6 +154,7 @@ export class MapKit {
       vfx: deps.vfx ?? null,
       audio: deps.audio ?? null,
       visuals: this.visuals,
+      blockers,
       seed: deps.seed,
     });
     this.director = new MapEventDirector({
@@ -171,6 +176,7 @@ export class MapKit {
       banner: deps.banner ?? null,
       shockwave: deps.shockwave ?? null,
       visuals: this.visuals,
+      blockers,
       seed: deps.seed,
     });
     const pulse = (level as { pulseRift?: (s: number) => void }).pulseRift;
@@ -192,6 +198,7 @@ export class MapKit {
       shockwave: deps.shockwave ?? null,
       pulse: typeof pulse === 'function' ? (s) => pulse.call(level, s) : null,
       visuals: this.visuals,
+      blockers,
     });
     this.root?.updateMatrixWorld(true);
     log.info(

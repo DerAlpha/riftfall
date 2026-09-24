@@ -363,7 +363,13 @@ export const EXPLODER_VISUAL: EnemyVisualDef | null = {
       b: [0, 1.5, -0.24],
       radius: 0.032,
     },
-    { shape: 'ellipsoid', bone: 'torso', zone: 'blister', center: [0, 1.5, -0.24], radii: [0.04, 0.04, 0.04] },
+    {
+      shape: 'ellipsoid',
+      bone: 'torso',
+      zone: 'blister',
+      center: [0, 1.5, -0.24],
+      radii: [0.04, 0.04, 0.04],
+    },
     // Small sunken head, eyes, screaming jaw.
     { shape: 'ellipsoid', bone: 'head', zone: 'flesh', center: [0, 1.34, 0.2], radii: [0.11, 0.09, 0.12] },
     {

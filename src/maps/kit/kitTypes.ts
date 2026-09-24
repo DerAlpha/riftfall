@@ -12,6 +12,14 @@ import type {
 } from '../../core/contracts';
 import type { Vec3Like } from '../../core/events';
 import type { LightFlashDef, Rgb } from '../../defs/vfx';
+import type { SolidBlockerDeps } from '../../interactables/SolidBlocker';
+
+/**
+ * Solid kit props (generator cabinets, the quest socket, fan housings): player collider, bullet
+ * blocker (`level:<material>` mesh) and a blocked nav area, like the machines (SolidBlocker).
+ * Null: nothing is solid (tests, headless).
+ */
+export type KitBlockers = SolidBlockerDeps;
 
 /** AudioEngine subset: one-shots and positional loops. */
 export interface KitAudio {

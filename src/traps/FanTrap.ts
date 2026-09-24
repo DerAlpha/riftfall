@@ -10,7 +10,8 @@ import { Color, Group, MeshStandardMaterial, Matrix4, Quaternion, Vector3, type 
 import { TRAPS, type FanSlotDef } from '../defs/traps';
 import { createStreaks } from '../maps/kit/energy';
 import { PropBuilder } from '../maps/kit/PropBuilder';
-import { facingNormal } from '../interactables/shapes';
+import { facingNormal, propBox, propNavBox } from '../interactables/shapes';
+import { SolidBlocker } from '../interactables/SolidBlocker';
 import { Trap, type TrapContext } from './Trap';
 import { fanSample, type FanSample } from './trapMath';
 
@@ -37,6 +38,7 @@ export class FanTrap extends Trap {
   private readonly warn: MeshStandardMaterial | null = null;
   private readonly streaks: Mesh<InstancedBufferGeometry, ShaderMaterial> | null = null;
   private readonly meshes: Mesh[] = [];
+  private readonly blocker: SolidBlocker | null = null;
 
   constructor(slot: FanSlotDef, ctx: TrapContext) {
     const n =
@@ -51,6 +53,19 @@ export class FanTrap extends Trap {
     this.radius = slot.radius ?? F.radius;
     this.reach = slot.reach ?? F.reach;
     this.queryCenter.copy(this.hub).addScaledVector(this.normal, this.reach / 2);
+    const size = (slot.radius ?? F.radius) * 2 + F.frame * 2;
+    if (ctx.blockers && slot.facing !== 'up') {
+      // The housing sticks out of the wall: solid for the player, bullets and the navmesh.
+      const box = propBox({ x: x + n.x * (depth / 2), y: y - size / 2, z: z + n.z * (depth / 2) }, 0, size, size, depth);
+      const across = Math.abs(n.x) > 0.5;
+      const half = { x: across ? depth / 2 : size / 2, y: size / 2, z: across ? size / 2 : depth / 2 };
+      const solid = { center: box.center, half };
+      this.blocker = new SolidBlocker(
+        ctx.blockers,
+        { collider: solid, bullets: { box: solid, materialId: 'pillar_metal' }, nav: propNavBox(solid) },
+        true,
+      );
+    }
     const v = ctx.visuals;
     const props = ctx.props;
     if (!v || !props) return;
@@ -204,6 +219,7 @@ export class FanTrap extends Trap {
   }
 
   protected disposeVisuals(): void {
+    this.blocker?.dispose();
     for (const m of this.meshes) {
       m.removeFromParent();
       m.geometry.dispose();

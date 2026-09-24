@@ -282,6 +282,7 @@ export class ArsenalVfx implements ArsenalVfxApi {
   setFlashScale(scale: number): void {
     this.ctx.flashScale = Math.max(0, Number.isFinite(scale) ? scale : 1);
     this.ctx.flicker = this.ctx.flashScale < 1 ? 0 : 1;
+    this.ctx.strips.flicker.value = this.ctx.flicker;
   }
 
   /** Dev preview driver (console `fx`), run at the start of every update(). */

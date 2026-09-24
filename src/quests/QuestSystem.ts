@@ -39,9 +39,20 @@ import {
   type QuestStepDef,
   type QuestTargetDef,
 } from '../defs/quests';
-import { PositionalLoop, type KitAudio, type KitBanner, type KitCombat, type KitPlayer, type KitVfx, type KitVisuals } from '../maps/kit/kitTypes';
+import {
+  PositionalLoop,
+  type KitAudio,
+  type KitBanner,
+  type KitBlockers,
+  type KitCombat,
+  type KitPlayer,
+  type KitVfx,
+  type KitVisuals,
+} from '../maps/kit/kitTypes';
+import { SolidBlocker } from '../interactables/SolidBlocker';
 import { PropBuilder } from '../maps/kit/PropBuilder';
 import { QuestMachine } from './QuestMachine';
+import { propNavBox } from '../interactables/shapes';
 import { CoreView, DefendView, SocketView, TagView, anchorNormal } from './questViews';
 
 const log = createLogger('quests');
@@ -71,6 +82,8 @@ export interface QuestSystemDeps {
   /** Level cue on step changes (the lab flares its rift anomaly). */
   pulse?: ((strength: number) => void) | null;
   visuals?: KitVisuals | null;
+  /** Socket pedestals are solid (collider, bullets, nav area); null = not solid. */
+  blockers?: KitBlockers | null;
 }
 
 /** A hidden target (Damageable): one player hit counts. */
@@ -162,6 +175,7 @@ export class QuestSystem implements QuestApi {
   private readonly tagLoops: PositionalLoop[] = [];
   private readonly defends: { step: number; view: DefendView; def: Extract<QuestStepDef, { kind: 'defend' }> }[] = [];
   private readonly core: CoreView | null = null;
+  private readonly blockers: SolidBlocker[] = [];
   private readonly root: Group | null = null;
   private readonly unsubscribe: (() => void)[] = [];
   private readonly stepPayload: GameEvents['quest:step'];
@@ -222,6 +236,21 @@ export class QuestSystem implements QuestApi {
         for (const o of s.objects) {
           const view = visuals && props && o.style === 'socket' ? new SocketView(o.position, visuals, props) : null;
           const obj = new QuestObject(o, stepIndex, this.machine!, view, (u) => this.onObjectUsed(u));
+          const b = deps.blockers;
+          if (b && o.style === 'socket') {
+            const S = V.socket;
+            const box = {
+              center: { x: o.position[0], y: o.position[1] + S.height / 2, z: o.position[2] },
+              half: { x: S.radius, y: S.height / 2, z: S.radius },
+            };
+            this.blockers.push(
+              new SolidBlocker(
+                b,
+                { collider: box, bullets: { box, materialId: S.material }, nav: propNavBox(box) },
+                true,
+              ),
+            );
+          }
           this.objects.push(obj);
           deps.interaction.register(obj);
         }
@@ -393,6 +422,7 @@ export class QuestSystem implements QuestApi {
       o.view?.dispose();
     }
     for (const d of this.defends) d.view.dispose();
+    for (const b of this.blockers) b.dispose();
     this.core?.dispose();
     for (const l of this.tagLoops) l.stop(0);
     for (const it of this.items) it.loop.stop(0);

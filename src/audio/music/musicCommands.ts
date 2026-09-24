@@ -13,7 +13,10 @@ import { themeIdForMap } from './composer';
 import type { MusicSystem } from './MusicSystem';
 
 export interface MusicCommandDeps {
-  music: Pick<MusicSystem, 'status' | 'forceState' | 'setIntensity' | 'setMapTheme' | 'sting' | 'setBossTheme'>;
+  music: Pick<
+    MusicSystem,
+    'status' | 'forceState' | 'setIntensity' | 'setMapTheme' | 'sting' | 'setBossTheme'
+  >;
 }
 
 const SUBCOMMANDS = ['state', 'intensity', 'theme', 'sting', 'boss'];
@@ -39,7 +42,8 @@ export function createMusicCommands(deps: MusicCommandDeps): ConsoleCommand[] {
       name: 'music',
       aliases: ['musik'],
       description: 'Dynamische Musik: Status, Zustand, Intensität, Thema, Stings',
-      usage: 'music [state <zustand|auto> | intensity <0..1|auto> | theme <karte> | sting <id> | boss <thema|off>]',
+      usage:
+        'music [state <zustand|auto> | intensity <0..1|auto> | theme <karte> | sting <id> | boss <thema|off>]',
       complete: (args) => {
         if (args.length <= 1) return SUBCOMMANDS;
         switch (args[0]) {
@@ -79,7 +83,8 @@ export function createMusicCommands(deps: MusicCommandDeps): ConsoleCommand[] {
               return 'Intensität folgt wieder Modell / Spawn-Director';
             }
             const v = Number(arg);
-            if (arg === undefined || !Number.isFinite(v) || v < 0 || v > 1) throw new Error('Intensität: 0..1 oder auto');
+            if (arg === undefined || !Number.isFinite(v) || v < 0 || v > 1)
+              throw new Error('Intensität: 0..1 oder auto');
             m.setIntensity(v, 'dev');
             return `Intensität erzwungen: ${v.toFixed(2)}`;
           }
@@ -93,7 +98,9 @@ export function createMusicCommands(deps: MusicCommandDeps): ConsoleCommand[] {
             if (!arg || !(MUSIC_STING_IDS as readonly string[]).includes(arg)) {
               throw new Error(`Sting: ${MUSIC_STING_IDS.join(', ')}`);
             }
-            return m.sting(arg as MusicStingId) ? `Sting ${arg}` : `Sting ${arg} gedrosselt (zu kurz nacheinander)`;
+            return m.sting(arg as MusicStingId)
+              ? `Sting ${arg}`
+              : `Sting ${arg} gedrosselt (zu kurz nacheinander)`;
           }
           case 'boss': {
             if (!arg) throw new Error(`boss <${MUSIC.bossTheme}|off>`);

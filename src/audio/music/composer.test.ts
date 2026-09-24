@@ -63,7 +63,8 @@ describe('music themes', () => {
       expect(def.key >= 36 && def.key <= 47).toBe(true);
       expect(def.tempo).toBeGreaterThan(40);
       expect(def.meter.length).toBeGreaterThan(0);
-      for (const p of def.progressions) for (const d of p) expect(d >= 0 && d < SCALES[def.scale].length).toBe(true);
+      for (const p of def.progressions)
+        for (const d of p) expect(d >= 0 && d < SCALES[def.scale].length).toBe(true);
       for (const [slot, inst] of Object.entries(def.palette)) {
         expect(INSTRUMENT_SLOTS).toContain(slot);
         expect(INSTRUMENT_RECIPES[inst!.recipe]).toBeDefined();
@@ -72,7 +73,8 @@ describe('music themes', () => {
       }
     }
     // Every sting only names instrument slots.
-    for (const sting of Object.values(MUSIC_STINGS)) for (const n of sting.notes) expect(INSTRUMENT_SLOTS).toContain(n.slot);
+    for (const sting of Object.values(MUSIC_STINGS))
+      for (const n of sting.notes) expect(INSTRUMENT_SLOTS).toContain(n.slot);
   });
 
   it('composes deterministically: same theme → same music, other themes → other music', () => {
@@ -82,7 +84,9 @@ describe('music themes', () => {
       expect(JSON.stringify(a.phrases)).toBe(JSON.stringify(b.phrases));
     }
     const lead = (id: string) =>
-      composeTheme(id).phrases[0]!.bars.flatMap((b) => b.events.filter((e) => e.slot === 'lead').map((e) => e.note));
+      composeTheme(id).phrases[0]!.bars.flatMap((b) =>
+        b.events.filter((e) => e.slot === 'lead').map((e) => e.note),
+      );
     expect(lead('lab')).not.toEqual(lead('menu'));
     expect(lead('lab').length).toBeGreaterThan(8);
   });

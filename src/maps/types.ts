@@ -1,12 +1,20 @@
 /**
  * Map-level extensions of the LevelInstance contract (src/core/contracts.ts) that wave maps
- * expose for M4 (doors, wall buys, zones) and for the composition root (volumetric content).
- * All fields are optional on LevelInstance consumers: the calibration hall has none of them.
+ * expose for M4 (doors, wall buys, zones), for the composition root (volumetric content) and for
+ * the M7 map kit (src/maps/kit: placements, traps, events, gravity, quest, boss arena, music).
+ * All fields are optional on LevelInstance consumers: the calibration hall has none of them, and
+ * every M7 field falls back to the per-map-id tables in src/defs (maps/kit/levelData.ts) – the
+ * level's own data always wins. Map builders: read src/maps/kit/README.md first.
  */
 import type * as THREE from 'three';
 import type { LevelInstance } from '../core/contracts';
 import type { Vec3Like } from '../core/events';
+import type { BoxLocationDef, PerkMachinePlacementDef } from '../defs/interactables';
 import type { Facing } from '../defs/level';
+import type { GeneratorSpotDef, GravityZoneDef, MapEventDef } from '../defs/mapEvents';
+import type { QuestDef } from '../defs/quests';
+import type { TrapSlotDef } from '../defs/traps';
+import type { WorkshopPlacementDef } from '../defs/workshop';
 
 /** A zone of a wave map (spawn points and door slots reference its id). */
 export interface LevelZoneDef {
@@ -50,6 +58,29 @@ export interface WallBuySlotDef {
   readonly costHint: number;
 }
 
+/** M6 boss fights: the open floor a boss arena uses (center on the floor, radius). */
+export interface BossArenaDef {
+  readonly center: Vec3Like;
+  readonly radius: number;
+  /** Zone the arena lies in. */
+  readonly zone: string;
+}
+
+/**
+ * Dimmable lights of a level for the power outage (maps/kit/PowerGrid). Without `lightGroups` the
+ * kit collects them from level.root (lights, `level:emissive_*` meshes, `VolumetricCone`s).
+ */
+export interface LevelLightGroup {
+  readonly id: string;
+  /** Emergency lighting: kept and boosted (pulsing red) during an outage instead of dimmed. */
+  readonly emergency: boolean;
+  readonly lights: readonly THREE.Light[];
+  /** Emissive materials (fixture panels, strips): emissiveIntensity is scaled. */
+  readonly materials: readonly THREE.Material[];
+  /** Additive light cones / glows: their `uIntensity` uniform is scaled (ShaderMaterials). */
+  readonly glows?: readonly THREE.Material[];
+}
+
 /** A LevelInstance with the wave-map extras. */
 export interface MapLevelInstance extends LevelInstance {
   readonly zones: readonly LevelZoneDef[];
@@ -68,6 +99,38 @@ export interface MapLevelInstance extends LevelInstance {
   readonly sunCasterBounds?: { readonly min: Vec3Like; readonly max: Vec3Like } | null;
   /** Zone containing a world point (feet), or null (walls / outside). */
   zoneAt(x: number, z: number): string | null;
+
+  // --- M7 map kit (optional; absent = the per-map tables in src/defs) ---------------------------
+  /** Zones active at the run start (else ZONES.startZones[id]). */
+  readonly startZones?: readonly string[];
+  /** Perk machine spots (else PERK_MACHINES.placements[id]); pinned perks via `perk`. */
+  readonly perkSpots?: readonly PerkMachinePlacementDef[];
+  /** Rift-Kiste locations and the start candidates (else MYSTERY_BOX.locations / start[id]). */
+  readonly boxLocations?: readonly BoxLocationDef[];
+  readonly boxStartIds?: readonly string[];
+  /** Rift Forge / Werkbank (else RIFT_FORGE_MACHINE / WORKBENCH placements[id]); null = none. */
+  readonly forgePlacement?: WorkshopPlacementDef | null;
+  readonly benchPlacement?: WorkshopPlacementDef | null;
+  /** Traps (else TRAP_SLOTS[id]). */
+  readonly trapSlots?: readonly TrapSlotDef[];
+  /** Map events (else MAP_EVENT_DEFS[id]) and the power outage's generators (else GENERATORS[id]). */
+  readonly eventDefs?: readonly MapEventDef[];
+  readonly generators?: readonly GeneratorSpotDef[];
+  /** Permanent gravity zones (orbital map low-g areas). */
+  readonly gravityZones?: readonly GravityZoneDef[];
+  /** The map's easter egg (else QUESTS[id]); null = none. */
+  readonly questDef?: QuestDef | null;
+  /** M6: where bosses fight (else the kit's default: the first spawn zone's center). */
+  readonly bossArena?: BossArenaDef | null;
+  /** Music theme (defs/music mapThemes key); default: the map id. */
+  readonly musicTheme?: string;
+  /** Dimmable lights for power outages (else collected from level.root). */
+  readonly lightGroups?: readonly LevelLightGroup[];
+  /**
+   * Level-owned props that go dark in a power outage (monitors, signs): their emissive / uIntensity
+   * materials are dimmed like the machines'.
+   */
+  readonly poweredObjects?: readonly THREE.Object3D[];
 }
 
 /** Narrow a LevelInstance to the wave-map extras (duck-typed). */

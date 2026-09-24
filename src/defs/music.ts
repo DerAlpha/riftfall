@@ -1108,7 +1108,10 @@ export const MUSIC = {
   mix: {
     /** Everything the music system plays (before the engine's music volume and master). */
     master: 0.5,
-    layers: { ambient: 0.9, low: 0.75, mid: 0.85, high: 0.85, peak: 0.85 } satisfies Record<MusicLayer, number>,
+    layers: { ambient: 0.9, low: 0.75, mid: 0.85, high: 0.85, peak: 0.85 } satisfies Record<
+      MusicLayer,
+      number
+    >,
     /** Rumble below this (Hz) is cut: the sub range belongs to explosions and gunshot bodies. */
     highpass: 34,
     /** Stings sit this much above the layers they interrupt. */

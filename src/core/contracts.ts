@@ -1269,6 +1269,81 @@ export interface ArsenalVfxApi {
 }
 
 // ---------------------------------------------------------------------------
+// Map kit (M7, src/maps/kit + src/traps + src/mapEvents + src/quests): gravity zones, main power,
+// traps, map events and the map quest. Game builds them through maps/kit/MapKit.
+// ---------------------------------------------------------------------------
+
+/** Gravity multiplier field: the map's permanent zones plus temporary anomalies. */
+export interface GravityFieldApi {
+  /**
+   * Gravity multiplier at a world point (1 = normal; overlapping zones multiply, clamped to
+   * GRAVITY.minScale..maxScale). Cheap point-in-volume tests, allocation-free – PlayerController
+   * and ProjectileSystem sample it every tick.
+   */
+  scaleAt(x: number, y: number, z: number): number;
+}
+
+/** The map's main power (power outage): unpowered machines refuse purchases ("Kein Strom"). */
+export interface PowerApi {
+  readonly powered: boolean;
+  /** Emits power:changed when it changes; the lights follow on their own (stutter + ramp). */
+  setPowered(on: boolean): void;
+}
+
+/** A trap as the dev console / quests see it. */
+export interface TrapReadout {
+  readonly id: string;
+  readonly kind: string;
+  readonly state: 'ready' | 'active' | 'cooldown';
+  /** Seconds left of the active time / cooldown (0 when ready). */
+  readonly remaining: number;
+  /** Kills this run. */
+  readonly kills: number;
+}
+
+export interface TrapApi {
+  readonly traps: readonly TrapReadout[];
+  /** Trap kills this run (every trap). */
+  readonly kills: number;
+  /** Start a trap (dev console, quests): `free` skips the payment. False when unknown / not ready. */
+  activate(id: string, free?: boolean): boolean;
+  fixedUpdate(dt: number): void;
+  update(dt: number): void;
+  /** New run: every trap ready, kill counts cleared. */
+  reset(): void;
+}
+
+export interface MapEventApi {
+  /** Ids of the running events. */
+  readonly active: readonly string[];
+  /** Start an event of the map now (dev console, quests); false when unknown / not possible. */
+  trigger(id: string): boolean;
+  /** End every running event (the power comes back). */
+  stop(): void;
+  fixedUpdate(dt: number): void;
+  update(dt: number): void;
+  /** New run: no event, power on, wave rolls reseeded. */
+  reset(seed?: string | number): void;
+}
+
+export interface QuestApi {
+  /** Quest of the map (null = none). */
+  readonly questId: string | null;
+  /** Current step index (= steps when completed). */
+  readonly step: number;
+  readonly steps: number;
+  readonly completed: boolean;
+  /** Dev console: finish the current step (false when there is none). */
+  advance(): boolean;
+  /** Dev console: finish every remaining step (rewards included). */
+  complete(): void;
+  fixedUpdate(dt: number): void;
+  update(dt: number): void;
+  /** New run: back to the first step (world objects reset, carried items dropped). */
+  reset(): void;
+}
+
+// ---------------------------------------------------------------------------
 // Meta progression (M9): player level + prestige, skill tree, weapon levels and camos,
 // achievements, daily/weekly challenges, cosmetics, lifetime stats, local leaderboards.
 // src/progression implements it on top of ProfileData; menus arrive in M11.

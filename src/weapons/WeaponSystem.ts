@@ -713,7 +713,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
    * Rift Forge tier / attachments / elemental mod of a carried weapon (M5 entry point: the forge
    * and the workbench); the previous mod state is replaced. Attachments are validated (known,
    * compatible with the weapon, one per slot – later ones in the list win). A running reload of it
-   * is cancelled (its timing changed); the magazine is clamped to the new capacity. A higher tier
+   * is cancelled (its timing changed); rounds above a smaller capacity go back to the reserve
+   * (capped by its new maximum). A higher tier
    * refills the weapon (FORGE.refillOnUpgrade) and emits forge:upgraded; every call emits
    * weapon:modsChanged. False if the weapon is not carried.
    */
@@ -735,14 +736,13 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     };
     if (slot === this.currentSlot) this.endFireKinds();
     w.mods = next;
-    w.def = this.resolveDef(w.base, next);
+    // A smaller magazine (extended one taken off) hands its extra rounds back to the reserve.
+    this.applyEffectiveDef(w, this.resolveDef(w.base, next));
     const upgraded = tier > previousTier;
     if (upgraded && FORGE.refillOnUpgrade) {
       w.mag = Math.max(w.mag, fullMag(w.def));
       w.reserve = w.def.reserve;
     }
-    w.mag = Math.min(w.mag, fullMag(w.def));
-    w.reserve = Math.min(w.reserve, w.def.reserve);
     if (slot === this.currentSlot) this.emitAmmo();
     this.events.emit('weapon:modsChanged', {
       weaponId,
@@ -1059,8 +1059,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   }
 
   /**
-   * A stat change re-resolved `w`: rounds above a smaller magazine go back to the reserve (a
-   * running reload keeps its timing), the reserve is capped by its new maximum.
+   * A stat or mod change re-resolved `w`: rounds above a smaller magazine go back to the reserve
+   * (a running reload keeps its timing), the reserve is capped by its new maximum.
    */
   private applyEffectiveDef(w: WeaponInstance, def: WeaponDef): void {
     w.def = def;

@@ -120,7 +120,15 @@ export class VoicePool {
     size: number,
   ) {
     for (let k = 0; k < size; k++) {
-      this.slots.push({ src: null, gain: ctx.createGain(), dest: null, end: 0, tail: 0, prio: 0, mono: null });
+      this.slots.push({
+        src: null,
+        gain: ctx.createGain(),
+        dest: null,
+        end: 0,
+        tail: 0,
+        prio: 0,
+        mono: null,
+      });
     }
   }
 
@@ -309,8 +317,8 @@ export class ThemePlayer implements SequencerSink {
   private stopAt = Number.POSITIVE_INFINITY;
   private _route: 'game' | 'menu' = 'game';
   private cutoff = OPEN_FILTER;
-  /** Re-strike the held notes at the next bar (after a long stall or a restart). */
-  retrigger = false;
+  /** Re-strike the held notes at the next bar (after the sequencer skipped bars of a stalled timer). */
+  private retrigger = false;
   private readonly req: VoiceRequest;
   private readonly mixOf: readonly number[];
 
@@ -537,6 +545,7 @@ export class ThemePlayer implements SequencerSink {
   // -------------------------------------------------------------------------
 
   onBar(info: BarInfo): void {
+    if (info.afterSkip) this.retrigger = true;
     const intensity = this.policy.intensity();
     const changed = this.mixer.evaluate(intensity, info.index, this.policy.allowed());
     this.barIntensity = intensity;

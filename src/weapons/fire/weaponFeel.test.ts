@@ -13,6 +13,7 @@ import { WEAPONS, getWeaponDef, type WeaponDef } from '../../defs/weapons';
 import { fakeSettings } from '../../player/testHelpers';
 import { FakeCamera, FakePlayer, FakeWeaponInput, fakeRenderCamera } from '../testFakes';
 import { WeaponSystem } from '../WeaponSystem';
+import { hitDamage } from '../damage';
 import { resolveWeapon } from '../resolveWeapon';
 import { Arsenal } from './Arsenal';
 import { AudioEventBridge, type AudioBridgeTarget } from '../../audio/AudioEventBridge';
@@ -287,5 +288,85 @@ describe('optics', () => {
     expect(resolveWeapon(rifle, { attachments: ['reddot'] }).ads.sensitivityMultiplier).toBe(
       rifle.ads.sensitivityMultiplier,
     );
+  });
+});
+
+describe('singularity launcher', () => {
+  /** One orb into a horde (4 wide, 3 deep from `dist`): where does the singularity form? */
+  function burstNearHorde(def: WeaponDef, dist: number, lone = false): number {
+    const t = setup({ blackhole: def }, ['blackhole']);
+    t.equip();
+    const bodies: FakeTarget[] = [];
+    for (let i = 0; i < (lone ? 1 : 12); i++) {
+      const b = new FakeTarget({ x: ((i % 4) - 1.5) * 1.1, y: 0, z: -dist - Math.floor(i / 4) * 1.1 }, 1e9);
+      bodies.push(b);
+      t.combat.register(b);
+    }
+    t.player.pitch = Math.atan2(bodies[0]!.aimPoint.y - EYE.y, dist);
+    t.player.yaw = Math.atan2(-bodies[lone ? 0 : 1]!.aimPoint.x, dist);
+    let at: { x: number; y: number; z: number } | null = null;
+    t.events.on('field:spawned', (e) => (at ??= { ...e.position }));
+    t.input.tap('fire');
+    for (let i = 0; i < 240 && !at; i++) t.frame();
+    expect(at, 'singularity').not.toBeNull();
+    let nearest = Infinity;
+    for (const b of bodies) nearest = Math.min(nearest, Math.hypot(b.boundsCenter.x - at!.x, b.boundsCenter.z - at!.z));
+    return nearest;
+  }
+
+  it('SX-0: the singularity forms in the horde (or within pull reach of a lone target)', () => {
+    const def = precise(WEAPONS.blackhole);
+    const reach = def.projectile!.field!.radius;
+    for (const dist of [6, 10, 14]) {
+      expect(burstNearHorde(def, dist), `horde at ${dist} m`).toBeLessThan(1.5);
+      expect(burstNearHorde(def, dist, true), `lone at ${dist} m`).toBeLessThan(reach);
+    }
+    // Forged (faster orb) as well.
+    const t3 = precise(resolveWeapon(WEAPONS.blackhole, { tier: 3 }));
+    expect(burstNearHorde(t3, 10, true), 'lone, tier 3').toBeLessThan(reach);
+  });
+});
+
+describe('workbench mod changes', () => {
+  it('taking off an extended magazine returns the extra rounds to the reserve', () => {
+    const t = setup({}, ['rifle']);
+    t.equip();
+    const rifle = WEAPONS.rifle;
+    const full = rifle.magazine + 1;
+    t.weapons.setWeaponMods('rifle', { attachments: ['extmag'] });
+    t.input.tap('reload');
+    t.frame();
+    expect(t.weapons.state).toBe('reloading');
+    for (let i = 0; i < 400 && t.weapons.state !== 'idle'; i++) t.frame();
+    const big = t.weapons.ammo!;
+    expect(big.mag).toBeGreaterThan(full);
+    const total = big.mag + big.reserve;
+    t.weapons.setWeaponMods('rifle', { attachments: [] });
+    const after = t.weapons.ammo!;
+    expect(after.mag).toBe(full);
+    expect(after.mag + after.reserve).toBe(Math.min(total, full + rifle.reserve));
+  });
+});
+
+describe('range mods', () => {
+  it('a range mod moves the damage falloff (the reach a player feels), not only the max ray length', () => {
+    const cases = [
+      ['shotgun', 'choke', 1.2],
+      ['rifle', 'suppressor', 0.85],
+      ['rifle', 'longbarrel', 1.35],
+      ['smg', 'shortbarrel', 0.8],
+    ] as const;
+    for (const [id, att, k] of cases) {
+      const base = WEAPONS[id] as WeaponDef;
+      const d = resolveWeapon(base, { attachments: [att] });
+      expect(d.damage.falloffStart, `${id}+${att}`).toBeCloseTo(base.damage.falloffStart * k, 6);
+      expect(d.damage.falloffEnd, `${id}+${att}`).toBeCloseTo(base.damage.falloffEnd * k, 6);
+      // At the base falloff end the pellet/bullet now hits harder (or softer) accordingly.
+      const at = base.damage.falloffEnd;
+      const before = hitDamage(base.damage, 'body', at);
+      const after = hitDamage(d.damage, 'body', at) / (d.damage.base / base.damage.base);
+      if (k > 1) expect(after, `${id}+${att}`).toBeGreaterThan(before);
+      else expect(after, `${id}+${att}`).toBeCloseTo(before, 6);
+    }
   });
 });

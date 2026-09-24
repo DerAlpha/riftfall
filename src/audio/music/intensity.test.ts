@@ -21,7 +21,9 @@ describe('music intensity model', () => {
     expect(mid).toBeCloseTo(0.5);
     expect(far).toBe(0);
     expect(threatOf([{ alive: false, type: 'tank', position: at(1) }], origin)).toBe(0);
-    expect(threatOf([{ alive: true, type: 'tank', position: at(1) }], origin)).toBeCloseTo(I.typeWeight.tank!);
+    expect(threatOf([{ alive: true, type: 'tank', position: at(1) }], origin)).toBeCloseTo(
+      I.typeWeight.tank!,
+    );
     expect(threatOf([{ alive: true, type: 'spitter', elite: true, position: at(1) }], origin)).toBeCloseTo(
       I.eliteWeight,
     );

@@ -5,9 +5,11 @@ import { Sequencer, type BarInfo, type SequencerSink } from './sequencer';
 
 class Recorder implements SequencerSink {
   readonly bars: { index: number; time: number; duration: number; steps: number }[] = [];
+  readonly skips: boolean[] = [];
   readonly events: { e: NoteEvent; time: number; bar: number }[] = [];
   onBar(info: BarInfo): void {
     this.bars.push({ index: info.index, time: info.time, duration: info.duration, steps: info.bar.steps });
+    this.skips.push(info.afterSkip);
   }
   onEvent(e: NoteEvent, time: number): void {
     this.events.push({ e, time, bar: this.bars.length - 1 });
@@ -79,6 +81,11 @@ describe('music sequencer', () => {
     const late = rec.events.slice(first);
     expect(seq.skipped).toBeGreaterThan(0);
     for (const ev of late) expect(ev.time).toBeGreaterThanOrEqual(5 - MUSIC.scheduler.maxLate);
+    // The first bar after the jump asks for its sustained notes to be re-struck.
+    expect(rec.skips.at(-1)).toBe(true);
+    const bars = rec.skips.length;
+    for (let now = 5; rec.skips.length === bars; now += INTERVAL) seq.pump(now, now + LOOKAHEAD, rec);
+    expect(rec.skips.at(-1)).toBe(false);
   });
 
   it('finds the next beat / half beat / bar line for quantized stings and theme starts', () => {

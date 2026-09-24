@@ -344,6 +344,19 @@ export interface GameEvents {
   /** A new daily / weekly challenge set is active (UTC day / week boundary). */
   'challenge:rotated': { period: ChallengePeriod; key: string };
 
+  // --- map kit (M7): traps, map events, power, quests ---
+  /** A trap changed state: activated (purchase / console / quest), ended, cooled down. */
+  'trap:state': { trapId: string; kind: string; state: 'ready' | 'active' | 'cooldown'; position: Vec3Like };
+  /** A map event started (`position`: its center, null = map-wide; `duration` 0 = until resolved). */
+  'mapEvent:started': { eventId: string; kind: string; position: Vec3Like | null; duration: number };
+  'mapEvent:ended': { eventId: string; kind: string };
+  /** The map's main power went off (power outage) or came back (generator restart, reset). */
+  'power:changed': { powered: boolean };
+  /** A quest step began (0-based `step` of `steps`). */
+  'quest:step': { questId: string; stepId: string; step: number; steps: number };
+  /** The map quest (easter egg) was completed; rewards are handed out. */
+  'quest:completed': { questId: string; mapId: string };
+
   // --- ui ---
   'ui:console': { open: boolean };
   'ui:debugOverlay': { visible: boolean };

@@ -7,7 +7,14 @@ import { describe, expect, it } from 'vitest';
 import type { PlayOptions } from '../../core/contracts';
 import { EventBus } from '../../core/EventBus';
 import type { GameEvents } from '../../core/events';
-import { INSTRUMENT_RECIPES, MUSIC, MUSIC_STINGS, MUSIC_THEMES, type InstrumentSlot, type MusicRoute } from '../../defs/music';
+import {
+  INSTRUMENT_RECIPES,
+  MUSIC,
+  MUSIC_STINGS,
+  MUSIC_THEMES,
+  type InstrumentSlot,
+  type MusicRoute,
+} from '../../defs/music';
 import { createDefaultSettings, type AudioSettings } from '../../save/settingsSchema';
 import type { SampleSet, ThemeSamples } from './MusicBank';
 import { MusicSystem, type MusicBankLike, type MusicHost } from './MusicSystem';
@@ -16,7 +23,10 @@ import { FakeAudioContext, FakeGain, fakeBuffer } from './testFakes';
 function fakeTheme(id: string): ThemeSamples {
   const def = MUSIC_THEMES[id]!;
   const slots: Partial<Record<InstrumentSlot, SampleSet>> = {};
-  for (const [slot, inst] of Object.entries(def.palette) as [InstrumentSlot, NonNullable<(typeof def.palette)[InstrumentSlot]>][]) {
+  for (const [slot, inst] of Object.entries(def.palette) as [
+    InstrumentSlot,
+    NonNullable<(typeof def.palette)[InstrumentSlot]>,
+  ][]) {
     const info = INSTRUMENT_RECIPES[inst.recipe];
     slots[slot] = {
       slot,
@@ -59,11 +69,17 @@ interface Timer {
   cleared: boolean;
 }
 
-function setup(o: { context?: boolean; audio?: Partial<AudioSettings>; themes?: string[]; mapId?: string } = {}) {
+function setup(
+  o: { context?: boolean; audio?: Partial<AudioSettings>; themes?: string[]; mapId?: string } = {},
+) {
   const events = new EventBus<GameEvents>();
   const ctx = o.context === false ? null : new FakeAudioContext();
   if (ctx) ctx.state = 'running';
-  const outs: Record<MusicRoute, FakeGain> = { game: new FakeGain(), menu: new FakeGain(), ui: new FakeGain() };
+  const outs: Record<MusicRoute, FakeGain> = {
+    game: new FakeGain(),
+    menu: new FakeGain(),
+    ui: new FakeGain(),
+  };
   const holds: boolean[] = [];
   const plays: { id: string; opts: PlayOptions }[] = [];
   const host: MusicHost = {
@@ -104,7 +120,8 @@ function setup(o: { context?: boolean; audio?: Partial<AudioSettings>; themes?: 
       for (const x of due) x.fn();
     }
   };
-  const scheduler = (): Timer[] => timers.filter((t) => !t.cleared && t.ms === MUSIC.scheduler.interval * 1000);
+  const scheduler = (): Timer[] =>
+    timers.filter((t) => !t.cleared && t.ms === MUSIC.scheduler.interval * 1000);
   return { events, ctx, music, bank, holds, plays, play, timers, scheduler, settings };
 }
 

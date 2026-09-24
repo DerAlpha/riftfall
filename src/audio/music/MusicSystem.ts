@@ -435,7 +435,9 @@ export class MusicSystem implements MusicApi, ConductorSink {
         const state = this.conductor.state;
         const map = this.conductor.themeFor('intermission');
         const first = state === 'off' || state === 'menu' ? MUSIC.menuTheme : this.conductor.themeId;
-        chain = this.bank.load(first).then(() => this.bank.load(first === MUSIC.menuTheme ? map : MUSIC.menuTheme));
+        chain = this.bank
+          .load(first)
+          .then(() => this.bank.load(first === MUSIC.menuTheme ? map : MUSIC.menuTheme));
       }
       if (!this.cuesStarted && this.bank.supported) {
         this.cuesStarted = true;

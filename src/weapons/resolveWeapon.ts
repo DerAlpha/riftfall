@@ -18,6 +18,7 @@
  *   def's (× the selfDamage factor), damage mods never make the player's own blasts deadlier; rpm scales a beam's tick and drain rates;
  *   projectileSpeed / blastRadius / chargeTime scale their kind data; an element mod turns a
  *   projectile's blast of the weapon's own element into that element (convention VFX/audio ids).
+ * - Range scales the damage falloff distances with the hitscan/beam reach.
  * - Handling: adsTime (in/out), adsZoom (the ADS sensitivity follows it: the aim keeps its speed
  *   on screen), equipTime, moveSpeed (ADS speed and carry speed), hipSpread (hip cone only).
  */
@@ -288,7 +289,14 @@ export function resolveWeapon(base: WeaponDef, state: WeaponModState = {}): Weap
   const out: WeaponDef = {
     ...base,
     name: upgrade ? upgrade.name : base.name,
-    damage: { ...base.damage, base: base.damage.base * f.damage, element },
+    // Range moves the damage falloff (the reach players feel), not only the ray's max length.
+    damage: {
+      ...base.damage,
+      base: base.damage.base * f.damage,
+      element,
+      falloffStart: base.damage.falloffStart * f.range,
+      falloffEnd: base.damage.falloffEnd * f.range,
+    },
     pellets: Math.max(1, Math.round(base.pellets + f.extraPellets)),
     rpm: base.rpm * f.rpm,
     burst: base.burst ? { count: base.burst.count, rpm: base.burst.rpm * f.rpm } : null,

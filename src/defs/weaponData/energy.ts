@@ -24,8 +24,9 @@
  *   reload. The player takes 35 % of their own blast.
  *   Forge: Donnerschlag (incendiary kills) → Sturmfaust (shock arcs) → Sternenregen (three
  *   grenades per shot).
- * - SX-0 „Ereignishorizont“ (projectile): a slow void orb (14 m/s) that bursts after 1.6 s or on
- *   impact into a 7 m singularity: pulls the horde in for 3.5 s, then collapses (600 void).
+ * - SX-0 „Ereignishorizont“ (projectile): a slow void orb (14 m/s) that bursts on the first body or
+ *   wall it touches (or after 1.6 s) into a 7 m singularity: pulls the horde in for 3.5 s, then
+ *   collapses (600 void).
  *   Three per cell. Forge: Singularität (void marks) → Schwarzschild (crit rhythm) → Urknall
  *   (kills inside spawn more singularities).
  */
@@ -800,9 +801,10 @@ export const ENERGY = {
       lifetime: 3.5,
       bounces: 0,
       restitution: 0,
+      // Bursts on the first body or wall it touches, else at the fuse (22 m): an orb drifting
+      // through bodies formed its singularity far behind the horde, out of the pull's reach.
       fuse: 1.6,
-      // Drifts through bodies; walls or the fuse burst it.
-      pierce: 3,
+      pierce: 0,
       homing: 0,
       explosion: explosion('void', 2.2, 90, { small: true, minFalloff: 0.5, shake: 0.25 }),
       field: field(

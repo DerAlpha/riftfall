@@ -18,6 +18,8 @@ export interface BarInfo {
   /** Audio time of the bar line and the bar's length (s). */
   readonly time: number;
   readonly duration: number;
+  /** Whole bars were skipped before this one (a stalled timer): sustained notes must be re-struck. */
+  readonly afterSkip: boolean;
 }
 
 export interface SequencerSink {
@@ -36,6 +38,7 @@ export class Sequencer {
   private eventIdx = 0;
   private announced = false;
   private started = false;
+  private jumped = false;
   /** Events skipped because the timer came too late (debug). */
   skipped = 0;
   private readonly info = {
@@ -45,6 +48,7 @@ export class Sequencer {
     bar: null as unknown as ComposedBar,
     time: 0,
     duration: 0,
+    afterSkip: false,
   };
 
   constructor(
@@ -65,6 +69,7 @@ export class Sequencer {
     this.eventIdx = 0;
     this.announced = false;
     this.started = true;
+    this.jumped = false;
     this.skipped = 0;
   }
 
@@ -131,6 +136,7 @@ export class Sequencer {
     while (this.barTime + this.barDuration() < now - this.maxLate && guard++ < 10000) {
       this.skipped += this.bar.events.length - this.eventIdx;
       this.advanceBar();
+      this.jumped = true;
     }
     for (guard = 0; guard < 100000; guard++) {
       const bar = this.bar;
@@ -143,6 +149,8 @@ export class Sequencer {
         info.bar = bar;
         info.time = this.barTime;
         info.duration = this.barDuration(bar);
+        info.afterSkip = this.jumped;
+        this.jumped = false;
         this.announced = true;
         sink.onBar(info);
       }

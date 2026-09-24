@@ -40,7 +40,9 @@ describe('stings', () => {
     expect(plain.filter((n) => n.slot === 'tom')).toHaveLength(2);
     expect(resolveSting(MUSIC_STINGS.waveStart, lab, 5, 5).filter((n) => n.slot === 'tom')).toHaveLength(0);
     // The menu theme has no dist slot.
-    expect(resolveSting(MUSIC_STINGS.nuke, MUSIC_THEMES.menu!, 0, 0).some((n) => n.slot === 'dist')).toBe(false);
+    expect(resolveSting(MUSIC_STINGS.nuke, MUSIC_THEMES.menu!, 0, 0).some((n) => n.slot === 'dist')).toBe(
+      false,
+    );
     // Glides (tape stop, falling clusters) keep their multiplier and span beats.
     const pause = resolveSting(MUSIC_STINGS.pause, lab, 0, 0);
     expect(pause.every((n) => n.glide < 1 && n.glideTime > 0)).toBe(true);

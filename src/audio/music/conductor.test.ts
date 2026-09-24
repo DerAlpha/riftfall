@@ -51,9 +51,25 @@ describe('music conductor (state machine)', () => {
     expect(c.themeId).toBe(MUSIC.bossTheme);
     expect(take()).toEqual([`cue:${MUSIC_CUES.boss.id}@5`, 'sting:bossAppear', 'state:boss']);
     // Other deaths keep the boss music.
-    events.emit('enemy:died', { id: 3, type: 'swarmer', position: at(1), weaponId: null, zone: null, elite: false, source: 'player' });
+    events.emit('enemy:died', {
+      id: 3,
+      type: 'swarmer',
+      position: at(1),
+      weaponId: null,
+      zone: null,
+      elite: false,
+      source: 'player',
+    });
     expect(c.state).toBe('boss');
-    events.emit('enemy:died', { id: 7, type: 'overlord', position: at(5), weaponId: null, zone: null, elite: false, source: 'player' });
+    events.emit('enemy:died', {
+      id: 7,
+      type: 'overlord',
+      position: at(5),
+      weaponId: null,
+      zone: null,
+      elite: false,
+      source: 'player',
+    });
     expect(c.state).toBe('wave');
     expect(take()).toEqual(['sting:bossDefeated', 'state:wave']);
 
@@ -93,7 +109,14 @@ describe('music conductor (state machine)', () => {
     events.emit('powerup:collected', { type: 'maxAmmo', position: at(0), duration: 0 });
     advance(2);
     events.emit('progression:levelUp', { level: 5, previous: 4, prestige: 0, skillPoints: 1 });
-    events.emit('achievement:unlocked', { id: 'a', name: 'A', description: '', tier: 'gold', hidden: false, xp: 10 });
+    events.emit('achievement:unlocked', {
+      id: 'a',
+      name: 'A',
+      description: '',
+      tier: 'gold',
+      hidden: false,
+      xp: 10,
+    });
     expect(take()).toEqual([
       'sting:pause',
       'sting:nuke',
@@ -143,10 +166,23 @@ describe('music conductor (state machine)', () => {
     expect(take()).toEqual([`cue:${MUSIC_CUES.elite.alert.id}@9`]);
     advance(5);
     // Too far away to hear.
-    events.emit('enemy:spawned', { id: 4, type: 'tank', position: at(MUSIC_CUES.elite.spawn.maxDistance + 5), elite: true });
+    events.emit('enemy:spawned', {
+      id: 4,
+      type: 'tank',
+      position: at(MUSIC_CUES.elite.spawn.maxDistance + 5),
+      elite: true,
+    });
     expect(take()).toEqual([]);
     // Dead elites forget their tell.
-    events.emit('enemy:died', { id: 2, type: 'spitter', position: at(9), weaponId: null, zone: null, elite: true, source: 'player' });
+    events.emit('enemy:died', {
+      id: 2,
+      type: 'spitter',
+      position: at(9),
+      weaponId: null,
+      zone: null,
+      elite: true,
+      source: 'player',
+    });
     advance(5);
     events.emit('enemy:alert', { id: 2, type: 'spitter', position: at(9) });
     expect(take()).toEqual([]);
@@ -210,7 +246,13 @@ describe('music conductor (state machine)', () => {
     expect(withThreat).toBeGreaterThan(0.2);
     events.emit('player:damaged', { amount: 30, healthFraction: 0.2 });
     events.emit('player:healthChanged', { health: 20, maxHealth: 100, armor: 0, maxArmor: 0 });
-    events.emit('combat:kill', { targetId: 1, zone: 'head', weaponId: 'rifle', position: at(3), source: 'player' });
+    events.emit('combat:kill', {
+      targetId: 1,
+      zone: 'head',
+      weaponId: 'rifle',
+      position: at(3),
+      source: 'player',
+    });
     for (let k = 0; k < 120; k++) c.update(1 / 60, at(0));
     expect(c.model.value).toBeGreaterThan(withThreat);
     expect(c.danger).toBeGreaterThan(0);

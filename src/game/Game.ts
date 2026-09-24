@@ -150,7 +150,8 @@ export class Game {
   readonly padNav: MenuPadNavigator;
 
   private time = 0;
-  private runsStarted = 0;
+  /** A run touched the run systems since the last resetRunSystems (startPlaying resets them). */
+  private runDirty = false;
   private benchmarkRunning = false;
   private readonly _yawDir = new THREE.Vector3();
   private readonly _up = new THREE.Vector3(0, 1, 0);
@@ -346,13 +347,26 @@ export class Game {
     });
     viewmodel.setAdsSource(weapons);
 
-    // The player as seen by enemies and the wave director.
+    let gameRef: Game | null = null;
+    const runFlow = new RunFlow({
+      events,
+      setTimeScale: (scale) => {
+        if (gameRef) gameRef.loop.timeScale = scale;
+      },
+      getPlayerPosition: () => player.position,
+      killPlayer: () => void health.damage(health.health + health.armor),
+      showGameOver: (summary) => gameRef?.showGameOver(summary),
+    });
+
+    // The player as seen by enemies and the wave director: dead for the whole death sequence,
+    // also when the run died without health reaching 0 (`run kill` in god mode) – no spawns, no
+    // attacks on the corpse.
     const enemyTarget: EnemyTargetApi = {
       position: player.position,
       eyePosition: player.eyePosition,
       velocity: player.velocity,
       get alive() {
-        return !health.dead;
+        return !health.dead && runFlow.state !== 'dying' && runFlow.state !== 'over';
       },
       get yaw() {
         return player.yaw;
@@ -386,11 +400,12 @@ export class Game {
 
     const hud = new Hud(el('hud'), events, settings);
     hud.setCamera(render.camera);
+    // The countdown shows the director's clock (fixed ticks; frozen while the player is dead).
+    hud.setWaveCountdownSource(() => waves.intermissionLeft);
     health.announce();
     const debug = new DebugOverlay(el('debug'), events);
     const devConsole = new DevConsole(el('console'), events);
 
-    let gameRef: Game | null = null;
     const menus = mountMenus(el('ui'), {
       settings,
       input,
@@ -405,16 +420,8 @@ export class Game {
         saveBackend: save.backendName,
         version: __APP_VERSION__,
         mapName: map.name,
+        mapId: map.id,
       }),
-    });
-    const runFlow = new RunFlow({
-      events,
-      setTimeScale: (scale) => {
-        if (gameRef) gameRef.loop.timeScale = scale;
-      },
-      getPlayerPosition: () => player.position,
-      killPlayer: () => void health.damage(health.health + health.armor),
-      showGameOver: (summary) => gameRef?.showGameOver(summary),
     });
 
     const game = new Game(opts, {
@@ -488,12 +495,13 @@ export class Game {
   // -------------------------------------------------------------------------
 
   private beginFrame(realDt: number): void {
-    const { input, menus, devConsole, playerCamera } = this.sys;
+    const { input, menus, devConsole, playerCamera, runFlow } = this.sys;
     const wasCapturing = input.capturing;
     input.beginFrame(realDt);
+    // No moving, looking, firing or pausing during the death sequence (before the pause binding
+    // is read); a restart out of it (dev console, smoke handle) hands the input back.
+    this.pauseState.setInputLocked(runFlow.state === 'dying');
     this.pauseState.onFrame(wasCapturing);
-    // No moving, looking, firing or pausing during the death sequence.
-    if (this.sys.runFlow.state === 'dying' && input.enabled) input.enabled = false;
     if (menus.isOpen && !devConsole.open && !wasCapturing && !input.capturing) {
       this.padNav.update(realDt);
     } else {
@@ -660,9 +668,21 @@ export class Game {
       if (sections.includes('accessibility'))
         this.sys.enemyVisuals.setReducedFlashing(settings.accessibility.reduceFlashing);
     });
-    this.sys.events.on('player:died', () => this.sys.viewmodel.setVisible(false));
+    this.sys.events.on('player:died', () => {
+      this.sys.viewmodel.setVisible(false);
+      // Now, not next frame: the remaining ticks of this frame must not move or fire either.
+      this.pauseState.setInputLocked(true);
+    });
     // Covers "Neu starten" and the dev console `run restart`.
-    this.sys.events.on('run:restart', () => this.resetRunSystems());
+    this.sys.events.on('run:restart', () => {
+      this.resetRunSystems();
+      // `run restart` typed behind the game over screen: the restarted run waits behind the pause
+      // menu ("Fortsetzen" takes the lock) instead of a stale game over screen.
+      if (this.sys.menus.view === 'gameover') {
+        this.sys.menus.hide();
+        this.pauseState.openMenu();
+      }
+    });
 
     // Only pending settings are written on unload: profile changes are saved when they happen, and
     // an unconditional write would resurrect a wiped save or let a stale tab overwrite newer data.
@@ -686,8 +706,9 @@ export class Game {
     this.saveData.profile.lastPlayedAt = Date.now();
     void this.sys.persistence.saveNow();
     rememberMap(map.id);
-    if (this.runsStarted > 0) this.resetRunSystems(false);
-    this.runsStarted++;
+    // "Hauptmenü" already reset everything: resetting again would re-issue the loadout.
+    if (this.runDirty) this.resetRunSystems(false);
+    this.runDirty = true;
     runFlow.begin(level.id);
     if (map.waves) this.sys.waves.start(1);
     this.pauseState.start(lockless || this.padNav.activating);
@@ -715,9 +736,13 @@ export class Game {
     this.sys.menus.showGameOver(summary);
   }
 
-  /** Back to a clean run state on the current map; `startWaves` restarts the wave director. */
+  /**
+   * Back to a clean run state on the current map; `startWaves` restarts the wave director (the
+   * run goes on: restart). Also the HUD and enemy audio: main menu → start emits no run:restart.
+   */
   private resetRunSystems(startWaves = true): void {
-    const { enemies, waves, health, player, level, weapons, viewmodel, vfx, map } = this.sys;
+    const { enemies, waves, health, player, level, weapons, viewmodel, vfx, map, hud, audioBridge } =
+      this.sys;
     enemies.clear();
     waves.reset();
     vfx.clear();
@@ -727,7 +752,10 @@ export class Game {
     weapons.setLoadout(loadout.weapons, loadout.slots);
     weapons.refillAmmo(true);
     viewmodel.setVisible(true);
+    hud.resetRun();
+    audioBridge.resetRun();
     this.loop.timeScale = 1;
+    this.runDirty = startWaves;
     if (startWaves && map.waves) waves.start(1);
   }
 

@@ -135,6 +135,20 @@ interface TypeState {
 const _p = new Vector3();
 const _acc = new Vector3();
 
+/**
+ * Frustum-culling reach of a type around its instance origin (m at scale 1): the farthest rest-pose
+ * bounding-box corner plus the def's margin for animated poses (leaps, raised arms, death sprawl).
+ */
+export function cullReach(geometry: BufferGeometry, cullMargin: number): number {
+  if (!geometry.boundingBox) geometry.computeBoundingBox();
+  const bb = geometry.boundingBox!;
+  let rest = 0;
+  for (const x of [bb.min.x, bb.max.x])
+    for (const y of [bb.min.y, bb.max.y])
+      for (const z of [bb.min.z, bb.max.z]) rest = Math.max(rest, Math.hypot(x, y, z));
+  return rest + cullMargin;
+}
+
 function makeHitbox(): Hitbox {
   return { shape: 'sphere', zone: 'body', a: new Vector3(), b: new Vector3(), radius: 0 };
 }
@@ -525,13 +539,6 @@ export class EnemyRenderer implements EnemyVisualsApi {
     mesh.boundingSphere = sphere;
     this.root.add(mesh);
 
-    const bs = geometry.boundingBox;
-    let restReach = 0;
-    if (bs) {
-      for (const x of [bs.min.x, bs.max.x])
-        for (const y of [bs.min.y, bs.max.y])
-          for (const z of [bs.min.z, bs.max.z]) restReach = Math.max(restReach, Math.hypot(x, y, z));
-    }
     const free = new Int32Array(slots);
     for (let i = 0; i < capacity; i++) free[i] = capacity - 1 - i;
     const boneStride = rig.bones.length * BONE_STRIDE;
@@ -569,7 +576,7 @@ export class EnemyRenderer implements EnemyVisualsApi {
       worldBounds: new Float32Array(slots * 4),
       worldValid: new Uint8Array(slots),
       worldStride: rig.hitboxes.length * HITBOX_STRIDE,
-      reach: restReach + def.cullMargin,
+      reach: cullReach(geometry, def.cullMargin),
       sphere,
       drawn: 0,
     };

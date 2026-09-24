@@ -484,7 +484,7 @@ export class AudioEventBridge {
         const s = ST.gameOver;
         this.play(s.id, s.gain, 0, s.bus);
       }),
-      events.on('run:restart', () => this.resetEnemyAudio()),
+      events.on('run:restart', () => this.resetRun()),
     );
   }
 
@@ -669,8 +669,12 @@ export class AudioEventBridge {
     return false;
   }
 
-  /** Restart: forget every enemy, pending strike and busy voice. */
-  private resetEnemyAudio(): void {
+  /**
+   * A new run starts (run:restart, or main menu → start, which emits none – the composition root
+   * calls this): forget every enemy, pending strike and busy voice. Blows still winding up when
+   * the death sequence froze the game would otherwise land in the new run.
+   */
+  resetRun(): void {
     this.typeById.clear();
     for (const [id] of this.voiceStates) this.releaseState(id);
     this.strikeDue.fill(Number.POSITIVE_INFINITY);

@@ -3,7 +3,7 @@
  * dimension comes from LAB_LAYOUT (defs/labLayout.ts), materials from defs/materials.ts (+ the
  * tinted LAB_MATERIALS variants), atmosphere from LAB (defs/maps.ts).
  *
- * Budget (67 draws at 'high', LAB_LAYOUT.maxMeshes): static geometry merged per material variant
+ * Budget (68 draws at 'high', LAB_LAYOUT.maxMeshes): static geometry merged per material variant
  * (~44 meshes) + flicker panels + static crates, 10 volumetric cones, 1 shaft mesh (16 skylight
  * panes), 1 dust system, 3 fog volumes, 1 instanced draw for all spawn tears, 3 draws for the rift
  * anomaly (vortex, tear cluster, particles). Lights: 10 spots (local shadows from the QUALITY_LEVELS
@@ -76,6 +76,7 @@ export function labMaterialIds(): LabMaterialId[] {
     'glass',
     'glass#tank',
     'glass#frost',
+    'glass#lantern',
     'screen',
     'crate',
     'pipe',

@@ -175,6 +175,26 @@ describe('RiftPortal (large anomaly)', () => {
     r.dispose();
   });
 
+  it('the tear cluster follows the anomaly pulse exactly, independent of the frame rate', () => {
+    const run = (fps: number): { portal: number; cluster: number } => {
+      const r = new RiftPortal({ position: { x: 0, y: 0, z: 0 }, time, light: false });
+      r.pulse(1.5);
+      const frames = Math.round(fps / 2);
+      for (let i = 0; i < frames; i++) r.update(1 / fps);
+      const attr = r.tears.mesh.geometry.getAttribute('aTear') as THREE.InstancedBufferAttribute;
+      for (let i = 0; i < r.tears.count; i++) expect(attr.getY(i)).toBe(r.tears.pulseOf(i));
+      const out = { portal: r.pulseLevel, cluster: r.tears.pulseOf(0) };
+      r.dispose();
+      return out;
+    };
+    const expected = 1.5 * Math.exp(-RIFT_PORTAL.pulse.decay * 0.5);
+    for (const fps of [30, 60, 144]) {
+      const { portal, cluster } = run(fps);
+      expect(portal, `${fps} fps`).toBeCloseTo(expected, 5);
+      expect(cluster, `${fps} fps`).toBeCloseTo(portal, 6);
+    }
+  });
+
   it('scales the visible flare of the vortex, particles and tears with reduced flashing', () => {
     const r = new RiftPortal({ position: { x: 0, y: 0, z: 0 }, time, light: false });
     const uniform = (name: string, u: string): number => {

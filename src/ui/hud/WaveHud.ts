@@ -4,9 +4,11 @@
  * wave start / complete banners.
  *
  * Event driven (wave:intermission / start / progress / complete, run:restart, run:over); update(dt)
- * only runs the countdown and banner timers. The DOM is written only when a shown value changes
- * (countdown: once per second). Entry animations are CSS keyframes restarted by alternating two
- * identically shaped animation classes (no forced layout).
+ * only runs the countdown and banner timers. The countdown reads the director's clock when a
+ * source is set (setCountdownSource): frame time would drift from the fixed-tick timer (ticks
+ * dropped on long frames, the director frozen while the player is dead). The DOM is written only
+ * when a shown value changes (countdown: once per second). Entry animations are CSS keyframes
+ * restarted by alternating two identically shaped animation classes (no forced layout).
  */
 import type { EventBus } from '../../core/EventBus';
 import type { GameEvents } from '../../core/events';
@@ -52,6 +54,8 @@ export class WaveHud {
   private remaining = -1;
   private countdownLeft = 0;
   private countdownActive = false;
+  /** Seconds left of the running intermission (WaveDirector.intermissionLeft); null: frame time. */
+  private countdownSource: (() => number) | null = null;
   private shownSeconds = -1;
   private urgent = false;
   private bannerLeft = 0;
@@ -152,11 +156,21 @@ export class WaveHud {
     }
   }
 
+  /**
+   * The authoritative intermission clock (WaveDirector.intermissionLeft, set once); null counts
+   * the event's duration down with frame time.
+   */
+  setCountdownSource(source: (() => number) | null): void {
+    this.countdownSource = source;
+  }
+
   /** Per frame (game time): countdown + banner timers. */
   update(dt: number): void {
     if (!(dt > 0) || !Number.isFinite(dt)) return;
     if (this.countdownActive) {
-      this.countdownLeft = Math.max(0, this.countdownLeft - dt);
+      const src = this.countdownSource;
+      const left = src ? src() : this.countdownLeft - dt;
+      this.countdownLeft = Number.isFinite(left) ? Math.max(0, left) : 0;
       this.writeCountdown();
     }
     if (this.bannerLeft > 0) {

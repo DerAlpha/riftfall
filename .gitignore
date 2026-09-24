@@ -13,3 +13,5 @@ public/assets/audio/
 test-results/
 smoke-output/
 public/assets/available.json
+tools/.review-*
+tools/_tmp_*

@@ -16,7 +16,8 @@
  *   remaining enemies, intermission countdown, wave start / complete banners.
  * Game.ts feeds per frame: setSpreadCone(weapons.spreadDegrees, render.camera.fov),
  * setAds(weapons.adsAmount), update(dt, yaw);
- * once: setCamera(render.camera) – damage numbers are projected with it.
+ * once: setCamera(render.camera) – damage numbers are projected with it – and
+ * setWaveCountdownSource(() => waves.intermissionLeft); resetRun() when a new run starts.
  */
 import type { Camera } from 'three';
 import type { SettingsStore } from '../../core/contracts';
@@ -368,6 +369,30 @@ export class Hud {
    */
   setWave(wave: number | null): void {
     this.waves.setWave(wave);
+  }
+
+  /** Intermission countdown clock (WaveDirector.intermissionLeft); null counts frame time. */
+  setWaveCountdownSource(source: (() => number) | null): void {
+    this.waves.setCountdownSource(source);
+  }
+
+  /**
+   * A new run starts on this map (restart, or main menu → start, which emits no run:restart):
+   * wave widgets back to the placeholder, the last run's damage arcs, hit flash and damage
+   * numbers gone. Call before the new run's wave director starts (its intermission shows again).
+   */
+  resetRun(): void {
+    this.waves.reset();
+    this.flash = 0;
+    for (const ind of this.indicators) {
+      ind.active = false;
+      ind.age = 0;
+      if (ind.shownOpacity !== 0) {
+        ind.shownOpacity = 0;
+        ind.el.style.opacity = '0';
+      }
+    }
+    this.combat.numbers.clear();
   }
 
   setVisible(visible: boolean): void {

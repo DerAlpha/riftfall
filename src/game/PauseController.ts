@@ -10,6 +10,9 @@
  *   ("lock-less"; the right stick looks). The next mouse press on the canvas takes the lock.
  * - The `pause` binding toggles: it opens the menu during play and closes it again (START on a
  *   pad, P on the keyboard) – except Escape, which is the menus' "back" key.
+ * - setInputLocked (the death sequence): gameplay input off while the game keeps running – no
+ *   moving, looking, firing or pausing. Every path that re-enables input (resume, console close)
+ *   respects it, and releasing it re-enables input unless the game is paused.
  */
 import type { EventBus } from '../core/EventBus';
 import type { GameEvents, PauseReason } from '../core/events';
@@ -50,6 +53,7 @@ export class PauseController {
   private readonly reasons = new Set<PauseReason>();
   private _started = false;
   private _lockless = false;
+  private _inputLocked = false;
   /** A real Escape keydown arrived since the last frame. */
   private escapeSeen = false;
 
@@ -68,6 +72,12 @@ export class PauseController {
   }
   has(reason: PauseReason): boolean {
     return this.reasons.has(reason);
+  }
+  /** Gameplay input off without pausing (death sequence); idempotent, call it every frame. */
+  setInputLocked(locked: boolean): void {
+    if (locked === this._inputLocked) return;
+    this._inputLocked = locked;
+    this.syncInput();
   }
 
   /** Start screen → gameplay. `viaGamepad`: activated by a pad (no pointer lock possible). */
@@ -152,7 +162,7 @@ export class PauseController {
   }
 
   onConsole(open: boolean): void {
-    this.deps.input.enabled = !open && !this.paused;
+    this.deps.input.enabled = !open && !this.paused && !this._inputLocked;
     // A real Esc while the console was open releases pointer lock without opening the menu;
     // closing the console must then fall back to the pause menu instead of lock-less gameplay.
     if (
@@ -193,9 +203,17 @@ export class PauseController {
       this.apply();
       this.deps.menus.hide();
     } else {
+      // A mouse start/resume asks for the lock: lock-less play from an earlier gamepad session is
+      // over, so a refused request opens the pause menu (hints, lock-less option) instead of
+      // leaving the click without effect.
+      this._lockless = false;
       // The pointerlockchange handler (onPointerLock) unpauses once the lock is granted.
       this.deps.input.requestPointerLock();
     }
+  }
+
+  private syncInput(): void {
+    this.deps.input.enabled = !this.paused && !this.deps.consoleOpen() && !this._inputLocked;
   }
 
   private apply(): void {
@@ -203,7 +221,7 @@ export class PauseController {
     const loop = this.deps.loop;
     if (paused === loop.paused) return;
     loop.paused = paused;
-    this.deps.input.enabled = !paused && !this.deps.consoleOpen();
+    this.syncInput();
     this.deps.audio.setPaused(paused);
     if (paused) {
       const first = this.reasons.values().next();

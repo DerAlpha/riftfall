@@ -13,6 +13,11 @@ export interface MenuInfo {
   version: string;
   /** Player-facing name of the map being played (pause menu subtitle); default: the calibration hall. */
   mapName?: string;
+  /**
+   * Id of the loaded map: the start screen preselects it (maps are switched by a reload onto the
+   * start screen – preselecting another map would switch straight back).
+   */
+  mapId?: string;
 }
 
 /** A playable map on the start screen (M3 map selection). */

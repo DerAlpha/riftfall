@@ -105,6 +105,23 @@ describe('RunFlow', () => {
     expect(log.filter((l) => l === 'run:over').length).toBe(2);
   });
 
+  it('restart during the death sequence: no late game over, camera and time scale back', () => {
+    const { flow, scales, log, health, shown } = setup();
+    flow.begin('lab');
+    health(0);
+    flow.update(0.5);
+    expect(flow.deathTime).toBeCloseTo(0.5);
+    flow.restart(); // dev console `run restart` while dying
+    expect(flow.state).toBe('running');
+    expect(flow.deathTime).toBe(0);
+    expect(scales[scales.length - 1]).toBe(1);
+    flow.update(0.5); // no easing outside the death sequence
+    expect(scales[scales.length - 1]).toBe(1);
+    vi.advanceTimersByTime(D.gameOverDelay * 2000);
+    expect(shown.length).toBe(0);
+    expect(log).toEqual(['player:died', 'run:restart']);
+  });
+
   it('reacts to a player:died emitted elsewhere without emitting it again', () => {
     const { events, flow, log } = setup();
     flow.begin('lab');

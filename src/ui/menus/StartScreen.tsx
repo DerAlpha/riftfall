@@ -57,7 +57,10 @@ function keysFor(
   return labels.every((l) => l.length === 1) ? labels.join(' ') : labels.join(' / ');
 }
 
-/** Map preselected on the start screen: the remembered one, else the first recommended, else the first. */
+/**
+ * Map preselected on the start screen: the remembered one (the player's pick, else the loaded
+ * map), else the first recommended, else the first.
+ */
 export function initialMapId(maps: readonly MapChoice[], remembered?: string): string | null {
   if (remembered !== undefined && maps.some((m) => m.id === remembered)) return remembered;
   return (maps.find((m) => m.recommended) ?? maps[0])?.id ?? null;
@@ -144,7 +147,8 @@ export function StartScreen({ deps, memory }: { deps: MenuDeps; memory?: MenuMem
   const info = deps.getInfo();
   const pad = useInputDevice(deps) === 'gamepad';
   const maps = deps.maps ?? [];
-  const [mapId, setMapId] = useState<string | null>(() => initialMapId(maps, memory?.mapId));
+  // The player's pick of this session, else the loaded map (a map switch reloads onto this screen).
+  const [mapId, setMapId] = useState<string | null>(() => initialMapId(maps, memory?.mapId ?? info.mapId));
   // Without the Pointer Lock API a lock request can only fail: start lock-less right away.
   const noLockApi = deps.input.pointerLockSupported === false;
   const start = (): void => {

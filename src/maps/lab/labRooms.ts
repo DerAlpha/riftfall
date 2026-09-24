@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { DEG2RAD } from '../../core/math';
 import { LAB_LAYOUT, type LabBoxDef, type LabCubicleDef, type LabTankDef } from '../../defs/labLayout';
-import { LEVEL_KIT, type Facing } from '../../defs/level';
+import { LEVEL_KIT, type Facing, type RectDef } from '../../defs/level';
 import { WallFrame, type LevelKit } from '../../world/LevelKit';
 import { runForSlope, stairsLayout, subtractIntervals, subtractRects } from '../../world/kitMath';
 import { expandRect } from './labSpaces';
@@ -17,6 +17,8 @@ const T = L.wallThickness;
 const DECAL = LEVEL_KIT.decal;
 const TRIM = LEVEL_KIT.trim;
 const _up = new THREE.Vector3(0, 1, 0);
+/** Layout coordinates closer than this are the same line (m). */
+const WALL_EPS = 1e-4;
 
 function spaceCeiling(id: string): number {
   return L.spaces.find((s) => s.id === id)?.ceiling ?? L.spaces[0]!.ceiling;
@@ -446,11 +448,12 @@ function buildRoof(kit: LevelKit): void {
   const w = S.maxX - S.minX;
   const d = S.maxZ - S.minZ;
   const glass = { collider: false, castShadow: false };
-  kit.box('glass', { x: cx, y: y0 + lh / 2, z: S.minZ }, { x: w, y: lh, z: gt }, glass);
-  kit.box('glass', { x: cx, y: y0 + lh / 2, z: S.maxZ }, { x: w, y: lh, z: gt }, glass);
-  kit.box('glass', { x: S.minX, y: y0 + lh / 2, z: cz }, { x: gt, y: lh, z: d }, glass);
-  kit.box('glass', { x: S.maxX, y: y0 + lh / 2, z: cz }, { x: gt, y: lh, z: d }, glass);
-  kit.box('glass', { x: cx, y: y0 + lh, z: cz }, { x: w, y: gt, z: d }, glass);
+  const pane = 'glass#lantern';
+  kit.box(pane, { x: cx, y: y0 + lh / 2, z: S.minZ }, { x: w, y: lh, z: gt }, glass);
+  kit.box(pane, { x: cx, y: y0 + lh / 2, z: S.maxZ }, { x: w, y: lh, z: gt }, glass);
+  kit.box(pane, { x: S.minX, y: y0 + lh / 2, z: cz }, { x: gt, y: lh, z: d }, glass);
+  kit.box(pane, { x: S.maxX, y: y0 + lh / 2, z: cz }, { x: gt, y: lh, z: d }, glass);
+  kit.box(pane, { x: cx, y: y0 + lh, z: cz }, { x: w, y: gt, z: d }, glass);
   for (const px of [S.minX, S.maxX]) {
     for (const pz of [S.minZ, S.maxZ]) {
       kit.box('pillar_metal', { x: px, y: y0 + lh / 2, z: pz }, { x: m, y: lh, z: m }, { collider: false });
@@ -519,7 +522,8 @@ function buildAtriumWallLines(kit: LevelKit): void {
 export function buildLabs(kit: LevelKit): void {
   const B = L.labs;
   const h = spaceCeiling('labs');
-  for (const c of B.cubicles) cubicle(kit, c, h);
+  const labs = L.spaces.find((s) => s.id === 'labs')!.rects[0]!;
+  for (const c of B.cubicles) cubicle(kit, c, h, labs);
   for (const t of B.tanks) tank(kit, t, h);
   for (const b of B.benches) {
     furnitureBlock(kit, b, 'wall_panel#white', 'trim_metal', null);
@@ -535,7 +539,6 @@ export function buildLabs(kit: LevelKit): void {
     );
   }
   // Glowing guide line down the aisle.
-  const labs = L.spaces.find((s) => s.id === 'labs')!.rects[0]!;
   const aisleX = (L.labs.cubicles[0]!.maxX + L.labs.cubicles[2]!.minX) / 2;
   const A = B.aisleLine;
   kit.marking(
@@ -548,12 +551,15 @@ export function buildLabs(kit: LevelKit): void {
   );
 }
 
-function cubicle(kit: LevelKit, c: LabCubicleDef, h: number): void {
+function cubicle(kit: LevelKit, c: LabCubicleDef, h: number, room: RectDef): void {
   const P = L.labs.partition;
   const t = P.thickness;
-  // Solid side partitions (full height, from the room wall to the front).
-  kit.boxMinMax('wall_panel#white', { x: c.minX, y: 0, z: c.minZ - t }, { x: c.maxX, y: h, z: c.minZ });
-  kit.boxMinMax('wall_panel#white', { x: c.minX, y: 0, z: c.maxZ }, { x: c.maxX, y: h, z: c.maxZ + t });
+  // Solid side partitions (full height, from the room wall to the front). A side on the room wall
+  // is that wall: a partition there would put its face on the wall face (z-fighting).
+  if (c.minZ > room.minZ + WALL_EPS)
+    kit.boxMinMax('wall_panel#white', { x: c.minX, y: 0, z: c.minZ - t }, { x: c.maxX, y: h, z: c.minZ });
+  if (c.maxZ < room.maxZ - WALL_EPS)
+    kit.boxMinMax('wall_panel#white', { x: c.minX, y: 0, z: c.maxZ }, { x: c.maxX, y: h, z: c.maxZ + t });
   // Glass front with the opening.
   const x0 = c.front === 'px' ? c.maxX - t : c.minX;
   const x1 = x0 + t;

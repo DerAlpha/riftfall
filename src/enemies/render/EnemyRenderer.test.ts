@@ -2,9 +2,11 @@ import { Color, InstancedMesh, Scene, Vector3, type InstancedBufferAttribute, ty
 import { describe, expect, it, vi } from 'vitest';
 import type { Hitbox } from '../../core/contracts';
 import { onLog } from '../../core/log';
-import { ENEMY_VISUALS } from '../../defs/enemyVisuals';
+import { ENEMY_VISUALS, type EnemyVisualDef } from '../../defs/enemyVisuals';
 import { createEnemyPose, type EnemyPose } from '../types';
-import { EnemyRenderer } from './EnemyRenderer';
+import { EnemyRenderer, cullReach } from './EnemyRenderer';
+import { buildTypeGeometry } from './partGeometry';
+import { BONE_STRIDE, SLOT, SLOT_STRIDE, compileRig, evaluateRig } from './poseMath';
 
 function make(capacities?: Record<string, number>): {
   r: EnemyRenderer;
@@ -291,5 +293,75 @@ describe('EnemyRenderer: CPU pose mirror', () => {
     r.computeHitboxes('swarmer', h, out);
     expect(out.find((b) => b.zone === 'body')!.a.y).toBeLessThan(aliveY - 0.1);
     r.dispose();
+  });
+});
+
+describe('EnemyRenderer: culling', () => {
+  it('the cull reach covers every visible vertex of every pose (no popping at the screen edge)', () => {
+    for (const [id, def] of Object.entries(ENEMY_VISUALS) as [string, EnemyVisualDef][]) {
+      const rig = compileRig(id, def);
+      const geo = buildTypeGeometry(rig.parts);
+      const reach = cullReach(geo, def.cullMargin);
+      const pos = geo.getAttribute('position');
+      const part = geo.getAttribute('partId');
+      const mats = new Float32Array(rig.bones.length * BONE_STRIDE);
+      const poses: Float32Array[] = [];
+      const slot = (): Float32Array => {
+        const s = new Float32Array(SLOT_STRIDE);
+        s[SLOT.scale] = 1;
+        s[SLOT.attackId] = -1;
+        s[SLOT.emerge] = 1;
+        poses.push(s);
+        return s;
+      };
+      // Every attack through its envelope while running flat out, staggered, looking to the limits.
+      for (let a = -1; a < rig.attackIds.length; a++)
+        for (let t = 0.05; t < 1; t += 0.05)
+          for (let k = 0; k < 4; k++) {
+            const s = slot();
+            s[SLOT.attackId] = a;
+            s[SLOT.attack] = t;
+            s[SLOT.locomotion] = 2;
+            s[SLOT.phase] = (k * Math.PI) / 2 + t;
+            s[SLOT.stagger] = k % 2;
+            s[SLOT.lookYaw] = k < 2 ? 9 : -9;
+            s[SLOT.lookPitch] = k % 2 ? 9 : -9;
+          }
+      // Random mixes (death, emergence, partial drivers).
+      for (let i = 0; i < 200; i++) {
+        const r = (k: number): number => {
+          const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453;
+          return x - Math.floor(x);
+        };
+        const s = slot();
+        s[SLOT.attackId] = Math.floor(r(1) * (rig.attackIds.length + 1)) - 1;
+        s[SLOT.attack] = r(2);
+        s[SLOT.locomotion] = r(3) * 2;
+        s[SLOT.phase] = r(4) * Math.PI * 2;
+        s[SLOT.stagger] = r(5) > 0.5 ? r(6) : 0;
+        s[SLOT.death] = r(7) > 0.6 ? r(8) : 0;
+        s[SLOT.emerge] = r(9) > 0.7 ? r(10) : 1;
+        s[SLOT.lookYaw] = (r(11) - 0.5) * 4;
+        s[SLOT.lookPitch] = (r(12) - 0.5) * 3;
+      }
+      let worst = 0;
+      for (const [i, s] of poses.entries()) {
+        evaluateRig(rig, s, 0, i * 0.37, 0.3, mats);
+        for (let v = 0; v < pos.count; v++) {
+          const m = rig.parts[Math.round(part.getX(v))]!.bone * BONE_STRIDE;
+          const x = pos.getX(v);
+          const y = pos.getY(v);
+          const z = pos.getZ(v);
+          const wy = mats[m + 4]! * x + mats[m + 5]! * y + mats[m + 6]! * z + mats[m + 7]!;
+          // Emerging enemies are clipped at the rift plane (nothing below the feet is drawn).
+          if (s[SLOT.emerge]! < 1 && wy < 0) continue;
+          const wx = mats[m]! * x + mats[m + 1]! * y + mats[m + 2]! * z + mats[m + 3]!;
+          const wz = mats[m + 8]! * x + mats[m + 9]! * y + mats[m + 10]! * z + mats[m + 11]!;
+          worst = Math.max(worst, Math.hypot(wx, wy, wz));
+        }
+      }
+      // Headroom for driver mixes the sampling misses (m at scale 1).
+      expect(worst + 0.15, id).toBeLessThan(reach);
+    }
   });
 });

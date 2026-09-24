@@ -227,6 +227,53 @@ describe('PauseController', () => {
     expect(loop.paused).toBe(false);
   });
 
+  it('a mouse start after lock-less play shows the pause menu when the lock is refused', () => {
+    // Played with a pad, died: game over → "Hauptmenü" → start screen.
+    input.device = 'gamepad';
+    ctl.start(true);
+    ctl.pause('menu');
+    menus.current = 'start';
+    // Now a mouse click on the start screen; the browser refuses the lock.
+    input.device = 'kbm';
+    ctl.start(false);
+    expect(input.lockRequests).toBe(1);
+    ctl.onPointerLock(false);
+    expect(menus.current).toBe('pause'); // hints + the lock-less option instead of a dead click
+    expect(loop.paused).toBe(true);
+  });
+
+  it('death sequence: gameplay input off without pausing, restored however the run goes on', () => {
+    input.device = 'gamepad';
+    ctl.start(true);
+    ctl.setInputLocked(true);
+    expect(input.enabled).toBe(false);
+    expect(loop.paused).toBe(false);
+    // No pausing during the death sequence (the pause binding is gameplay input).
+    frame(['pause']);
+    expect(loop.paused).toBe(false);
+    // The console closing does not hand the input back mid-sequence.
+    ctl.onConsole(true);
+    ctl.onConsole(false);
+    expect(input.enabled).toBe(false);
+    // Pause menu + resume (lost lock, tab switch) neither.
+    ctl.openMenu('visibility');
+    ctl.onVisibility(false);
+    ctl.resume(true);
+    expect(loop.paused).toBe(false);
+    expect(input.enabled).toBe(false);
+    // `run restart` straight out of the death sequence (dev console / smoke handle): no pause
+    // transition re-enables it – releasing the lock must.
+    ctl.setInputLocked(false);
+    expect(input.enabled).toBe(true);
+    // Released while paused (game over → restart): the resume enables it.
+    ctl.setInputLocked(true);
+    ctl.pause('menu');
+    ctl.setInputLocked(false);
+    expect(input.enabled).toBe(false);
+    ctl.resume(true);
+    expect(input.enabled).toBe(true);
+  });
+
   it('emits paused/resumed events with the reason', () => {
     const seen: string[] = [];
     events.on('game:paused', ({ reason }) => seen.push(`paused:${reason}`));

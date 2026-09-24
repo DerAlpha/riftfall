@@ -315,6 +315,25 @@ export class RiftPortalField {
     this.dirty = true;
   }
 
+  /**
+   * Set every tear's pulse to exactly `value` (clamped): a field that follows another pulse (the
+   * anomaly's cluster) has no decay of its own. Uploads only on change. No allocation.
+   */
+  setPulseAll(value: number): void {
+    const v = value > 0 ? Math.min(value, RIFT_PORTAL.pulse.max) : 0;
+    const data = this.attr.array as Float32Array;
+    let changed = false;
+    for (let i = 0; i < this.count; i++) {
+      this.pulses[i] = v;
+      if (data[i * 4 + 1] !== this.pulses[i]) {
+        data[i * 4 + 1] = this.pulses[i]!;
+        changed = true;
+      }
+    }
+    if (changed) this.attr.needsUpdate = true;
+    this.dirty = false;
+  }
+
   /** Index of the tear closest to `p` within `maxDistance` (m), or -1. */
   nearest(p: Vec3Like, maxDistance: number): number {
     let best = -1;
@@ -706,9 +725,9 @@ export class RiftPortal {
     const visible = pulse * pulseScale(this.reduceFlashing);
     (this.vortexMaterial.uniforms.uPulse as THREE.IUniform<number>).value = visible;
     (this.particleMaterial.uniforms.uPulse as THREE.IUniform<number>).value = visible;
-    // The cluster's own field applies the reduced scale in its shader.
-    this.tears.pulseAll(pulse);
-    this.tears.update(dt);
+    // The cluster shows the anomaly's pulse as is (a decay of its own would lag one frame behind,
+    // frame-rate dependent); its shader applies the reduced-flashing scale.
+    this.tears.setPulseAll(pulse);
     // Slow rotation + wobble of the tear cluster.
     const t = this.elapsed;
     this.cluster.rotation.set(

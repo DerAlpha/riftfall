@@ -180,6 +180,23 @@ describe('run menus', () => {
       expect(onStart).toHaveBeenLastCalledWith({ mapId: 'lab' });
     });
 
+    it('preselects the map that is loaded (a map switch reloads the page onto the start screen)', () => {
+      // Before: the recommended card was preselected, so starting after switching to another
+      // map switched straight back (and the remembered map could never be played).
+      mount({
+        getInfo: () => ({ gpuName: 'Test GPU', saveBackend: 'memory', version: '0.1.0', mapId: 'testroom' }),
+      });
+      act(() => menus.showStart());
+      expect(cards(root)[0]!.getAttribute('aria-checked')).toBe('true');
+      act(() => button(root, 'KLICKEN ZUM STARTEN').click());
+      expect(onStart).toHaveBeenLastCalledWith({ mapId: 'testroom' });
+      // The player's own pick (kept across game over → main menu) still wins.
+      act(() => cards(root)[1]!.click());
+      act(() => menus.hide());
+      act(() => menus.showStart());
+      expect(cards(root)[1]!.getAttribute('aria-checked')).toBe('true');
+    });
+
     it('keeps the plain start screen without maps and never passes a map id', () => {
       mount({ maps: undefined });
       act(() => menus.showStart());

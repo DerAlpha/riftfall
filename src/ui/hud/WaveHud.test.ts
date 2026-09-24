@@ -158,6 +158,41 @@ describe('WaveHud', () => {
     layer2.remove();
   });
 
+  it('follows the director clock instead of its own frame count (dropped ticks, frozen director)', () => {
+    let left = 8;
+    hud.setCountdownSource(() => left);
+    events.emit('wave:intermission', { nextWave: 2, duration: 8 });
+    // A long frame: the HUD got 1 s of frame time, the tick-capped director only advanced 0.4 s.
+    left = 7.6;
+    hud.update(1);
+    expect(q('.hud-countdown__value').textContent).toBe('8');
+    // The player died: the director freezes, so does the countdown.
+    left = 3.2;
+    hud.update(0.5);
+    hud.update(0.5);
+    expect(q('.hud-countdown__value').textContent).toBe('4');
+    left = -0.01;
+    hud.update(1 / 60);
+    expect(q('.hud-countdown__value').textContent).toBe('0');
+    // Without a source the HUD counts frame time again.
+    hud.setCountdownSource(null);
+    events.emit('wave:intermission', { nextWave: 3, duration: 5 });
+    hud.update(2);
+    expect(q('.hud-countdown__value').textContent).toBe('3');
+  });
+
+  it('reset() clears a finished run (main menu → start emits no run:restart)', () => {
+    events.emit('wave:start', { wave: 7, total: 40 });
+    events.emit('wave:progress', { wave: 7, remaining: 12, alive: 9 });
+    events.emit('wave:intermission', { nextWave: 8, duration: 14 });
+    hud.reset();
+    expect(hud.wave).toBeNull();
+    expect(q('.hud-wave__value').textContent).toBe('—');
+    expect(q('.hud-wave__remaining').hidden).toBe(true);
+    expect(q('.hud-countdown').hidden).toBe(true);
+    expect(q('.hud-banner').hidden).toBe(true);
+  });
+
   it('writes nothing to the DOM while shown values stay the same', async () => {
     events.emit('wave:intermission', { nextWave: 3, duration: 9.5 });
     hud.update(0.2); // 9.3 s → still "10"
@@ -220,6 +255,29 @@ describe('Hud damage direction with enemy hits', () => {
     const r = rotations();
     expect(r.some((v) => Math.abs(v) < 1)).toBe(true);
     expect(r.some((v) => Math.abs(v - 90) < 1)).toBe(true);
+    hud.dispose();
+  });
+
+  it('resetRun() clears the wave widgets and the hit feedback of the last run', () => {
+    const events = new EventBus<GameEvents>();
+    const root = document.createElement('div');
+    const hud = new Hud(root, events, settings(events));
+    events.emit('wave:start', { wave: 9, total: 60 });
+    events.emit('wave:progress', { wave: 9, remaining: 30, alive: 20 });
+    events.emit('player:damaged', { amount: 60, healthFraction: 0, direction: { x: 1, y: 0, z: 0 } });
+    hud.update(1 / 60, 0);
+    const visibleArcs = (): number =>
+      [...root.querySelectorAll<HTMLElement>('.hud-damage__arc')].filter((el) => Number(el.style.opacity) > 0)
+        .length;
+    const flash = (): number => Number(root.querySelector<HTMLElement>('.hud-hit')!.style.opacity);
+    expect(visibleArcs()).toBe(1);
+    expect(flash()).toBeGreaterThan(0);
+    hud.resetRun();
+    hud.update(1 / 60, 0);
+    expect(root.querySelector('.hud-wave__value')!.textContent).toBe('—');
+    expect(root.querySelector<HTMLElement>('.hud-wave__remaining')!.hidden).toBe(true);
+    expect(visibleArcs()).toBe(0);
+    expect(flash()).toBe(0);
     hud.dispose();
   });
 });

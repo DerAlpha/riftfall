@@ -2337,7 +2337,8 @@ const TANK: EnemyVisualDef = {
   },
   aimSocket: 'chest',
   look: { yawMaxDeg: 45, pitchMaxDeg: 30 },
-  cullMargin: 1.2,
+  // The charge lunge while running flat out reaches ~1.2 m past the rest bounds.
+  cullMargin: 1.5,
   dissolve: { edgeColor: [1, 0.32, 0.55], edgeIntensity: 12, edgeWidth: 0.07, noiseScale: 5 },
   rift: { color: RIFT_VIOLET, intensity: 14, tearRadius: 1.4 },
   effects: {

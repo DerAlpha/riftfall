@@ -75,10 +75,13 @@ export const LAB_MATERIALS = {
   'concrete_wall#roof': { tint: [0.8, 0.8, 0.82], navIgnore: true },
   'glass#frost': { tint: [1.35, 1.35, 1.35], opacity: 0.4, roughness: 9 },
   'glass#tank': { tint: [0.85, 1.25, 0.95], opacity: 0.2 },
+  /** Atrium lantern glazing: its flat top would be a navmesh island above the roof. */
+  'glass#lantern': { navIgnore: true },
   'emissive_white#cold': { emissive: [0.72, 0.86, 1.0], emissiveIntensity: 4.5 },
   /** Moonlit night sky seen through the atrium lantern (below the bloom threshold). */
-  'emissive_white#sky': { emissive: [0.3, 0.4, 0.58], emissiveIntensity: 1.1 },
-  'emissive_cyan#fluid': { emissive: [0.22, 1.0, 0.42], emissiveIntensity: 3.2, effect: 'fluid' },
+  'emissive_white#sky': { emissive: [0.3, 0.4, 0.58], emissiveIntensity: 1.1, navIgnore: true },
+  /** Specimen fluid: large glowing surfaces, kept just above the bloom threshold (no white-out up close). */
+  'emissive_cyan#fluid': { emissive: [0.22, 1.0, 0.42], emissiveIntensity: 1.8, effect: 'fluid' },
   'emissive_cyan#led': { emissive: [1, 1, 1], emissiveIntensity: 6, effect: 'led' },
   'emissive_red#violet': { emissive: [0.62, 0.16, 1.0], emissiveIntensity: 7 },
   'emissive_red#dim': { emissiveIntensity: 3 },

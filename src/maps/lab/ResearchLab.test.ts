@@ -18,7 +18,7 @@ import { createDefaultSettings, type Settings, type SettingsSection } from '../.
 import { baseMaterialId } from '../../world/LevelKit';
 import { isMapLevel, type MapLevelInstance } from '../types';
 import { buildResearchLab, labMaterialIds, spawnWallPoint } from './ResearchLab';
-import { facingNormal, rectCenter } from './labSpaces';
+import { facingNormal, insideSpace, rectCenter } from './labSpaces';
 
 const down = { x: 0, y: -1, z: 0 };
 const WORLD_RAY = interactionGroups(COLLISION_GROUP.WORLD, COLLISION_GROUP.WORLD);
@@ -218,6 +218,25 @@ describe('buildResearchLab', () => {
       expect(n, name).toBeGreaterThanOrEqual(2);
       expect(out[n - 1]!.distanceTo(snapped), name).toBeLessThan(0.4);
     }
+  });
+
+  it('keeps the navmesh off the roofs, ceilings and the lantern sky (no unreachable islands)', () => {
+    const out = new THREE.Vector3();
+    const islands: string[] = [];
+    for (const s of L.spaces) {
+      for (const r of s.rects) {
+        for (let x = r.minX + 0.5; x < r.maxX; x += 1.5) {
+          for (let z = r.minZ + 0.5; z < r.maxZ; z += 1.5) {
+            // Query boxes (±halfExtents.y) stacked from the ceiling up past the lantern sky.
+            for (let y = s.ceiling + NAV.query.halfExtents.y; y < 24; y += NAV.query.halfExtents.y * 2) {
+              if (!nav.closestPoint({ x, y, z }, out) || !insideSpace(s.rects, out.x, out.z)) continue;
+              if (out.y > s.ceiling) islands.push(`${s.id} @${out.toArray().map((v) => v.toFixed(1))}`);
+            }
+          }
+        }
+      }
+    }
+    expect(islands.slice(0, 5)).toEqual([]);
   });
 
   it('keeps the dynamic crates off the enemy routes (the navmesh does not know them)', () => {

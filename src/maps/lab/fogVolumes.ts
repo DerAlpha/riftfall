@@ -6,8 +6,10 @@
  * borders) in a few steps and blends premultiplied: glow = color · a, the scene behind is dimmed
  * by a · absorption. Like the skylight shafts it shades the entry faces from outside and the exit
  * faces from inside; objects inside a volume are hazed by its full chord (no scene depth here),
- * which reads as mist around them. The proxy box is inset by FOG_VOLUME.faceInset so its faces
- * never z-fight with the floor / walls / platform tops a volume ends at.
+ * which reads as mist around them; from inside, the exit faces skip the depth test so the same
+ * holds and nothing pops when the eye crosses a face. The proxy box is inset by
+ * FOG_VOLUME.faceInset so its faces never z-fight with the floor / walls / platform tops a volume
+ * ends at.
  */
 import * as THREE from 'three';
 import { RENDER } from '../../defs/graphics';
@@ -175,6 +177,20 @@ export class FogVolume {
     mesh.layers.set(RENDER.volumetricLayer);
     mesh.updateMatrix();
     mesh.matrixAutoUpdate = false;
+    // Inside the (inset) proxy box the shader shades the exit faces. Everything between the eye and
+    // an exit face is inside the box then, so those faces draw over it (the chord behind included,
+    // like the entry faces from outside) instead of being occluded: the haze would otherwise pop
+    // off nearby objects whenever the eye crosses a face (crouching into floor mist, stairs).
+    const lo = min.clone().addScalar(inset);
+    const hi = max.clone().subScalar(inset);
+    const material = this.material;
+    mesh.onBeforeRender = (_renderer, _scene, camera) => {
+      const e = camera.matrixWorld.elements;
+      const x = e[12]!;
+      const y = e[13]!;
+      const z = e[14]!;
+      material.depthTest = !(x > lo.x && x < hi.x && y > lo.y && y < hi.y && z > lo.z && z < hi.z);
+    };
     this.mesh = mesh;
   }
 

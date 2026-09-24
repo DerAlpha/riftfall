@@ -428,6 +428,36 @@ describe('AudioEventBridge – enemies', () => {
     expect(audio.plays[1]!.opts.volume).toBeCloseTo(E.kinds.strike.gain);
   });
 
+  it('drops the blows still pending when a new run starts (main menu → start emits no run:restart)', () => {
+    const { events, audio, bridge } = setup();
+    const slam = getEnemyAttackDef('tank', 'slam')!;
+    // A wind-up still running when the death sequence froze the game (enemies cleared silently).
+    events.emit('enemy:attack', {
+      id: 9,
+      type: 'tank',
+      attack: 'slam',
+      position: { x: 6, y: 0, z: 0 },
+      windup: slam.windup,
+    });
+    bridge.update(slam.windup * 0.2);
+    audio.clear();
+    bridge.resetRun();
+    bridge.update(slam.windup * 2);
+    expect(audio.plays.length).toBe(0);
+    // run:restart does the same.
+    events.emit('enemy:attack', {
+      id: 10,
+      type: 'tank',
+      attack: 'slam',
+      position: { x: 6, y: 0, z: 0 },
+      windup: slam.windup,
+    });
+    audio.clear();
+    events.emit('run:restart', {});
+    bridge.update(slam.windup * 2);
+    expect(audio.plays.length).toBe(0);
+  });
+
   it('cancels the blow when the attacker is staggered or dies during the wind-up', () => {
     const { events, audio, bridge } = setup();
     const bite = getEnemyAttackDef('swarmer', 'bite')!;

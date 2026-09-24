@@ -28,6 +28,8 @@ import { AssetLoader } from '../assets/AssetLoader';
 import { getAssetEntry } from '../assets/manifest';
 import { AudioEngine } from '../audio/AudioEngine';
 import { AudioEventBridge } from '../audio/AudioEventBridge';
+import { MusicSystem } from '../audio/music/MusicSystem';
+import { createMusicCommands } from '../audio/music/musicCommands';
 import { InputSystem } from '../input/InputSystem';
 import { MaterialLibrary } from '../render/materials/MaterialLibrary';
 import { PlayerController } from '../player/PlayerController';
@@ -205,6 +207,9 @@ export interface GameSystems {
   // M9
   /** Meta progression: level/prestige, skills, weapon levels, achievements, challenges, stats. */
   progression: ProgressionSystem;
+  // M10
+  /** Dynamic procedural music (themes per map, intensity layers, stings, elite / boss cues). */
+  music: MusicSystem;
 }
 
 export class Game {
@@ -319,6 +324,9 @@ export class Game {
       progress(A.start + A.span * (total > 0 ? loaded / total : 1), `Lade ${label}…`),
     );
     await registerAudioAssets(map.atmosphere.preload, assets, audio);
+    // M10: dynamic music follows the game through events; it plays the wave / game over stings now.
+    const music = new MusicSystem({ events, host: audio, settings: settings.current.audio, mapId: map.id });
+    audioBridge.handOverStings();
 
     const L = BOOT_PROGRESS.level;
     progress(L.start, 'Generiere Materialien…');
@@ -509,6 +517,7 @@ export class Game {
       isZoneActive: (z) => zones.isActive(z),
     });
     audioBridge.setEnemySource(enemies);
+    music.setEnemySource(enemies);
     // M5 elements: CombatWorld reports every hit (build-up, void mark), the arsenal's element procs
     // build up directly, enemies read slow / halt / rim tint and the fields' pull and slow.
     const status = new StatusEffectSystem({
@@ -798,6 +807,7 @@ export class Game {
       abilities,
       abilityVisuals,
       progression,
+      music,
     });
     gameRef = game;
     game.registerCommands();
@@ -891,6 +901,7 @@ export class Game {
       grenades,
       abilities,
       abilityVisuals,
+      music,
     } = this.sys;
     this.time += dt;
     player.update(dt, alpha);
@@ -932,6 +943,7 @@ export class Game {
     cam.getWorldDirection(this._yawDir);
     audio.setListener(cam.position, this._yawDir, this._up);
     audioBridge.update(dt, cam.position);
+    music.update(dt, cam.position);
 
     // Is the eye in direct sunlight? One ray per frame towards the sun (static world only).
     this._toSun.copy(render.sunDirection).negate();
@@ -1035,6 +1047,7 @@ export class Game {
       ...createGrenadeCommands({ grenades: this.sys.grenades }),
       ...createAbilityCommands({ abilities: this.sys.abilities }),
       ...createProgressionCommands({ progression: this.sys.progression, mapId: () => level.id }),
+      ...createMusicCommands({ music: this.sys.music }),
       ...createStatusCommands({
         status: this.sys.status,
         combat: this.sys.combat,
@@ -1062,6 +1075,15 @@ export class Game {
       true,
     );
     this.sys.render.canvas.addEventListener('mousedown', () => pause.onCanvasPointerDown());
+    // M10: the start screen theme needs unlocked audio – the first click / key there is the gesture.
+    const unlockAudio = (e: Event): void => {
+      if (e instanceof KeyboardEvent && e.code === 'Escape') return; // grants no activation
+      window.removeEventListener('pointerdown', unlockAudio, true);
+      window.removeEventListener('keydown', unlockAudio, true);
+      void this.sys.audio.unlock();
+    };
+    window.addEventListener('pointerdown', unlockAudio, true);
+    window.addEventListener('keydown', unlockAudio, true);
 
     this.sys.events.on('settings:changed', ({ settings, sections }) => {
       if (sections.includes('graphics')) {

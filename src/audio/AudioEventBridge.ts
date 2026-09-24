@@ -270,6 +270,8 @@ export class AudioEventBridge {
   private gamePaused = false;
   /** Weapon whose raise started while nothing could sound; it racks on game:resumed unless the raise ended first. */
   private pendingRaise: string | null = null;
+  /** M10: the music system plays the wave / game over stings (in the theme's key, on its beat). */
+  private stingsHandedOver = false;
 
   // --- enemies (M3) ---
   private enemySource: EnemyAudioSource | null = null;
@@ -373,6 +375,14 @@ export class AudioEventBridge {
   /** World sources of the M5 arsenal loops: drawn projectile positions, moving fields. */
   setArsenalSources(sources: ArsenalAudioSources): void {
     this.arsenal.setSources(sources);
+  }
+
+  /**
+   * M10: the music system (audio/music) takes over the wave start / complete and game over stings;
+   * without it (tools, tests) the bridge keeps playing its one-shots.
+   */
+  handOverStings(): void {
+    this.stingsHandedOver = true;
   }
 
   /** World anchors of the economy sounds: doors, perk machines, the box, the power-up clock. */
@@ -497,15 +507,18 @@ export class AudioEventBridge {
         this.playEnemy('hurt', type, def.audio.hurt, e.point);
       }),
       events.on('wave:start', (e) => {
+        if (this.stingsHandedOver) return;
         const s = ST.waveStart;
         const special = e.kind !== undefined && e.kind !== 'normal';
         this.play(s.id, s.gain, 0, s.bus, special ? s.specialPitch : 1);
       }),
       events.on('wave:complete', () => {
+        if (this.stingsHandedOver) return;
         const s = ST.waveComplete;
         this.play(s.id, s.gain, 0, s.bus);
       }),
       events.on('player:died', () => {
+        if (this.stingsHandedOver) return;
         const s = ST.gameOver;
         this.play(s.id, s.gain, 0, s.bus);
       }),

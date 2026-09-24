@@ -49,10 +49,21 @@ const NOSE_Z = -0.23;
 const MUZZLE_Z = -0.26;
 const BUTT_Z = 0.272;
 
-/** Smoked translucent polymer of the magazine shell (content: owned by the model). */
-const MAG_SHELL = { color: 0x16242a, opacity: 0.5, roughness: 0.14, clearcoat: 0.9 } as const;
-/** Cartridge radius inside the magazine. */
+/**
+ * Smoked translucent polymer of the magazine shell (content: owned by the model). Satin, weak
+ * specular: at the grazing hip angle a glossy shell mirrors the lights into a blown-out glare.
+ */
+const MAG_SHELL = {
+  color: 0x16242a,
+  opacity: 0.5,
+  roughness: 0.42,
+  specularIntensity: 0.45,
+  clearcoat: 0.2,
+  clearcoatRoughness: 0.4,
+} as const;
+/** Cartridge radius inside the magazine and their tarnish (darkens the brass sheen under the shell). */
 const ROUND_R = 0.0033;
+const ROUND_TARNISH = 0.4;
 
 /** Side silhouette of the shell: nose, receiver bottom, thumbhole slope, butt. */
 const BODY_OUTLINE: readonly ProfilePoint[] = [
@@ -148,7 +159,9 @@ export const buildPdw: ViewmodelBuilder = (kit) => {
     color: MAG_SHELL.color,
     metalness: 0,
     roughness: MAG_SHELL.roughness,
+    specularIntensity: MAG_SHELL.specularIntensity,
     clearcoat: MAG_SHELL.clearcoat,
+    clearcoatRoughness: MAG_SHELL.clearcoatRoughness,
     transparent: true,
     opacity: MAG_SHELL.opacity,
     depthWrite: false,
@@ -326,7 +339,10 @@ export const buildPdw: ViewmodelBuilder = (kit) => {
   const pitch = (magLen - 0.03) / CELLS;
   for (let i = 0; i < CELLS; i++) {
     const z = MAG_FRONT + 0.02 + (i + 0.5) * pitch;
-    b.add('magazine', 'brass', cylinderX(ROUND_R, MAG_W - 0.018, 10), { pos: [0.003, MAG_Y + 0.001, z] });
+    b.add('magazine', 'brass', cylinderX(ROUND_R, MAG_W - 0.018, 10), {
+      pos: [0.003, MAG_Y + 0.001, z],
+      paint: ROUND_TARNISH,
+    });
     b.add('magazine', 'readout', new BoxGeometry(0.007, ROUND_R * 2.05, pitch * 0.6), {
       pos: [-(MAG_W / 2) + 0.0115, MAG_Y + 0.001, z],
       uv: ledUv(i, CELLS),

@@ -125,7 +125,8 @@ function setup() {
   };
   /** Through the intermission until the wave's first enemies are up. */
   const untilWave = (): void => {
-    for (let guard = 0; (waves.state !== 'active' || manager.alive === 0) && guard < 60 * 90; guard++) tick(1);
+    for (let guard = 0; (waves.state !== 'active' || manager.alive === 0) && guard < 60 * 90; guard++)
+      tick(1);
   };
   return {
     ...h,

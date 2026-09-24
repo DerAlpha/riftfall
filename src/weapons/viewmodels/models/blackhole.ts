@@ -402,10 +402,6 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     ),
     { paint: P.darkMetal.paint },
   );
-  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0016, 0.18), {
-    pos: [-0.0212, 0.066, 0.19],
-    rot: [0.5, 0, 0],
-  });
   b.add(BODY, 'grip', roundedBox(0.046, 0.118, 0.016, 0.005), {
     pos: [0, 0.011, 0.32],
     uvDensity: VIEWMODEL_ART.knurlDensity,

@@ -393,15 +393,13 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     pos: [0, 0.035, 0.155],
     paint: P.gunmetal.paint,
   });
-  // Flank heat fins with the glowing sinks between them.
+  // Battery windows on both flanks (spark-filled cells) and flush heat slots between them.
   for (const side of [-1, 1]) {
-    for (let i = 0; i < 6; i++) {
-      const z = 0.108 + i * 0.018;
-      b.add(BODY, 'darkMetal', roundedBox(0.006, 0.032, 0.004, 0.001), {
-        pos: [side * 0.022, 0.035, z],
-        paint: P.darkMetal.paint,
-      });
-      b.add(BODY, 'heat', new BoxGeometry(0.0025, 0.026, 0.012), { pos: [side * 0.0205, 0.035, z + 0.009] });
+    b.add(BODY, 'darkMetal', roundedBox(0.003, 0.03, 0.11, 0.001), { pos: [side * 0.0205, 0.035, 0.158], paint: 0.4 });
+    for (let i = 0; i < 3; i++) {
+      const z = 0.12 + i * 0.034;
+      b.add(BODY, 'jar', roundedBox(0.0016, 0.018, 0.022, 0.0006), { pos: [side * 0.0222, 0.037, z] });
+      b.add(BODY, 'heat', new BoxGeometry(0.0016, 0.022, 0.0035), { pos: [side * 0.0222, 0.035, z + 0.017] });
     }
   }
   b.add(

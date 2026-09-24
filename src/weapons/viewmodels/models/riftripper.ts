@@ -58,7 +58,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   const readout = createReadout(readoutSpec);
   const glow = createGlowMaterials(RIFT_COLOR.sight, readout?.texture ?? null, def.glow);
   glow.accent.emissive.set(RIFT_COLOR.accent);
-  const chitin = createChitinMaterial('riftripper', 0x140a1c, 0x9a2c86);
+  const chitin = createChitinMaterial('riftripper', 0x100816, 0x7a2470);
   const rift = createEnergyMaterial('rift-tear', {
     core: RIFT_COLOR.core,
     rim: RIFT_COLOR.rim,
@@ -130,22 +130,39 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       { bevel: 0.006, bevelSegments: 3 },
     ),
   );
-  // Vertebrae over the spine, light breathing between them, gold inlays on every other one.
-  for (let i = 0; i < 7; i++) {
-    const z = 0.0 - i * 0.026;
-    const top = 0.088 - Math.max(0, i - 4) * 0.006;
-    b.add(BODY, 'chitin', new TorusGeometry(0.03, 0.0062, 8, 20, Math.PI), { pos: [0, top - 0.03, z] });
+  // Vertebrae along the whole spine (following the carapace's top line), light breathing between
+  // them, gold inlays on every other one.
+  const SPINE: readonly (readonly [number, number])[] = [
+    [0.075, 0.056],
+    [0.03, 0.074],
+    [-0.04, 0.088],
+    [-0.12, 0.086],
+    [-0.19, 0.074],
+  ];
+  const topAt = (z: number): number => {
+    for (let k = 0; k + 1 < SPINE.length; k++) {
+      const [z0, y0] = SPINE[k]!;
+      const [z1, y1] = SPINE[k + 1]!;
+      if (z <= z0 && z >= z1) return y0 + ((z - z0) / (z1 - z0)) * (y1 - y0);
+    }
+    return SPINE[SPINE.length - 1]![1];
+  };
+  for (let i = 0; i < 10; i++) {
+    const z = 0.066 - i * 0.025;
+    const top = topAt(z);
+    const r = Math.min(0.03, top - 0.03);
+    b.add(BODY, 'chitin', new TorusGeometry(r, 0.0058, 8, 20, Math.PI), { pos: [0, top - r, z] });
     if (i % 2 === 0) {
-      b.add(BODY, 'brass', new TorusGeometry(0.03, 0.0018, 6, 20, Math.PI), {
-        pos: [0, top - 0.03, z - 0.0055],
+      b.add(BODY, 'brass', new TorusGeometry(r, 0.0017, 6, 20, Math.PI), {
+        pos: [0, top - r, z - 0.0055],
         paint: 0.9,
       });
     }
-    if (i < 6) {
-      b.add(BODY, 'veins', roundedBox(0.03, 0.002, 0.012, 0.0008), { pos: [0, top + 0.0005, z - 0.013] });
-      b.add(BODY, 'veins', roundedBox(0.002, 0.018, 0.012, 0.0008), {
-        pos: [-0.0275, top - 0.024, z - 0.013],
-      });
+    if (i < 9) {
+      const zm = z - 0.0125;
+      const tm = topAt(zm);
+      b.add(BODY, 'veins', roundedBox(0.026, 0.002, 0.011, 0.0008), { pos: [0, tm + 0.0005, zm] });
+      b.add(BODY, 'veins', roundedBox(0.002, 0.016, 0.011, 0.0008), { pos: [-0.0275, tm - 0.024, zm] });
     }
   }
   // Membrane windows on the left flank: void fluid glowing behind translucent chitin.

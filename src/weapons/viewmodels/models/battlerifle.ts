@@ -291,6 +291,37 @@ export const buildBattlerifle: ViewmodelBuilder = (kit) => {
     pos: [-0.0305, BORE_Y, -0.465],
     paint: P.darkMetal.paint,
   });
+  // The "hammer head": a heavy bolted collar closing the handguard, and a swept hand stop.
+  b.add(
+    BODY,
+    'darkMetal',
+    profileZ(chamferRectProfile(0.064, 0.066, 0.018, 0.015), 0.034, {
+      bevel: 0.002,
+      holes: [chamferRectProfile(0.03, 0.03, 0.006)],
+    }),
+    { pos: [0, BORE_Y, -0.506], paint: P.darkMetal.paint },
+  );
+  for (const side of [-1, 1]) {
+    for (const y of [BORE_Y + 0.016, BORE_Y - 0.016]) {
+      b.add(BODY, 'gunmetal', cylinderX(0.0028, 0.003, 8), { pos: [side * 0.0325, y, -0.506], paint: 0.6 });
+    }
+  }
+  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.024, 0.0022), { pos: [-0.0323, BORE_Y, -0.494] });
+  b.add(
+    BODY,
+    'polymer',
+    profileX(
+      [
+        [0.29, BORE_Y - 0.03],
+        [0.33, BORE_Y - 0.03],
+        [0.318, BORE_Y - 0.058],
+        [0.305, BORE_Y - 0.06],
+      ],
+      0.02,
+      { bevel: 0.002 },
+    ),
+    { paint: P.polymer.paint },
+  );
 
   // --- barrel, gas block, three-port hammer brake ---
   b.add(BODY, 'darkMetal', cylinderZ(0.0115, 0.0115, 0.42, 18), {

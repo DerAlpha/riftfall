@@ -40,8 +40,15 @@ export interface EconomyAudioSources {
   perkMachines?: readonly { readonly perkId: string; readonly position: Vec3Like }[];
   /** The Rift-Kiste: its current location (box:moved plays the arrival there). */
   box?: { readonly location: { readonly position: Vec3Like } } | null;
-  /** Timed power-up clock (expiry ticks); PowerUpSystem fits. */
-  powerUps?: { readonly activeTimed: readonly string[]; remaining(type: string): number } | null;
+  /**
+   * Timed power-up clock (expiry ticks) and, optionally, whether a pickup still floats (its loop
+   * ends with it: despawned or replaced pickups send no event); PowerUpSystem fits.
+   */
+  powerUps?: {
+    readonly activeTimed: readonly string[];
+    remaining(type: string): number;
+    hasPickup?(id: number): boolean;
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,13 +94,15 @@ export function pickupLoopSeconds(type: string): number {
 
 interface PickupLoop {
   handle: number;
+  /** powerup:spawned id of its pickup. */
+  id: number;
   type: string;
   /** An uncounted perk scrap: replaced before real drops when the pool is full. */
   scrap: boolean;
   x: number;
   y: number;
   z: number;
-  /** Game time the pickup despawns (the loop fades out then). */
+  /** Game time the pickup despawns (without a pickup query the loop fades out then). */
   ends: number;
 }
 
@@ -143,7 +152,7 @@ export class EconomyAudio {
     private readonly random: () => number,
   ) {
     for (let i = 0; i < EA.powerUps.maxLoops; i++) {
-      this.loops.push({ handle: 0, type: '', scrap: false, x: 0, y: 0, z: 0, ends: 0 });
+      this.loops.push({ handle: 0, id: 0, type: '', scrap: false, x: 0, y: 0, z: 0, ends: 0 });
     }
     this.offs.push(
       events.on('economy:points', (e) => {
@@ -233,7 +242,7 @@ export class EconomyAudio {
       events.on('player:healthChanged', (e) => {
         if (this.dead && e.health > 0) this.dead = false;
       }),
-      events.on('powerup:spawned', (e) => this.onPickupSpawned(e.type, e.position)),
+      events.on('powerup:spawned', (e) => this.onPickupSpawned(e.id, e.type, e.position)),
       events.on('powerup:collected', (e) => {
         this.stopPickupLoop(e.type, e.position);
         this.play(powerUpStingerId(e.type), EA.powerUps.stingerGain, 0);
@@ -287,9 +296,10 @@ export class EconomyAudio {
       this.updateHums();
     }
     this.updateTicks();
-    // Pickups that despawned uncollected (no event): their loops fade out with them.
+    // Pickups that vanished without an event (despawned, replaced in a full pool): their loops
+    // fade out with them.
     for (const l of this.loops) {
-      if (l.handle === 0 || this.gameTime < l.ends) continue;
+      if (l.handle === 0 || !this.pickupGone(l)) continue;
       this.audio.stopLoop(l.handle, EA.powerUps.loop.fadeOut);
       l.handle = 0;
     }
@@ -435,14 +445,23 @@ export class EconomyAudio {
     }
   }
 
-  private onPickupSpawned(type: string, position: Vec3Like): void {
+  /**
+   * The loop's pickup no longer floats: asked from the power-up system when it can tell (the
+   * frame's game time runs ahead of the fixed ticks when ticks are dropped), else by its lifetime.
+   */
+  private pickupGone(l: PickupLoop): boolean {
+    const src = this.powerUps;
+    return src?.hasPickup ? !src.hasPickup(l.id) : this.gameTime >= l.ends;
+  }
+
+  private onPickupSpawned(id: number, type: string, position: Vec3Like): void {
     const P = EA.powerUps;
     this.playAt(P.spawn.id, position, P.spawn.gain, 0);
-    // A free slot, else the pickup the power-up system replaces in its full pool (it sends no
-    // event for it): a scrap before a real drop, then the one closest to despawning.
+    // A free slot (or one whose pickup is gone), else the pickup the power-up system replaces in
+    // its full pool (no event for it): a scrap before a real drop, then the one closest to despawning.
     let slot: PickupLoop | null = null;
     for (const l of this.loops) {
-      if (l.handle === 0) {
+      if (l.handle === 0 || this.pickupGone(l)) {
         slot = l;
         break;
       }
@@ -461,6 +480,7 @@ export class EconomyAudio {
     o.pitchVariance = 0;
     o.maxDuration = pickupLoopSeconds(type);
     slot.handle = this.audio.startLoop(P.loop.id, o);
+    slot.id = id;
     slot.type = type;
     slot.scrap = getPowerUpDef(type)?.counted === false;
     slot.x = position.x;

@@ -75,7 +75,8 @@ describe('weapon XP curve', () => {
     }
     const total = xpForLevel(W.curve, W.maxLevel, W.maxLevel);
     // ~700 kills an hour with one weapon (+ hits): 3–10 hours to master it.
-    const perHour = PROGRESSION.pacing.killsPerHour * (W.xpPerKill + PROGRESSION.pacing.headshotShare * W.headshotBonus);
+    const perHour =
+      PROGRESSION.pacing.killsPerHour * (W.xpPerKill + PROGRESSION.pacing.headshotShare * W.headshotBonus);
     expect(total / perHour).toBeGreaterThan(3);
     expect(total / perHour).toBeLessThan(10);
   });

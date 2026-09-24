@@ -95,7 +95,12 @@ function idList(raw: unknown, max: number, keep: (id: string) => boolean): strin
 }
 
 /** Map of id → amount; keys passing `keep`, at most `max` keys, zero values dropped. */
-function amountMap(raw: unknown, max: number, keep: (id: string) => boolean, integer = false): Record<string, number> {
+function amountMap(
+  raw: unknown,
+  max: number,
+  keep: (id: string) => boolean,
+  integer = false,
+): Record<string, number> {
   const out: Record<string, number> = {};
   if (!isRecord(raw)) return out;
   let n = 0;
@@ -123,7 +128,10 @@ export function sanitizePlayerProgress(raw: unknown): PlayerProgressData {
   // A prestige rank means level 100 was reached at least once.
   const floor = prestige > 0 ? max : level;
   const highestLevel = Math.max(floor, int(raw.highestLevel, 1, max, 1));
-  const lifetimeXp = Math.max(xpForLevel(PROGRESSION.curve, max, level) + xp, Math.floor(amount(raw.lifetimeXp)));
+  const lifetimeXp = Math.max(
+    xpForLevel(PROGRESSION.curve, max, level) + xp,
+    Math.floor(amount(raw.lifetimeXp)),
+  );
   return { level, xp, prestige, highestLevel, lifetimeXp };
 }
 
@@ -140,8 +148,10 @@ export function sanitizeSkills(raw: unknown): SkillTreeData {
     }
   }
   const loadout = isRecord(raw.loadout) ? raw.loadout : {};
-  const grenade = typeof loadout.grenade === 'string' && (GRENADE_IDS as readonly string[]).includes(loadout.grenade);
-  const ability = typeof loadout.ability === 'string' && (ABILITY_IDS as readonly string[]).includes(loadout.ability);
+  const grenade =
+    typeof loadout.grenade === 'string' && (GRENADE_IDS as readonly string[]).includes(loadout.grenade);
+  const ability =
+    typeof loadout.ability === 'string' && (ABILITY_IDS as readonly string[]).includes(loadout.ability);
   return {
     ranks,
     respecs: int(raw.respecs, 0, L.maxCounter, 0),
@@ -156,7 +166,10 @@ function weaponCamo(id: string): boolean {
   return getCamoDef(id)?.scope === 'weapon';
 }
 
-export function sanitizeWeaponProgress(raw: unknown, globalCamos: readonly string[] = []): Record<string, WeaponProgressData> {
+export function sanitizeWeaponProgress(
+  raw: unknown,
+  globalCamos: readonly string[] = [],
+): Record<string, WeaponProgressData> {
   const out: Record<string, WeaponProgressData> = {};
   if (!isRecord(raw)) return out;
   const W = PROGRESSION.weapon;
@@ -168,11 +181,17 @@ export function sanitizeWeaponProgress(raw: unknown, globalCamos: readonly strin
     const need = xpToNext(W.curve, W.maxLevel, level);
     const camos = idList(e.camos, L.maxUnlocked, weaponCamo);
     const eq = idString(e.equippedCamo);
-    const usable = eq !== null && (camos.includes(eq) || (getCamoDef(eq)?.scope === 'global' && globalCamos.includes(eq)));
+    const usable =
+      eq !== null && (camos.includes(eq) || (getCamoDef(eq)?.scope === 'global' && globalCamos.includes(eq)));
     out[id] = {
       level,
       xp: need > 0 ? Math.min(need - 1, int(e.xp, 0, L.maxCounter, 0)) : 0,
-      counters: amountMap(e.counters, WEAPON_COUNTER_IDS.length, (k) => (WEAPON_COUNTER_IDS as readonly string[]).includes(k), true),
+      counters: amountMap(
+        e.counters,
+        WEAPON_COUNTER_IDS.length,
+        (k) => (WEAPON_COUNTER_IDS as readonly string[]).includes(k),
+        true,
+      ),
       camos,
       equippedCamo: usable ? eq : null,
     };

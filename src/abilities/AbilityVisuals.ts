@@ -5,8 +5,9 @@
  * Each look is a flat floor disc + a low open cylinder "curtain", additive, on
  * RENDER.volumetricLayer (drawn after AO and height fog, depth-tested, no depth write, fogged in
  * the shader like every volumetric; `hasVolumetricContent` feeds the pass probe). Two programs
- * (disc, curtain) shared by both looks; the meshes live in the scene from construction, so the
- * boot warm-up (compileForPostChain) compiles them. Per frame only uniforms and transforms change.
+ * (disc, curtain) shared by both looks; the meshes live in the scene from construction and draw
+ * invisibly during the boot's warm-up frame (setWarmup around VfxSystem.warmup), so the first use
+ * never compiles a program. Per frame only uniforms and transforms change.
  *
  * - shockRing: the ring grows to the blast radius over `duration` (ease-out) with an electric
  *   flicker and a short light wall riding on it; a screen-space shockwave at the start.
@@ -196,6 +197,7 @@ export class AbilityVisuals implements AbilityVisualsApi {
   private readonly deps: AbilityVisualsDeps;
   private time = 0;
   private flashScale = 1;
+  private warming = false;
   private disposed = false;
 
   constructor(deps: AbilityVisualsDeps) {
@@ -210,8 +212,9 @@ export class AbilityVisuals implements AbilityVisualsApi {
     this.looks.push(this.look('shockRing', discGeo, wallGeo, discBase.clone(), wallBase.clone(), MODE_SHOCK));
   }
 
-  /** True while a look draws (volumetric pass probe). */
+  /** True while a look draws (volumetric pass probe), also during the warm-up frame. */
   get hasVolumetricContent(): boolean {
+    if (this.warming) return true;
     for (const l of this.looks) if (l.active) return true;
     return false;
   }
@@ -246,6 +249,22 @@ export class AbilityVisuals implements AbilityVisualsApi {
   stop(fx: AbilityWorldFx): void {
     const look = this.find(fx);
     if (look?.active && look.stoppedAt < 0) look.stoppedAt = look.age;
+  }
+
+  /**
+   * Shader warm-up: while active every idle look draws invisibly (fade 0, additive black), so the
+   * boot's warm-up frame (VfxSystem.warmup renders one real composer frame) compiles the programs
+   * in their real context – the volumetric pass renders with no lights on its layer, a different
+   * program variant than renderer.compile() builds with the world's lights.
+   */
+  setWarmup(active: boolean): void {
+    for (const l of this.looks) {
+      if (l.active) continue;
+      l.disc.visible = active;
+      l.wall.visible = active;
+      if (active) this.setUniforms(l, 0, 0, 0);
+    }
+    this.warming = active;
   }
 
   setReducedFlashing(on: boolean): void {

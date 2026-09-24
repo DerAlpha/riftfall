@@ -64,7 +64,14 @@ export function estimateXpPerHour(): XpPacing {
   for (const a of ACHIEVEMENTS) achievementXp += ACHIEVEMENT_REWARDS[a.tier].xp;
   const hours = (P.targetHours.min + P.targetHours.max) / 2;
   const achievements = (achievementXp * P.achievementShare) / hours;
-  return { kills, waves, survival, challenges, achievements, total: kills + waves + survival + challenges + achievements };
+  return {
+    kills,
+    waves,
+    survival,
+    challenges,
+    achievements,
+    total: kills + waves + survival + challenges + achievements,
+  };
 }
 
 /** Hours of play from level 1 to the max level for the reference player. */

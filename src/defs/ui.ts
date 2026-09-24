@@ -193,6 +193,7 @@ export const ECONOMY_HUD = {
     /** Screen changes below these are not written to the DOM. */
     pxEpsilon: 0.35,
     opacityEpsilon: 0.02,
+    scaleEpsilon: 0.01,
     /** Popup colour per points reason (negative deltas are always 'spend'). */
     tones: {
       hit: 'normal',

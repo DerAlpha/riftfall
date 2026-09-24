@@ -116,6 +116,8 @@ export class ProgressionSystem implements ProgressionApi {
   private readonly metaSignal = createSignal();
   private liveStats: Pick<StatsApi, 'addModifier' | 'removeSource'> | null = null;
   private report: RunProgressReport | null = null;
+  /** A ranked run is going: XP counts into its report (until the report is written). */
+  private reporting = false;
   private runXp = 0;
   private runLevelBefore = 1;
   private readonly runAchievements: string[] = [];
@@ -239,7 +241,7 @@ export class ProgressionSystem implements ProgressionApi {
     const p = this.profile.progression;
     const credited = Math.max(1, Math.round(amount * this.xpMultiplier));
     p.lifetimeXp = Math.min(PROGRESSION_LIMITS.maxCounter, p.lifetimeXp + credited);
-    if (this.recorder.active) this.runXp += credited;
+    if (this.reporting) this.runXp += credited;
     const before = p.level;
     const gained = addLevelXp(p, credited, PROGRESSION.curve, PROGRESSION.maxLevel);
     this._dirty = true;
@@ -333,6 +335,7 @@ export class ProgressionSystem implements ProgressionApi {
     this.runLevelBefore = this.profile.progression.level;
     this.runAchievements.length = 0;
     this.runChallenges.length = 0;
+    this.reporting = info.ranked;
     if (!info.ranked) {
       this.recorder.stop();
       return;
@@ -347,6 +350,7 @@ export class ProgressionSystem implements ProgressionApi {
   endRun(): void {
     if (this.lifetime.recording) this.commitReplacedRun();
     this.recorder.stop();
+    this.reporting = false;
     this.runInfo = null;
   }
 
@@ -392,6 +396,7 @@ export class ProgressionSystem implements ProgressionApi {
   /** Bind to a replaced profile (`resetsave`): every part re-reads its data. */
   attach(profile: ProfileData): void {
     this.recorder.stop();
+    this.reporting = false;
     this.runInfo = null;
     this.profile = profile;
     this.cosmetics.attach(profile.cosmetics);
@@ -539,7 +544,8 @@ export class ProgressionSystem implements ProgressionApi {
     this.events.emit('progression:skills', { nodeId, rank, available: this.skills.available });
     this.meta('skillRanks', this.skills.ranksBought);
     const branch = nodeId !== null ? getSkillNode(nodeId)?.branch : undefined;
-    if (branch && this.skills.branchComplete(branch)) this.meta('skillBranchComplete', 1, (t) => (t.branch = branch));
+    if (branch && this.skills.branchComplete(branch))
+      this.meta('skillBranchComplete', 1, (t) => (t.branch = branch));
     if (this.liveStats) this.skills.applyTo(this.liveStats);
     this.scheduleSave();
   }
@@ -582,6 +588,7 @@ export class ProgressionSystem implements ProgressionApi {
       achievements: [...this.runAchievements],
       challenges: [...this.runChallenges],
     };
+    this.reporting = false;
     this.saveNow();
   }
 
@@ -629,7 +636,10 @@ export class ProgressionSystem implements ProgressionApi {
 export function killXp(t: Readonly<SignalTags>): number {
   const P = PROGRESSION;
   const table = P.killXp;
-  let xp = t.enemy !== null && Object.prototype.hasOwnProperty.call(table, t.enemy) ? table[t.enemy]! : P.killDefault;
+  let xp =
+    t.enemy !== null && Object.prototype.hasOwnProperty.call(table, t.enemy)
+      ? table[t.enemy]!
+      : P.killDefault;
   if (t.zone === 'head') xp += P.headshotBonus;
   else if (t.zone === 'weakpoint') xp += P.weakpointBonus;
   if (t.kind === 'melee') xp += P.meleeBonus;

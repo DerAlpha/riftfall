@@ -90,7 +90,8 @@ export class LifetimeStats implements LifetimeStatsView {
     if (sig.metric === 'kill') {
       const t = sig.tags;
       if (t.enemy) this.runKillsByEnemy.set(t.enemy, (this.runKillsByEnemy.get(t.enemy) ?? 0) + sig.amount);
-      if (t.weapon) this.runKillsByWeapon.set(t.weapon, (this.runKillsByWeapon.get(t.weapon) ?? 0) + sig.amount);
+      if (t.weapon)
+        this.runKillsByWeapon.set(t.weapon, (this.runKillsByWeapon.get(t.weapon) ?? 0) + sig.amount);
     }
   }
 
@@ -110,7 +111,8 @@ export class LifetimeStats implements LifetimeStatsView {
       if (v > 0) bump(c, LIFETIME_COUNTER_IDS[i]!, v);
     }
     // runEnd / death arrive as signals from the run end; a replaced run adds neither.
-    if (info.timeSurvived > 0 && Number.isFinite(info.timeSurvived)) bump(c, TIME_PLAYED_COUNTER, info.timeSurvived);
+    if (info.timeSurvived > 0 && Number.isFinite(info.timeSurvived))
+      bump(c, TIME_PLAYED_COUNTER, info.timeSurvived);
     for (const [k, v] of this.runKillsByEnemy) bump(this.data.killsByEnemy, k, v);
     for (const [k, v] of this.runKillsByWeapon) bump(this.data.killsByWeapon, k, v);
     const key = boardKey(info.mapId, info.mode);

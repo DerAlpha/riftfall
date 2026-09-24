@@ -72,7 +72,8 @@ function migrateV1toV2(data: JsonObject): JsonObject {
   const fresh = createDefaultProgressionFields() as unknown as JsonObject;
   // Fill what is missing; a (pre-release) v1 profile that already carries a field keeps it for the
   // sanitizer to validate.
-  for (const key of Object.keys(fresh)) if (!Object.prototype.hasOwnProperty.call(profile, key)) profile[key] = fresh[key];
+  for (const key of Object.keys(fresh))
+    if (!Object.prototype.hasOwnProperty.call(profile, key)) profile[key] = fresh[key];
   return { ...data, version: 2, profile };
 }
 

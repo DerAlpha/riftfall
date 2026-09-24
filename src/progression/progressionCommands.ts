@@ -93,7 +93,8 @@ export function createProgressionCommands(deps: ProgressionCommandDeps): Console
       run: ([mode, arg]) => {
         if (mode === 'unlock') {
           if (!arg) throw new Error('achievement unlock <id>');
-          if (!p.achievementTracker.unlock(arg)) throw new Error(`Unbekannt oder bereits freigeschaltet: ${arg}`);
+          if (!p.achievementTracker.unlock(arg))
+            throw new Error(`Unbekannt oder bereits freigeschaltet: ${arg}`);
           return `Erfolg freigeschaltet: ${arg}`;
         }
         const filter = (mode === 'list' ? arg : mode)?.toLowerCase();
@@ -104,7 +105,9 @@ export function createProgressionCommands(deps: ProgressionCommandDeps): Console
             (a) =>
               `${a.unlockedAt > 0 ? '[x]' : '[ ]'} ${a.id.padEnd(20)} ${a.name} – ${formatCount(a.progress)}/${formatCount(a.target)}${a.hidden ? ' (versteckt)' : ''}`,
           );
-        return [`${p.achievementTracker.unlockedCount}/${p.achievementTracker.total} Erfolge`, ...lines].join('\n');
+        return [`${p.achievementTracker.unlockedCount}/${p.achievementTracker.total} Erfolge`, ...lines].join(
+          '\n',
+        );
       },
     },
     {
@@ -153,10 +156,12 @@ export function createProgressionCommands(deps: ProgressionCommandDeps): Console
             s.reset();
             return `Fertigkeiten zurückgesetzt – ${s.available} Punkte`;
           case 'respec':
-            if (!s.respec()) throw new Error(`Umverteilen nicht möglich (Kosten ${s.respecCost} Splitter, nicht im Run)`);
+            if (!s.respec())
+              throw new Error(`Umverteilen nicht möglich (Kosten ${s.respecCost} Splitter, nicht im Run)`);
             return `Umverteilt – ${s.available} Punkte`;
           case 'loadout': {
-            if ((a !== 'grenade' && a !== 'ability') || !b) throw new Error('skill loadout grenade|ability <id|none>');
+            if ((a !== 'grenade' && a !== 'ability') || !b)
+              throw new Error('skill loadout grenade|ability <id|none>');
             const id = b === 'none' ? null : b;
             if (!s.setLoadout(a, id)) throw new Error(`Nicht freigeschaltet: ${b}`);
             p.saveNow();

@@ -192,7 +192,11 @@ export class PointsCounter {
     const x = p.lane;
     const scale = this.reduced ? 1 : m.scale;
     const eps = PO.pxEpsilon;
-    if (Math.abs(y - v.y) >= eps || Math.abs(x - v.x) >= eps || Math.abs(scale - v.scale) >= 0.01) {
+    if (
+      Math.abs(y - v.y) >= eps ||
+      Math.abs(x - v.x) >= eps ||
+      Math.abs(scale - v.scale) >= PO.scaleEpsilon
+    ) {
       v.x = x;
       v.y = y;
       v.scale = scale;

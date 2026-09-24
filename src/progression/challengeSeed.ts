@@ -108,7 +108,10 @@ export function buildInstance(
     condition,
     name: fill(template.name, target, variant),
     description: fill(template.description, target, variant),
-    xp: Math.max(CHALLENGE_RULES.rewardRoundTo, roundTo(rules.xp * rewardScale, CHALLENGE_RULES.rewardRoundTo)),
+    xp: Math.max(
+      CHALLENGE_RULES.rewardRoundTo,
+      roundTo(rules.xp * rewardScale, CHALLENGE_RULES.rewardRoundTo),
+    ),
     currency: Math.max(1, Math.round(rules.currency * rewardScale)),
     cosmetic,
   };

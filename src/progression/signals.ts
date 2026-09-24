@@ -11,7 +11,12 @@
  * recording a new distinct value.
  */
 import type { DamageElement, HitZone, ImpactKind } from '../core/events';
-import { PROGRESSION_LIMITS, type MetricId, type ProgressCondition, type SignalFilter } from '../defs/progression';
+import {
+  PROGRESSION_LIMITS,
+  type MetricId,
+  type ProgressCondition,
+  type SignalFilter,
+} from '../defs/progression';
 
 export interface SignalTags {
   map: string;

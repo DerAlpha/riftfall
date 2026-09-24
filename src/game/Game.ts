@@ -625,7 +625,8 @@ export class Game {
       reduceFlashing,
     });
     perks.setAmmoDropHandler(powerUps.dropAmmo);
-    // Economy sounds play at their world objects; the power-up clock drives the expiry ticks.
+    // Economy sounds play at their world objects; the power-up system drives the expiry ticks and
+    // ends a pickup's floating loop when the pickup is gone.
     audioBridge.setEconomySources({
       doors: interactables.doors.map((d) => ({ id: d.id, position: d.slot.position, blast: d.slot.blast })),
       perkMachines: interactables.perkMachines,
@@ -813,7 +814,10 @@ export class Game {
     compileForPostChain(render.renderer, render.scene, render.camera);
     viewmodel.warmupWeapons(render.renderer);
     enemyVisuals.warmup(render.renderer, render.camera);
+    // The ability looks draw (invisibly) in the VFX warm-up frame: their volumetric-pass variants.
+    abilityVisuals.setWarmup(true);
     vfx.warmup();
+    abilityVisuals.setWarmup(false);
 
     // Enemies need the navmesh (false = direct steering fallback, already logged).
     progress(BOOT_PROGRESS.navigation, 'Berechne Navigationsnetz…');
@@ -1238,7 +1242,8 @@ export class Game {
     grenades.reset();
     if (bonus.startGrenades > 0) grenades.add(grenades.selected, bonus.startGrenades);
     abilities.setStartAbility(
-      choice.ability ?? (mapLoadout.ability === undefined ? ABILITY_RULES.defaultAbility : mapLoadout.ability),
+      choice.ability ??
+        (mapLoadout.ability === undefined ? ABILITY_RULES.defaultAbility : mapLoadout.ability),
     );
     abilities.reset();
     if (bonus.startPoints > 0) economy.reset(startPointsFor(map) + bonus.startPoints);

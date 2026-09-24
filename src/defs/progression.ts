@@ -135,16 +135,7 @@ export interface SignalFilter {
 
 /** String tags a distinct condition can collect. */
 export type DistinctTag =
-  | 'enemy'
-  | 'weapon'
-  | 'category'
-  | 'element'
-  | 'grenade'
-  | 'ability'
-  | 'combo'
-  | 'perk'
-  | 'powerup'
-  | 'map';
+  'enemy' | 'weapon' | 'category' | 'element' | 'grenade' | 'ability' | 'combo' | 'perk' | 'powerup' | 'map';
 
 /** Where a count accumulates: forever, within one run, or within one wave. */
 export type ConditionScope = 'lifetime' | 'run' | 'wave';
@@ -159,7 +150,12 @@ export type ProgressCondition =
       readonly filter?: SignalFilter;
     }
   /** Highest amount of a 'max' metric ≥ target. */
-  | { readonly kind: 'max'; readonly metric: MetricId; readonly target: number; readonly filter?: SignalFilter }
+  | {
+      readonly kind: 'max';
+      readonly metric: MetricId;
+      readonly target: number;
+      readonly filter?: SignalFilter;
+    }
   /**
    * `target` distinct values of a tag seen (e.g. every combo): `values` restricts which values
    * count (absent = any value).
@@ -270,7 +266,10 @@ export const WEAPON_COUNTERS = {
   elites: { label: 'Elite-Kills', condition: { metric: 'kill', filter: { elite: true } } },
 } as const satisfies Record<
   string,
-  { readonly label: string; readonly condition: { readonly metric: MetricId; readonly filter?: SignalFilter } }
+  {
+    readonly label: string;
+    readonly condition: { readonly metric: MetricId; readonly filter?: SignalFilter };
+  }
 >;
 
 export type WeaponCounterId = keyof typeof WEAPON_COUNTERS;
@@ -376,7 +375,8 @@ export const PROGRESSION_GLYPHS = {
   grenade:
     'M12 7.5A6.5 6.5 0 1 0 12 20.5 6.5 6.5 0 1 0 12 7.5 M10 7.5V4.5H14V7.5 M14 4.5 18 3 M9 12.5H15 M9 15.5H15',
   flask: 'M9 2.5H15 M10 2.5V9L4.5 19C4 20.2 4.7 21.5 6 21.5H18C19.3 21.5 20 20.2 19.5 19L14 9V2.5 M7 15H17',
-  medal: 'M8 2.5 12 9 16 2.5 M12 9A6 6 0 1 0 12 21 6 6 0 1 0 12 9 M12 12 13 14.2 15.3 14.4 13.5 15.9 14.1 18.2 12 17 9.9 18.2 10.5 15.9 8.7 14.4 11 14.2Z',
+  medal:
+    'M8 2.5 12 9 16 2.5 M12 9A6 6 0 1 0 12 21 6 6 0 1 0 12 9 M12 12 13 14.2 15.3 14.4 13.5 15.9 14.1 18.2 12 17 9.9 18.2 10.5 15.9 8.7 14.4 11 14.2Z',
   box: 'M3 8 12 3 21 8V16L12 21 3 16Z M3 8 12 13 21 8 M12 13V21',
   anvil: 'M3 8H16C16 11 18.5 12 21 12V13H15L13.5 16H16V20H6V16H8.5L7 13C4.5 13 3 11 3 8Z',
   eye: 'M2 12C4.5 7 8 5 12 5 16 5 19.5 7 22 12 19.5 17 16 19 12 19 8 19 4.5 17 2 12Z M12 9A3 3 0 1 0 12 15 3 3 0 1 0 12 9',

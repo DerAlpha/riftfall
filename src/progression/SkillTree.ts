@@ -187,7 +187,12 @@ export class SkillTree implements SkillTreeApi {
       if (rank <= 0) continue;
       for (const e of n.effects) {
         if (e.kind !== 'stat') continue;
-        out.push({ source: skillSource(n.id), stat: e.stat, op: e.op, value: rankValue(e.op, e.value, rank) });
+        out.push({
+          source: skillSource(n.id),
+          stat: e.stat,
+          op: e.op,
+          value: rankValue(e.op, e.value, rank),
+        });
       }
     }
     return out;

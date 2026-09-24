@@ -115,7 +115,12 @@ export function skillSource(nodeId: string): string {
   return `skill:${nodeId}`;
 }
 
-const stat = (s: StatKey, op: 'add' | 'mul', value: number): SkillEffect => ({ kind: 'stat', stat: s, op, value });
+const stat = (s: StatKey, op: 'add' | 'mul', value: number): SkillEffect => ({
+  kind: 'stat',
+  stat: s,
+  op,
+  value,
+});
 
 export const SKILL_NODES: readonly SkillNodeDef[] = [
   // ------------------------------------------------------------------ Offensive

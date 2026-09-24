@@ -519,6 +519,33 @@ describe('AudioEventBridge – economy', () => {
     expect(audio.pickupLoops()).toEqual([]);
   });
 
+  it('ends a pickup loop when the power-up system says its pickup is gone (no event for that)', () => {
+    const { events, audio, bridge, frame } = setup();
+    const floating = new Set<number>([1, 2]);
+    bridge.setEconomySources({
+      powerUps: { activeTimed: [], remaining: () => 0, hasPickup: (id) => floating.has(id) },
+    });
+    events.emit('powerup:spawned', { id: 1, type: 'nuke', position: at(1, 0, 0) });
+    events.emit('powerup:spawned', { id: 2, type: 'maxAmmo', position: at(2, 0, 0) });
+    const [first, second] = audio.pickupLoops();
+    frame();
+    expect(audio.pickupLoops()).toEqual([first, second]);
+    // Despawned early by the fixed ticks' clock (the frame time ran ahead): asked, not guessed.
+    floating.delete(2);
+    frame();
+    expect(audio.pickupLoops()).toEqual([first]);
+    expect(audio.stopped).toEqual([{ handle: second, fade: EA.powerUps.loop.fadeOut }]);
+    // Still floating beyond the lifetime by the frame clock (dropped ticks): the loop stays.
+    frame(pickupLifetime('nuke') + 1);
+    expect(audio.pickupLoops()).toEqual([first]);
+    // A full pool replaced pickup 1 for pickup 3: its loop makes room.
+    floating.delete(1);
+    floating.add(3);
+    events.emit('powerup:spawned', { id: 3, type: 'instakill', position: at(3, 0, 0) });
+    expect(audio.stopped.map((s) => s.handle)).toEqual([second, first]);
+    expect(audio.pickupLoops()).toHaveLength(1);
+  });
+
   it('replaces the loop of the pickup the power-up system replaces in a full pool (scraps first)', () => {
     const { events, audio, frame } = setup();
     events.emit('powerup:spawned', { id: 1, type: 'nuke', position: at(0, 0, 0) });

@@ -7,12 +7,7 @@
  */
 import type { WeaponProgressData, WeaponProgressView } from '../core/contracts';
 import { CAMOS, getCamoDef, type CamoDef } from '../defs/cosmetics';
-import {
-  PROGRESSION,
-  PROGRESSION_LIMITS,
-  WEAPON_COUNTERS,
-  WEAPON_COUNTER_IDS,
-} from '../defs/progression';
+import { PROGRESSION, PROGRESSION_LIMITS, WEAPON_COUNTERS, WEAPON_COUNTER_IDS } from '../defs/progression';
 import { isWeaponId } from '../defs/weapons';
 import { matchesFilter, type ProgressSignal } from './signals';
 import { addLevelXp, xpToNext } from './xpCurve';
@@ -78,7 +73,8 @@ export class WeaponProgress {
     let countersChanged = false;
     for (const id of WEAPON_COUNTER_IDS) {
       const def = WEAPON_COUNTERS[id].condition;
-      if (sig.metric !== def.metric || !matchesFilter('filter' in def ? def.filter : undefined, sig.tags)) continue;
+      if (sig.metric !== def.metric || !matchesFilter('filter' in def ? def.filter : undefined, sig.tags))
+        continue;
       e.counters[id] = Math.min(PROGRESSION_LIMITS.maxCounter, (e.counters[id] ?? 0) + sig.amount);
       countersChanged = true;
     }
@@ -140,7 +136,8 @@ export class WeaponProgress {
     for (const camo of CAMOS) {
       const u = camo.unlock;
       if (camo.scope !== 'global' || u.kind !== 'weaponsMastered' || this.globals.has(camo.id)) continue;
-      if (this.countWithCamo(u.camo) >= u.count && this.globals.unlock(camo.id)) this.hooks.onCamo(null, camo);
+      if (this.countWithCamo(u.camo) >= u.count && this.globals.unlock(camo.id))
+        this.hooks.onCamo(null, camo);
     }
   }
 

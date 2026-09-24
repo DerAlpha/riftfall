@@ -314,7 +314,8 @@ export class AbilityVisuals implements AbilityVisualsApi {
     }
     // Ease-out: the front leaves fast and slows at the blast radius.
     const p = 1 - (1 - t) * (1 - t) * (1 - t);
-    this.setUniforms(l, 1, S.intensity, p);
+    this.setMaterial(l.discMat, 1, S.intensity, p);
+    this.setMaterial(l.wallMat, 1, S.wallIntensity, p);
     const r = Math.max(0.05, l.radius * p);
     l.disc.position.set(l.center.x, l.center.y + FLOOR_LIFT, l.center.z);
     l.disc.scale.set(l.radius, 1, l.radius);
@@ -349,7 +350,8 @@ export class AbilityVisuals implements AbilityVisualsApi {
     }
     const grow = 0.6 + 0.4 * (1 - (1 - fadeIn) * (1 - fadeIn));
     const r = l.radius * grow;
-    this.setUniforms(l, fade, C.intensity, 0);
+    this.setMaterial(l.discMat, fade, C.intensity, 0);
+    this.setMaterial(l.wallMat, fade, C.wallIntensity, 0);
     l.disc.position.set(l.center.x, l.center.y + FLOOR_LIFT, l.center.z);
     l.disc.scale.set(r, 1, r);
     l.wall.position.set(l.center.x, l.center.y, l.center.z);

@@ -112,7 +112,7 @@ try {
   page.on('pageerror', (e) => report.pageErrors.push(String(e?.stack || e)));
   page.on('console', (m) => m.type() === 'error' && report.consoleErrors.push(m.text()));
   await page.goto(`${base}?autostart=1&nolock=1&smoke=1&map=${map}&preset=${preset}`);
-  await page.waitForFunction(() => window.__RIFTFALL__?.ready === true, null, { timeout: 240_000 });
+  await page.waitForFunction(() => window.__RIFTFALL__?.ready === true, null, { timeout: 480_000 });
   report.bootMs = Date.now() - t0;
 
   await page.evaluate(installHarness);

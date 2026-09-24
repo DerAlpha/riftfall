@@ -210,9 +210,11 @@ export const ABILITY_VISUALS = {
     duration: 0.55,
     /** Ring band width as a fraction of the current radius, and the wall's height (m). */
     width: 0.18,
-    wallHeight: 1.1,
-    color: [0.35, 0.72, 1] as Rgb,
-    intensity: 5,
+    wallHeight: 0.9,
+    color: [0.25, 0.6, 1] as Rgb,
+    /** Ring (floor) and light wall brightness: the wall stays faint – it faces the camera all round. */
+    intensity: 2.6,
+    wallIntensity: 0.7,
     /** Screen-space shockwave (render.addShockwave): radius × blast radius, strength. */
     shockwaveRadius: 1.3,
     shockwave: 0.55,
@@ -228,7 +230,9 @@ export const ABILITY_VISUALS = {
     ticks: 24,
     color: [0.55, 0.45, 1] as Rgb,
     rimColor: [0.8, 0.72, 1] as Rgb,
+    /** Floor rings and the curtain (fainter: it stands in the line of sight all round). */
     intensity: 1.6,
+    wallIntensity: 0.9,
     /** Floor probe below the player for the dome's base (m). */
     floorProbe: 4,
     /** Screen-space shockwave when it opens. */

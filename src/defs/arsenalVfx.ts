@@ -514,18 +514,18 @@ export const BEAM_STYLES = {
   /** FW-4 Inferno: a roaring particle cone, white-yellow at the nozzle, dark red at the tips. */
   'beam.flame': {
     kind: 'flame',
-    rate: 360,
-    life: [0.32, 0.52],
-    reach: [0.35, 1],
-    spreadDeg: 9,
+    rate: 240,
+    life: [0.3, 0.5],
+    reach: [0.3, 1],
+    spreadDeg: 8,
     drag: 1.3,
     size: [0.07, 0.11],
-    sizeEnd: 11,
+    sizeEnd: 5.5,
     stretch: 0.018,
     color: [1, 0.72, 0.34],
     colorEnd: [0.72, 0.1, 0.02],
-    intensity: 2.7,
-    intensityEnd: 1,
+    intensity: 1.7,
+    intensityEnd: 0.4,
     gravity: -0.35,
     core: { length: 1.4, width: 0.05, widthEnd: 0.3, color: FIRE_CORE, intensity: 3.5 },
     nozzleGlow: {
@@ -710,7 +710,7 @@ export const FIELD_VISUALS = {
     glows: [],
     coreHeight: 0,
     ambient: [
-      { effect: 'field.fire.flames', rate: 110, area: 'disc', height: [0, 0.05], scale: 1 },
+      { effect: 'field.fire.flames', rate: 40, area: 'disc', height: [0, 0.05], scale: 1 },
       { effect: 'field.fire.smoke', rate: 5, area: 'disc', height: [0.5, 1.1], scale: 1 },
     ],
     infall: null,
@@ -725,7 +725,7 @@ export const FIELD_VISUALS = {
     glows: [],
     coreHeight: 0,
     ambient: [
-      { effect: 'field.poison.mist', rate: 20, area: 'disc', height: [0.1, 0.9], scale: 1 },
+      { effect: 'field.poison.mist', rate: 9, area: 'disc', height: [0.1, 0.9], scale: 1 },
       { effect: 'field.poison.bubbles', rate: 8, area: 'disc', height: [0, 0.05], scale: 1 },
     ],
     infall: null,

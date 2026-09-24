@@ -439,7 +439,8 @@ export class ViewmodelRig {
     // --- M5: forge stow blend; the shown weapon's dress (a new look waits until it is out of view) ---
     const ST = OUTFIT_RIG.stow;
     if (this.stow < this.stowTarget) this.stow = Math.min(this.stowTarget, this.stow + dt / ST.lowerTime);
-    else if (this.stow > this.stowTarget) this.stow = Math.max(this.stowTarget, this.stow - dt / ST.raiseTime);
+    else if (this.stow > this.stowTarget)
+      this.stow = Math.max(this.stowTarget, this.stow - dt / ST.raiseTime);
     const lowering = this.stowTarget > 0 && this.stow < 1;
     if (this.outfitter.sync(this.shownWeaponId, this.weaponModel, lowering)) this.onOutfitChanged();
     const player = this.player;
@@ -668,7 +669,9 @@ export class ViewmodelRig {
     this.shownWeaponId = model ? weaponId : null;
     // M5: dressed before it shows (attachments, forge look); an optic moves the sight line.
     if (this.outfitter.sync(this.shownWeaponId, model) && model) prepareViewmodelObject(model.root);
-    this.weaponPose = model ? resolveWeaponPose(model, this.outfitter.sight, this.outfitter.eyeDistance) : null;
+    this.weaponPose = model
+      ? resolveWeaponPose(model, this.outfitter.sight, this.outfitter.eyeDistance)
+      : null;
     this.swapDisplayed(model ? model.root : this.placeholder.root);
     return model;
   }

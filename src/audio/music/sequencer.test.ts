@@ -39,7 +39,7 @@ describe('music sequencer', () => {
       const phrase = theme.phrases[theme.order[Math.floor(b / 8) % theme.order.length]!]!;
       expected += phrase.bars[b % 8]!.events.length;
     }
-    const inFull = rec.events.filter((ev) => ev.time < 1 + fullBars * barDur);
+    const inFull = rec.events.filter((ev) => ev.time < 1 + fullBars * barDur - 1e-6);
     expect(inFull).toHaveLength(expected);
     for (let k = 1; k < rec.events.length; k++) {
       expect(rec.events[k]!.time).toBeGreaterThanOrEqual(rec.events[k - 1]!.time - 1e-9);

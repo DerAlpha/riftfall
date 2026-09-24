@@ -366,6 +366,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   private beamActive = false;
   private beamWeapon = '';
   private beamTickTimer = 0;
+  /** Sim time of the last beam damage tick (a re-press waits out the rest of its interval). */
+  private beamLastTickAt = Number.NEGATIVE_INFINITY;
   private beamDistance = 0;
   private beamPrimary: Damageable | null = null;
   private readonly beamHitPoint = new Vector3();
@@ -1747,8 +1749,9 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     if (!this.beamActive) {
       this.beamActive = true;
       this.beamWeapon = def.id;
-      // The first tick lands at once: the beam answers the trigger.
-      this.beamTickTimer = interval;
+      // The first tick lands at once – the beam answers the trigger – unless the last tick was
+      // less than an interval ago: tapping the trigger must not out-tick holding it.
+      this.beamTickTimer = Math.min(interval, this.simTime - this.beamLastTickAt) - dt;
       this.events.emit('weapon:beam', { weaponId: def.id, active: true });
     }
     this._state = 'firing';
@@ -1765,6 +1768,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     let ticks = 0;
     while (this.beamTickTimer >= interval - TIME_EPS && ticks < ARSENAL.beam.maxTicksPerStep) {
       this.beamTickTimer -= interval;
+      // The tick's exact time (the remainder carries into the next one).
+      this.beamLastTickAt = this.simTime - Math.max(0, this.beamTickTimer);
       this.beamTick(w);
       ticks++;
     }

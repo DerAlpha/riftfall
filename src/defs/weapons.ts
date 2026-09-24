@@ -436,6 +436,12 @@ export interface WeaponStatMods {
   readonly blastRadius?: number;
   /** Charge weapons: time to full charge factor (< 1 = faster). */
   readonly chargeTime?: number;
+  /**
+   * Blast damage the shooter takes from the weapon's own explosions (factor on the BASE def's
+   * self damage: damage mods – forge tiers, perks – never raise it; a tier firing several
+   * projectiles per pull splits it).
+   */
+  readonly selfDamage?: number;
 }
 
 /**

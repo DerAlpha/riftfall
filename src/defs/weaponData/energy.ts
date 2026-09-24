@@ -697,7 +697,8 @@ export const ENERGY = {
       forgeTier(
         3,
         'GL-6 „Sternenregen“',
-        { damage: 1.25, blastRadius: 1.15 },
+        // Three grenades per pull share the one grenade's self damage.
+        { damage: 1.25, blastRadius: 1.15, selfDamage: 0.33 },
         { kind: 'splitShot', count: 2, angleDeg: 7 },
       ),
     ],

@@ -13,7 +13,8 @@
  *   higher tiers unless they define their own; `null` removes it) and recolors the tracer (the
  *   tier's `tracerColor`, else its forge look's tracer).
  * - Kind data follows the stats: damage scales projectile blasts, field dps/collapses and nothing
- *   else absolute (special damages are tier data); rpm scales a beam's tick and drain rates;
+ *   else absolute (special damages are tier data) – the shooter's share of a blast stays the base
+ *   def's (× the selfDamage factor), damage mods never make the player's own blasts deadlier; rpm scales a beam's tick and drain rates;
  *   projectileSpeed / blastRadius / chargeTime scale their kind data; an element mod turns a
  *   projectile's blast of the weapon's own element into that element (convention VFX/audio ids).
  * - Handling: adsTime (in/out), adsZoom, equipTime, moveSpeed (ADS speed and carry speed),
@@ -65,6 +66,7 @@ interface Factors {
   projectileSpeed: number;
   blastRadius: number;
   chargeTime: number;
+  selfDamage: number;
 }
 
 function factor(v: number | undefined): number {
@@ -91,6 +93,7 @@ function applyMods(f: Factors, m: WeaponStatMods): void {
   f.projectileSpeed *= factor(m.projectileSpeed);
   f.blastRadius *= factor(m.blastRadius);
   f.chargeTime *= factor(m.chargeTime);
+  f.selfDamage *= factor(m.selfDamage);
 }
 
 function neutral(f: Factors): boolean {
@@ -112,7 +115,8 @@ function neutral(f: Factors): boolean {
     f.hipSpread === 1 &&
     f.projectileSpeed === 1 &&
     f.blastRadius === 1 &&
-    f.chargeTime === 1
+    f.chargeTime === 1 &&
+    f.selfDamage === 1
   );
 }
 
@@ -159,20 +163,26 @@ function retargetId(id: string, from: DamageElement, to: DamageElement): string 
   return id;
 }
 
+/**
+ * The weapon's own blast after the damage / radius factors. The shooter's share stays the base
+ * blast's (× `self`): damage mods make it hit enemies harder, never the player.
+ */
 function scaleExplosion(
   e: ExplosionDef | null,
   damage: number,
   radius: number,
+  self: number,
   baseElement: DamageElement,
   element: DamageElement,
 ): ExplosionDef | null {
   if (!e) return null;
   const swap = element !== baseElement && e.element === baseElement;
-  if (damage === 1 && radius === 1 && !swap) return e;
+  if (damage === 1 && radius === 1 && self === 1 && !swap) return e;
   return {
     ...e,
     damage: e.damage * damage,
     radius: e.radius * radius,
+    selfDamageScale: (e.selfDamageScale * self) / damage,
     element: swap ? element : e.element,
     vfx: swap ? retargetId(e.vfx, e.element, element) : e.vfx,
     audio: swap ? retargetId(e.audio, e.element, element) : e.audio,
@@ -198,7 +208,7 @@ function scaleProjectile(
   return {
     ...p,
     speed: p.speed * f.projectileSpeed,
-    explosion: scaleExplosion(p.explosion, f.damage, f.blastRadius, baseElement, element),
+    explosion: scaleExplosion(p.explosion, f.damage, f.blastRadius, f.selfDamage, baseElement, element),
     field: scaleField(p.field, f.damage),
   };
 }
@@ -243,6 +253,7 @@ export function resolveWeapon(base: WeaponDef, state: WeaponModState = {}): Weap
     projectileSpeed: 1,
     blastRadius: 1,
     chargeTime: 1,
+    selfDamage: 1,
   };
   const tier = Math.max(0, Math.floor(state.tier ?? 0));
   for (const u of base.upgrades) if (u.tier <= tier) applyMods(f, u.mods);

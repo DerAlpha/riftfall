@@ -67,10 +67,15 @@ export interface MusicSystemDeps {
   now?: () => number;
   /** Boss enemy types (default: defs/enemies `boss: true`). */
   isBoss?: (type: string) => boolean;
+  /** Rendered theme samples (tests inject a fake). */
+  bank?: MusicBankLike;
   /** Timers (tests inject fakes). */
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
 }
+
+/** What the system needs of the sample bank (MusicBank; tests pass a fake). */
+export type MusicBankLike = Pick<MusicBank, 'get' | 'load' | 'stats' | 'supported' | 'dispose'>;
 
 export interface MusicStatus {
   enabled: boolean;
@@ -113,7 +118,7 @@ function effectiveVolume(a: Readonly<AudioSettings>): number {
 
 export class MusicSystem implements MusicApi, ConductorSink {
   readonly conductor: MusicConductor;
-  readonly bank = new MusicBank();
+  readonly bank: MusicBankLike;
   private graph: Graph | null = null;
   private current: ThemePlayer | null = null;
   private volume: number;
@@ -141,6 +146,7 @@ export class MusicSystem implements MusicApi, ConductorSink {
   private readonly tick = (): void => this.run();
 
   constructor(private readonly deps: MusicSystemDeps) {
+    this.bank = deps.bank ?? new MusicBank();
     this.setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
     this.clearTimer = deps.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
     this.volume = effectiveVolume(deps.settings);

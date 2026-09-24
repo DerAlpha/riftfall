@@ -322,6 +322,7 @@ export class CombatWorld implements WeaponCombatApi {
     p.weaponId = info.weaponId;
     p.element = info.element;
     p.source = info.source;
+    p.kind = info.kind;
     this.events.emit('combat:damage', p);
     if (res.killed) {
       const k = this.killPayload;

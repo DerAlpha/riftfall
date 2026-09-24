@@ -1,6 +1,7 @@
 /**
  * Combat → points (CoD Zombies rules, tuning in defs/economy.ts ECONOMY.points). Listens to:
- * - combat:damage – a player hit that does not kill pays the kind's `hit`;
+ * - combat:damage – a player hit that does not kill pays the kind's `hit` (bullets, pellets,
+ *   projectiles, melee only – beam/blast/field/status ticks pay nothing until the kill);
  * - combat:kill – the killing blow pays the kind's `kill` (+ head / weakpoint bonus, or the melee
  *   bonus); the kind's table comes from `rewardOf(targetId)` (Game: the enemy's def `points`),
  *   ECONOMY.points.fallback without one;
@@ -20,9 +21,17 @@
  */
 import type { EconomyApi } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
-import type { GameEvents, HitZone, PointsReason, Vec3Like } from '../core/events';
+import type { GameEvents, HitZone, ImpactKind, PointsReason, Vec3Like } from '../core/events';
 import { ECONOMY, waveBonus, type KillRewardDef } from '../defs/economy';
 import { ENEMY_AI } from '../defs/enemies';
+
+/** Damage kinds whose non-lethal hits pay `hit` points (discrete shots and blows). */
+const HIT_PAYING_KINDS: ReadonlySet<ImpactKind> = new Set<ImpactKind>([
+  'bullet',
+  'pellet',
+  'projectile',
+  'melee',
+]);
 
 export interface PointsRulesDeps {
   events: EventBus<GameEvents>;
@@ -162,6 +171,9 @@ export class PointsRules {
       return;
     }
     if (!(e.amount > 0) || !this.pays(e.targetId, e.source)) return;
+    // Continuous and area damage (beam ticks, blasts, field and status ticks) pays kills only:
+    // per-tick hit points would farm the economy.
+    if (e.kind !== undefined && !HIT_PAYING_KINDS.has(e.kind)) return;
     const reward = this.reward(e.targetId);
     this.stats.hits += this.economy.earn(reward.hit, 'hit', copy(e.point, this.pos));
   }

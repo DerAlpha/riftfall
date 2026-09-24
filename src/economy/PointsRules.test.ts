@@ -114,6 +114,21 @@ describe('PointsRules: events', () => {
     expect(t.reasons).toHaveLength(4);
   });
 
+  it('beam, blast, field and status ticks pay no hit points (no farming), only the kill', () => {
+    const t = setup();
+    for (let i = 0; i < 30; i++) {
+      t.damage(5, { kind: 'beam' });
+      t.damage(5, { kind: 'explosion' });
+    }
+    expect(t.economy.points).toBe(0);
+    t.damage(5, { kind: 'bullet' });
+    t.damage(5, { kind: 'pellet' });
+    t.damage(5, { kind: 'projectile' });
+    expect(t.economy.points).toBe(30);
+    t.kill(5);
+    expect(t.economy.points).toBe(30 + KILL);
+  });
+
   it('pays nothing for dummies, enemy/trap damage or flagged dev spawns', () => {
     const t = setup();
     t.damage(TARGET_ID_BASE + 3);

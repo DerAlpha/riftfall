@@ -159,6 +159,8 @@ export interface GameEvents {
     weaponId: string;
     element: DamageElement;
     source: 'player' | 'enemy' | 'trap' | 'environment';
+    /** How it was delivered (DamageInfo.kind); absent from emitters that predate it. */
+    kind?: ImpactKind;
   };
   'combat:kill': {
     targetId: number;

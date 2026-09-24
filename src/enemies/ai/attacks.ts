@@ -15,6 +15,7 @@
  * Phases: wind-up (telegraph, target tracking) → strike → recover. Leap/charge move the enemy
  * themselves during the strike (MoveOverride); the host teleports the parked nav agent afterwards.
  */
+import { getAttackExecutor } from './attackKinds';
 import { Vector3 } from 'three';
 import type { EnemyTargetApi } from '../../core/contracts';
 import { DEG2RAD } from '../../core/math';
@@ -121,6 +122,8 @@ export function updateAttack(e: Enemy, host: AiHost, target: EnemyTargetApi | nu
 
 /** Cancel the running attack (stagger, death): stop any movement override. */
 export function cancelAttack(e: Enemy, host: AiHost): void {
+  const a = e.def.attacks[e.attackIndex];
+  if (a) getAttackExecutor(a.kind)?.cancel?.(e, host, a);
   finishOverride(e, host);
   e.attackIndex = -1;
   e.phase = PHASE_WINDUP;
@@ -211,6 +214,8 @@ function beginStrike(e: Enemy, host: AiHost, a: EnemyAttackDef, target: EnemyTar
       return beginLeap(e, host, a, target);
     case 'charge':
       return beginCharge(e, host, a, target);
+    default:
+      return getAttackExecutor(a.kind)?.begin(e, host, a, target) ?? false;
   }
 }
 
@@ -223,7 +228,8 @@ function updateStrike(
 ): boolean {
   if (a.kind === 'leap' && e.override === 'leap') return updateLeap(e, host, a, target);
   if (a.kind === 'charge' && e.override === 'charge') return updateCharge(e, host, a, target, dt);
-  return false;
+  const x = getAttackExecutor(a.kind);
+  return x?.update ? x.update(e, host, a, target, dt) : false;
 }
 
 // ---------------------------------------------------------------------------

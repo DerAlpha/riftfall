@@ -38,7 +38,12 @@ import {
 import type { Hitbox, RenderApi } from '../../core/contracts';
 import type { Vec3Like } from '../../core/events';
 import { createLogger } from '../../core/log';
-import { ENEMY_RENDER, ENEMY_VISUALS, getEnemyVisualDef, type EnemyVisualDef } from '../../defs/enemyVisuals';
+import {
+  ENEMY_RENDER,
+  enemyVisualTypeIds,
+  getEnemyVisualDef,
+  type EnemyVisualDef,
+} from '../../defs/enemyVisuals';
 import { setUpdateRange, type UpdateRange } from '../../vfx/gpuUpload';
 import type { EnemyInstanceHandle, EnemyPose, EnemyTypeId, EnemyVisualsApi } from '../types';
 import {
@@ -197,7 +202,7 @@ export class EnemyRenderer implements EnemyVisualsApi {
     this.shared = createSharedUniforms(this.surface);
     if (deps.reduceFlashing) this.setReducedFlashing(true);
     this.setSunCasterBounds(deps.sunCasterBounds ?? null);
-    const ids = deps.types ?? Object.keys(ENEMY_VISUALS);
+    const ids = deps.types ?? enemyVisualTypeIds();
     for (const id of ids) {
       const def = getEnemyVisualDef(id);
       if (!def) {

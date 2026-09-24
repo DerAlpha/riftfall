@@ -27,6 +27,8 @@
  * `attackAnimIndex(type, id)` maps them onto EnemyPose.attackId.
  */
 import type { HitZone } from '../core/events';
+import { BONE, HALF_PI, PI, RIFT_VIOLET } from './enemyVisualCommon';
+import { M6_ENEMY_VISUALS } from './enemyVisualData';
 
 export type Vec3 = readonly [number, number, number];
 export type Rgb = readonly [number, number, number];
@@ -342,31 +344,6 @@ export const ENEMY_RENDER = {
 // ---------------------------------------------------------------------------
 // Shared palette pieces
 // ---------------------------------------------------------------------------
-
-const PI = Math.PI;
-const HALF_PI = Math.PI / 2;
-
-/** Rift energy (linear): emergence seams, ground tears, spawn bursts. */
-const RIFT_VIOLET: Rgb = [0.62, 0.3, 1];
-
-/** Ivory bone darkening to black-red tips (spikes, claws, mandibles). */
-const BONE: EnemyZoneDef = {
-  color: [0.42, 0.37, 0.29],
-  color2: [0.3, 0.25, 0.19],
-  tip: [0.035, 0.02, 0.02],
-  tipAmount: 0.85,
-  roughness: 0.42,
-  metalness: 0,
-  clearcoat: 0.55,
-  emissive: [0, 0, 0],
-  emissiveIntensity: 0,
-  glow: 0,
-  pulse: 0,
-  veins: 0,
-  bump: 0.35,
-  cells: 0.15,
-  scale: 3,
-};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -2365,7 +2342,17 @@ export const ENEMY_VISUALS = {
 
 export type EnemyVisualTypeId = keyof typeof ENEMY_VISUALS;
 
+/** Every enemy type with a visual def: the M3 types above plus the built M6 per-type files. */
+export function enemyVisualTypeIds(): string[] {
+  const ids = Object.keys(ENEMY_VISUALS);
+  for (const [id, def] of Object.entries(M6_ENEMY_VISUALS)) if (def) ids.push(id);
+  return ids;
+}
+
 export function getEnemyVisualDef(type: string): EnemyVisualDef | undefined {
+  // M6 types: one file each (defs/enemyVisualData); null = not built yet.
+  if (Object.prototype.hasOwnProperty.call(M6_ENEMY_VISUALS, type))
+    return M6_ENEMY_VISUALS[type] ?? undefined;
   return Object.prototype.hasOwnProperty.call(ENEMY_VISUALS, type)
     ? (ENEMY_VISUALS as Record<string, EnemyVisualDef>)[type]
     : undefined;

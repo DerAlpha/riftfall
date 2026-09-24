@@ -13,17 +13,43 @@
  * Also here: enemy projectiles (PROJECTILES, used by combat/Projectiles.ts; M5 may move them to
  * their own defs file when player launchers reuse the system).
  */
+import { NO_ARMOR } from './enemyCommon';
+import { M6_ENEMIES } from './enemyData';
 import type { DamageElement, FleshSurface, HitZone, SurfaceType } from '../core/events';
 
 export type Rgb = readonly [number, number, number];
 
-export type EnemyAttackKind = 'melee' | 'leap' | 'projectile' | 'charge' | 'slam';
+export type EnemyAttackKind =
+  | 'melee'
+  | 'leap'
+  | 'projectile'
+  | 'charge'
+  | 'slam'
+  /** M6 kinds: executors in enemies/ai/attackKinds/<kind>.ts (params: optional fields below). */
+  | 'beam'
+  | 'summon'
+  | 'blink'
+  | 'discharge'
+  | 'dive'
+  | 'drop';
 
 /** Melee token pools per target (ENEMY_AI.slots.pools). */
 export type SlotPoolId = 'light' | 'heavy';
 
 /** Behaviour archetypes (ai/brains): M6 types reuse them with other stats. */
-export type EnemyBrainId = 'swarm' | 'ranged' | 'brute';
+export type EnemyBrainId =
+  | 'swarm'
+  | 'ranged'
+  | 'brute'
+  /** M6 archetypes: enemies/ai/brains/<id>.ts (null stub = not built). */
+  | 'shield'
+  | 'stalker'
+  | 'blink'
+  | 'support'
+  | 'sniper'
+  | 'crawler'
+  | 'flyer'
+  | 'boss';
 
 /** Close-range swing/bite: hits at the start of the strike if the target is in reach and in front. */
 export interface MeleeParams {
@@ -342,8 +368,6 @@ export interface EnemyTypeDef {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-const NO_ARMOR = { flat: 0, minFraction: 1, zones: [] as readonly HitZone[] } as const;
 
 /**
  * Schwärmer: fast insectoid swarm melee. Weak alone, dangerous in numbers: surrounds the player
@@ -709,13 +733,16 @@ export const ENEMIES = {
 export type EnemyDefId = keyof typeof ENEMIES;
 
 export function getEnemyDef(type: string): EnemyTypeDef | undefined {
-  return Object.prototype.hasOwnProperty.call(ENEMIES, type)
-    ? (ENEMIES as Record<string, EnemyTypeDef>)[type]
-    : undefined;
+  if (Object.prototype.hasOwnProperty.call(ENEMIES, type))
+    return (ENEMIES as Record<string, EnemyTypeDef>)[type];
+  // M6 types: one file each (defs/enemyData); null = not built yet (cannot spawn).
+  return Object.prototype.hasOwnProperty.call(M6_ENEMIES, type) ? (M6_ENEMIES[type] ?? undefined) : undefined;
 }
 
 export function enemyTypeIds(): string[] {
-  return Object.keys(ENEMIES);
+  const ids = Object.keys(ENEMIES);
+  for (const [id, def] of Object.entries(M6_ENEMIES)) if (def) ids.push(id);
+  return ids;
 }
 
 /** Attack def by type + attack id (enemy:attack → sound / VFX lookups), undefined if unknown. */
@@ -795,10 +822,19 @@ export const ENEMY_AI = {
    * free). No synchronized acid volleys, no two tanks charging at once; melee spacing comes from
    * the slot coordinator (slots.minAttackSpacing).
    */
-  attackSpacing: { melee: 0, leap: 0, projectile: 0.9, charge: 2.5, slam: 0 } satisfies Record<
-    EnemyAttackKind,
-    number
-  >,
+  attackSpacing: {
+    melee: 0,
+    leap: 0,
+    projectile: 0.9,
+    charge: 2.5,
+    slam: 0,
+    beam: 0,
+    summon: 0,
+    blink: 0,
+    discharge: 0,
+    dive: 0,
+    drop: 0,
+  } satisfies Record<EnemyAttackKind, number>,
   /**
    * Ready attackers queue for the next spacing slot (longest waiter first); one that has not asked
    * for this long (s) leaves the queue (lost sight, staggered, dead).

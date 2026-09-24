@@ -128,7 +128,7 @@ export const ELEMENTS = {
     /** Visible shock (sparks, twitch, arc pulses). */
     duration: 1.2,
     /** An arc pulse on the trigger and every `interval` while shocked. */
-    arcs: { interval: 0.4, count: 2, range: 5, damage: 14, buildup: 28 },
+    arcs: { interval: 0.5, count: 2, range: 5, damage: 10, buildup: 28 },
   },
   poisoned: {
     maxStacks: 5,

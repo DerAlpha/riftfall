@@ -650,6 +650,25 @@ describe('StatusEffectSystem – lifecycle', () => {
     expect(h.status.buildupOf(1, 'poison')).toBe(1);
   });
 
+  it('perf smoke: 60 targets under every status stay cheap per tick', () => {
+    const h = setup();
+    const ds: Dummy[] = [];
+    for (let i = 0; i < 60; i++) ds.push(new Dummy(i + 1, (i % 10) * 1.1, Math.floor(i / 10) * 1.1));
+    h.add(...ds);
+    const els: DamageElement[] = ['fire', 'ice', 'shock', 'poison', 'void'];
+    let ms = 0;
+    for (let k = 0; k < 600; k++) {
+      if (k % 30 === 0) for (const d of ds) h.status.applyElement(d, els[(k / 30) % els.length]!, 60, 'player');
+      const t0 = performance.now();
+      h.tick();
+      ms += performance.now() - t0;
+    }
+    const avg = ms / 600;
+    console.info(`[perf] status: ${avg.toFixed(3)} ms/tick (60 targets)`);
+    // CI guard far above the real cost (~0.1 ms on a desktop).
+    expect(avg).toBeLessThan(3);
+  });
+
   it('does not allocate per tick: payloads, lists and slots are reused', () => {
     const h = setup();
     const ds: Dummy[] = [];

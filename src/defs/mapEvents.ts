@@ -176,6 +176,8 @@ export const POWER = {
     downGain: 1,
     upGain: 0.9,
     alarmGain: 0.35,
+    /** The generator's alarm loop plays within this distance (m). */
+    alarmDistance: 26,
     crankGain: 0.6,
     humGain: 0.4,
   },
@@ -200,6 +202,8 @@ export const GRAVITY = {
   maxScale: 3,
   /** Default blend width inside zone borders (m). */
   feather: 1.2,
+  /** The player samples the field this high above the feet (body center, m). */
+  sampleHeight: 0.9,
   /** Player: terminal velocity scales with sqrt(scale) (air drag). */
   anomaly: {
     /** Scale ramps in / out over this long (s). */
@@ -209,6 +213,12 @@ export const GRAVITY = {
     audio: { start: 'event.gravity.start', loop: 'event.gravity.loop', end: 'event.gravity.end' },
     startGain: 0.9,
     loopGain: 0.6,
+    /** The hum plays within this distance of the center (m), this high above the floor. */
+    loopDistance: 30,
+    soundLift: 1.5,
+    /** Burst at the center when it opens (VFX preset, scale). */
+    startEffect: 'rift.spawn',
+    startEffectScale: 0.8,
     /** Screen shockwave at the start (strength) and camera shake. */
     shockwave: 0.6,
     shake: 0.2,

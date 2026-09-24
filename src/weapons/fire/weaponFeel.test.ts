@@ -3,6 +3,7 @@
  * the suppressor's report and the forged muzzle light on weapon:fired, time-to-kill sanity per
  * wave through the real WeaponSystem + arsenal.
  */
+import { Box3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { ArsenalVfxApi } from '../../core/contracts';
 import { EventBus } from '../../core/EventBus';
@@ -23,6 +24,8 @@ import { VfxBridge } from '../../vfx/VfxBridge';
 import { VfxSystem, createVfxAtlases } from '../../vfx/VfxSystem';
 import { FakeSockets, fakeRender } from '../../vfx/testFakes';
 import { WeaponMaterialKit, createWeaponViewmodel } from '../viewmodels';
+import { AttachmentLibrary } from '../viewmodels/attachments/library';
+import { WeaponOutfit } from '../viewmodels/attachments/WeaponOutfit';
 
 const DT = 1 / 60;
 const EYE = { x: 0, y: 1.6, z: 0 };
@@ -272,17 +275,29 @@ describe('suppressor and forged muzzle light (weapon:fired → VFX / audio)', ()
 describe('attachment mounts', () => {
   it('every weapon with a stock slot mounts stocks at its receiver, not the rear fallback', () => {
     const kit = new WeaponMaterialKit();
+    const lib = new AttachmentLibrary(kit);
     const missing: string[] = [];
     for (const def of Object.values(WEAPONS) as WeaponDef[]) {
       if (!def.attachmentSlots.includes('stock')) continue;
       const m = createWeaponViewmodel(def.model, kit);
       if (!m) continue;
       if (!m.mounts.stock) missing.push(def.id);
+      else if (def.id === 'railgun') {
+        // The kit joins the receiver and ends before the built-in butt pad (not stuck on behind it).
+        const rear = new Box3().setFromObject(m.root).max.z;
+        const outfit = new WeaponOutfit(m, lib);
+        outfit.apply(['heavystock']);
+        const att = m.root.getObjectByName('att-heavystock')!;
+        expect(att.parent).toBe(m.mounts.stock);
+        m.root.updateMatrixWorld(true);
+        expect(new Box3().setFromObject(att).max.z).toBeLessThan(rear);
+        outfit.dispose();
+      }
       m.dispose();
     }
     expect(missing).toEqual([]);
     kit.dispose();
-  });
+  }, 60_000);
 });
 
 describe('optics', () => {

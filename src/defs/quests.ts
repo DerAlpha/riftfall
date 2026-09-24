@@ -158,6 +158,9 @@ export const QUEST_VISUALS = {
     appearEffect: 'rift.spawn',
     appearScale: 0.6,
     pulseRate: 1.4,
+    /** Corona shell radius (× crystal radius) and its fresnel power. */
+    coronaScale: 2.4,
+    coronaRim: 1.6,
   },
   socket: {
     /** Pedestal (m): radius, height; cradle ring. */
@@ -186,8 +189,9 @@ export const QUEST_VISUALS = {
   completeEffect: 'rift.spawn',
   completeScale: 1.4,
   completeShockwave: 0.9,
+  completeShockwaveRadius: 6,
   completeShake: 0.35,
-  banner: { kicker: 'EASTER EGG', color: 0xc07bff, seconds: 4.2 },
+  banner: { kicker: 'GEHEIMNIS ENTSCHLÜSSELT', color: 0xc07bff, seconds: 4.2 },
   audio: {
     tagHum: 'quest.tag.hum',
     tagHit: 'quest.tag.hit',
@@ -198,6 +202,9 @@ export const QUEST_VISUALS = {
     defend: 'quest.defend',
     complete: 'quest.complete',
     humGain: 0.5,
+    /** Carrying an item: the item hum as a quiet 2D loop (gain × humGain, pitch). */
+    carryGain: 0.5,
+    carryPitch: 0.8,
     hitGain: 0.8,
     stepGain: 0.7,
     defendGain: 0.5,

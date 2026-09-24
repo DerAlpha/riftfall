@@ -113,7 +113,8 @@ export class ShockwaveEffect extends Effect {
     this.waveUniforms = waves;
     this.shapeUniforms = shape;
     this.lensUniforms = lenses;
-    for (let i = 0; i < LENSES; i++) this.lenses.push({ strength: 0, position: new THREE.Vector3(), radius: 0 });
+    for (let i = 0; i < LENSES; i++)
+      this.lenses.push({ strength: 0, position: new THREE.Vector3(), radius: 0 });
     for (let i = 0; i < MAX; i++) {
       this.waves.push({ active: false, age: 0, position: new THREE.Vector3(), radius: 0, strength: 0 });
     }
@@ -204,7 +205,12 @@ export class ShockwaveEffect extends Effect {
       if (depth < cfg.minDepth) continue;
       _ndc.copy(l.position).project(cam);
       const radiusUv = screenRadius(l.radius, depth, projYY);
-      this.lensUniforms[k]!.set(_ndc.x * 0.5 + 0.5, _ndc.y * 0.5 + 0.5, radiusUv, radiusUv * cfg.lensEinstein * l.strength);
+      this.lensUniforms[k]!.set(
+        _ndc.x * 0.5 + 0.5,
+        _ndc.y * 0.5 + 0.5,
+        radiusUv,
+        radiusUv * cfg.lensEinstein * l.strength,
+      );
       k++;
     }
     (this.uniforms.get('lensCount') as THREE.Uniform<number>).value = k;

@@ -135,7 +135,12 @@ export class ChargeGlow {
     u.uSize.value = style.size[0] + (style.size[1] - style.size[0]) * amount;
     u.uSwirl.value = style.swirl;
     u.uPulse.value = style.readyPulse;
-    u.uColor.value.setRGB(style.color[0] * k, style.color[1] * k, style.color[2] * k, THREE.LinearSRGBColorSpace);
+    u.uColor.value.setRGB(
+      style.color[0] * k,
+      style.color[1] * k,
+      style.color[2] * k,
+      THREE.LinearSRGBColorSpace,
+    );
     u.uCore.value.setRGB(
       style.coreColor[0] * k,
       style.coreColor[1] * k,

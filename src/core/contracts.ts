@@ -998,12 +998,16 @@ export interface FieldApi {
  * implodes). Combos when two react (defs/elements.ts). Enemies read the queries every tick.
  */
 export interface StatusEffectsApi {
-  /** Build up `element`'s status on `target` by `amount` (damage × build-up factor). */
+  /**
+   * Build up `element`'s status on `target` by `amount` (damage × build-up factor). `weaponId`
+   * (optional): credited for the status's damage over time and reactions (kill attribution).
+   */
   applyElement(
     target: Damageable,
     element: DamageElement,
     amount: number,
     source: DamageInfo['source'],
+    weaponId?: string,
   ): void;
   has(targetId: number, status: StatusId): boolean;
   /** Movement/attack speed multiplier (chill, frozen = 0), 1 = unaffected. */
@@ -1017,6 +1021,16 @@ export interface StatusEffectsApi {
   clear(targetId: number): void;
   reset(): void;
   fixedUpdate(dt: number): void;
+}
+
+/**
+ * CombatWorld's status hook (M5 elements; StatusEffectSystem implements it): the damage-taken
+ * multiplier is asked before every hit, `onDamaged` sees the applied result after its events
+ * (build-up = applied × info.statusBuildup, shatter hits). Record only – no damage from inside.
+ */
+export interface CombatStatusHook {
+  damageTakenMultiplier(targetId: number): number;
+  onDamaged(target: Damageable, info: Readonly<DamageInfo>, applied: number, killed: boolean): void;
 }
 
 /** Grenades (M5): one selected type, counts per type, thrown with the 'grenade' action. */

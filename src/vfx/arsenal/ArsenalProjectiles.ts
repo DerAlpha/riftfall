@@ -196,7 +196,16 @@ export class ArsenalProjectiles {
       } else {
         s.quat.setFromAxisAngle(s.tumbleAxis, body.tumble * s.age).multiply(s.baseQuat);
       }
-      ctx.bodies.push(s.bodyMesh, s.pos, s.quat, body.radius, body.length, body.color, body.band, body.bandIntensity);
+      ctx.bodies.push(
+        s.bodyMesh,
+        s.pos,
+        s.quat,
+        body.radius,
+        body.length,
+        body.color,
+        body.band,
+        body.bandIntensity,
+      );
     }
     if (v.lens) requestLens(ctx, s.pos, v.lens.radius, v.lens.strength);
   }

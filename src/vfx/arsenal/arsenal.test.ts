@@ -37,9 +37,33 @@ import { createArsenalCommands } from './arsenalCommands';
 import { StripBatch } from './StripBatch';
 
 // Naming conventions of the M5 packages (defs/weaponData/common.ts, package prompts).
-const MUZZLES = ['pistol', 'rifle', 'shotgun', 'smg', 'lmg', 'sniper', 'plasma', 'energy', 'flame', 'launcher', 'void', 'shock', 'ice'];
+const MUZZLES = [
+  'pistol',
+  'rifle',
+  'shotgun',
+  'smg',
+  'lmg',
+  'sniper',
+  'plasma',
+  'energy',
+  'flame',
+  'launcher',
+  'void',
+  'shock',
+  'ice',
+];
 const IMPACTS = ['plasma', 'shock', 'fire', 'ice', 'poison', 'void'];
-const PROJECTILES = ['plasma', 'grenade', 'frag', 'incendiary', 'cryo', 'singularity', 'voidorb', 'shockorb', 'cryoorb'];
+const PROJECTILES = [
+  'plasma',
+  'grenade',
+  'frag',
+  'incendiary',
+  'cryo',
+  'singularity',
+  'voidorb',
+  'shockorb',
+  'cryoorb',
+];
 const TRAILS = ['plasma', 'smoke', 'void', 'frost', 'shock', 'fire'];
 const BEAMS = ['lightning', 'flame', 'void'];
 const FIELDS = ['pull.void', 'damage.fire', 'damage.poison', 'slow.ice'];
@@ -142,7 +166,8 @@ describe('arsenal preset coverage (naming conventions)', () => {
         if (def.projectile.trail) expect(getTrailStyle(def.projectile.trail), `${id} trail`).toBeDefined();
       }
       if (def.beam) expect(getBeamStyle(def.beam.visual), `${id} beam`).toBeDefined();
-      if (def.charge) expect(CHARGE_STYLES[def.charge.visual as keyof typeof CHARGE_STYLES], id).toBeDefined();
+      if (def.charge)
+        expect(CHARGE_STYLES[def.charge.visual as keyof typeof CHARGE_STYLES], id).toBeDefined();
       for (const f of fieldsOf(def)) expect(getFieldVisual(f.vfx), `${id} ${f.vfx}`).toBeDefined();
       for (const e of explosionsOf(def)) expect(getEffectPreset(e.vfx), `${id} ${e.vfx}`).toBeDefined();
     }
@@ -194,7 +219,8 @@ describe('ArsenalVfx pools and handles', () => {
     const { arsenal } = rig();
     const meshes: THREE.Mesh[] = [];
     arsenal.object.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh && !(o as THREE.InstancedMesh).isInstancedMesh) meshes.push(o as THREE.Mesh);
+      if ((o as THREE.Mesh).isMesh && !(o as THREE.InstancedMesh).isInstancedMesh)
+        meshes.push(o as THREE.Mesh);
     });
     expect(meshes.length).toBe(4);
     for (const m of meshes) {
@@ -214,7 +240,8 @@ describe('ArsenalVfx pools and handles', () => {
     const { arsenal } = rig();
     const cap = ARSENAL_VFX.projectiles.capacity;
     const handles: number[] = [];
-    for (let i = 0; i < cap; i++) handles.push(arsenal.projectileStart('projectile.plasma', null, ZERO, { x: 0, y: 0, z: -80 }));
+    for (let i = 0; i < cap; i++)
+      handles.push(arsenal.projectileStart('projectile.plasma', null, ZERO, { x: 0, y: 0, z: -80 }));
     expect(handles.every((h) => h > 0)).toBe(true);
     expect(new Set(handles).size).toBe(cap);
     expect(arsenal.projectileStart('projectile.plasma', null, ZERO, ZERO)).toBe(0);
@@ -329,9 +356,11 @@ describe('ArsenalVfx pools and handles', () => {
     expect(arsenal.stats.fields).toBe(0);
     // The lens slot is switched off once unused.
     expect(lenses.at(-1)).toEqual([0, 0]);
-    // A timed field expires by itself.
+    // A timed field acts at full strength for its duration, then fades out by itself.
     arsenal.fieldStart('field.slow.ice', ZERO, 3, 1);
-    for (let i = 0; i < 90; i++) arsenal.update(1 / 60);
+    for (let i = 0; i < 55; i++) arsenal.update(1 / 60);
+    expect(arsenal.stats.fields).toBe(1);
+    for (let i = 0; i < 70; i++) arsenal.update(1 / 60);
     expect(arsenal.stats.fields).toBe(0);
     arsenal.dispose();
   });

@@ -38,6 +38,7 @@ attribute vec4 iColB;
 attribute vec2 iUv;
 uniform float uViewportHeight;
 uniform float uMinPx;
+uniform float uMaxAngular;
 varying vec3 vColor;
 varying vec2 vUv;
 varying vec2 vStyle;
@@ -53,7 +54,9 @@ void main() {
   vec3 side = cross(tang, p);
   float len = length(side);
   side = len > 1e-9 ? side / len : vec3(1.0, 0.0, 0.0);
-  float w = atA ? iA.w : iB.w;
+  // Never wider than uMaxAngular rad as seen from the eye: a beam leaving the muzzle half a meter
+  // away would otherwise fill the screen with its halo (it widens to full width further out).
+  float w = min(atA ? iA.w : iB.w, max(-p.z, 0.0) * uMaxAngular);
   float minW = uMinPx * metersPerPixel(-p.z, uViewportHeight);
   float energy = 1.0;
   if (w < minW) {
@@ -193,6 +196,7 @@ export class StripBatch {
       uniforms: {
         uViewportHeight: this.viewportHeight,
         uMinPx: { value: ARSENAL_VFX.strips.minPixelWidth },
+        uMaxAngular: { value: ARSENAL_VFX.strips.maxAngularWidth },
         uTime: this.time,
         fogParams: HEIGHT_FOG_PARAMS,
       },
@@ -241,7 +245,16 @@ export class StripBatch {
   }
 
   /** Append a point (rgb is HDR, `alpha` 0..1 scales it). Returns false once the strip is full. */
-  point(x: number, y: number, z: number, width: number, r: number, g: number, b: number, alpha: number): boolean {
+  point(
+    x: number,
+    y: number,
+    z: number,
+    width: number,
+    r: number,
+    g: number,
+    b: number,
+    alpha: number,
+  ): boolean {
     if (this.np >= MAX_STRIP_POINTS) return false;
     const o = this.np * PF;
     const p = this.pts;

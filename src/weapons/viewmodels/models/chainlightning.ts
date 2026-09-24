@@ -393,13 +393,16 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     pos: [0, 0.035, 0.155],
     paint: P.gunmetal.paint,
   });
-  // Battery windows on both flanks (spark-filled cells) and flush heat slots between them.
+  // Battery windows on both flanks: spark-filled cells behind a dark bezel.
   for (const side of [-1, 1]) {
-    b.add(BODY, 'darkMetal', roundedBox(0.003, 0.03, 0.11, 0.001), { pos: [side * 0.0205, 0.035, 0.158], paint: 0.4 });
+    b.add(BODY, 'darkMetal', roundedBox(0.002, 0.026, 0.108, 0.0008), {
+      pos: [side * 0.0203, 0.035, 0.158],
+      paint: 0.4,
+    });
     for (let i = 0; i < 3; i++) {
-      const z = 0.12 + i * 0.034;
-      b.add(BODY, 'jar', roundedBox(0.0016, 0.018, 0.022, 0.0006), { pos: [side * 0.0222, 0.037, z] });
-      b.add(BODY, 'heat', new BoxGeometry(0.0016, 0.022, 0.0035), { pos: [side * 0.0222, 0.035, z + 0.017] });
+      b.add(BODY, 'jar', roundedBox(0.0012, 0.017, 0.026, 0.0005), {
+        pos: [side * 0.021, 0.036, 0.12 + i * 0.034],
+      });
     }
   }
   b.add(

@@ -166,9 +166,11 @@ export class ArsenalFields {
   private fadeOf(f: FieldSlot): number {
     const def = f.def;
     const fadeIn = def.fadeIn > 0 ? Math.min(1, f.age / def.fadeIn) : 1;
-    let out = 1;
-    if (f.endedAt >= 0) out = def.fadeOut > 0 ? 1 - (f.age - f.endedAt) / def.fadeOut : 0;
-    else if (f.duration > 0) out = def.fadeOut > 0 ? (f.duration - f.age) / def.fadeOut : f.age < f.duration ? 1 : 0;
+    // Full strength while it acts; the fade-out follows its end (fieldEnd() or its own duration,
+    // whichever comes first – the simulation ends it at the same time).
+    let endAt = f.duration > 0 ? f.duration : Number.POSITIVE_INFINITY;
+    if (f.endedAt >= 0) endAt = Math.min(endAt, f.endedAt);
+    const out = f.age <= endAt ? 1 : def.fadeOut > 0 ? 1 - (f.age - endAt) / def.fadeOut : 0;
     return Math.max(0, Math.min(fadeIn, out, 1));
   }
 
@@ -212,7 +214,21 @@ export class ArsenalFields {
     const ref = ARSENAL_VFX.fields.referenceRadius;
     const coreScale = Math.min(CORE_SCALE[1], Math.max(CORE_SCALE[0], f.radius / ref));
     for (const layer of def.glows) {
-      pushGlow(ctx, layer, f.core.x, f.core.y, f.core.z, 0, 1, 0, 0, f.age, f.seed, coreScale * (0.6 + 0.4 * fade), fade);
+      pushGlow(
+        ctx,
+        layer,
+        f.core.x,
+        f.core.y,
+        f.core.z,
+        0,
+        1,
+        0,
+        0,
+        f.age,
+        f.seed,
+        coreScale * (0.6 + 0.4 * fade),
+        fade,
+      );
     }
     // Ambient particles (area-proportional, budget-scaled, stop spawning while fading out).
     if (ctx.budget > 0 && fade > 0.5) {
@@ -235,7 +251,16 @@ export class ArsenalFields {
       requestLens(ctx, f.core, lr, def.lens.strength * fade);
     }
     const lightAt = disc && disc.ground ? f.floor : f.core;
-    sustainLight(ctx, f.light, def.light, 0, dt, lightAt, disc && disc.ground ? f.floorNormal : null, fade * flash);
+    sustainLight(
+      ctx,
+      f.light,
+      def.light,
+      0,
+      dt,
+      lightAt,
+      disc && disc.ground ? f.floorNormal : null,
+      fade * flash,
+    );
   }
 
   private ambientPoint(f: FieldSlot, a: FieldAmbientDef, out: THREE.Vector3): void {

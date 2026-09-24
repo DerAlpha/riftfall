@@ -276,12 +276,20 @@ export class VfxSystem implements VfxWeaponApi {
       physics: this.physics,
       sockets: () => this.sockets,
       // Lens distortion follows the screen-shake accessibility option like the shockwave.
-      lens: lens ? (slot, p, radius, strength) => lens(slot, p, radius, strength * this.shockwaveScale) : null,
+      lens: lens
+        ? (slot, p, radius, strength) => lens(slot, p, radius, strength * this.shockwaveScale)
+        : null,
       random: this.rand,
     });
 
     const scene = this.render.scene;
-    scene.add(this.particles.object, this.tracers.mesh, this.decals.mesh, this.casings.object, this.arsenal.object);
+    scene.add(
+      this.particles.object,
+      this.tracers.mesh,
+      this.decals.mesh,
+      this.casings.object,
+      this.arsenal.object,
+    );
     this.setSockets(deps.sockets ?? null);
 
     for (let i = 0; i < VFX.queue.shots; i++) {
@@ -348,7 +356,12 @@ export class VfxSystem implements VfxWeaponApi {
    * own preset – element blasts, small splashes that name an impact preset; unknown or absent: the
    * element's preset (EXPLOSION_PRESET), or the physical one tinted by ELEMENT_TINTS.
    */
-  explosion(position: Vec3Like, radius: number, element: DamageElement = 'physical', presetId?: string): void {
+  explosion(
+    position: Vec3Like,
+    radius: number,
+    element: DamageElement = 'physical',
+    presetId?: string,
+  ): void {
     if (!finite(position) || !(radius > 0)) return;
     let preset = presetId ? getEffectPreset(presetId) : undefined;
     if (presetId && !preset) this.warnUnknown(`effect:${presetId}`);

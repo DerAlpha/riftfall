@@ -527,6 +527,37 @@ describe('VfxSystem', () => {
     vfx.dispose();
   });
 
+  it('M5: explosion presets by element or ExplosionDef; element impacts; arsenal rays', () => {
+    const { vfx, shocks } = setup();
+    // An ExplosionDef preset (plasma splash) overrides the element blast: no shockwave, no scorch.
+    vfx.explosion({ x: 0, y: 0.5, z: -6 }, 1.4, 'physical', 'impact.plasma');
+    expect(vfx.stats.particles).toBeGreaterThan(0);
+    expect(shocks).toHaveLength(0);
+    expect(vfx.stats.decals).toBe(0);
+    // Unknown preset ids fall back to the element's blast.
+    vfx.explosion({ x: 0, y: 0.5, z: -6 }, 4, 'void', 'explosion.nope');
+    expect(shocks[0]).toBeCloseTo(4 * VFX_EFFECTS['explosion.void'].shockwave.radiusScale, 6);
+    vfx.clear();
+    // Element impact profiles add their burst and swap the decal (plasma scorch on concrete).
+    vfx.impact('concrete', 'impact.plasma', 'bullet', { x: 0, y: 1, z: -5 }, { x: 0, y: 0, z: 1 }, true);
+    const withPlasma = vfx.particles.additiveBuffer.count;
+    expect(withPlasma).toBeGreaterThan(0);
+    expect(vfx.stats.decals).toBe(1);
+    // Flame hits: only fire licks, no surface dust and no decal.
+    vfx.clear();
+    vfx.impact('concrete', 'impact.fire', 'beam', { x: 0, y: 1, z: -5 }, { x: 0, y: 0, z: 1 }, true);
+    expect(vfx.particles.alphaBuffer.count).toBeLessThanOrEqual(1);
+    expect(vfx.stats.decals).toBe(0);
+    // Styled hitscan shots become arsenal rays from the displayed muzzle.
+    vfx.beamShot('beam.rail', { x: 0, y: 1, z: -20 }, { x: 0, y: 1.4, z: -0.5 });
+    vfx.arsenal.update(1 / 60);
+    expect(vfx.arsenal.stats.beams).toBe(1);
+    expect(vfx.hasVolumetricContent).toBe(true);
+    vfx.clear();
+    expect(vfx.arsenal.stats.beams).toBe(0);
+    vfx.dispose();
+  });
+
   it('explosions: particles, light, distance-scaled shake + hit pulse, shockwave and a scorch mark', () => {
     const { vfx, events, shocks, shakes } = setup();
     const pulses: number[] = [];
@@ -535,14 +566,14 @@ describe('VfxSystem', () => {
     expect(vfx.stats.particles).toBeGreaterThan(50);
     expect(vfx.stats.decals).toBe(1);
     expect(shocks).toHaveLength(1);
-    expect(shocks[0]).toBeCloseTo(4 * VFX_EFFECTS['explosion.frag'].shockwave.radiusScale, 6);
+    expect(shocks[0]).toBeCloseTo(4 * VFX_EFFECTS['explosion.fire'].shockwave.radiusScale, 6);
     expect(shakes).toHaveLength(1);
     expect(shakes[0]).toBeGreaterThan(0);
     expect(shakes[0]).toBeLessThan(1);
     expect(pulses).toHaveLength(1);
     expect(pulses[0]).toBeGreaterThan(0);
-    expect(pulses[0]).toBeLessThan(VFX_EFFECTS['explosion.frag'].hitPulse.strength);
-    // Elemental explosions tint their light.
+    expect(pulses[0]).toBeLessThan(VFX_EFFECTS['explosion.fire'].hitPulse.strength);
+    // Element explosions light in their colour.
     const ice = vfx.lights.lights.find((l) => l.intensity > 0)!;
     expect(ice.color.b).toBeLessThan(ice.color.r); // fire: warm
     vfx.lights.clear();

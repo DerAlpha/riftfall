@@ -123,7 +123,14 @@ const OLIVE: Rgb = [0.12, 0.13, 0.08];
 
 /** Grenade LED: a flare glint blinking at `rate` Hz. */
 function led(color: Rgb, rate: number, offset: number): GlowLayerDef {
-  return { shape: 'flare', size: 0.26, color, intensity: 6, pulse: { rate, depth: 0.92, square: true }, offset };
+  return {
+    shape: 'flare',
+    size: 0.26,
+    color,
+    intensity: 6,
+    pulse: { rate, depth: 0.92, square: true },
+    offset,
+  };
 }
 
 export const PROJECTILE_VISUALS = {
@@ -194,10 +201,7 @@ export const PROJECTILE_VISUALS = {
     },
   },
   'projectile.singularity': {
-    glows: [
-      { shape: 'void', size: 0.32, color: VOID, intensity: 2.4, spin: 6 },
-      led(VOID, 7, 0),
-    ],
+    glows: [{ shape: 'void', size: 0.32, color: VOID, intensity: 2.4, spin: 6 }, led(VOID, 7, 0)],
     body: {
       mesh: 'ball',
       length: 0.1,
@@ -286,9 +290,9 @@ export const TRAIL_STYLES = {
       widthTail: 0.02,
       color: PLASMA,
       colorTail: [0.1, 0.35, 1],
-      intensity: 5,
+      intensity: 4,
       intensityTail: 0.4,
-      life: 0.09,
+      life: 0.04,
       spacing: 0.4,
     },
     puffs: { effect: 'trail.plasma.sparks', spacing: 2.2, scale: 1 },
@@ -296,13 +300,13 @@ export const TRAIL_STYLES = {
   'trail.smoke': {
     ribbon: {
       style: 'fire',
-      width: 0.05,
-      widthTail: 0.01,
+      width: 0.04,
+      widthTail: 0.008,
       color: FIRE_CORE,
       colorTail: FIRE,
-      intensity: 4,
-      intensityTail: 0.5,
-      life: 0.08,
+      intensity: 3,
+      intensityTail: 0.3,
+      life: 0.05,
       spacing: 0.15,
     },
     puffs: { effect: 'trail.smoke.puff', spacing: 0.32, scale: 1 },
@@ -418,6 +422,8 @@ export interface FlameBeamDef {
   readonly drag: number;
   readonly size: Range;
   readonly sizeEnd: number;
+  /** Velocity stretch (s): fast jets near the nozzle, billows where they slow down. */
+  readonly stretch: number;
   readonly color: Rgb;
   readonly colorEnd: Rgb;
   readonly intensity: number;
@@ -506,20 +512,28 @@ export const BEAM_STYLES = {
   /** FW-4 Inferno: a roaring particle cone, white-yellow at the nozzle, dark red at the tips. */
   'beam.flame': {
     kind: 'flame',
-    rate: 130,
+    rate: 170,
     life: [0.28, 0.46],
-    reach: [0.35, 1],
-    spreadDeg: 9,
+    reach: [0.45, 1],
+    spreadDeg: 8,
     drag: 3.2,
-    size: [0.06, 0.1],
-    sizeEnd: 7,
-    color: [1, 0.7, 0.32],
-    colorEnd: [0.7, 0.1, 0.02],
-    intensity: 3.2,
-    intensityEnd: 0.25,
+    size: [0.07, 0.11],
+    sizeEnd: 8,
+    stretch: 0.018,
+    color: [1, 0.72, 0.34],
+    colorEnd: [0.72, 0.1, 0.02],
+    intensity: 4.2,
+    intensityEnd: 0.3,
     gravity: -0.35,
     core: { length: 1.4, width: 0.05, widthEnd: 0.3, color: FIRE_CORE, intensity: 3.5 },
-    nozzleGlow: { shape: 'flame', size: 0.08, color: [1, 0.62, 0.25], intensity: 3.5, stretch: 0.01, maxStretch: 0.1 },
+    nozzleGlow: {
+      shape: 'flame',
+      size: 0.08,
+      color: [1, 0.62, 0.25],
+      intensity: 3.5,
+      stretch: 0.01,
+      maxStretch: 0.1,
+    },
     muzzleEffect: 'beam.flame.muzzle',
     muzzleRate: 6,
     hitEffect: 'beam.flame.hit',
@@ -642,7 +656,11 @@ export interface FieldVisualDef {
     readonly intensity: number;
   } | null;
   /** Screen-space lens (pull fields): strength and radius (× field radius, ≤ maxRadius m). */
-  readonly lens: { readonly strength: number; readonly radiusScale: number; readonly maxRadius: number } | null;
+  readonly lens: {
+    readonly strength: number;
+    readonly radiusScale: number;
+    readonly maxRadius: number;
+  } | null;
   readonly light: SustainLightDef | null;
   /** Grow in / fade out (s). */
   readonly fadeIn: number;
@@ -655,7 +673,7 @@ export const FIELD_VISUALS = {
     disc: {
       style: 'accretion',
       color: VOID,
-      intensity: 1.1,
+      intensity: 1.6,
       radiusScale: 0.42,
       maxRadius: 2.1,
       ground: false,
@@ -664,7 +682,7 @@ export const FIELD_VISUALS = {
     glows: [
       { shape: 'disc', size: 1.05, color: [0, 0, 0], intensity: 1, blend: 'dark' },
       { shape: 'ring', size: 1.42, color: [0.85, 0.6, 1], intensity: 1.5 },
-      { shape: 'void', size: 2, color: VOID, intensity: 0.9, spin: 2.5 },
+      { shape: 'void', size: 2, color: VOID, intensity: 1.2, spin: 2.5 },
       { shape: 'halo', size: 3.4, color: VOID_DEEP, intensity: 0.45 },
     ],
     coreHeight: 1.2,
@@ -787,9 +805,11 @@ export const ARSENAL_VFX = {
     renderOrder: 24,
   },
   strips: {
-    /** Segments per frame (trails + beams + arcs + shots). */
-    capacity: 3072,
+    /** Segments per frame (trails + beams + chain arcs + shots). */
+    capacity: 6144,
     minPixelWidth: 1.5,
+    /** Widest a strip may look from the eye (rad): beams from the muzzle start thin and widen. */
+    maxAngularWidth: 0.1,
     renderOrder: 23,
   },
   discs: {
@@ -799,8 +819,13 @@ export const ARSENAL_VFX = {
     renderOrder: 12,
   },
   beams: {
-    /** Beams drawn at once (the player's beam weapon + previews). */
-    channels: 4,
+    /**
+     * Beams drawn at once: the player's beam weapon plus the weapon specials' chain-arc flashes
+     * (ARSENAL.specials.arcCapacity).
+     */
+    channels: 24,
+    /** Beams that may hold a pooled light at once (the pool has VFX.lights.count). */
+    lights: 2,
     /** Chain arcs per beam. */
     maxArcs: 8,
     /** Vertices of one bolt (main beam). */
@@ -851,7 +876,14 @@ export const ARSENAL_VFX = {
         field: 'field.damage.fire',
         fieldRadius: 3,
       },
-      'projectile.cryo': { speed: 16, gravity: 9.8, explosion: 'ice', radius: 4, field: 'field.slow.ice', fieldRadius: 4 },
+      'projectile.cryo': {
+        speed: 16,
+        gravity: 9.8,
+        explosion: 'ice',
+        radius: 4,
+        field: 'field.slow.ice',
+        fieldRadius: 4,
+      },
       'projectile.singularity': {
         speed: 16,
         gravity: 9.8,
@@ -860,9 +892,23 @@ export const ARSENAL_VFX = {
         field: 'field.pull.void',
         fieldRadius: 5,
       },
-      'projectile.voidorb': { speed: 14, gravity: 0, explosion: 'void', radius: 2.2, field: 'field.pull.void', fieldRadius: 5 },
+      'projectile.voidorb': {
+        speed: 14,
+        gravity: 0,
+        explosion: 'void',
+        radius: 2.2,
+        field: 'field.pull.void',
+        fieldRadius: 5,
+      },
       'projectile.shockorb': { speed: 32, gravity: 0, explosion: 'shock', radius: 1.6 },
-      'projectile.cryoorb': { speed: 26, gravity: 2, explosion: 'ice', radius: 5, field: 'field.slow.ice', fieldRadius: 6 },
+      'projectile.cryoorb': {
+        speed: 26,
+        gravity: 2,
+        explosion: 'ice',
+        radius: 5,
+        field: 'field.slow.ice',
+        fieldRadius: 6,
+      },
     } as Record<string, PreviewProjectileDef>,
   },
 } as const;

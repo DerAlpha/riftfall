@@ -221,7 +221,10 @@ export class GlowSprites {
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.setAttribute(
       'position',
-      new THREE.BufferAttribute(new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0]), 3),
+      new THREE.BufferAttribute(
+        new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0]),
+        3,
+      ),
     );
     geometry.setIndex([0, 1, 2, 0, 2, 3]);
     const attr = (name: string, array: Float32Array): THREE.InstancedBufferAttribute => {

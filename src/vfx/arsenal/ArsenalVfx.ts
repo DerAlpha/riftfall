@@ -18,7 +18,12 @@
 import * as THREE from 'three';
 import type { ArsenalVfxApi, PhysicsApi, RenderApi, VfxSocketSource } from '../../core/contracts';
 import type { Vec3Like } from '../../core/events';
-import { ARSENAL_VFX, DEFAULT_CHARGE_STYLE, getChargeStyle, type ChargeStyleDef } from '../../defs/arsenalVfx';
+import {
+  ARSENAL_VFX,
+  DEFAULT_CHARGE_STYLE,
+  getChargeStyle,
+  type ChargeStyleDef,
+} from '../../defs/arsenalVfx';
 import type { Rand } from '../emit';
 import type { LightPool } from '../LightPool';
 import type { ParticleSystem } from '../ParticleSystem';
@@ -349,7 +354,16 @@ export class ArsenalVfx implements ArsenalVfxApi {
     glow.show(style, this.chargeAmount, this.time.value, this.ctx.flashScale);
     sockets.getSocketWorldPosition('muzzle', _v);
     if (Number.isFinite(_v.x + _v.y + _v.z)) {
-      sustainLight(this.ctx, this.chargeLight, style.light, 1, dt, _v, null, this.chargeAmount * this.ctx.flashScale);
+      sustainLight(
+        this.ctx,
+        this.chargeLight,
+        style.light,
+        1,
+        dt,
+        _v,
+        null,
+        this.chargeAmount * this.ctx.flashScale,
+      );
     }
   }
 

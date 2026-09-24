@@ -28,7 +28,16 @@ import type { ArsenalVfx } from './ArsenalVfx';
 export interface ArsenalCommandDeps {
   arsenal: Pick<
     ArsenalVfx,
-    'projectileStart' | 'projectileMove' | 'projectileEnd' | 'beam' | 'fieldStart' | 'charge' | 'shot' | 'clear' | 'setPreviewDriver' | 'stats'
+    | 'projectileStart'
+    | 'projectileMove'
+    | 'projectileEnd'
+    | 'beam'
+    | 'fieldStart'
+    | 'charge'
+    | 'shot'
+    | 'clear'
+    | 'setPreviewDriver'
+    | 'stats'
   >;
   vfx: Pick<VfxSystem, 'spawn' | 'explosion'>;
   physics: Pick<PhysicsApi, 'raycast'>;
@@ -124,7 +133,8 @@ export function createArsenalCommands(deps: ArsenalCommandDeps): ConsoleCommand[
       p.vel.y -= (p.def?.gravity ?? 0) * dt;
       _step.copy(p.vel).multiplyScalar(dt);
       const len = _step.length();
-      const hit = len > 1e-6 ? deps.physics.raycast(_prev, _step.normalize(), len, { groups: AIM_GROUPS }) : null;
+      const hit =
+        len > 1e-6 ? deps.physics.raycast(_prev, _step.normalize(), len, { groups: AIM_GROUPS }) : null;
       if (hit || p.life <= 0) {
         if (hit) p.pos.copy(hit.point).addScaledVector(hit.normal, 0.05);
         deps.arsenal.projectileMove(p.handle, p.pos, p.vel);
@@ -222,7 +232,12 @@ export function createArsenalCommands(deps: ArsenalCommandDeps): ConsoleCommand[
             slot.vel.copy(_d).multiplyScalar(def?.speed ?? 20);
             slot.life = P.projectileSeconds;
             slot.def = def;
-            slot.handle = deps.arsenal.projectileStart(visual, PREVIEW_TRAILS[visual] ?? null, slot.pos, slot.vel);
+            slot.handle = deps.arsenal.projectileStart(
+              visual,
+              PREVIEW_TRAILS[visual] ?? null,
+              slot.pos,
+              slot.vel,
+            );
             return slot.handle ? `${visual} abgefeuert` : 'Pool voll';
           }
           case 'beam':

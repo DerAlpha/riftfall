@@ -105,7 +105,11 @@ export class BodyMeshes {
       metalness: 0.75,
     });
     setupMaterial(this.bodyMaterial);
-    this.bandMaterial = new THREE.MeshBasicMaterial({ name: 'ArsenalBand', color: 0xffffff, toneMapped: false });
+    this.bandMaterial = new THREE.MeshBasicMaterial({
+      name: 'ArsenalBand',
+      color: 0xffffff,
+      toneMapped: false,
+    });
     const cap = ARSENAL_VFX.bodies.capacity;
     for (const shape of PROJECTILE_MESHES) {
       const geo = bodyGeometry(shape);
@@ -159,7 +163,12 @@ export class BodyMeshes {
     s.body.setColorAt(s.n, _c.setRGB(albedo[0], albedo[1], albedo[2], THREE.LinearSRGBColorSpace));
     s.band.setColorAt(
       s.n,
-      _c.setRGB(band[0] * bandIntensity, band[1] * bandIntensity, band[2] * bandIntensity, THREE.LinearSRGBColorSpace),
+      _c.setRGB(
+        band[0] * bandIntensity,
+        band[1] * bandIntensity,
+        band[2] * bandIntensity,
+        THREE.LinearSRGBColorSpace,
+      ),
     );
     s.n++;
     return true;

@@ -244,13 +244,11 @@ export const buildBattlerifle: ViewmodelBuilder = (kit) => {
     pos: [0, 0.006, 0.362],
     uvDensity: VIEWMODEL_ART.knurlDensity,
   });
-  b.add(BODY, 'darkMetal', roundedBox(0.032, 0.012, 0.13, 0.003), {
-    pos: [0, 0.092, 0.24],
+  // Cheek pad seated on the comb.
+  b.add(BODY, 'darkMetal', roundedBox(0.034, 0.009, 0.13, 0.003), {
+    pos: [0, 0.0815, 0.245],
     paint: P.darkMetal.paint,
   });
-  for (const z of [0.19, 0.29]) {
-    b.add(BODY, 'gunmetal', new BoxGeometry(0.006, 0.012, 0.008), { pos: [0, 0.083, z], paint: 0.6 });
-  }
   b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0022, 0.12), { pos: [-0.0213, 0.066, 0.24] });
 
   // --- handguard: long octagon with heat louvres, bottom + left rail sections ---

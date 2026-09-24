@@ -309,7 +309,7 @@ export const TRAIL_STYLES = {
       life: 0.05,
       spacing: 0.15,
     },
-    puffs: { effect: 'trail.smoke.puff', spacing: 0.32, scale: 1 },
+    puffs: { effect: 'trail.smoke.puff', spacing: 0.5, scale: 1 },
   },
   'trail.void': {
     ribbon: {

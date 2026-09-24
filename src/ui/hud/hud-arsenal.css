@@ -1,0 +1,546 @@
+/* ------------------------------------------------------------------------------------------ */
+/* Arsenal HUD (M5, ArsenalHud.ts): ability cooldown ring + grenade chip (bottom left, right  */
+/* of the vitals) and the full-screen overlays of running abilities. Per frame the widget     */
+/* only writes the ring's dash offset and the wind-up bar's transform; everything else        */
+/* animates here. Paired keyframes (-a / -b) let the widget restart an animation.             */
+/* ------------------------------------------------------------------------------------------ */
+.hud-arsenal {
+  position: absolute;
+  left: calc(100% + 26px);
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  pointer-events: none;
+}
+
+/* --- small key cap (bottom right of each widget) --- */
+.hud-arsenal__key {
+  position: absolute;
+  right: -7px;
+  bottom: -5px;
+  display: grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--rf-text-bright);
+  background: rgba(4, 8, 11, 0.85);
+  border: 1px solid rgba(0, 229, 255, 0.55);
+  border-radius: 3px;
+  box-shadow: 0 0 6px rgba(0, 229, 255, 0.25);
+}
+.hud-arsenal__key:empty {
+  display: none;
+}
+.hud-arsenal__key.is-pad {
+  border-radius: 9px;
+}
+
+/* --- ability: glyph inside a cooldown ring --- */
+.hud-ab {
+  --ab: #5cc8ff;
+  position: relative;
+  width: 54px;
+  height: 54px;
+}
+.hud-ab__ring {
+  position: absolute;
+  inset: 0;
+  width: 54px;
+  height: 54px;
+  rotate: -90deg;
+  overflow: visible;
+}
+.hud-ab__track {
+  fill: rgba(4, 8, 11, 0.66);
+  stroke: color-mix(in srgb, var(--ab) 20%, transparent);
+  stroke-width: 3;
+}
+.hud-ab__fill {
+  fill: none;
+  stroke: var(--ab);
+  stroke-width: 3;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px var(--ab));
+  transition: stroke 0.25s ease;
+}
+.hud-ab__glyph {
+  position: absolute;
+  left: 13px;
+  top: 13px;
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: var(--ab);
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 3px var(--ab));
+  transition: opacity 0.25s ease;
+}
+.hud-ab__time {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--rf-font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--rf-text-bright);
+  text-shadow:
+    0 0 6px rgba(0, 0, 0, 0.95),
+    0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.hud-ab.is-cooling .hud-ab__fill {
+  stroke: color-mix(in srgb, var(--ab) 45%, #5a6770);
+  filter: none;
+}
+.hud-ab.is-cooling .hud-ab__glyph {
+  opacity: 0.28;
+  filter: none;
+}
+.hud-ab.is-ready .hud-ab__ring,
+.hud-ab.is-ready .hud-ab__glyph {
+  animation: rf-ar-breathe 1.8s ease-in-out infinite alternate;
+}
+.hud-ab.is-active .hud-ab__glyph {
+  animation: rf-ar-active 0.5s ease-in-out infinite alternate;
+}
+.hud-ab.is-active .hud-ab__track {
+  fill: color-mix(in srgb, var(--ab) 22%, rgba(4, 8, 11, 0.7));
+}
+.hud-ab.is-flash-a::after,
+.hud-ab.is-flash-b::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px solid var(--ab);
+  border-radius: 50%;
+  box-shadow: 0 0 14px var(--ab);
+  pointer-events: none;
+}
+.hud-ab.is-flash-a::after {
+  animation: rf-ar-ready-a 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+.hud-ab.is-flash-b::after {
+  animation: rf-ar-ready-b 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+.hud-ab.is-used-a {
+  animation: rf-ar-used-a 0.35s ease-out both;
+}
+.hud-ab.is-used-b {
+  animation: rf-ar-used-b 0.35s ease-out both;
+}
+
+/* --- grenade: glyph chip, count, pips, wind-up --- */
+.hud-gr {
+  --gr: #ffb347;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 5px;
+}
+.hud-gr__chip {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  background: radial-gradient(
+    circle at 50% 45%,
+    color-mix(in srgb, var(--gr) 22%, transparent) 0%,
+    rgba(4, 8, 11, 0.66) 72%
+  );
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.hud-gr__chip::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--gr) 60%, transparent);
+  clip-path: polygon(
+    8px 0,
+    100% 0,
+    100% calc(100% - 8px),
+    calc(100% - 8px) 100%,
+    0 100%,
+    0 8px,
+    8px 0,
+    8.5px 1px,
+    1px 8.5px,
+    1px calc(100% - 1px),
+    calc(100% - 8.5px) calc(100% - 1px),
+    calc(100% - 1px) calc(100% - 8.5px),
+    calc(100% - 1px) 1px,
+    8.5px 1px
+  );
+}
+.hud-gr__glyph {
+  position: relative;
+  width: 27px;
+  height: 27px;
+  fill: none;
+  stroke: var(--gr);
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 3px var(--gr));
+}
+.hud-gr .hud-arsenal__key {
+  left: 29px;
+  right: auto;
+  bottom: -2px;
+}
+.hud-gr__info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hud-gr__count {
+  font-family: var(--rf-font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--rf-text-bright);
+  text-shadow:
+    0 0 8px color-mix(in srgb, var(--gr) 55%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.hud-gr__pips {
+  display: flex;
+  gap: 3px;
+}
+.hud-gr__pip {
+  width: 7px;
+  height: 3px;
+  background: color-mix(in srgb, var(--gr) 18%, rgba(255, 255, 255, 0.08));
+}
+.hud-gr__pip.is-full {
+  background: var(--gr);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--gr) 70%, transparent);
+}
+.hud-gr.is-empty .hud-gr__glyph {
+  opacity: 0.3;
+  filter: none;
+}
+.hud-gr.is-empty .hud-gr__count {
+  color: var(--rf-danger);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.hud-gr__prime {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  height: 3px;
+  background: rgba(4, 8, 11, 0.6);
+}
+.hud-gr__primefill {
+  height: 100%;
+  background: var(--gr);
+  box-shadow: 0 0 6px var(--gr);
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+}
+.hud-gr.is-primed .hud-gr__chip {
+  animation: rf-ar-primed 0.22s ease-in-out infinite alternate;
+}
+.hud-gr.is-pop-a {
+  animation: rf-ar-pop-a 0.4s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.hud-gr.is-pop-b {
+  animation: rf-ar-pop-b 0.4s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.hud-gr.is-deny-a,
+.hud-ab.is-deny-a {
+  animation: rf-ar-deny-a 0.34s linear both;
+}
+.hud-gr.is-deny-b,
+.hud-ab.is-deny-b {
+  animation: rf-ar-deny-b 0.34s linear both;
+}
+.hud-arsenal.is-reduced .hud-ab__ring,
+.hud-arsenal.is-reduced .hud-ab__glyph,
+.hud-arsenal.is-reduced .hud-gr__chip {
+  animation: none !important;
+}
+
+/* --- full-screen overlays of running abilities (below every other HUD element) --- */
+.hud-abfx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.hud-abfx.is-in-a {
+  animation: rf-ar-fx-in-a 0.35s ease-out both;
+}
+.hud-abfx.is-in-b {
+  animation: rf-ar-fx-in-b 0.35s ease-out both;
+}
+.hud-abfx::before,
+.hud-abfx::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Phasenbarriere: a hexagonal shield lattice shimmering at the screen edges, flaring on hits. */
+.hud-abfx--shield::before {
+  inset: -40px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20.78' height='36' viewBox='0 0 20.78 36'%3E%3Cpath d='M10.39 0 20.78 6V18L10.39 24 0 18V6Z M10.39 24V36' fill='none' stroke='%236affd8' stroke-width='0.8'/%3E%3C/svg%3E")
+    0 0 / 31px 54px repeat;
+  -webkit-mask-image: radial-gradient(ellipse 72% 70% at 50% 50%, transparent 52%, #000 100%);
+  mask-image: radial-gradient(ellipse 72% 70% at 50% 50%, transparent 52%, #000 100%);
+  opacity: 0.5;
+  animation:
+    rf-ar-shimmer 1.9s ease-in-out infinite alternate,
+    rf-ar-drift 9s linear infinite;
+}
+.hud-abfx--shield::after {
+  inset: 0;
+  box-shadow:
+    inset 0 0 90px rgba(106, 255, 216, 0.28),
+    inset 0 0 22px rgba(106, 255, 216, 0.35);
+  animation: rf-ar-shimmer 1.3s ease-in-out infinite alternate-reverse;
+}
+/* A hit on the shield: the lattice flares (element filter; the shimmer keeps running). */
+.hud-abfx--shield.is-hit-a {
+  animation: rf-ar-shield-hit-a 0.45s ease-out both;
+}
+.hud-abfx--shield.is-hit-b {
+  animation: rf-ar-shield-hit-b 0.45s ease-out both;
+}
+
+/* Überladung: the screen edges run hot. */
+.hud-abfx--overcharge::after {
+  inset: 0;
+  box-shadow:
+    inset 0 0 140px rgba(255, 130, 30, 0.34),
+    inset 0 0 30px rgba(255, 170, 60, 0.4);
+  animation: rf-ar-heat 0.42s ease-in-out infinite alternate;
+}
+.hud-abfx--overcharge::before {
+  inset: 0;
+  background: linear-gradient(0deg, rgba(255, 120, 20, 0.16) 0%, transparent 22%);
+}
+
+/* Chronofeld: a cold violet vignette and slow rings closing in (time drags). */
+.hud-abfx--chrono::after {
+  inset: 0;
+  background: radial-gradient(
+    ellipse 75% 72% at 50% 50%,
+    transparent 48%,
+    rgba(150, 120, 255, 0.14) 78%,
+    rgba(70, 40, 190, 0.34) 100%
+  );
+}
+.hud-abfx--chrono::before {
+  left: 50%;
+  top: 50%;
+  width: 150vmax;
+  height: 150vmax;
+  margin: -75vmax 0 0 -75vmax;
+  border: 2px solid rgba(190, 170, 255, 0.28);
+  border-radius: 50%;
+  box-shadow:
+    0 0 30px rgba(170, 140, 255, 0.25),
+    inset 0 0 30px rgba(170, 140, 255, 0.2);
+  animation: rf-ar-chrono 2.6s cubic-bezier(0.3, 0, 0.7, 1) infinite;
+}
+.hud-abfx.is-reduced::before,
+.hud-abfx.is-reduced::after {
+  animation: none !important;
+}
+
+@keyframes rf-ar-breathe {
+  0% {
+    filter: drop-shadow(0 0 2px var(--ab));
+  }
+  100% {
+    filter: drop-shadow(0 0 7px var(--ab));
+  }
+}
+@keyframes rf-ar-active {
+  0% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 8px var(--ab)) brightness(1.4);
+  }
+}
+@keyframes rf-ar-ready-a {
+  0% {
+    opacity: 1;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+@keyframes rf-ar-ready-b {
+  0% {
+    opacity: 1;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+@keyframes rf-ar-used-a {
+  0% {
+    transform: scale(1.25);
+    filter: brightness(2.2);
+  }
+  100% {
+    transform: scale(1);
+    filter: none;
+  }
+}
+@keyframes rf-ar-used-b {
+  0% {
+    transform: scale(1.25);
+    filter: brightness(2.2);
+  }
+  100% {
+    transform: scale(1);
+    filter: none;
+  }
+}
+@keyframes rf-ar-primed {
+  0% {
+    filter: brightness(1);
+  }
+  100% {
+    filter: brightness(1.7);
+  }
+}
+@keyframes rf-ar-pop-a {
+  0% {
+    transform: translateY(-5px) scale(1.12);
+    filter: brightness(2);
+  }
+  100% {
+    transform: none;
+    filter: none;
+  }
+}
+@keyframes rf-ar-pop-b {
+  0% {
+    transform: translateY(-5px) scale(1.12);
+    filter: brightness(2);
+  }
+  100% {
+    transform: none;
+    filter: none;
+  }
+}
+@keyframes rf-ar-deny-a {
+  0%,
+  100% {
+    transform: none;
+  }
+  20% {
+    transform: translateX(-4px);
+    filter: sepia(1) saturate(6) hue-rotate(-40deg);
+  }
+  45% {
+    transform: translateX(4px);
+  }
+  70% {
+    transform: translateX(-2px);
+  }
+}
+@keyframes rf-ar-deny-b {
+  0%,
+  100% {
+    transform: none;
+  }
+  20% {
+    transform: translateX(-4px);
+    filter: sepia(1) saturate(6) hue-rotate(-40deg);
+  }
+  45% {
+    transform: translateX(4px);
+  }
+  70% {
+    transform: translateX(-2px);
+  }
+}
+@keyframes rf-ar-fx-in-a {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes rf-ar-fx-in-b {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes rf-ar-shimmer {
+  0% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 0.75;
+  }
+}
+@keyframes rf-ar-drift {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(31px, 54px);
+  }
+}
+@keyframes rf-ar-shield-hit-a {
+  0% {
+    filter: brightness(2.8);
+  }
+  100% {
+    filter: none;
+  }
+}
+@keyframes rf-ar-shield-hit-b {
+  0% {
+    filter: brightness(2.8);
+  }
+  100% {
+    filter: none;
+  }
+}
+@keyframes rf-ar-heat {
+  0% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes rf-ar-chrono {
+  0% {
+    transform: scale(1);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.45);
+    opacity: 0;
+  }
+}

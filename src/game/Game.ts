@@ -89,6 +89,11 @@ import { createInteractCommands } from '../interactables/interactCommands';
 import { SealSystem } from '../seals/SealSystem';
 import { PowerUpSystem } from '../powerups/PowerUpSystem';
 import { createPowerUpCommands } from '../powerups/powerupCommands';
+import { GrenadeSystem } from '../grenades/GrenadeSystem';
+import { createGrenadeCommands } from '../grenades/grenadeCommands';
+import { AbilitySystem } from '../abilities/AbilitySystem';
+import { AbilityVisuals } from '../abilities/AbilityVisuals';
+import { createAbilityCommands } from '../abilities/abilityCommands';
 import { GamePersistence } from './GamePersistence';
 import { MenuPadNavigator } from './MenuPadNavigator';
 import { PauseController } from './PauseController';
@@ -188,6 +193,10 @@ export interface GameSystems {
   explosions: Explosions;
   /** M5 elements: status effects (build-up from CombatWorld hits, slow/halt/rim read by enemies). */
   status: StatusEffectSystem;
+  /** M5 grenades ('grenade' action) and abilities ('ability' action) with their in-world looks. */
+  grenades: GrenadeSystem;
+  abilities: AbilitySystem;
+  abilityVisuals: AbilityVisuals;
 }
 
 export class Game {
@@ -591,6 +600,45 @@ export class Game {
       powerUps,
     });
 
+    // M5 grenades and abilities (fixed tick right after the weapons): throws start at the rendered
+    // camera like every shot and fly as arsenal projectiles; ability blasts and fields go through
+    // the arsenal too, their stat modifiers through the stat table. The map loadout picks the
+    // starting grenades and the equipped ability (defaults in defs/grenades, defs/abilities).
+    const m5Loadout = getLoadout(level.id);
+    const grenades = new GrenadeSystem({
+      events,
+      input,
+      projectiles: arsenal.projectiles,
+      player,
+      eye: () => render.camera.position,
+      aimPitchOffset: () => playerCamera.aimPitchOffset,
+      combat,
+      status,
+      enabled: playing,
+      onDeny: () => gameRef?.sys.hud.arsenal.deny('grenade'),
+      start: m5Loadout.grenade ?? null,
+    });
+    const abilityVisuals = new AbilityVisuals({
+      parent: render.scene,
+      anchor: () => render.camera.position,
+      physics,
+      shockwave: (p, r, s) =>
+        render.addShockwave(p, r, s * Math.min(1, Math.max(0, settings.current.accessibility.screenShake))),
+      reduceFlashing,
+    });
+    const abilities = new AbilitySystem({
+      events,
+      input,
+      stats,
+      explosions: arsenal.explosions,
+      fields: arsenal.fields,
+      player,
+      visuals: abilityVisuals,
+      enabled: playing,
+      onDeny: () => gameRef?.sys.hud.arsenal.deny('ability'),
+      ability: m5Loadout.ability,
+    });
+
     // Particles/tracers, target barriers, holograms, seals and pickups share the volumetric layer:
     // its pass runs only while one of them (or the level's volumetrics) draws.
     render.setVolumetricContentProbe(
@@ -601,7 +649,8 @@ export class Game {
         enemyVisuals.hasVolumetricContent ||
         interactables.hasVolumetricContent ||
         (seals?.hasVolumetricContent ?? false) ||
-        powerUps.hasVolumetricContent,
+        powerUps.hasVolumetricContent ||
+        abilityVisuals.hasVolumetricContent,
     );
 
     const hud = new Hud(el('hud'), events, settings);
@@ -610,6 +659,9 @@ export class Game {
     hud.setWaveCountdownSource(() => waves.intermissionLeft);
     // M4: power-up timers read the system's clock; zone names for the unlock banner; prompt key cap.
     hud.setPowerUpSource(powerUps);
+    // M5: ability ring + grenade wind-up read per frame; the grenade chip starts from announce().
+    hud.arsenal.setSources(abilities, grenades);
+    grenades.announce();
     // M5: the HUD names a forged weapon by its tier.
     hud.setWeaponNameSource((id) => weapons.effectiveDef(id)?.name);
     hud.setZoneNames(isMapLevel(level) ? level.zones : []);
@@ -684,6 +736,9 @@ export class Game {
       fields: arsenal.fields,
       explosions: arsenal.explosions,
       status,
+      grenades,
+      abilities,
+      abilityVisuals,
     });
     gameRef = game;
     game.registerCommands();
@@ -767,6 +822,9 @@ export class Game {
       seals,
       powerUps,
       arsenal,
+      grenades,
+      abilities,
+      abilityVisuals,
     } = this.sys;
     this.time += dt;
     player.update(dt, alpha);
@@ -774,6 +832,9 @@ export class Game {
     interaction.update(dt);
     // Weapons before the camera: ADS blend, recoil counter-pull and FOV zoom of this frame.
     weapons.update(dt);
+    // Grenade / ability presses of frames that ran no tick.
+    grenades.update(dt);
+    abilities.update(dt);
     playerCamera.update(dt);
     if (runFlow.deathTime > 0) {
       // The rig re-sets the camera every frame, so the death offset never accumulates.
@@ -790,6 +851,8 @@ export class Game {
     arsenal.update(dt, alpha);
     weapons.updateVisuals(dt);
     vfx.arsenal.update(dt);
+    // Ability looks follow this frame's camera (the Chronofeld dome).
+    abilityVisuals.update(dt);
     interactables.update(dt, alpha);
     seals?.update(dt);
     powerUps.update(dt);
@@ -897,6 +960,8 @@ export class Game {
         player: () => ({ position: player.position, yaw: player.yaw }),
       }),
       ...createFireCommands({ weapons, arsenal: this.sys.arsenal }),
+      ...createGrenadeCommands({ grenades: this.sys.grenades }),
+      ...createAbilityCommands({ abilities: this.sys.abilities }),
       ...createStatusCommands({
         status: this.sys.status,
         combat: this.sys.combat,
@@ -949,6 +1014,7 @@ export class Game {
       this.sys.interactables.setReducedFlashing(reduce);
       this.sys.seals?.setReducedFlashing(reduce);
       this.sys.powerUps.setReducedFlashing(reduce);
+      this.sys.abilityVisuals.setReducedFlashing(reduce);
     });
     this.sys.events.on('player:died', () => {
       this.sys.viewmodel.setVisible(false);

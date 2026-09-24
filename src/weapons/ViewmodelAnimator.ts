@@ -36,6 +36,7 @@ import {
   type WeaponViewmodelDef,
 } from '../defs/viewmodels';
 import { getWeaponDef, type ReloadStep, type WeaponDef } from '../defs/weapons';
+import { ABILITY_RULES, getAbilityDef } from '../defs/abilities';
 import { springImpulseForPeak } from '../player/cameraMath';
 import {
   addPoseImpulse,
@@ -217,6 +218,9 @@ export class ViewmodelAnimator {
   private heat = 0;
   private accentFlash = 0;
   private lightFlash = 0;
+  /** M5 abilities (Überladung): accent glow while the effect runs (def weaponGlow), eased. */
+  private abilityGlow = 0;
+  private abilityGlowTarget = 0;
   private time = 0;
   private ads = 0;
   private readonly fx: ViewmodelFxState = { time: 0, heat: 0, flash: 0, flicker: 1 };
@@ -307,7 +311,11 @@ export class ViewmodelAnimator {
         if (e.weaponId === this.weaponId) this.beamSource = e.active ? 1 : 0;
       }),
       ev.on('grenade:thrown', () => this.onGrenadeThrown()),
-      ev.on('ability:used', () => this.onAbilityUsed()),
+      ev.on('ability:used', (e) => {
+        this.onAbilityUsed();
+        this.abilityGlowTarget = e.duration > 0 ? (getAbilityDef(e.abilityId)?.weaponGlow ?? 0) : 0;
+      }),
+      ev.on('ability:ended', () => (this.abilityGlowTarget = 0)),
       ev.on('settings:changed', ({ settings, sections }) => {
         if (sections.includes('accessibility')) this.setReduceFlashing(settings.accessibility.reduceFlashing);
       }),
@@ -458,6 +466,7 @@ export class ViewmodelAnimator {
       this.heat = Math.max(0, this.heat - vdef.heat.decay * dt);
     }
     this.stepDrivers(dt);
+    this.abilityGlow = damp(this.abilityGlow, this.abilityGlowTarget, ABILITY_RULES.glowLambda, dt);
     const accentFlash = this.accentFlash * this.flashScale;
     this.muzzleFlash = this.lightFlash * this.flashScale;
     this.accentFlash *= Math.exp(-A.accentPulse.flashDecay * dt);
@@ -486,7 +495,7 @@ export class ViewmodelAnimator {
       this.fx.time = this.time;
       this.fx.heat = clamp01(this.heat);
       this.fx.flash = accentFlash;
-      this.fx.accentBoost = this.accentBoost;
+      this.fx.accentBoost = this.accentBoost + this.abilityGlow;
       this.model.animate(this.fx);
     }
   }

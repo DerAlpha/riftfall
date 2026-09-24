@@ -19,7 +19,7 @@
  */
 import { Rng } from '../core/Rng';
 import { AUDIO } from '../defs/audio';
-import { fillBrown, fillPink, fillWhite, normalizeRms } from './dsp';
+import { fillBrown, fillPink, fillWhite, makeLoopable, normalizeRms } from './dsp';
 import type { SynthDef, SynthGraph } from './synth';
 
 type Recipe = SynthDef['recipe'];
@@ -41,14 +41,14 @@ function noiseTables(ctx: BaseAudioContext): NoiseTables {
   let t = noiseCache.get(rate);
   if (!t) {
     const length = Math.round(S.noiseSeconds * rate);
+    // Seamless wrap (end crossfaded into the start): a burst that wraps mid-sound must not click.
+    const xf = Math.round(AUDIO.arsenal.synth.noiseLoopCrossfade * rate);
     const make = (
       fill: (out: Float32Array<ArrayBuffer>, rng: Rng) => Float32Array<ArrayBuffer>,
       name: string,
     ): AudioBuffer => {
-      const data = normalizeRms(
-        fill(new Float32Array(length), new Rng(`${S.seed}:weapon-noise:${name}`)),
-        WHITE_NOISE_RMS,
-      );
+      const raw = fill(new Float32Array(length + xf), new Rng(`${S.seed}:weapon-noise:${name}`));
+      const data = normalizeRms(makeLoopable([raw], xf)[0]!, WHITE_NOISE_RMS);
       const buf = ctx.createBuffer(1, length, rate);
       buf.copyToChannel(data, 0);
       return buf;
@@ -130,6 +130,10 @@ class Kit {
   bus(o: BusOpts): Kit {
     const ctx = this.ctx;
     const input = ctx.createGain();
+    // Fixed channel count: a bus that switches stereo → mono when its panned layers end makes
+    // Chrome reset the filter / waveshaper state behind it, which clicks.
+    input.channelCountMode = 'explicit';
+    input.channelCount = ctx.destination.channelCount;
     let last: AudioNode = input;
     if (o.drive && o.drive > 0) {
       const ws = ctx.createWaveShaper();
@@ -188,7 +192,9 @@ class Kit {
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
-    src.start(t, this.rng.next() * buf.duration * 0.9);
+    // Start where the burst fits before the table's end.
+    const room = buf.duration - dur;
+    src.start(t, this.rng.next() * (room > 0 ? room : buf.duration));
     src.stop(t + dur);
     const f = this.ctx.createBiquadFilter();
     f.type = o.filter;

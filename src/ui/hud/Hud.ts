@@ -33,6 +33,7 @@ import { HUD } from '../../defs/ui';
 import type { Settings } from '../../save/settingsSchema';
 import { coneRadiusPx } from '../../weapons/spread';
 import { CombatHud } from './CombatHud';
+import { ArsenalHud } from './ArsenalHud';
 import { EconomyHud } from './EconomyHud';
 import type { PowerUpTimerSource } from './PowerUpHud';
 import { WaveHud } from './WaveHud';
@@ -95,6 +96,8 @@ export class Hud {
   private readonly weapon: WeaponHud;
   /** M4: points, interaction prompt, perks, power-ups, economy banners. */
   readonly economy: EconomyHud;
+  /** M5: ability cooldown ring, grenade chip, running-ability overlays (bottom left). */
+  readonly arsenal: ArsenalHud;
   private readonly waves: WaveHud;
   private readonly indicators: DamageIndicator[] = [];
 
@@ -221,6 +224,8 @@ export class Hud {
       events,
       settings,
     );
+    // --- M5 arsenal: ability ring + grenade chip right of the vitals, ability overlays ---
+    this.arsenal = new ArsenalHud(bl, this.el, events, settings);
 
     // --- bottom center: movement readout ---
     this.movementEl = h('div', 'hud-movement', this.el);
@@ -406,6 +411,7 @@ export class Hud {
   /** Active input device (key cap of the interaction prompt); later changes arrive as events. */
   setInputDevice(device: 'kbm' | 'gamepad'): void {
     this.economy.setInputDevice(device);
+    this.arsenal.setInputDevice(device);
   }
 
   /** Slow-motion screen tint 0..1 (PowerUpSystem fx.timeTint). */
@@ -445,6 +451,7 @@ export class Hud {
     }
     this.combat.reset();
     this.economy.reset();
+    this.arsenal.reset();
   }
 
   setVisible(visible: boolean): void {
@@ -462,6 +469,7 @@ export class Hud {
     this.weapon.update(d);
     this.waves.update(d);
     this.economy.update(d);
+    this.arsenal.update(d);
   }
 
   dispose(): void {
@@ -471,6 +479,7 @@ export class Hud {
     this.combat.setCamera(null);
     this.waves.dispose();
     this.economy.dispose();
+    this.arsenal.dispose();
     this.el.remove();
   }
 
@@ -502,6 +511,7 @@ export class Hud {
     this.reduceFlashing = a.reduceFlashing;
     this.el.classList.toggle('hud--reduce-flashing', a.reduceFlashing);
     this.economy.configure(a.reduceFlashing);
+    this.arsenal.configure(a.reduceFlashing);
     this.combat.configure({
       hitmarkers: g.hitmarkers !== false,
       damageNumbers: g.damageNumbers !== false,

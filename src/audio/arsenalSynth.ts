@@ -34,7 +34,7 @@ const SV = A.semiFireVariants;
 // Gunshots
 // ---------------------------------------------------------------------------
 
-interface GunProfile {
+export interface GunProfile {
   crack: { freq: number; decay: number; peak: number };
   snap: { freq: number; q: number; decay: number; peak: number };
   body: { f0: number; f1: number; pitchTime: number; decay: number; peak: number; drive: number };
@@ -59,7 +59,7 @@ interface GunProfile {
   roll?: { decay: number; peak: number };
 }
 
-function gunshot(p: GunProfile): Recipe {
+export function gunshot(p: GunProfile): Recipe {
   return (g, t) => {
     const k = kitOf(g);
     const b = k.bus({ drive: p.drive, lowpass: p.lowpass });
@@ -204,7 +204,7 @@ function gunshot(p: GunProfile): Recipe {
   };
 }
 
-const GUN: Record<
+export const GUN: Record<
   | 'revolver'
   | 'machinepistol'
   | 'smg'
@@ -1291,10 +1291,9 @@ export function m5SynthAlias(id: string, known: (id: string) => boolean): string
   const a = aliasTable.get(id);
   if (a !== undefined) return a;
   if (id.startsWith('explosion.')) return id.endsWith('.small') ? 'explosion.physical.small' : 'explosion.physical';
-  if (id.startsWith('field.')) {
-    const kind = id.split('.')[1];
-    return kind === 'pull' ? 'field.pull.void' : kind === 'slow' ? 'field.slow.ice' : 'field.damage.fire';
-  }
+  if (id.startsWith('field.pull.')) return 'field.pull.void';
+  if (id.startsWith('field.slow.')) return 'field.slow.ice';
+  if (id.startsWith('field.damage.')) return 'field.damage.fire';
   if (id.startsWith('projectile.') && id.endsWith('.flight')) return 'projectile.grenade.flight';
   if (id.startsWith(AUDIO.arsenal.abilities.prefix)) return AUDIO.arsenal.abilities.fallback;
   return null;

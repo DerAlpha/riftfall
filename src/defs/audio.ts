@@ -462,7 +462,14 @@ export const AUDIO = {
    */
   arsenal: {
     /** Procedural loops: body length (s, + AUDIO.synth.slideLoopCrossfade); whole cycles on a 1/loopSeconds Hz grid. */
-    synth: { loopSeconds: 2, fireVariants: 4, semiFireVariants: 3 },
+    synth: {
+      loopSeconds: 2,
+      fireVariants: 4,
+      semiFireVariants: 3,
+      /** Noise tables of the arsenal kit: long enough for the loops, seamless at the wrap (crossfade s). */
+      noiseSeconds: 3,
+      noiseLoopCrossfade: 0.05,
+    },
     /**
      * Gunshot tails (fire layers starting with `tailPrefix`) follow the room (reverb zone): smaller
      * rooms shorten (pitch up) and duck them, halls lengthen them.

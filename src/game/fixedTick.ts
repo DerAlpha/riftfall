@@ -7,6 +7,8 @@
  *    rendered frame interpolated towards (lerp(prev, cur, alpha)), i.e. what the player aimed at:
  *    the hitbox leads the visible model by (1 − alpha) ticks. Stepping targets/enemies first would
  *    move their hitboxes a further tick ahead ((2 − alpha) ticks – several cm on a moving target).
+ *    M5: grenades and abilities right after them – throws start at the same rendered camera, a
+ *    Schockwelle resolves against the same hitboxes as the shots, a Chronofeld follows the player.
  * 3. targets (M3: enemies after them): move, refresh hitboxes, react to this tick's damage.
  *    M5: arsenal projectiles, then lingering fields – they collide with / tick on this tick's
  *    hitboxes (after the enemies moved) and blasts push props before physics.step; then status
@@ -30,6 +32,10 @@ interface TickStep {
 export interface FixedTickSystems {
   player: Pick<PlayerApi, 'fixedUpdate' | 'noclip' | 'position' | 'teleport'>;
   weapons: Pick<WeaponSystemApi, 'fixedUpdate'>;
+  /** M5: grenade throws (primed / released this tick) – after the weapons. */
+  grenades?: TickStep | null;
+  /** M5: ability use, durations and cooldowns – after the grenades. */
+  abilities?: TickStep | null;
   /** Moving damageables (calibration-hall targets); null on maps without them. */
   targets: TickStep | null;
   /** M3: wave director (spawns this tick get their first enemy tick right away). */
@@ -62,6 +68,8 @@ export function runFixedTick(s: FixedTickSystems, dt: number): void {
   player.fixedUpdate(dt);
   s.interaction?.fixedUpdate(dt);
   weapons.fixedUpdate(dt);
+  s.grenades?.fixedUpdate(dt);
+  s.abilities?.fixedUpdate(dt);
   targets?.fixedUpdate(dt);
   waves?.fixedUpdate(dt);
   enemies?.fixedUpdate(dt);

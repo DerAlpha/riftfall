@@ -16,7 +16,7 @@
  */
 import { Rng } from '../core/Rng';
 import { AUDIO } from '../defs/audio';
-import { fillBrown, fillPink, fillWhite, normalizeRms } from './dsp';
+import { fillBrown, fillPink, fillWhite, makeLoopable, normalizeRms } from './dsp';
 import type { SynthDef, SynthGraph } from './synth';
 
 export type Recipe = SynthDef['recipe'];
@@ -24,6 +24,7 @@ export type NoiseColor = 'white' | 'pink' | 'brown';
 type NoiseTables = Record<NoiseColor, AudioBuffer>;
 
 const S = AUDIO.synth;
+const A = AUDIO.arsenal.synth;
 const WHITE_NOISE_RMS = 1 / Math.sqrt(3);
 
 /** Loop body length of the arsenal loops (s) and the bank's crossfade folded onto it. */
@@ -46,19 +47,22 @@ export function midi(note: number): number {
 
 const noiseCache = new Map<number, NoiseTables>();
 
+/**
+ * Seeded noise tables that loop seamlessly (the end is crossfaded into the start): a looping
+ * source that wraps mid-sound would otherwise click – brown noise jumps by a large step there.
+ */
 function noiseTables(ctx: BaseAudioContext): NoiseTables {
   const rate = ctx.sampleRate;
   let t = noiseCache.get(rate);
   if (!t) {
-    const length = Math.round(S.noiseSeconds * rate);
+    const length = Math.round(A.noiseSeconds * rate);
+    const xf = Math.round(A.noiseLoopCrossfade * rate);
     const make = (
       fill: (out: Float32Array<ArrayBuffer>, rng: Rng) => Float32Array<ArrayBuffer>,
       name: string,
     ): AudioBuffer => {
-      const data = normalizeRms(
-        fill(new Float32Array(length), new Rng(`${S.seed}:arsenal-noise:${name}`)),
-        WHITE_NOISE_RMS,
-      );
+      const raw = fill(new Float32Array(length + xf), new Rng(`${S.seed}:arsenal-noise:${name}`));
+      const data = normalizeRms(makeLoopable([raw], xf)[0]!, WHITE_NOISE_RMS);
       const buf = ctx.createBuffer(1, length, rate);
       buf.copyToChannel(data, 0);
       return buf;
@@ -174,6 +178,13 @@ export interface DroneOpts {
   pan?: number;
 }
 
+/**
+ * Sources stop this many `decay`s after the attack (the envelope falls ~-35 dB per decay): tones
+ * run to ~-70 dB (a truncated sine clicks), noise bursts to ~-55 dB.
+ */
+const TONE_TAIL = 2;
+const NOISE_TAIL = 1.6;
+
 /** Segments of the piecewise-linear sine/cosine loop edges. */
 const LOOP_EDGE_STEPS = 12;
 
@@ -202,7 +213,7 @@ export class Kit {
   /** Sub-bus: [waveshaper] → [highpass] → [lowpass] → [comb] → gain → [pan] → this kit's output. */
   bus(o: BusOpts): Kit {
     const ctx = this.ctx;
-    const input = ctx.createGain();
+    const input = this.fixedInput();
     let last: AudioNode = input;
     if (o.drive && o.drive > 0) last = chain(last, this.shaper(o.drive, '4x'));
     if (o.highpass) last = chain(last, this.filter('highpass', o.highpass, 0.707));
@@ -220,7 +231,7 @@ export class Kit {
    * falls along cos over the last `xf` s before `t + dur` (see the file header).
    */
   loopBus(t: number, dur: number = LOOP_DURATION, xf: number = LOOP_XF, gain = 1, pan = 0): Kit {
-    const input = this.ctx.createGain();
+    const input = this.fixedInput();
     const p = input.gain;
     p.value = 0;
     p.setValueAtTime(0, t);
@@ -247,7 +258,7 @@ export class Kit {
   /** Filtered noise burst (percussive envelope, ~-35 dB after `decay`). */
   noise(t: number, o: NoiseOpts): void {
     const attack = o.attack ?? 0.001;
-    const dur = attack + o.decay * 1.4 + 0.01;
+    const dur = attack + o.decay * NOISE_TAIL + 0.01;
     const src = this.noiseSource(o.color, t, dur, o.rate ?? 1);
     const f = this.filter(o.filter, o.freq, o.q ?? 0.707);
     f.frequency.setValueAtTime(o.freq, t);
@@ -260,7 +271,7 @@ export class Kit {
   /** Sustained filtered noise: attack → hold → release, optional sweep over attack + hold. */
   swell(t: number, o: SwellOpts): void {
     const top = Math.max(o.attack, o.hold);
-    const dur = top + o.release * 1.5 + 0.01;
+    const dur = top + o.release * NOISE_TAIL + 0.01;
     const src = this.noiseSource(o.color, t, dur, 1);
     const f = this.filter(o.filter, o.freq, o.q ?? 0.707);
     f.frequency.setValueAtTime(o.freq, t);
@@ -360,7 +371,7 @@ export class Kit {
     osc.frequency.setValueAtTime(o.f0, t);
     osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.f1), t + Math.max(1e-3, o.pitchTime));
     osc.start(t);
-    osc.stop(t + (o.attack ?? 0.001) + o.decay * 1.4 + 0.01);
+    osc.stop(t + (o.attack ?? 0.001) + o.decay * TONE_TAIL + 0.01);
     let last: AudioNode = osc;
     if (o.drive && o.drive > 0) last = chain(last, this.shaper(o.drive, '2x'));
     const e = this.env(t, o.attack ?? 0.001, o.decay, o.peak);
@@ -385,7 +396,7 @@ export class Kit {
     osc.frequency.setValueAtTime(f0, t);
     if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + attack + decay);
     osc.start(t);
-    osc.stop(t + attack + decay * 1.4 + 0.01);
+    osc.stop(t + attack + decay * TONE_TAIL + 0.01);
     let last: AudioNode = osc;
     if (lowpass > 0) last = chain(last, this.filter('lowpass', lowpass, 0.707));
     const e = this.env(t, attack, decay, peak);
@@ -406,7 +417,7 @@ export class Kit {
     o: { pan?: number; lowpass?: number; q?: number; vibrato?: LfoOpts; expRise?: boolean } = {},
   ): void {
     const top = Math.max(attack, hold);
-    const stop = t + top + release * 1.5 + 0.01;
+    const stop = t + top + release * TONE_TAIL + 0.01;
     const osc = this.ctx.createOscillator();
     osc.type = type;
     osc.frequency.setValueAtTime(f0, t);
@@ -454,7 +465,7 @@ export class Kit {
     carrierTo = carrier,
   ): void {
     const ctx = this.ctx;
-    const stop = t + attack + decay * 1.4 + 0.01;
+    const stop = t + attack + decay * TONE_TAIL + 0.01;
     const mod = ctx.createOscillator();
     mod.frequency.setValueAtTime(carrier * ratio, t);
     const depth = ctx.createGain();
@@ -488,7 +499,7 @@ export class Kit {
     o: { type?: OscillatorType; carrierTo?: number; modTo?: number; pan?: number } = {},
   ): void {
     const ctx = this.ctx;
-    const stop = t + attack + decay * 1.4 + 0.01;
+    const stop = t + attack + decay * TONE_TAIL + 0.01;
     const car = ctx.createOscillator();
     car.type = o.type ?? 'sine';
     car.frequency.setValueAtTime(carrier, t);
@@ -551,9 +562,8 @@ export class Kit {
   ): void {
     const ctx = this.ctx;
     const top = Math.max(attack, hold);
-    const stop = t + top + release * 1.5 + 0.01;
-    const sum = ctx.createGain();
-    sum.gain.value = 1;
+    const stop = t + top + release * TONE_TAIL + 0.01;
+    const sum = this.fixedInput();
     const env = this.sustain(t, attack, hold, release, peak, false);
     const formants = o.formants ?? VOWEL_AH;
     for (const [freq, gain] of formants) {
@@ -601,6 +611,18 @@ export class Kit {
     osc.connect(g).connect(param);
     osc.start(t);
     osc.stop(t + dur);
+  }
+
+  /**
+   * Bus input with a fixed channel count: with the default 'max' mode a bus turns stereo while a
+   * panned layer plays and back to mono when it ends – and Chrome resets the state of the filters
+   * and waveshapers behind it on that switch, which clicks.
+   */
+  private fixedInput(): GainNode {
+    const g = this.ctx.createGain();
+    g.channelCountMode = 'explicit';
+    g.channelCount = this.ctx.destination.channelCount;
+    return g;
   }
 
   private combInto(from: AudioNode, to: AudioNode, c: CombOpts): void {
@@ -702,7 +724,9 @@ export class Kit {
     src.buffer = buf;
     src.loop = true;
     src.playbackRate.value = rate;
-    src.start(t, this.rng.next() * buf.duration * 0.9);
+    // Start where the sound fits before the table's end (the wrap is seamless anyway).
+    const room = buf.duration - dur * rate;
+    src.start(t, this.rng.next() * (room > 0 ? room : buf.duration));
     src.stop(t + dur);
     return src;
   }

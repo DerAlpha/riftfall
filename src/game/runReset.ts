@@ -5,7 +5,8 @@
  * The order is binding:
  * 1. enemies (no AI tick, breach or blow reaches into the reset), status effects (M5: no death
  *    cloud of a cleared body), the wave director, VFX, the arsenal (M5: projectiles, fields, arc
- *    flashes – no detonation or collapse);
+ *    flashes – no detonation or collapse), then the abilities (M5: a running effect ends – its stat
+ *    source removed, ability:ended for HUD and viewmodel – cooldown cleared);
  * 2. timed power-ups before the perks before the stat table: each removes its own stat sources
  *    (the power-ups also end their enemy effects: Zeitdehnung's time scale, Instakill), then the
  *    table drops whatever is left – health resets after it (start health at the base max health,
@@ -16,7 +17,8 @@
  *    zones before the interactables (closed doors re-block their navmesh areas), the interaction
  *    focus after them, seals intact;
  * 5. per-run seeds (navmesh samples, Rift-Kiste, power-up drops), loadout after the stat table
- *    (magazine sizes), the HUD after the economy announced its balance, the audio bridge;
+ *    (magazine sizes) and the loadout's grenades (M5), the HUD after the economy announced its
+ *    balance, the audio bridge;
  * 6. the wave director starts last: its intermission shows on the fresh HUD.
  * RunFlow resets its own statistics (begin / restart) and the loop time scale on its own too.
  */
@@ -32,6 +34,9 @@ export interface RunResetSystems {
   arsenal?: { clear(): void } | null;
   /** M5 status effects (combat/status); optional for tools and tests. */
   status?: { reset(): void } | null;
+  /** M5 grenades (start counts of the loadout) and abilities (effect ended, ready); optional. */
+  grenades?: { reset(): void } | null;
+  abilities?: { reset(): void } | null;
   powerUps: { clear(): void; reseed(seed: string | number): void };
   perks: { clear(): void };
   stats: { reset(): void };
@@ -71,6 +76,7 @@ export function resetRunSystems(s: RunResetSystems, opts: RunResetOptions): void
   s.waves.reset();
   s.vfx.clear();
   s.arsenal?.clear();
+  s.abilities?.reset();
   s.powerUps.clear();
   s.perks.clear();
   s.stats.reset();
@@ -93,6 +99,7 @@ export function resetRunSystems(s: RunResetSystems, opts: RunResetOptions): void
   const loadout = getLoadout(s.level.id);
   s.weapons.setLoadout(loadout.weapons, loadout.slots);
   s.weapons.refillAmmo(true);
+  s.grenades?.reset();
   s.viewmodel.setVisible(true);
   s.hud.resetRun();
   s.audioBridge.resetRun();

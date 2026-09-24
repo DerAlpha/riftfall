@@ -2392,8 +2392,18 @@ export const VFX_EFFECTS = {
   },
   'field.fire.flames': {
     emitters: [
-      tongues([1, 1], [0.45, 0.8], [0.5, 0.8], [2.2, 3.6], 3, { minCount: 1, stretch: 0.22, drag: 2.2, sizeEnd: 0.35 }),
-      flames([1, 1], [0.4, 0.7], [0.4, 0.7], [1, 2], 1.8, { minCount: 1, spread: 15, sizeEnd: 1.6, gravity: -0.6 }),
+      tongues([1, 1], [0.45, 0.8], [0.5, 0.8], [2.2, 3.6], 3, {
+        minCount: 1,
+        stretch: 0.22,
+        drag: 2.2,
+        sizeEnd: 0.35,
+      }),
+      flames([1, 1], [0.4, 0.7], [0.4, 0.7], [1, 2], 1.8, {
+        minCount: 1,
+        spread: 15,
+        sizeEnd: 1.6,
+        gravity: -0.6,
+      }),
       motes([1, 0.55, 0.16], [0, 1], [0.8, 2.5], [0.6, 1.2], 9, { axis: 'up', spread: 40, gravity: -0.3 }),
     ],
   },
@@ -2519,79 +2529,109 @@ export const VFX_EFFECTS = {
   // --- M5 status visuals on enemies (package B spawns them at small rates; no bouncing = no probes) ---
   'status.burn': {
     emitters: [
-      tongues([1, 2], [0.18, 0.3], [0.25, 0.45], [1.2, 2.2], 3.2, { minCount: 1, spread: 18, stretch: 0.16 }),
-      flames([0, 1], [0.14, 0.24], [0.2, 0.35], [0.6, 1.2], 2.6, { spread: 20, sizeEnd: 1.6 }),
+      tongues([1, 2], [0.3, 0.45], [0.25, 0.45], [0.8, 1.6], 3, { minCount: 1, spread: 18, stretch: 0.2 }),
+      flames([1, 1], [0.18, 0.28], [0.2, 0.35], [0.5, 1], 2.2, { minCount: 1, spread: 20, sizeEnd: 1.6 }),
       motes([1, 0.55, 0.16], [1, 2], [0.8, 2], [0.4, 0.9], 9, { axis: 'up', spread: 50, gravity: -0.25 }),
       billow('smoke', SOOT, [0, 1], [0.12, 0.2], 4, [0.8, 1.3], [0.4, 0.9], 0.35, { axis: 'up', spread: 25 }),
     ],
   },
+  /** Chilled: rime breath and ice crystals drifting down (a cold glow, not grey dust). */
   'status.chill': {
     emitters: [
-      billow('mist', FROST_MIST, [1, 1], [0.15, 0.25], 2.5, [0.6, 1], [0.1, 0.4], 0.28, {
+      {
+        blend: 'add',
+        sprite: 'mist',
+        count: [1, 1],
         minCount: 1,
+        life: [0.6, 1],
+        speed: [0.1, 0.4],
+        spread: 180,
+        size: [0.25, 0.4],
+        sizeEnd: 2,
+        color: FROST_C,
+        intensity: 0.5,
+        intensityEnd: 0,
+        drag: 1.5,
         gravity: 0.05,
-      }),
-      motes(FROST_HOT, [1, 1], [0.1, 0.4], [0.5, 0.9], 6, {
+      },
+      motes(FROST_HOT, [2, 3], [0.1, 0.4], [0.5, 0.9], 7, {
+        minCount: 1,
         sprite: 'star',
-        size: [0.02, 0.035],
-        gravity: 0.35,
+        size: [0.025, 0.045],
+        gravity: 0.3,
       }),
     ],
   },
+  /** Frozen solid: glinting ice facets, splinters flaking off, cold haze. */
   'status.frozen': {
     emitters: [
-      motes(FROST_HOT, [2, 3], [0.05, 0.3], [0.3, 0.6], 10, {
-        minCount: 1,
+      motes(FROST_HOT, [3, 4], [0.05, 0.3], [0.3, 0.6], 10, {
+        minCount: 2,
         sprite: 'star',
-        size: [0.04, 0.07],
+        size: [0.05, 0.09],
         gravity: 0,
       }),
       {
-        blend: 'alpha',
+        blend: 'add',
         sprite: 'shard',
-        count: [0, 2],
+        count: [1, 2],
         life: [0.6, 1],
         speed: [0.2, 0.8],
         spread: 180,
-        size: [0.015, 0.03],
-        color: [0.75, 0.9, 1],
-        alpha: 0.9,
-        alphaEnd: 0.2,
+        size: [0.03, 0.05],
+        color: [0.6, 0.85, 1],
+        intensity: 2.2,
+        intensityEnd: 0.5,
         gravity: 0.8,
         spin: [-12, 12],
       },
-      billow('mist', FROST_MIST, [0, 1], [0.2, 0.3], 2, [0.8, 1.2], [0.05, 0.2], 0.25, { gravity: 0.05 }),
+      {
+        blend: 'add',
+        sprite: 'mist',
+        count: [0, 1],
+        life: [0.8, 1.2],
+        speed: [0.05, 0.2],
+        spread: 180,
+        size: [0.3, 0.45],
+        sizeEnd: 1.6,
+        color: FROST_C,
+        intensity: 0.4,
+        intensityEnd: 0,
+        gravity: 0.05,
+      },
     ],
   },
   'status.shocked': {
     emitters: [
-      streaks(SHOCK_HOT, [3, 5], [3, 7], [0.06, 0.14], 14, 180, {
+      streaks(SHOCK_HOT, [3, 5], [3, 7], [0.06, 0.14], 12, 180, {
         minCount: 2,
         drag: 6,
         stretch: 0.04,
         gravity: 0,
+        colorEnd: SHOCK_C,
       }),
-      { ...IMPACT_STAR, color: SHOCK_HOT, intensity: 9, size: [0.1, 0.16], minCount: 0, count: [0, 1] },
+      { ...IMPACT_STAR, color: [0.6, 0.8, 1], intensity: 8, size: [0.1, 0.16], minCount: 0, count: [0, 1] },
       motes(SHOCK_HOT, [0, 2], [1, 3], [0.2, 0.4], 10, { sprite: 'spark', gravity: 1 }),
     ],
   },
+  /** Poisoned: glowing toxic drips and bubbles in a sickly haze. */
   'status.poisoned': {
     emitters: [
       {
         blend: 'add',
         sprite: 'droplet',
-        count: [1, 2],
+        count: [2, 3],
         minCount: 1,
-        life: [0.35, 0.6],
+        life: [0.4, 0.7],
         speed: [0.3, 0.9],
         axis: 'down',
-        spread: 30,
-        size: [0.014, 0.024],
+        spread: 35,
+        size: [0.02, 0.035],
         color: POISON_C,
-        intensity: 3.2,
+        intensity: 3.5,
         intensityEnd: 1,
         gravity: 1,
-        stretch: 0.014,
+        stretch: 0.018,
       },
       {
         blend: 'add',
@@ -2601,13 +2641,28 @@ export const VFX_EFFECTS = {
         speed: [0.2, 0.5],
         axis: 'up',
         spread: 40,
-        size: [0.03, 0.05],
+        size: [0.04, 0.06],
         sizeEnd: 1.8,
         color: POISON_C,
         intensity: 2.5,
         intensityEnd: 0,
       },
-      billow('mist', POISON_MIST, [0, 1], [0.15, 0.25], 2.5, [0.7, 1.1], [0.1, 0.4], 0.45),
+      {
+        blend: 'add',
+        sprite: 'mist',
+        count: [1, 1],
+        minCount: 1,
+        life: [0.6, 1],
+        speed: [0.1, 0.4],
+        axis: 'up',
+        spread: 60,
+        size: [0.25, 0.4],
+        sizeEnd: 2,
+        color: POISON_C,
+        intensity: 0.4,
+        intensityEnd: 0,
+        drag: 1.5,
+      },
     ],
   },
   'status.voidMark': {
@@ -2622,7 +2677,7 @@ export const VFX_EFFECTS = {
   /** Fire + ice: a scalding steam burst, shattering ice, hot sparks. */
   'combo.thermoshock': {
     emitters: [
-      flashGlow([1, 0.95, 0.9], 1.5, 0.08, 4),
+      flashGlow([1, 0.72, 0.5], 1.1, 0.08, 2),
       billow('mist', [0.78, 0.8, 0.82], [8, 12], [0.5, 0.8], 3, [1, 1.8], [2, 5], 0.55, {
         axis: 'up',
         spread: 70,
@@ -2654,7 +2709,7 @@ export const VFX_EFFECTS = {
   /** Shock + poison: toxic green lightning bursting out of a sickly cloud. */
   'combo.neurotoxin': {
     emitters: [
-      flashGlow([0.7, 1, 0.4], 1.4, 0.08, 4),
+      flashGlow([0.6, 1, 0.3], 1, 0.08, 2),
       streaks([0.65, 1, 0.35], [14, 20], [6, 16], [0.08, 0.2], 14, 180, {
         drag: 6,
         stretch: 0.045,
@@ -2673,7 +2728,7 @@ export const VFX_EFFECTS = {
   /** Fire + poison: a green-cored toxic fireball and oily smoke. */
   'combo.toxicblaze': {
     emitters: [
-      flashGlow([0.8, 1, 0.4], 1.5, 0.09, 3.5),
+      flashGlow([0.7, 1, 0.3], 1.1, 0.09, 2),
       flames([8, 12], [0.4, 0.7], [0.4, 0.7], [1.5, 4], 3.5, {
         spread: 180,
         color: [0.6, 1, 0.2],
@@ -2695,16 +2750,16 @@ export const VFX_EFFECTS = {
     emitters: [
       {
         ...IMPACT_STAR,
-        count: [6, 8],
-        minCount: 3,
-        color: [0.85, 0.95, 1],
-        intensity: 14,
-        size: [0.4, 0.7],
+        count: [4, 6],
+        minCount: 2,
+        color: [0.55, 0.8, 1],
+        intensity: 7,
+        size: [0.35, 0.6],
         speed: [0, 2],
         spread: 180,
         jitter: 0.4,
       },
-      streaks([0.75, 0.9, 1], [16, 24], [8, 18], [0.08, 0.2], 16, 180, {
+      streaks([0.55, 0.8, 1], [16, 24], [8, 18], [0.08, 0.2], 12, 180, {
         drag: 6,
         stretch: 0.045,
         gravity: 0,
@@ -2747,7 +2802,7 @@ export const VFX_EFFECTS = {
         alphaEnd: 0.9,
         gravity: 0,
       }),
-      flashGlow([0.75, 0.45, 1], 1.6, 0.1, 4),
+      flashGlow([0.75, 0.45, 1], 1.1, 0.1, 2.5),
       shockRing(VOID_C, 0.3, 6, 0.3, 4.5),
       motes(VOID_C, [12, 18], [1.5, 5], [0.7, 1.5], 8),
     ],

@@ -25,6 +25,7 @@ import {
 import { WEAPON_SYNTH_DEFS, weaponSynthAlias } from './weaponSynth';
 import { ENEMY_SYNTH_DEFS, enemySynthAlias } from './enemySynth';
 import { ECONOMY_SYNTH_DEFS } from './economySynth';
+import { ARSENAL_SYNTH_DEFS, m5SynthAlias } from './arsenalSynth';
 
 const log = createLogger('Synth');
 const S = AUDIO.synth;
@@ -626,22 +627,41 @@ export const SYNTH_DEFS = {
   // Weapons, impacts, casings, hit feedback (audio/weaponSynth.ts) – rendered after movement.
   ...WEAPON_SYNTH_DEFS,
   ...ENEMY_SYNTH_DEFS,
-  // Purchases, doors, box, perks, power-ups, seals (M4, audio/economySynth.ts) – rendered last.
+  // Purchases, doors, box, perks, power-ups, seals (M4, audio/economySynth.ts).
   ...ECONOMY_SYNTH_DEFS,
+  // M5 arsenal: weapons, loops, elements, gear (audio/arsenalSynth.ts + energy/element/gear) – rendered last.
+  ...ARSENAL_SYNTH_DEFS,
 } as const satisfies Record<string, SynthDef>;
 
 export type SynthId = keyof typeof SYNTH_DEFS;
 
 export const SYNTH_IDS = Object.keys(SYNTH_DEFS) as readonly SynthId[];
 
+function isSynthDef(id: string): id is SynthId {
+  return Object.prototype.hasOwnProperty.call(SYNTH_DEFS, id);
+}
+
+/** An id with a recipe or an M2 weapon alias (the M5 aliases never shadow either). */
+function knownBeforeM5(id: string): boolean {
+  return isSynthDef(id) || weaponSynthAlias(id) !== null;
+}
+
 /**
- * Synth id for a sound id: exact match, a weapon-sound alias (weaponSynth.ts), or `footstep.default`
- * for unknown surfaces; null otherwise.
+ * Synth id for a sound id: exact match, a weapon-sound alias (weaponSynth.ts), an enemy alias, an
+ * M5 convention alias (arsenalSynth.ts: missing reload steps, per-weapon dry clicks, field kinds ×
+ * elements, grenade flight loops, unknown abilities), or `footstep.default` for unknown surfaces;
+ * null otherwise.
  */
 export function resolveSynthId(id: string): SynthId | null {
-  if (Object.prototype.hasOwnProperty.call(SYNTH_DEFS, id)) return id as SynthId;
+  if (isSynthDef(id)) return id;
   const alias = weaponSynthAlias(id) ?? enemySynthAlias(id);
   if (alias) return alias;
+  const m5 = m5SynthAlias(id, knownBeforeM5);
+  if (m5 !== null) {
+    if (isSynthDef(m5)) return m5;
+    const via = weaponSynthAlias(m5);
+    if (via) return via;
+  }
   if (id.startsWith('footstep.')) return 'footstep.default';
   return null;
 }

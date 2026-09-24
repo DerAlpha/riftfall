@@ -14,6 +14,7 @@ import {
   type BufferGeometry,
 } from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const HALF_PI = Math.PI / 2;
 /** Normals tilted 45° off every face axis count as fully worn. */
@@ -160,4 +161,100 @@ export function chamferRectProfile(w: number, h: number, cTop: number, cBottom =
     [-x + cBottom, -y],
     [x - cBottom, -y],
   ];
+}
+
+/**
+ * Hard-edged lathe around the Z axis from [radius, forward] points (like `latheZ`), but every
+ * profile segment becomes its own band: normals stay crisp at the corners (scope tubes, drums,
+ * barrels, muzzle devices) while the revolution stays smooth. Traverse the profile so the outside
+ * is on the right (outer walls forward, bores backward). Short bands (< `bevelLength`) and bands
+ * off the axial/radial directions count as worn edges.
+ */
+export function latheZHard(
+  points: readonly ProfilePoint[],
+  segments = 20,
+  bevelLength = 0.003,
+): BufferGeometry {
+  const bands: BufferGeometry[] = [];
+  for (let i = 0; i + 1 < points.length; i++) {
+    const [r0, f0] = points[i]!;
+    const [r1, f1] = points[i + 1]!;
+    const dr = r1 - r0;
+    const df = f1 - f0;
+    const len = Math.hypot(dr, df);
+    if (len < 1e-7 || (r0 <= 0 && r1 <= 0)) continue;
+    const band = new LatheGeometry(
+      [new Vector2(Math.max(0, r0), f0), new Vector2(Math.max(0, r1), f1)],
+      segments,
+    );
+    band.rotateX(-HALF_PI);
+    const straight = Math.max(Math.abs(dr), Math.abs(df)) / len;
+    const w = len < bevelLength ? 1 : Math.min(1, Math.max(0, (1 - straight) / WEAR_FULL));
+    const count = band.getAttribute('position').count;
+    band.setAttribute('wear', new BufferAttribute(new Float32Array(count).fill(w), 1));
+    bands.push(band);
+  }
+  const merged = bands.length === 1 ? bands[0]! : mergeGeometries(bands);
+  if (bands.length > 1) for (const b of bands) b.dispose();
+  return merged ?? new CylinderGeometry(0, 0, 0, 3);
+}
+
+/** Hollow tube along −Z (length `len` from the origin forward), crisp rims: scope tubes, shrouds, sleeves. */
+export function tubeZ(rOuter: number, rInner: number, len: number, segments = 24): BufferGeometry {
+  return latheZHard(
+    [
+      [rInner, 0],
+      [rOuter, 0],
+      [rOuter, len],
+      [rInner, len],
+      [rInner, 0],
+    ],
+    segments,
+  );
+}
+
+/** Regular polygon outline [x, y] (hex shrouds, octagonal housings); `rotDeg` turns the first corner. */
+export function regularPolygonProfile(radius: number, sides: number, rotDeg = 0): ProfilePoint[] {
+  const pts: ProfilePoint[] = [];
+  const n = Math.max(3, Math.round(sides));
+  for (let i = 0; i < n; i++) {
+    const a = ((rotDeg + (360 * i) / n) * Math.PI) / 180;
+    pts.push([Math.cos(a) * radius, Math.sin(a) * radius]);
+  }
+  return pts;
+}
+
+/** Annulus-sector outline [x, y] (heat shields, feed trays, arched covers) between two angles. */
+export function arcBandProfile(
+  rOuter: number,
+  rInner: number,
+  fromDeg: number,
+  toDeg: number,
+  steps: number,
+): ProfilePoint[] {
+  const pts: ProfilePoint[] = [];
+  const n = Math.max(1, Math.round(steps));
+  for (let i = 0; i <= n; i++) {
+    const a = ((fromDeg + ((toDeg - fromDeg) * i) / n) * Math.PI) / 180;
+    pts.push([Math.cos(a) * rOuter, Math.sin(a) * rOuter]);
+  }
+  for (let i = n; i >= 0; i--) {
+    const a = ((fromDeg + ((toDeg - fromDeg) * i) / n) * Math.PI) / 180;
+    pts.push([Math.cos(a) * rInner, Math.sin(a) * rInner]);
+  }
+  return pts;
+}
+
+/**
+ * Point `s` meters down a grip axis that starts at [0, topY, topZ] and leans back by `tiltDeg`
+ * (negative = bottom towards the stock, like every pistol grip).
+ */
+export function tiltedAxisPoint(
+  tiltDeg: number,
+  topY: number,
+  topZ: number,
+  s: number,
+): [number, number, number] {
+  const a = (tiltDeg * Math.PI) / 180;
+  return [0, topY - Math.cos(a) * s, topZ - Math.sin(a) * s];
 }

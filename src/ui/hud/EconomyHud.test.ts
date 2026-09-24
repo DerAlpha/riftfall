@@ -274,6 +274,16 @@ describe('EconomyHud (through Hud)', () => {
       expect(q(root, '.hud-powerups').hidden).toBe(true);
     });
 
+    it('sits above the intermission countdown and pushes it down only while a timer runs', () => {
+      const timers = q(root, '.hud-powerups');
+      const countdown = q(root, '.hud-countdown');
+      expect(timers.hidden).toBe(true);
+      // DOM order drives the CSS sibling rule (.hud-powerups:not([hidden]) ~ .hud-countdown).
+      expect(timers.compareDocumentPosition(countdown) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      events.emit('powerup:collected', { type: 'slowmo', position: { x: 0, y: 0, z: 0 }, duration: 10 });
+      expect(timers.hidden).toBe(false);
+    });
+
     it('counts down on its own without a source and ignores instant power-ups', () => {
       events.emit('powerup:collected', { type: 'maxAmmo', position: { x: 0, y: 0, z: 0 }, duration: 0 });
       hud.update(0.016, 0);

@@ -322,15 +322,21 @@ export interface RangeDef {
 }
 
 /**
- * Look and sound of a perk blast (perkHooks createPerkBlastFx, wired by Game): its own VFX preset –
- * a floor-level burst without the frag explosion's smoke, scorch and full-strength shake, which
- * would bury the first-person camera at the player's feet on every reload – plus an optional
- * screen shockwave and a positional sound.
+ * Look and sound of a perk blast (perkHooks createPerkBlastFx, wired by Game): its own VFX presets
+ * instead of the frag explosion, whose smoke, scorch, large billboards and full-strength shake would
+ * bury the first-person camera at the player's feet on every reload. The center effect (flash
+ * light, shake, sparks hopping along the floor) sits straight below the camera, out of view, so the
+ * visible part is a ring of small bursts around the player; plus an optional screen shockwave and
+ * a positional sound.
  */
 export interface PerkBlastFxDef {
-  /** VFX preset id (defs/vfx.ts VFX_EFFECTS); effect scale = blast radius ÷ referenceRadius. */
+  /** Center VFX preset id (defs/vfx.ts VFX_EFFECTS); effect scale = blast radius ÷ referenceRadius. */
   readonly effect: string;
   readonly referenceRadius: number;
+  /** Burst preset spawned `ringCount` times on a circle of `ringRadius` × blast radius (null = none). */
+  readonly ring: string | null;
+  readonly ringCount: number;
+  readonly ringRadius: number;
   /** Screen-space shockwave strength (0 = none); world radius = blast radius × shockwaveRadius. */
   readonly shockwave: number;
   readonly shockwaveRadius: number;
@@ -383,6 +389,9 @@ export const PERK_TUNING = {
     fx: {
       effect: 'perk.nova',
       referenceRadius: 4,
+      ring: 'perk.nova.arc',
+      ringCount: 10,
+      ringRadius: 0.5,
       shockwave: 0.35,
       shockwaveRadius: 1.2,
       sound: 'explosion',
@@ -407,6 +416,9 @@ export const PERK_TUNING = {
     fx: {
       effect: 'perk.kinetic',
       referenceRadius: 4.5,
+      ring: 'perk.kinetic.dust',
+      ringCount: 8,
+      ringRadius: 0.45,
       shockwave: 0.6,
       shockwaveRadius: 1.3,
       sound: 'enemy.tank.slam',
@@ -438,6 +450,9 @@ export const PERK_TUNING = {
     fx: {
       effect: 'perk.phoenix',
       referenceRadius: 4.5,
+      ring: 'perk.phoenix.flare',
+      ringCount: 10,
+      ringRadius: 0.5,
       shockwave: 0.7,
       shockwaveRadius: 1.3,
       sound: 'explosion',

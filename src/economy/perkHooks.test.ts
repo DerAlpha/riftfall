@@ -107,18 +107,33 @@ describe('perk blast math', () => {
 describe('perk blast FX', () => {
   it('each blast has its own smoke-free preset; the FX spawns it scaled, with shockwave and sound', () => {
     for (const def of [PERK_TUNING.nova, PERK_TUNING.kinetic, PERK_TUNING.phoenix]) {
-      const preset = getEffectPreset(def.fx.effect);
-      expect(preset, def.fx.effect).toBeDefined();
-      // Smoke / dust clouds at the player's feet would bury the first-person view.
-      for (const e of preset!.emitters) expect(['smoke', 'smokeB', 'mist']).not.toContain(e.sprite);
-      expect(preset!.groundDecal, def.fx.effect).toBeUndefined();
-      expect(preset!.shake?.trauma ?? 0).toBeLessThan(0.6);
+      const center = getEffectPreset(def.fx.effect);
+      expect(center, def.fx.effect).toBeDefined();
+      expect(center!.groundDecal, def.fx.effect).toBeUndefined();
+      expect(center!.shake?.trauma ?? 0).toBeLessThan(0.6);
+      // Straight below the first-person camera: no smoke and no big billboards (a quad centered
+      // there lies right in front of the near plane and veils the whole screen).
+      for (const e of center!.emitters) {
+        expect(['smoke', 'smokeB', 'mist', 'glow', 'ring'], def.fx.effect).not.toContain(e.sprite);
+        expect(e.size[1] * (e.sizeEnd ?? 1), def.fx.effect).toBeLessThan(0.5);
+      }
+      const ring = getEffectPreset(def.fx.ring!);
+      expect(ring, def.fx.ring!).toBeDefined();
+      for (const e of ring!.emitters)
+        expect(['smoke', 'smokeB', 'mist'], def.fx.ring!).not.toContain(e.sprite);
+      expect(ring!.light, 'one flash light per blast (center)').toBeUndefined();
     }
     const spawned: { id: string; y: number; scale: number }[] = [];
+    const ringAt: number[] = [];
     const waves: number[][] = [];
     const sounds: { id: string; x: number; volume: number; pitch: number }[] = [];
     const fx = createPerkBlastFx({
-      vfx: { spawn: (id, p, _n, scale = 1) => spawned.push({ id, y: p.y, scale }) },
+      vfx: {
+        spawn: (id, p, _n, scale = 1) => {
+          spawned.push({ id, y: p.y, scale });
+          if (id === PERK_TUNING.nova.fx.ring) ringAt.push(Math.hypot(p.x - 3, p.z + 2));
+        },
+      },
       audio: {
         play: (id, o) => sounds.push({ id, x: o!.position!.x, volume: o!.volume!, pitch: o!.pitch! }),
       },
@@ -127,7 +142,10 @@ describe('perk blast FX', () => {
     const def = PERK_TUNING.nova;
     const pos = { x: 3, y: 0.15, z: -2 };
     fx(pos, def.fx.referenceRadius * 1.5, def, 'nova');
-    expect(spawned).toEqual([{ id: def.fx.effect, y: 0.15, scale: 1.5 }]);
+    expect(spawned[0]).toEqual({ id: def.fx.effect, y: 0.15, scale: 1.5 });
+    expect(spawned.slice(1)).toHaveLength(def.fx.ringCount);
+    for (const s of spawned.slice(1)) expect(s).toEqual({ id: def.fx.ring, y: 0.15, scale: 1.5 });
+    for (const d of ringAt) expect(d).toBeCloseTo(def.fx.referenceRadius * 1.5 * def.fx.ringRadius);
     expect(waves).toEqual([[def.fx.referenceRadius * 1.5 * def.fx.shockwaveRadius, def.fx.shockwave]]);
     expect(sounds).toEqual([{ id: def.fx.sound, x: 3, volume: def.fx.volume, pitch: def.fx.pitch }]);
     // Headless (no VFX / audio / render): nothing to show, nothing breaks.

@@ -189,6 +189,8 @@ export interface PerkBlastFxDeps {
 }
 
 const UP: Vec3Like = { x: 0, y: 1, z: 0 };
+const TAU = Math.PI * 2;
+const _ring = { x: 0, y: 0, z: 0 };
 
 /** The blasts' own look and sound (PerkBlastDef.fx): VFX preset, screen shockwave, positional sound. */
 export function createPerkBlastFx(deps: PerkBlastFxDeps): PerkBlastFx {
@@ -202,7 +204,21 @@ export function createPerkBlastFx(deps: PerkBlastFxDeps): PerkBlastFx {
   return (position, radius, def) => {
     const fx = def.fx;
     const scale = fx.referenceRadius > 0 ? radius / fx.referenceRadius : 1;
-    deps.vfx?.spawn(fx.effect, position, UP, scale);
+    const vfx = deps.vfx;
+    if (vfx) {
+      vfx.spawn(fx.effect, position, UP, scale);
+      if (fx.ring) {
+        const r = radius * fx.ringRadius;
+        const n = Math.max(0, Math.floor(fx.ringCount));
+        for (let i = 0; i < n; i++) {
+          const a = ((i + 0.5) / n) * TAU;
+          _ring.x = position.x + Math.cos(a) * r;
+          _ring.y = position.y;
+          _ring.z = position.z + Math.sin(a) * r;
+          vfx.spawn(fx.ring, _ring, UP, scale);
+        }
+      }
+    }
     const k = deps.shockwaveScale ? clamp01(deps.shockwaveScale()) : 1;
     if (fx.shockwave > 0 && k > 0) deps.shockwave?.(position, radius * fx.shockwaveRadius, fx.shockwave * k);
     if (fx.sound && deps.audio) {

@@ -63,6 +63,7 @@ export class PowerUpHud {
   constructor(layer: HTMLElement, tintParent: HTMLElement | null, tintBefore: HTMLElement | null) {
     // First in the layer: the intermission countdown (a later sibling) moves down while timers show.
     this.el = h('div', 'hud-powerups');
+    this.el.hidden = true;
     layer.prepend(this.el);
     for (const id of POWERUP_IDS) {
       const def = POWERUP_DEFS[id]!;

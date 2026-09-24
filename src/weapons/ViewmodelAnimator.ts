@@ -467,6 +467,12 @@ export class ViewmodelAnimator {
     }
     this.stepDrivers(dt);
     this.abilityGlow = damp(this.abilityGlow, this.abilityGlowTarget, ABILITY_RULES.glowLambda, dt);
+    if (this.beamSource > 0 && this.wdef?.kind === 'beam') {
+      const B = A.beamGlow;
+      const shimmer = 1 + B.shimmerDepth * (this.fx.flicker ?? 1) * Math.sin(this.time * B.shimmerRate);
+      this.lightFlash = Math.max(this.lightFlash, B.light * shimmer);
+      this.accentFlash = Math.max(this.accentFlash, B.accent);
+    }
     const accentFlash = this.accentFlash * this.flashScale;
     this.muzzleFlash = this.lightFlash * this.flashScale;
     this.accentFlash *= Math.exp(-A.accentPulse.flashDecay * dt);
@@ -568,8 +574,11 @@ export class ViewmodelAnimator {
     this.cancelInspect();
     // Safety: shots only come after a reload ended (the weapon system sends reloadEnd first).
     if (this.reloadActive && !this.reloadEnded) this.endReload(false);
-    this.lightFlash = 1;
-    this.accentFlash = 1;
+    // Beam ticks hold a steady glow while the beam burns (update), a shot flashes.
+    if (this.wdef?.kind !== 'beam') {
+      this.lightFlash = 1;
+      this.accentFlash = 1;
+    }
     const cached = this.ammo.get(weaponId);
     if (cached) cached.mag = ammoInMag;
     this.model?.setAmmo(ammoInMag, cached?.magSize ?? this.wdef?.magazine ?? ammoInMag);

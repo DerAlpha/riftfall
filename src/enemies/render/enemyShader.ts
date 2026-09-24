@@ -53,7 +53,7 @@ import {
 const log = createLogger('EnemyShader');
 
 /** Bump when the injected GLSL changes (program cache keys). */
-export const ENEMY_SHADER_KEY = 'rf-enemy-4';
+export const ENEMY_SHADER_KEY = 'rf-enemy-5';
 
 /** vec4 entries per material zone in `rfZones`. */
 export const ZONE_VEC4 = 6;
@@ -94,6 +94,7 @@ attribute vec4 rfPose0; // locomotion, phase, attackId, attack
 attribute vec4 rfPose1; // stagger, death, dissolve, emerge
 attribute vec4 rfPose2; // hitFlash, lookYaw, lookPitch, seed
 attribute vec4 rfRimAttr; // rim rgb, rim strength
+attribute vec4 rfPose3; // M6 emissive boost (pose.glow), spare, spare, spare
 
 uniform highp sampler2D rfRig;
 uniform ivec4 rfLayout; // attackBase, boneBase, partBase, motionBase (texels)
@@ -198,6 +199,7 @@ void rfSetup() {
 		}
 		rfGlowBoost = k.z * max( rfEW, rfES );
 	}
+	rfGlowBoost += max( rfPose3.x, 0.0 );
 	rfStagger = clamp( rfPose1.x, 0.0, 1.0 );
 	rfDeath = clamp( rfPose1.y, 0.0, 1.0 );
 	rfEmergeInv = 1.0 - clamp( rfPose1.w, 0.0, 1.0 );

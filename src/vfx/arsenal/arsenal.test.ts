@@ -333,7 +333,7 @@ describe('ArsenalVfx pools and handles', () => {
       style.fadeInDistance = fadeInDistance;
       const { arsenal, particles } = rig();
       const cam = new THREE.PerspectiveCamera();
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 90; i++) {
         arsenal.beam('beam.flame', nozzle, { x: 0, y: 1.2, z: -9 }, [], 0);
         arsenal.update(1 / 60);
         particles.update(1 / 60, cam);
@@ -354,9 +354,67 @@ describe('ArsenalVfx pools and handles', () => {
     };
     const before = burn(0);
     const after = burn(style.fadeInDistance);
-    expect(after.near).toBeLessThan(before.near * 0.35);
+    expect(after.near / after.total).toBeLessThan((before.near / before.total) * 0.4);
     // The body of the stream further out keeps most of its fire.
     expect(after.total - after.near).toBeGreaterThan((before.total - before.near) * 0.7);
+  });
+
+  it('sustained beam / field lights hold their level with a bounded flicker, steady with reduce flashing', () => {
+    /** Brightest pool light per 60 Hz frame (VfxSystem order: age, end frame, arsenal update). */
+    const run = (flashScale: number, drive: (a: ArsenalVfx, frame: number) => void) => {
+      const { arsenal, lights } = rig();
+      arsenal.setFlashScale(flashScale);
+      const out: number[] = [];
+      for (let i = 0; i < 90; i++) {
+        lights.update(1 / 60);
+        lights.endFrame();
+        drive(arsenal, i);
+        arsenal.update(1 / 60);
+        if (i >= 30) out.push(Math.max(...lights.lights.map((l) => l.intensity)));
+      }
+      arsenal.dispose();
+      return out;
+    };
+    const swing = (v: number[]) => (Math.max(...v) - Math.min(...v)) / Math.max(...v);
+    const flame = (a: ArsenalVfx) =>
+      a.beam('beam.flame', { x: 0, y: 1.4, z: -0.5 }, { x: 0, y: 1.2, z: -9 }, [], 0);
+    let field = 0;
+    const pool = (a: ArsenalVfx, frame: number) => {
+      if (frame === 0) field = a.fieldStart('field.damage.fire', { x: 0, y: 0, z: -5 }, 3, 5);
+    };
+    // Before: every re-flash decayed to ~0.14 of its peak before the next one (a 14–17 Hz strobe).
+    for (const drive of [flame, pool]) {
+      const normal = run(1, drive);
+      expect(Math.min(...normal)).toBeGreaterThan(0);
+      expect(swing(normal)).toBeLessThan(0.45);
+      const reduced = run(ARSENAL_VFX.reducedFlashingScale, drive);
+      expect(swing(reduced)).toBeLessThan(1e-3);
+    }
+    expect(field).toBeGreaterThan(0);
+  });
+
+  it('a flame blocked right in front of the eye spawns and lights less (no white-out)', () => {
+    const burn = (to: Vec3Like) => {
+      const { arsenal, particles, lights } = rig();
+      let light = 0;
+      for (let i = 0; i < 60; i++) {
+        lights.update(1 / 60);
+        lights.endFrame();
+        arsenal.beam('beam.flame', { x: 0, y: 1.4, z: -0.5 }, to, [], 0);
+        arsenal.update(1 / 60);
+        particles.update(1 / 60, new THREE.PerspectiveCamera());
+        light = Math.max(light, ...lights.lights.map((l) => l.intensity));
+      }
+      const n = particles.additiveBuffer.count;
+      arsenal.dispose();
+      return { n, light };
+    };
+    const open = burn({ x: 0, y: 1.4, z: -9.5 });
+    const wall = burn({ x: 0, y: 1.4, z: -1.5 });
+    const cr = BEAM_STYLES['beam.flame'].closeRange;
+    expect(wall.n).toBeLessThan(open.n * (cr.rate + 0.25));
+    expect(wall.light).toBeLessThan(open.light * (cr.light + 0.2));
+    expect(wall.light).toBeGreaterThan(0);
   });
 
   it('flameFadeIn solves the flight time under linear drag', () => {

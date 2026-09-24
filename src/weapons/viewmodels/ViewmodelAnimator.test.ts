@@ -456,6 +456,57 @@ describe('ViewmodelAnimator', () => {
     expect(() => step(1)).not.toThrow();
   });
 
+  it('a burning beam holds a steady muzzle light and accent glow instead of strobing per damage tick', () => {
+    const id = 'flamethrower';
+    const tick = 1 / WEAPONS[id].beam!.tickRate;
+    /** Muzzle light / accent flash per 60 Hz frame over 1 s of burning (after 0.2 s of ramp-up). */
+    const burn = (a: ViewmodelAnimator) => {
+      a.snapTo(id);
+      step(0.2);
+      events.emit('weapon:beam', { weaponId: id, active: true });
+      const light: number[] = [];
+      const accent: number[] = [];
+      let clock = 0;
+      for (let i = 0; i < 72; i++) {
+        clock += DT;
+        if (clock >= tick) {
+          clock -= tick;
+          events.emit('weapon:fired', fired(id, 100));
+        }
+        a.update(DT, 0, 0);
+        const fx = (a as unknown as { fx: { flash: number } }).fx;
+        if (i >= 12) {
+          light.push(a.muzzleFlash);
+          accent.push(fx.flash);
+        }
+      }
+      events.emit('weapon:beam', { weaponId: id, active: false });
+      return { light, accent };
+    };
+    const swing = (v: number[]) => (Math.max(...v) - Math.min(...v)) / Math.max(...v);
+    const { light, accent } = burn(anim);
+    // Before: back to 1 on every 12 Hz tick, down to ~0.06 in between (a 12 Hz strobe).
+    expect(Math.min(...light)).toBeGreaterThan(0.2);
+    expect(swing(light)).toBeLessThan(0.35);
+    expect(swing(accent)).toBeLessThan(0.35);
+    // Reduce flashing: dimmer and perfectly steady.
+    events.emit('settings:changed', {
+      settings: { accessibility: { reduceFlashing: true } } as unknown as GameEvents['settings:changed']['settings'],
+      sections: ['accessibility'],
+    });
+    const reduced = burn(anim);
+    expect(swing(reduced.light)).toBeLessThan(1e-6);
+    expect(Math.max(...reduced.light)).toBeLessThan(Math.max(...light));
+    // It dies down once the beam stops; a gun shot still flashes fully.
+    step(0.5);
+    expect(anim.muzzleFlash).toBeLessThan(0.01);
+    anim.snapTo('rifle');
+    step(0.2);
+    events.emit('weapon:fired', fired('rifle', 20));
+    anim.update(DT, 0, 0);
+    expect(anim.muzzleFlash).toBeCloseTo(VIEWMODEL_ANIM.reducedFlashScale, 9);
+  });
+
   it('heat builds with sustained fire and cools down', () => {
     anim.snapTo('rifle');
     const interval = 60 / WEAPONS.rifle.rpm;

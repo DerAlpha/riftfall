@@ -106,6 +106,8 @@ interface TypeState {
   readonly pose1: InstancedBufferAttribute;
   readonly pose2: InstancedBufferAttribute;
   readonly rim: InstancedBufferAttribute;
+  /** rfPose3: M6 emissive boost (pose.glow); y..w spare for further per-instance effects. */
+  readonly fx: InstancedBufferAttribute;
   /** instanceMatrix + the pose attributes (upload order), with one reused update range each. */
   readonly attrs: readonly InstancedBufferAttribute[];
   readonly ranges: UpdateRange[];
@@ -293,6 +295,7 @@ export class EnemyRenderer implements EnemyVisualsApi {
     s[o + SLOT.lookYaw] = finiteOr(pose.lookYaw, 0);
     s[o + SLOT.lookPitch] = finiteOr(pose.lookPitch, 0);
     s[o + SLOT.rim] = finiteOr(pose.rim, 0);
+    s[o + SLOT.glow] = Math.max(0, finiteOr(pose.glow, 0));
     const c = pose.rimColor;
     if (c) {
       s[o + SLOT.rimR] = finiteOr(c.r, 0);
@@ -464,6 +467,7 @@ export class EnemyRenderer implements EnemyVisualsApi {
       (ts.pose1.array as Float32Array).set([0, 0, 1, 1], 0);
       (ts.pose2.array as Float32Array).set([0, 0, 0, 0], 0);
       (ts.rim.array as Float32Array).set([0, 0, 0, 0], 0);
+      (ts.fx.array as Float32Array).set([0, 0, 0, 0], 0);
       for (const attr of ts.attrs) {
         attr.clearUpdateRanges();
         attr.needsUpdate = true;
@@ -554,6 +558,7 @@ export class EnemyRenderer implements EnemyVisualsApi {
     const pose1 = attr('rfPose1');
     const pose2 = attr('rfPose2');
     const rim = attr('rfRimAttr');
+    const fx = attr('rfPose3');
     // Frustum culling uses this sphere (camera and shadow cascades); update() keeps it around the
     // active instances.
     const sphere = new Sphere(new Vector3(), 0);
@@ -576,8 +581,9 @@ export class EnemyRenderer implements EnemyVisualsApi {
       pose1,
       pose2,
       rim,
-      attrs: [mesh.instanceMatrix, pose0, pose1, pose2, rim],
-      ranges: [0, 1, 2, 3, 4].map(() => ({ start: 0, count: 0 })),
+      fx,
+      attrs: [mesh.instanceMatrix, pose0, pose1, pose2, rim, fx],
+      ranges: [0, 1, 2, 3, 4, 5].map(() => ({ start: 0, count: 0 })),
       latest: new Float32Array(slots * SLOT_STRIDE),
       curr: new Float32Array(slots * SLOT_STRIDE),
       prev: new Float32Array(slots * SLOT_STRIDE),
@@ -694,6 +700,7 @@ export class EnemyRenderer implements EnemyVisualsApi {
     const p1 = ts.pose1.array as Float32Array;
     const p2 = ts.pose2.array as Float32Array;
     const rim = ts.rim.array as Float32Array;
+    const fx = ts.fx.array as Float32Array;
     const prev = ts.prev;
     const curr = ts.curr;
     let k = 0;
@@ -761,6 +768,7 @@ export class EnemyRenderer implements EnemyVisualsApi {
       rim[q + 1] = curr[o + SLOT.rimG]!;
       rim[q + 2] = curr[o + SLOT.rimB]!;
       rim[q + 3] = lerpAt(prev, curr, o + SLOT.rim, alpha);
+      fx[q] = lerpAt(prev, curr, o + SLOT.glow, alpha);
       if (emerge < 1 && curr[o + SLOT.death]! <= 0) {
         this.tears.push(
           x,

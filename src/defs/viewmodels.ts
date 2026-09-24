@@ -560,6 +560,12 @@ export const VIEWMODEL_ANIM = {
    * from the muzzle socket (up/back) so the barrel, handguard and sight catch the flash.
    */
   muzzleLight: { intensity: 0.5, distance: 0.9, decay: 34, offset: V(0, 0.05, 0.02) },
+  /**
+   * Beam weapons report every damage tick (10–12 Hz) as a shot: re-flashing the muzzle light and
+   * the accents on each tick would strobe the weapon. While the beam burns both hold a steady
+   * level instead (fractions of a shot's flash) with a soft shimmer (none with reduce flashing).
+   */
+  beamGlow: { light: 0.55, accent: 0.4, shimmerRate: 17, shimmerDepth: 0.12 },
   /** Settle time for parts returning to rest after a reload ends (s). */
   partSettleTime: 0.08,
   /** Heat glow shimmer (rad/s) and depth (0..1). */

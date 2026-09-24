@@ -70,8 +70,14 @@ export interface SustainLightDef {
   /** Peak intensity (candela) of each re-flash. */
   readonly intensity: number;
   readonly range: number;
-  /** Seconds between re-flashes; each flash decays over `interval × 1.6` (flicker comes for free). */
+  /**
+   * The light is refreshed every frame at a level that wanders to a new random value in
+   * [1 − flicker, 1] every `interval` s (linear in between); after the effect's last frame it
+   * fades out over `interval × 1.6`. No flicker with reduce flashing.
+   */
   readonly interval: number;
+  /** Flicker depth (0..1); default ARSENAL_VFX.sustainFlicker. */
+  readonly flicker?: number;
   /** Offset along the effect normal / beam (m). */
   readonly offset?: number;
 }
@@ -431,6 +437,12 @@ export interface FlameBeamDef {
    */
   readonly fadeInDistance: number;
   readonly fadeInReach: number;
+  /**
+   * A short stream (a wall or an enemy right in front) packs all its particles and the light
+   * next to the eye: below `length` m the particle / hit spawn rates scale down to `rate` and the
+   * light to `light` (linear in the length) – the same fire, not a white-out.
+   */
+  readonly closeRange: { readonly length: number; readonly rate: number; readonly light: number };
   readonly color: Rgb;
   readonly colorEnd: Rgb;
   readonly intensity: number;
@@ -516,7 +528,7 @@ export const BEAM_STYLES = {
     hitEffect: 'beam.lightning.hit',
     hitRate: 18,
     arcRate: 8,
-    light: { color: [0.45, 0.62, 1], intensity: 40, range: 7, interval: 0.07, offset: 0.3 },
+    light: { color: [0.45, 0.62, 1], intensity: 40, range: 7, interval: 0.07, offset: 0.3, flicker: 0.4 },
   },
   /** FW-4 Inferno: a roaring particle cone, white-yellow at the nozzle, dark red at the tips. */
   'beam.flame': {
@@ -531,6 +543,7 @@ export const BEAM_STYLES = {
     stretch: 0.018,
     fadeInDistance: 1.6,
     fadeInReach: 0.45,
+    closeRange: { length: 5, rate: 0.35, light: 0.25 },
     color: [1, 0.72, 0.34],
     colorEnd: [0.72, 0.1, 0.02],
     intensity: 1.7,
@@ -549,7 +562,7 @@ export const BEAM_STYLES = {
     muzzleRate: 6,
     hitEffect: 'beam.flame.hit',
     hitRate: 14,
-    light: { color: [1, 0.5, 0.18], intensity: 70, range: 8, interval: 0.06 },
+    light: { color: [1, 0.5, 0.18], intensity: 70, range: 8, interval: 0.06, flicker: 0.3 },
     lightAlong: 0.45,
     haze: { strength: 0.006, radiusFrom: 0.06, radiusTo: 1.1 },
   },
@@ -861,6 +874,8 @@ export const ARSENAL_VFX = {
   charge: { renderOrder: 51 },
   /** Glow / beam / charge brightness with the reduce-flashing option (lights: VFX.lights). */
   reducedFlashingScale: 0.6,
+  /** Default flicker depth of sustained lights (SustainLightDef.flicker). */
+  sustainFlicker: 0.2,
   /** Screen-space lenses at once (singularity fields + void orbs; ShockwaveEffect slots). */
   lenses: POSTFX.shockwave.maxLenses,
   /** Screen-space heat hazes at once (flame streams; ShockwaveEffect slots). */

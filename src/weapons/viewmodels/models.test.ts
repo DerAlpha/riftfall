@@ -235,6 +235,35 @@ describe('weapon viewmodel models', () => {
     expect(modelSpace(model('shotgun').sight, model('shotgun').root).y).toBeCloseTo(SHOTGUN_SIGHT_LINE, 9);
   });
 
+  it('an empty readout blinks hard, and pulses softly with reduce flashing', () => {
+    const m = model('smg');
+    m.setAmmo(0, 30);
+    const readout = (): number => {
+      let v = -1;
+      m.root.traverse((o) => {
+        const mat = (o as Mesh).material as MeshStandardMaterial | undefined;
+        if (mat?.name === 'vm-readout') v = mat.emissiveIntensity;
+      });
+      return v;
+    };
+    const maxJump = (flicker: number): number => {
+      let prev = -1;
+      let jump = 0;
+      let hi = 0;
+      for (let i = 0; i <= 120; i++) {
+        m.animate({ time: i / 60, heat: 0, flash: 0, flicker });
+        const v = readout();
+        hi = Math.max(hi, v);
+        if (prev >= 0) jump = Math.max(jump, Math.abs(v - prev));
+        prev = v;
+      }
+      return jump / hi;
+    };
+    expect(maxJump(1)).toBeGreaterThan(0.5);
+    expect(maxJump(0)).toBeLessThan(0.15);
+    m.setAmmo(30, 30);
+  });
+
   it('the loading shell is hidden at rest', () => {
     expect(model('shotgun').parts.shell!.visible).toBe(false);
     expect(model('pistol').parts.magazine!.visible).toBe(true);

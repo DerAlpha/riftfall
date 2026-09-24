@@ -535,10 +535,13 @@ export class ArsenalBeams {
     const dy = (t.y - f.y) / len;
     const dz = (t.z - f.z) / len;
     const k = ctx.flashScale;
+    const cr = s.closeRange;
+    const near = Math.min(1, len / Math.max(cr.length, 1e-3));
+    const rateScale = cr.rate + (1 - cr.rate) * near;
     // Particles: launched so linear drag brings them to rest at the beam end as they die.
     const buf = ctx.particles?.additiveBuffer;
     if (buf && ctx.budget > 0) {
-      ch.emitAcc += dt * s.rate * ctx.budget;
+      ch.emitAcc += dt * s.rate * rateScale * ctx.budget;
       const cosMax = Math.cos((s.spreadDeg * Math.PI) / 180);
       let guard = 0;
       while (ch.emitAcc >= 1 && guard++ < ARSENAL_VFX.beams.maxFlameSpawnsPerFrame) {
@@ -624,7 +627,7 @@ export class ArsenalBeams {
     _n.x = -dx;
     _n.y = -dy;
     _n.z = -dz;
-    ch.hitAcc += dt * s.hitRate;
+    ch.hitAcc += dt * s.hitRate * rateScale;
     while (ch.hitAcc >= 1) {
       ch.hitAcc -= 1;
       ctx.spawn(s.hitEffect, t, _n, 1);
@@ -633,7 +636,7 @@ export class ArsenalBeams {
     _p.x = f.x + dx * len * s.lightAlong;
     _p.y = f.y + dy * len * s.lightAlong;
     _p.z = f.z + dz * len * s.lightAlong;
-    this.light(ch, s.light, dt, _p, null);
+    this.light(ch, s.light, dt, _p, null, cr.light + (1 - cr.light) * near);
   }
 
   private drawRay(ch: BeamChannel, s: RayBeamDef, dt: number): void {
@@ -668,10 +671,11 @@ export class ArsenalBeams {
     dt: number,
     at: Vec3Like,
     normal: Vec3Like | null,
+    scale = 1,
   ): void {
     if (!def || this.lit >= ARSENAL_VFX.beams.lights) return;
     this.lit++;
-    sustainLight(this.ctx, ch.light, def, 1, dt, at, normal, this.ctx.flashScale);
+    sustainLight(this.ctx, ch.light, def, 1, dt, at, normal, this.ctx.flashScale * scale);
   }
 
   private drawShot(s: ShotSlot): void {

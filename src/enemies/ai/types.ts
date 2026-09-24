@@ -4,11 +4,12 @@
  * host owns nav agents, visuals, events and the per-tick query budgets.
  */
 import type { Vector3 } from 'three';
-import type { CombatWorldApi, EnemyTargetApi, NavApi, VfxApi } from '../../core/contracts';
+import type { CombatWorldApi, EnemyTargetApi, NavApi, SpawnPointDef, VfxApi } from '../../core/contracts';
 import type { Rng } from '../../core/Rng';
 import type { EnemyAttackDef, EnemyAttackKind } from '../../defs/enemies';
 import type { ProjectileSystem } from '../../combat/Projectiles';
 import type { Enemy } from '../Enemy';
+import type { EnemyBeamsApi } from '../EnemyBeams';
 import type { AttackSlotCoordinator } from './AttackSlotCoordinator';
 import type { SurroundSlots } from './SurroundSlots';
 
@@ -64,6 +65,20 @@ export interface AiHost {
   staggerSelf(e: Enemy, duration: number): void;
   /** End an AI movement override: the parked nav agent is teleported to the enemy. */
   endOverride(e: Enemy): void;
+  /** M6 visible beams (heal tethers, laser telegraphs, summon channels); absent = not drawn. */
+  readonly beams?: EnemyBeamsApi;
+  /**
+   * M6 summons: a minion of `type` emerges within `radius` m of `near`, credited to `parent`
+   * (reduced points, per-summoner caps, ENEMY_AI.minions). Its id, or null when refused.
+   */
+  spawnMinion?(type: string, near: Vector3, radius: number, parent: Enemy): number | null;
+  /** M6: the map's rifts (spawn points) – summoners channel near them. */
+  readonly riftPoints?: readonly SpawnPointDef[];
+  /**
+   * M6 (EnemyAttackDef.selfDestruct): the enemy dies by its own hand – its death (burst included)
+   * is processed at the start of the next tick; nobody is credited.
+   */
+  selfDestruct(e: Enemy): void;
 }
 
 export interface EnemyBrain {

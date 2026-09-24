@@ -8,6 +8,9 @@
  * - Attack tokens (AttackSlotCoordinator): within `engageDistance` a swarmer asks for a token. Holders
  *   close in to `standoff` from their slot side and bite / leap; the others wait on the ring at
  *   `ringRadius`, pacing around their slot, and rotate in when tokens free up.
+ *
+ * M6 reuses it: leapers (wide ring, pounce from it), mites (tight ring), and `rush` types (exploder)
+ * that skip slots and tokens and run straight at the target.
  */
 import { Vector3 } from 'three';
 import type { EnemyTargetApi } from '../../../core/contracts';
@@ -94,6 +97,16 @@ export const swarmBrain: EnemyBrain = {
     if (!S) return;
     const now = host.time;
     const dist = distXZ(e.position, target.position);
+    if (S.rush === true) {
+      // M6 rushers (exploder): no ring, no token – straight at the target, strike when in reach.
+      const idx = pickAttack(e, host, dist, target);
+      if (idx >= 0) {
+        host.beginAttack(e, idx);
+        return;
+      }
+      host.moveTo(e, target.position, e.def.movement.runSpeed);
+      return;
+    }
     const coord = host.coordinator(e);
 
     // Ask within engageDistance; a holder keeps (and refreshes) its token up to releaseDistance.

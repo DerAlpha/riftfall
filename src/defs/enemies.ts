@@ -73,6 +73,11 @@ export interface LeapParams {
   /** Body center height above the feet and hit radius against the target capsule (m). */
   readonly bodyHeight: number;
   readonly hitRadius: number;
+  /**
+   * M6 (leaper): check the lane as this many static-ray segments along the arc (body height)
+   * instead of a walkable nav line – pounces over and onto low cover. Absent / 0: nav lane.
+   */
+  readonly arcSegments?: number;
 }
 
 /** Straight dash with nav steering override; ends on a hit, a wall (self-stagger) or max distance. */
@@ -132,6 +137,115 @@ export interface ProjectileAttackParams {
   readonly aimError: number;
 }
 
+/**
+ * M6 healing tether ('beam' + `heal`, enemies/ai/attackKinds/beam.ts): during the strike (the
+ * channel, up to `strike` s) a visible beam from the socket heals the most injured ally in range.
+ * Killing the healer, breaking the tether's line of sight, the ally dying / healed up, hurting the
+ * healer (interruptDamage) or coming close (breakDistance) ends it.
+ */
+export interface BeamHealParams {
+  /** Tether reach from the socket to the ally's aim point (m). */
+  readonly range: number;
+  /** HP per second: flat (× the healer's spawn health multiplier) + this fraction of the ally's max health. */
+  readonly perSecond: number;
+  readonly fractionPerSecond: number;
+  /** Only allies below this health fraction are healed. */
+  readonly below: number;
+  /** Bosses can be healed (default: never). */
+  readonly bosses: boolean;
+  /** Candidate search period (s) while no ally needs healing. */
+  readonly searchInterval: number;
+  /** The tether's line of sight is re-checked this often (s); blocked → the channel ends. */
+  readonly losInterval: number;
+  /** The channel ends when the target comes this close (m) – the healer flees. */
+  readonly breakDistance: number;
+  /** ... or when the healer took this much damage since the channel started (HP). */
+  readonly interruptDamage: number;
+  /** Turn rate towards the tethered ally (DEGREES/s). */
+  readonly turnRateDeg: number;
+  /** Heal pulse on the ally (defs/vfx preset × scale) every `pulseInterval` s. */
+  readonly pulseEffect: string;
+  readonly pulseInterval: number;
+  readonly pulseScale: number;
+}
+
+/**
+ * M6 charged laser ('beam' + `laser`): the wind-up is the telegraph – an aim line tracks the
+ * target's chest (at `trackSpeed`, holding still while the target is out of sight), locks
+ * `lockTime` s before the strike and fires one instant ray at the locked point at the strike start.
+ * Strafing after the lock or breaking the line of sight dodges it.
+ */
+export interface BeamLaserParams {
+  /** Aim point below the target's eye (m). */
+  readonly aimDrop: number;
+  /** The aim starts this far off the target (m) and converges at `trackSpeed` (m/s). */
+  readonly startError: number;
+  readonly trackSpeed: number;
+  /** Seconds before the strike the aim point freezes (the dodge window). */
+  readonly lockTime: number;
+  /** Target out of sight this long before the lock → the shot is aborted (s). */
+  readonly lostAbort: number;
+  /** Hits when the ray passes this close to the target capsule (m). */
+  readonly hitRadius: number;
+  /** Ray length (m); the ray stops at the first wall / body / prop. */
+  readonly maxRange: number;
+  /** The aim line ends this far in front of its aim point (m): no glow in the player's face. */
+  readonly endShort: number;
+  /** Beam style after the lock (the wind-up style is BeamParams.visual) and the fired ray (one shot). */
+  readonly lockVisual: string;
+  readonly shotVisual: string;
+  /** VFX presets: scope glint at the wind-up start and at the lock, muzzle flash, impact (× scale). */
+  readonly glintEffect: string;
+  readonly lockEffect: string;
+  readonly fireEffect: string;
+  readonly impactEffect: string;
+  readonly effectScale: number;
+}
+
+/** M6 'beam' attacks: a visible beam from a socket – exactly one of `heal` / `laser`. */
+export interface BeamParams {
+  readonly socket: string;
+  /** Arsenal beam style (defs/arsenalVfx BEAM_STYLES) while the beam is up. */
+  readonly visual: string;
+  readonly heal?: BeamHealParams;
+  readonly laser?: BeamLaserParams;
+}
+
+/**
+ * M6 'summon' (enemies/ai/attackKinds/summon.ts): the wind-up is the channel – a rift opens at a
+ * point `forward` m towards the target (beam from `socket` + channel VFX); damage (interruptDamage)
+ * or a stagger breaks it. At the strike, `count` minions emerge around the point.
+ */
+export interface SummonParams {
+  /** Minion type; `fallbackType` while it cannot spawn (no def yet). */
+  readonly type: string;
+  readonly fallbackType: string;
+  readonly count: number;
+  /** At most this many minions of ONE summoner alive at once (only the missing ones emerge). */
+  readonly maxAlive: number;
+  /** Channel point distance towards the target (m) and the minions' spread around it (m). */
+  readonly forward: number;
+  readonly radius: number;
+  readonly socket: string;
+  /** Arsenal beam style from the socket to the channel point ('' = none). */
+  readonly visual: string;
+  /** Damage taken during the channel that breaks it (HP). */
+  readonly interruptDamage: number;
+  /** Channel VFX at the point every `channelInterval` s, burst at the summon (defs/vfx × scale). */
+  readonly channelEffect: string;
+  readonly channelInterval: number;
+  readonly burstEffect: string;
+  readonly effectScale: number;
+}
+
+/** M6: telegraph effect (light flash / glint) at a visual socket when an attack's wind-up starts. */
+export interface AttackTelegraphDef {
+  /** VFX preset id (defs/vfx). */
+  readonly effect: string;
+  readonly socket: string;
+  readonly scale: number;
+}
+
 export interface EnemyAttackDef {
   /** Attack id (events, audio, animation: must match the visual def's attack anim id). */
   readonly id: string;
@@ -159,11 +273,26 @@ export interface EnemyAttackDef {
   readonly shake: number;
   /** Audio id played at the wind-up (positional, via enemy:attack). */
   readonly sound: string;
+  /**
+   * M6 combo: attack id started right after this one ends while the target is still in its reach
+   * (range, height, sight) – berserker cleave chains, the leaper's slash after landing a pounce.
+   */
+  readonly combo?: string;
+  /** M6: never picked by a brain – only started as a combo follow-up or by the host (enrage roar). */
+  readonly scripted?: boolean;
+  /** M6 (exploder): the attacker dies at the strike – its death burst is the blow (no kill credit). */
+  readonly selfDestruct?: boolean;
+  /** M6 telegraph light: VFX preset spawned at `socket` when the wind-up starts (× scale). */
+  readonly telegraph?: AttackTelegraphDef;
   readonly melee?: MeleeParams;
   readonly leap?: LeapParams;
   readonly charge?: ChargeParams;
   readonly slam?: SlamParams;
   readonly projectile?: ProjectileAttackParams;
+  /** M6 'beam' (healing tether / charged laser). */
+  readonly beam?: BeamParams;
+  /** M6 'summon' (channel a rift, minions emerge). */
+  readonly summon?: SummonParams;
 }
 
 export interface SwarmBehaviourDef {
@@ -178,6 +307,11 @@ export interface SwarmBehaviourDef {
   readonly orbitHz: number;
   /** Surround slot re-evaluation period (s, staggered per enemy). */
   readonly slotInterval: number;
+  /**
+   * M6 (exploder): no ring, no token – runs straight at the target and uses its (slot-free)
+   * attacks as soon as they are in reach.
+   */
+  readonly rush?: boolean;
 }
 
 export interface RangedBehaviourDef {
@@ -242,6 +376,49 @@ export interface BruteBehaviourDef {
 }
 
 /**
+ * M6 support brain (healer, summoner – enemies/ai/brains/support.ts): hangs back behind the pack
+ * (the allies near the target) inside a distance band, flees when the target comes close and uses
+ * its support attacks (heal tether, summon); summoners walk to a rift before channelling.
+ */
+export interface SupportBehaviourDef {
+  /** Distance band to the target (m). */
+  readonly bandMin: number;
+  readonly bandPreferred: number;
+  readonly bandMax: number;
+  /** Allies within this radius of the target form the pack (m); the spot is this far behind it (m). */
+  readonly packRadius: number;
+  readonly packBehind: number;
+  /** Flee when the target comes within this distance (m): nav steps of `fleeStep` m away. */
+  readonly fleeDistance: number;
+  readonly fleeStep: number;
+  /** Flee directions tried: straight away, then ±fleeArcDeg steps (DEGREES), `fleeTries` in all. */
+  readonly fleeArcDeg: number;
+  readonly fleeTries: number;
+  /** Re-plan the spot this often (s, staggered) and a flee step this often (s). */
+  readonly replanInterval: number;
+  readonly fleeReplan: number;
+  /** Arrived within this distance (m); run to spots farther than runDistance (m). */
+  readonly arriveDistance: number;
+  readonly runDistance: number;
+  /**
+   * Summoners: `riftLead` s before a summon is ready walk to the nearest rift (spawn point) within
+   * `riftSearch` m that is at least bandMin from the target, stopping `riftStandoff` m short of it
+   * towards the target. riftLead 0 = no rift seeking.
+   */
+  readonly riftLead: number;
+  readonly riftSearch: number;
+  readonly riftStandoff: number;
+  /** Give up walking to the rift after this long (s): channel where it stands. */
+  readonly riftTimeout: number;
+}
+
+/** M6 sniper brain (enemies/ai/brains/sniper.ts): ranged positioning plus shoot-and-move. */
+export interface SniperBehaviourDef {
+  /** Chance to search a new firing spot after each laser shot (else peek cover / hold). */
+  readonly relocateChance: number;
+}
+
+/**
  * M4 rift seals: how a type tears a sealed spawn point open ('breach' state). The tearing swings
  * play the animation of attack `attack` (an id of this type's attacks), fitted so that a segment
  * falls every `segmentTime` seconds; `segmentsPerTear` segments fall per finished tear.
@@ -265,6 +442,41 @@ export interface DeathBurstDef {
   /** PROJECTILES id whose puddle is left behind (null = none). */
   readonly puddle: string | null;
   readonly shake: number;
+  /**
+   * M6 (exploder): also a real explosion – combat:explosion at the burst (the element's blast VFX,
+   * shockwave, scorch and sound; the audio bridge rate-limits chain reactions). Default false.
+   */
+  readonly explosion?: boolean;
+}
+
+/**
+ * M6 enrage (berserker): once health falls to `healthFraction` the enemy roars (attack `roar`,
+ * started by the host) and fights on faster, harder to stop and glowing (pose.glow).
+ */
+export interface EnrageDef {
+  readonly healthFraction: number;
+  /** Movement speed × this; attack phases and cooldowns run × `attackRate` faster. */
+  readonly speedMultiplier: number;
+  readonly attackRate: number;
+  readonly damageMultiplier: number;
+  /** No stagger while enraged (the flinch still shows). */
+  readonly staggerImmune: boolean;
+  /** Attack id played when it enrages ('' = none; mark it `scripted`). */
+  readonly roar: string;
+  /** Emissive boost while enraged (pose.glow: + this × the zone emission). */
+  readonly glow: number;
+}
+
+/**
+ * M6 proximity warning (exploder): pose.glow blinks within `distance` of the target, faster and
+ * brighter the closer it gets (minHz → maxHz, up to `glow`); `sharpness` narrows each blink.
+ */
+export interface WarningPulseDef {
+  readonly distance: number;
+  readonly minHz: number;
+  readonly maxHz: number;
+  readonly glow: number;
+  readonly sharpness: number;
 }
 
 export interface EnemyTypeDef {
@@ -326,6 +538,10 @@ export interface EnemyTypeDef {
   readonly swarm?: SwarmBehaviourDef;
   readonly ranged?: RangedBehaviourDef;
   readonly brute?: BruteBehaviourDef;
+  /** M6 support brain (healer, summoner). */
+  readonly support?: SupportBehaviourDef;
+  /** M6 sniper brain (with `ranged` for its positioning). */
+  readonly sniper?: SniperBehaviourDef;
   /** Rift emergence (s): pose.emerge 0 → 1, no movement / attacks meanwhile. */
   readonly emergeTime: number;
   readonly death: {
@@ -345,6 +561,10 @@ export interface EnemyTypeDef {
   readonly breach?: EnemyBreachDef;
   /** M6 bosses: immune to the instakill power-up and skipped by the nuke (killAll). */
   readonly boss?: boolean;
+  /** M6: enrage below a health fraction (berserker). */
+  readonly enrage?: EnrageDef;
+  /** M6: proximity warning blink (exploder). */
+  readonly warningPulse?: WarningPulseDef;
   /** M4 economy hooks (points). */
   readonly points: {
     readonly hit: number;
@@ -828,7 +1048,8 @@ export const ENEMY_AI = {
     projectile: 0.9,
     charge: 2.5,
     slam: 0,
-    beam: 0,
+    // Laser shots (M6 snipers) land at least this far apart; heal tethers / summons never ask.
+    beam: 1.2,
     summon: 0,
     blink: 0,
     discharge: 0,
@@ -953,6 +1174,17 @@ export const ENEMY_AI = {
   firstAttackJitter: 0.5,
   /** weaponId in enemy:died / combat events for killAll (nuke power-up, M4). */
   nukeWeaponId: 'nuke',
+  /**
+   * M6 summoned minions (EnemyManager.spawnMinion): at most `maxAlive` minions live at once, and a
+   * summon never takes the last `reserve` living slots (wave spawns keep room). Minions pay
+   * `pointsScale` × their type's points (rounded); they emerge within the summon radius.
+   */
+  minions: { maxAlive: 16, reserve: 8, pointsScale: 0.5 },
+  /**
+   * M6 visible beams (enemies/EnemyBeams: heal tethers, laser telegraphs, summon channels): beams
+   * drawn at once (one per enemy) and one-shot rays queued per frame.
+   */
+  beams: { capacity: 24, shotQueue: 8 },
   /**
    * M4 rift seals ('breach' state): tearing enemies turn towards the seal at `turnRateDeg`; a
    * target (the player) standing on their side of the seal within `breakoutDistance` (m) frees

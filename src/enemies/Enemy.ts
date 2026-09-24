@@ -104,6 +104,8 @@ export class Enemy implements Damageable {
   speedMult = 1;
   /** Spawn order (stable round-robin order, staggering). */
   serial = 0;
+  /** M6 summoned minion: the summoner's id (reduced points, per-summoner caps); 0 = none. */
+  parentId = 0;
 
   // --- state ---
   state: EnemyState = 'free';
@@ -219,6 +221,13 @@ export class Enemy implements Damageable {
   halted = false;
   /** The pose rim shows a status tint (the elite rim comes back after it). */
   statusRim = false;
+
+  // --- M6 enrage / warning pulse (EnemyTypeDef.enrage / warningPulse) ---
+  enraged = false;
+  /** Attack phase speed and cooldown factor (enrage); 1 = normal. */
+  attackRate = 1;
+  /** Warning pulse phase (0..1 cycles). */
+  glowPhase = 0;
 
   // --- death bookkeeping ---
   deathPending = false;

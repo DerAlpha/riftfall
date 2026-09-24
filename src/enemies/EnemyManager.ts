@@ -30,6 +30,14 @@
  * - pull fields (singularities): a caught body drifts with the pull like a knockback (walkable and
  *   wall checked), its agent parked until the field lets go.
  *
+ * M6 hooks (ground package, data-driven by the type defs):
+ * - combos: an attack's `combo` follow-up starts right when it ends while the target is in reach;
+ * - enrage (EnemyTypeDef.enrage): below a health fraction the roar plays, then speed / attack rate /
+ *   damage go up, staggers stop and pose.glow lights the veins;
+ * - selfDestruct attacks (exploder): the strike kills the attacker (source 'enemy', no credit) and
+ *   its death burst – optionally a real `explosion` (combat:explosion) – is the blow;
+ * - telegraph VFX at the wind-up start; warningPulse blinks pose.glow as the target closes in.
+ *
  * Budgets keep 60 enemies inside ~2.5 ms/tick: LOS rays, nav path queries (surround slots), spot
  * rays (spitter search) are rationed per tick and handed out first come first served (the think
  * order rotates every tick; per-kind attack-spacing slots go to the longest waiter), everything
@@ -85,7 +93,7 @@ import {
   wrapPi,
   yawTo,
 } from './ai/attackMath';
-import { cancelAttack, phaseDuration, updateAttack } from './ai/attacks';
+import { cancelAttack, comboFollowUp, phaseDuration, updateAttack } from './ai/attacks';
 import {
   BREACH_OPEN,
   BREACH_SWING,
@@ -101,6 +109,7 @@ import { STUCK_NONE, STUCK_REPATH, STUCK_TELEPORT, resetStuck, updateStuck } fro
 import { SurroundSlots } from './ai/SurroundSlots';
 import { ThreatTable } from './ai/ThreatTable';
 import type { AiHost, EnemyBrain } from './ai/types';
+import { EnemyBeams, type EnemyBeamSink } from './EnemyBeams';
 import type { EnemyVisualsApi } from './types';
 
 const log = createLogger('enemies');
@@ -150,6 +159,8 @@ export interface EnemyManagerDeps {
   seed?: string | number;
   /** M4 rift seals: sealed spawn points must be torn open first (settable later: setBreach). */
   breach?: EnemyBreachApi | null;
+  /** M6 beam visuals (heal tethers, laser telegraphs): the VFX system's arsenal visuals. */
+  beams?: EnemyBeamSink | null;
 }
 
 /** PhysicsWorld extra (collider metadata registry) used when present. */
@@ -182,6 +193,10 @@ interface TypeRuntime {
   readonly breach: BreachPlan;
   /** Attack index a tearing enemy swipes through the lattice with (a melee breach attack), -1 = none. */
   readonly breachReach: number;
+  /** M6: points of a summoned minion of this type (ENEMY_AI.minions.pointsScale). */
+  readonly minionPoints: EnemyTypeDef['points'];
+  /** M6: attack index of the enrage roar (EnemyTypeDef.enrage.roar), -1 = none. */
+  readonly roarIndex: number;
 }
 
 export interface EnemyManagerStats {
@@ -209,6 +224,8 @@ const _kin = { x: 0, y: 0, z: 0 };
 const _dir = { x: 0, y: 0, z: 0 };
 const _pull = new Vector3();
 const _rim = { color: 0, strength: 0 };
+const _minion = new Vector3();
+const _tg = new Vector3();
 
 export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   readonly stats: EnemyManagerStats;
@@ -222,6 +239,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   aiEnabled = true;
   /** Instakill power-up: player damage kills (EnemyOwner; bosses excepted). */
   instakill = false;
+  /** M6 visible beams (AiHost.beams): sampled per tick, drawn per frame through `deps.beams`. */
+  readonly beams = new EnemyBeams();
 
   private readonly events: EventBus<GameEvents>;
   private readonly visuals: EnemyVisualsApi;
@@ -265,6 +284,13 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   private status: EnemyStatusApi | null = null;
   private fields: EnemyFieldApi | null = null;
   private _timeScale = 1;
+  private readonly beamSink: EnemyBeamSink | null;
+  private readonly minionOpts: EnemySpawnOptions = {
+    healthMultiplier: 1,
+    speedMultiplier: 1,
+    damageMultiplier: 1,
+    spawnPoint: null,
+  };
   private readonly warned = new Set<string>();
   private readonly unsubscribe: (() => void)[] = [];
 
@@ -318,6 +344,11 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     source: 'environment',
   };
   private readonly shakePayload: GameEvents['camera:shake'] = { trauma: 0 };
+  private readonly explosionPayload: GameEvents['combat:explosion'] = {
+    position: { x: 0, y: 0, z: 0 },
+    radius: 0,
+    element: 'physical',
+  };
 
   constructor(deps: EnemyManagerDeps) {
     this.events = deps.events;
@@ -331,6 +362,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     this._capacity = Math.max(1, Math.floor(deps.capacity ?? ENEMY_AI.capacity));
     this.rng = new Rng(deps.seed ?? 'enemies');
     this.breachApi = deps.breach ?? null;
+    this.beamSink = deps.beams ?? null;
     if (deps.projectiles) {
       this.projectiles = deps.projectiles;
       this.ownsProjectiles = false;
@@ -420,6 +452,46 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     for (let i = 0; i < list.length; i++)
       if (list[i]!.id === id && list[i]!.state !== 'free') return list[i]!;
     return null;
+  }
+
+  /** Kill credit of the living or dying enemy `id` (M4 PointsRules): summoned minions pay less. */
+  rewardOf(id: number): EnemyTypeDef['points'] | undefined {
+    const e = this.getEnemy(id);
+    if (!e) return undefined;
+    return e.parentId !== 0 ? (this.types.get(e.type)?.minionPoints ?? e.def.points) : e.def.points;
+  }
+
+  /** M6 (AiHost.riftPoints): the map's rifts – summoners channel near them. */
+  get riftPoints(): readonly SpawnPointDef[] {
+    return this.spawnPoints;
+  }
+
+  /**
+   * M6 summons (AiHost.spawnMinion): a minion of `type` emerges at a random nav point within
+   * `radius` m of `near` with the parent's spawn multipliers (no affixes). It is a living enemy (the
+   * wave waits for it), but never takes the last ENEMY_AI.minions.reserve slots nor exceeds
+   * ENEMY_AI.minions.maxAlive living minions. Returns its id, or null when refused.
+   */
+  spawnMinion(type: string, near: Vector3, radius: number, parent: Enemy): number | null {
+    const M = ENEMY_AI.minions;
+    if (this.disposed || !parent.alive || this.aliveCount >= this._capacity - M.reserve) return null;
+    let minions = 0;
+    for (let i = 0; i < this.active.length; i++) {
+      const o = this.active[i]!;
+      if (o.alive && o.parentId !== 0) minions++;
+    }
+    if (minions >= M.maxAlive) return null;
+    if (!(radius > 0) || !this.nav.randomPointAround(near, radius, _minion)) _minion.copy(near);
+    const o = this.minionOpts;
+    o.healthMultiplier = parent.def.health > 0 ? parent.maxHealth / parent.def.health : 1;
+    o.speedMultiplier = parent.speedMult;
+    o.damageMultiplier = parent.damageMult;
+    const id = this.spawn(type, _minion, o);
+    if (id === null) return null;
+    // spawn() appended the new record.
+    const m = this.active[this.active.length - 1];
+    if (m && m.id === id) m.parentId = parent.id;
+    return id;
   }
 
   /**
@@ -563,6 +635,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     this.lastStart.fill(Number.NEGATIVE_INFINITY);
     this.spacingHead.fill(0);
     this.projectiles?.clear();
+    this.beams.clear();
   }
 
   killAll(credit: boolean): number {
@@ -613,6 +686,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     this.syncPlayerAgent();
     if (this.stepNav) this.nav.update(dt);
     for (let i = 0; i < this.active.length; i++) this.integrate(this.active[i]!, dt);
+    // M6 beams: this tick's endpoints (sockets of the pose just set) for per-frame interpolation.
+    this.beams.sample(this);
     this.visuals.commitTick();
     if (this.ownsProjectiles) this.projectiles?.fixedUpdate(dt);
     this.compact();
@@ -627,6 +702,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     if (this.disposed) return;
     const dt = realDt * this._timeScale;
     this.visuals.update(dt, alpha);
+    this.beams.draw(alpha, this.beamSink);
     if (this.ownsProjectiles) this.projectiles?.update(dt, alpha);
   }
 
@@ -759,7 +835,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.phase = 0;
     e.phaseTime = 0;
     e.attackHit = false;
-    e.attackReady[index] = this._time + a.cooldown;
+    e.attackReady[index] = this._time + a.cooldown / e.attackRate;
     if (a.usesSlot) this.coordinator(e).noteAttack(e.id, this._time);
     const k = e.targetSlot * ATTACK_KINDS.length + ATTACK_KINDS.indexOf(a.kind);
     if (k >= 0 && k < this.lastStart.length) {
@@ -777,8 +853,14 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     p.attack = a.id;
     copyVec(e.position, p.position);
     // Listeners (strike sounds) count game seconds: enemy time runs slower in Slow Motion.
-    p.windup = a.windup / this._timeScale;
+    p.windup = a.windup / (this._timeScale * e.attackRate);
     this.events.emit('enemy:attack', p);
+    // M6 telegraph light / glint at the wind-up start.
+    const tg = a.telegraph;
+    if (tg && this.vfx) {
+      if (!this.socket(e, tg.socket, _tg)) _tg.copy(e.boundsCenter);
+      this.vfx.spawn(tg.effect, _tg, UP, tg.scale * e.pose.scale);
+    }
   }
 
   hitTarget(e: Enemy, _attack: EnemyAttackDef, target: EnemyTargetApi, amount: number, shake: number): void {
@@ -824,6 +906,17 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.override = 'none';
     e.agentDirty = e.agent >= 0;
     e.sentValid = false;
+  }
+
+  selfDestruct(e: Enemy): void {
+    if (!e.alive) return;
+    e.lastWeaponId = e.type;
+    e.lastZone = null;
+    e.lastSource = 'enemy';
+    e.health = 0;
+    e.alive = false;
+    e.deathPending = true;
+    this.noteKilled(e);
   }
 
   // -------------------------------------------------------------------------
@@ -1010,20 +1103,31 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
           e.hasMove = false;
           return;
         }
+        const striking = e.state === 'attack' && e.phase === PHASE_STRIKE;
+        const rage = e.def.enrage;
+        if (rage && !e.enraged && !striking && e.healthFraction <= rage.healthFraction) {
+          this.enrage(e, rt);
+        }
         const S = e.def.stagger;
         if (
           e.staggerAccum >= S.threshold &&
           this._time >= e.staggerImmuneUntil &&
-          !(e.state === 'attack' && e.phase === PHASE_STRIKE)
+          !striking &&
+          !(e.enraged && rage?.staggerImmune === true)
         ) {
           this.enterStagger(e, S.duration);
           return;
         }
         const target = this.target(e);
         if (e.state === 'attack') {
-          // Chill / slow fields stretch the attack phases too.
-          if (updateAttack(e, this, target, dt * e.statusSpeed)) {
-            if (e.state === 'attack') this.setActive(e, rt);
+          // Chill / slow fields stretch the attack phases too (enrage speeds them up).
+          if (updateAttack(e, this, target, dt * e.statusSpeed * e.attackRate)) {
+            if (e.state === 'attack') {
+              // M6 combos: the follow-up starts at once while the target is still in reach.
+              const next = this.aiEnabled ? comboFollowUp(e, this, target) : -1;
+              if (next >= 0) this.beginAttack(e, next);
+              else this.setActive(e, rt);
+            }
           } else if (e.state === 'attack') {
             const a = e.def.attacks[e.attackIndex]!;
             const i = e.attackIndex;
@@ -1066,6 +1170,23 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       case 'free':
         return;
     }
+  }
+
+  /**
+   * M6 enrage (EnemyTypeDef.enrage): faster, harder hitting, unstoppable, glowing – announced by
+   * the roar attack (a running wind-up / recovery gives way to it).
+   */
+  private enrage(e: Enemy, rt: TypeRuntime): void {
+    const R = e.def.enrage;
+    if (!R) return;
+    e.enraged = true;
+    e.speedMult *= R.speedMultiplier > 0 ? R.speedMultiplier : 1;
+    e.attackRate = R.attackRate > 0 ? R.attackRate : 1;
+    e.damageMult *= R.damageMultiplier > 0 ? R.damageMultiplier : 1;
+    if (R.staggerImmune) e.staggerAccum = 0;
+    if (rt.roarIndex < 0) return;
+    if (e.state === 'attack') cancelAttack(e, this);
+    this.beginAttack(e, rt.roarIndex);
   }
 
   /** M5: this tick's status speed (chill, slow fields) and halt (frozen, stunned). */
@@ -1545,7 +1666,25 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       pose.lookYaw = 0;
       pose.lookPitch = 0;
     }
+    this.glowPose(e, target, dt);
     this.statusPose(e);
+  }
+
+  /** M6 emissive boost (pose.glow): enraged veins, the proximity warning blink (warningPulse). */
+  private glowPose(e: Enemy, target: EnemyTargetApi | null, dt: number): void {
+    let glow = 0;
+    if (e.alive) {
+      if (e.enraged) glow = e.def.enrage?.glow ?? 0;
+      const W = e.def.warningPulse;
+      if (W && target && e.state !== 'emerge' && W.distance > 0) {
+        const near = 1 - distXZ(e.position, target.position) / W.distance;
+        if (near > 0) {
+          e.glowPhase = (e.glowPhase + (W.minHz + (W.maxHz - W.minHz) * near) * dt) % 1;
+          glow += W.glow * near * Math.pow(0.5 + 0.5 * Math.cos(TAU * e.glowPhase), W.sharpness);
+        }
+      }
+    }
+    e.pose.glow = glow;
   }
 
   /** M5 status looks: the rim takes the status tint (the elite rim returns after), shock twitches. */
@@ -1590,6 +1729,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     const now = this._time;
     e.id = this.allocId();
     e.serial = this.serial++;
+    e.parentId = 0;
     e.handle = handle;
     e.agent = agent;
     e.elite = (opts?.affixes?.length ?? 0) > 0;
@@ -1622,9 +1762,13 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     pose.rim = e.elite ? E.rim : 0;
     pose.rimColor.setRGB(E.rimColor[0], E.rimColor[1], E.rimColor[2]);
     pose.scale = e.elite ? E.scale : 1;
+    pose.glow = 0;
     e.statusSpeed = 1;
     e.halted = false;
     e.statusRim = false;
+    e.enraged = false;
+    e.attackRate = 1;
+    e.glowPhase = 0;
 
     e.aware = ENEMY_AI.perception.awareOnSpawn;
     e.alerted = false;
@@ -1757,6 +1901,14 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     if (!this.socket(e, b.socket, _v)) _v.copy(e.boundsCenter);
     const center = _v;
     const radius = b.radius * e.pose.scale;
+    if (b.explosion === true) {
+      // M6 exploder: drawn and sounded like any blast (VFX / audio bridges).
+      const x = this.explosionPayload;
+      copyVec(center, x.position);
+      x.radius = radius;
+      x.element = b.element;
+      this.events.emit('combat:explosion', x);
+    }
     // Player (and other aggro targets).
     for (let s = 0; s < this.threat.maxTargets; s++) {
       const t = this.threat.get(s);
@@ -1976,6 +2128,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       pool,
       breach: createBreachPlan(def, animIndex, animWindup, animStrike),
       breachReach: breachReachIndex(def),
+      roarIndex: attackIndexOf(def, def.enrage?.roar),
       navParams: {
         radius: def.nav.radius,
         height: def.nav.height,
@@ -1986,6 +2139,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       animIndex,
       animWindup,
       animStrike,
+      minionPoints: minionPoints(def.points),
       spawnEffect: vdef?.effects.spawn ?? null,
       spawnScale: vdef?.effects.spawnScale ?? 1,
       deathEffect: vdef?.effects.death ?? null,
@@ -2011,6 +2165,13 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   }
 }
 
+/** Index of attack `id` of the type (-1 = none / unknown). */
+function attackIndexOf(def: EnemyTypeDef, id: string | undefined): number {
+  if (!id) return -1;
+  for (let i = 0; i < def.attacks.length; i++) if (def.attacks[i]!.id === id) return i;
+  return -1;
+}
+
 /** Index of the type's breach attack when it is a melee attack (swipes through the seal), else -1. */
 function breachReachIndex(def: EnemyTypeDef): number {
   const id = def.breach?.attack;
@@ -2020,6 +2181,17 @@ function breachReachIndex(def: EnemyTypeDef): number {
     if (a.id === id) return a.kind === 'melee' && a.melee ? i : -1;
   }
   return -1;
+}
+
+/** A summoned minion's points: its type's table × ENEMY_AI.minions.pointsScale (rounded). */
+function minionPoints(p: EnemyTypeDef['points']): EnemyTypeDef['points'] {
+  const k = ENEMY_AI.minions.pointsScale;
+  return {
+    hit: Math.round(p.hit * k),
+    kill: Math.round(p.kill * k),
+    headshotBonus: Math.round(p.headshotBonus * k),
+    weakpointBonus: Math.round(p.weakpointBonus * k),
+  };
 }
 
 function finiteOr(v: number | undefined, fallback: number): number {

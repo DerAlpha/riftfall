@@ -504,6 +504,8 @@ export class Game {
       target: enemyTarget,
       physics,
       vfx,
+      // M6 heal tethers / laser telegraphs are drawn as arsenal beams.
+      beams: vfx.arsenal,
       scene: render.scene,
       seed: runSeed,
     });
@@ -512,7 +514,8 @@ export class Game {
     const pointsRules = new PointsRules({
       events,
       economy,
-      rewardOf: (id) => enemies.getEnemy(id)?.def.points,
+      // M6: summoned minions pay reduced points (EnemyManager.rewardOf).
+      rewardOf: (id) => enemies.rewardOf(id),
     });
     // M7: start zones from the level (maps/kit/levelData) before the per-map table.
     const zones = createZoneSystem(level, events);

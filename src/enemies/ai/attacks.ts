@@ -14,12 +14,17 @@
  *
  * Phases: wind-up (telegraph, target tracking) → strike → recover. Leap/charge move the enemy
  * themselves during the strike (MoveOverride); the host teleports the parked nav agent afterwards.
+ *
+ * M6 (ground package): `combo` chains a follow-up attack while the target stays in reach (the host
+ * asks comboFollowUp when an attack ends), `scripted` attacks are never picked by brains,
+ * `selfDestruct` ends the strike in the attacker's own death burst, and leaps with
+ * `arcSegments` check their lane along the arc (over / onto low cover).
  */
 import { getAttackExecutor } from './attackKinds';
 import { Vector3 } from 'three';
 import type { EnemyTargetApi } from '../../core/contracts';
 import { DEG2RAD } from '../../core/math';
-import { ENEMY_AI, type EnemyAttackDef } from '../../defs/enemies';
+import { ENEMY_AI, type EnemyAttackDef, type LeapParams } from '../../defs/enemies';
 import { PHASE_RECOVER, PHASE_STRIKE, PHASE_WINDUP, type Enemy } from '../Enemy';
 import { aoeFactor, distXZ, meleeHits, turnTowards, yawTo } from './attackMath';
 import type { AiHost } from './types';
@@ -71,13 +76,35 @@ export function pickAttack(
   let bestPriority = Number.NEGATIVE_INFINITY;
   for (let i = 0; i < attacks.length; i++) {
     const a = attacks[i]!;
-    if (a.priority <= bestPriority) continue;
+    if (a.priority <= bestPriority || a.scripted === true) continue;
     if (filter && !filter(e, a, i, host)) continue;
     if (!attackUsable(e, host, i, dist, target)) continue;
     best = i;
     bestPriority = a.priority;
   }
   return best;
+}
+
+/**
+ * M6 combo: index of the follow-up (EnemyAttackDef.combo) of the attack that just ended when the
+ * target is still in its reach (range, height, fresh sight), else -1. Cooldowns and tokens do not
+ * apply – the chain is one attack for the token pool (mark follow-ups `usesSlot: false`).
+ */
+export function comboFollowUp(e: Enemy, host: AiHost, target: EnemyTargetApi | null): number {
+  const id = e.def.attacks[e.attackIndex]?.combo;
+  if (!id || !target || !target.alive || !e.alive) return -1;
+  const attacks = e.def.attacks;
+  for (let i = 0; i < attacks.length; i++) {
+    const a = attacks[i]!;
+    if (a.id !== id) continue;
+    const dist = distXZ(e.position, target.position);
+    if (dist < a.minRange || dist > a.range) return -1;
+    const reachY = a.melee?.height ?? a.slam?.height;
+    if (reachY !== undefined && Math.abs(target.position.y - e.position.y) > reachY) return -1;
+    if (a.requiresLos && !host.refreshLos(e, ENEMY_AI.perception.losMaxAge)) return -1;
+    return i;
+  }
+  return -1;
 }
 
 /** Phase duration of the current attack. */
@@ -92,16 +119,26 @@ export function phaseDuration(a: EnemyAttackDef, phase: number): number {
 export function updateAttack(e: Enemy, host: AiHost, target: EnemyTargetApi | null, dt: number): boolean {
   const a = e.def.attacks[e.attackIndex];
   if (!a) return true;
+  const first = e.phase === PHASE_WINDUP && e.phaseTime === 0;
   e.phaseTime += dt;
   if (e.phase === PHASE_WINDUP) {
     if (target && a.trackTurnRateDeg > 0) {
       const want = yawTo(target.position.x - e.position.x, target.position.z - e.position.z);
       e.yaw = turnTowards(e.yaw, want, a.trackTurnRateDeg * DEG2RAD * dt);
     }
+    // M6 executors telegraph / channel during the wind-up and may abort it (no strike).
+    if (getAttackExecutor(a.kind)?.windup?.(e, host, a, target, dt, first)) {
+      e.phase = PHASE_RECOVER;
+      e.phaseTime = 0;
+      return false;
+    }
     if (e.phaseTime < a.windup) return false;
     e.phase = PHASE_STRIKE;
     e.phaseTime = 0;
-    if (!beginStrike(e, host, a, target)) {
+    const struck = beginStrike(e, host, a, target);
+    // M6 exploder: the blow is its own death burst.
+    if (a.selfDestruct === true) host.selfDestruct(e);
+    if (!struck) {
       e.phase = PHASE_RECOVER;
       e.phaseTime = 0;
     }
@@ -253,7 +290,11 @@ function beginLeap(e: Enemy, host: AiHost, a: EnemyAttackDef, target: EnemyTarge
   _w.multiplyScalar(travel / d).add(e.position);
   _w.y = target.position.y;
   if (!nav.closestPoint(_w, _aim)) return false;
-  if (!laneClear(host, e.position, _aim, L.bodyHeight * e.pose.scale)) return false;
+  const clear =
+    (L.arcSegments ?? 0) > 0
+      ? arcClear(host, e.position, _aim, L, e.pose.scale)
+      : laneClear(host, e.position, _aim, L.bodyHeight * e.pose.scale);
+  if (!clear) return false;
   e.overrideFrom.copy(e.position);
   e.overrideTo.copy(_aim);
   e.overrideDir.subVectors(_aim, e.position).setY(0);
@@ -390,6 +431,27 @@ function laneClear(host: AiHost, from: Vector3, to: Vector3, height: number): bo
   _la.set(from.x, from.y + height, from.z);
   _lb.set(to.x, to.y + height, to.z);
   return host.combat.lineOfSight(_la, _lb);
+}
+
+/**
+ * M6 arc lane (LeapParams.arcSegments): static rays along the leap arc at body height – the
+ * pounce may clear low cover or land on it (no nav walkability needed between the ends).
+ */
+function arcClear(host: AiHost, from: Vector3, to: Vector3, L: LeapParams, scale: number): boolean {
+  const n = Math.max(1, Math.floor(L.arcSegments ?? 1));
+  const h = L.bodyHeight * scale;
+  _la.set(from.x, from.y + h, from.z);
+  for (let i = 1; i <= n; i++) {
+    const s = i / n;
+    _lb.set(
+      from.x + (to.x - from.x) * s,
+      from.y + (to.y - from.y) * s + L.arcHeight * 4 * s * (1 - s) + h,
+      from.z + (to.z - from.z) * s,
+    );
+    if (!host.combat.lineOfSight(_la, _lb)) return false;
+    _la.copy(_lb);
+  }
+  return true;
 }
 
 /** Distance from a point to the target's capsule surface. */

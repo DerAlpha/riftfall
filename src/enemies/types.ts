@@ -39,6 +39,11 @@ export interface EnemyPose {
   rim: number;
   /** Uniform scale multiplier (elites are slightly bigger). */
   scale: number;
+  /**
+   * M6: extra emissive boost (0 = none): multiplies the zone emission like the attack telegraph
+   * glow – enraged veins (berserker), the exploder's proximity warning blink.
+   */
+  glow: number;
 }
 
 export function createEnemyPose(color: THREE.Color): EnemyPose {
@@ -57,6 +62,7 @@ export function createEnemyPose(color: THREE.Color): EnemyPose {
     rimColor: color,
     rim: 0,
     scale: 1,
+    glow: 0,
   };
 }
 

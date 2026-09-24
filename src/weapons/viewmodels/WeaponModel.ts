@@ -159,7 +159,17 @@ export class ProceduralWeaponModel implements WeaponViewmodelModel {
     const flicker = 1 + A.heatFlicker.depth * (fx.flicker ?? 1) * Math.sin(fx.time * A.heatFlicker.rate);
     // Squared: vents stay dark for a few shots, then ramp up hard during sustained fire.
     this.glow.heat.emissiveIntensity = g.heat * fx.heat * fx.heat * flicker;
-    const blink = this.lastMag === 0 && Math.sin(fx.time * A.emptyBlinkRate) < 0 ? A.emptyBlinkLow : 1;
+    // Empty: a hard blink, a soft pulse with reduce flashing (flicker 0).
+    const phase = Math.sin(fx.time * A.emptyBlinkRate);
+    const low = A.emptyBlinkLow;
+    const blink =
+      this.lastMag !== 0
+        ? 1
+        : (fx.flicker ?? 1) > 0
+          ? phase < 0
+            ? low
+            : 1
+          : low + (1 - low) * (0.5 + 0.5 * phase);
     this.glow.readout.emissiveIntensity = g.readout * this.readoutBoost * blink;
   }
 

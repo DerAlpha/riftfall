@@ -92,8 +92,10 @@ export const SLOT = {
   rimR: 17,
   rimG: 18,
   rimB: 19,
+  /** M6 emissive boost (EnemyPose.glow): shader only, no bone math. */
+  glow: 20,
 } as const;
-export const SLOT_STRIDE = 20;
+export const SLOT_STRIDE = 21;
 
 /** Floats per bone matrix (3x4 row-major affine: rotation/scale | translation). */
 export const BONE_STRIDE = 12;

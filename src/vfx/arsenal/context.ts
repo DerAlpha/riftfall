@@ -198,20 +198,27 @@ export function flashDefOf(def: SustainLightDef, priority: 0 | 1 | 2): LightFlas
   return f;
 }
 
-/** A sustained light's flash decays over interval × this (overlapping re-flashes = soft flicker). */
+/** A sustained light fades out over interval × this after the effect's last refresh. */
 export const SUSTAIN_DECAY = 1.6;
 
-/** Timer + light handle of one lasting effect's light. */
+/** Timer, flicker levels (from → to over one interval) and light handle of one lasting effect's light. */
 export interface SustainState {
   timer: number;
   handle: number;
+  from: number;
+  to: number;
 }
 
 export function createSustainState(): SustainState {
-  return { timer: 0, handle: 0 };
+  return { timer: 0, handle: 0, from: 1, to: 1 };
 }
 
-/** Advance a sustained light by dt and re-flash it when due. `scale` multiplies the intensity. */
+/**
+ * Keep a lasting effect's light at `scale` × its intensity: refreshed every frame (a flash
+ * re-started only every interval decayed to ~15 % in between – a 10–17 Hz strobe) at a level
+ * that wanders between random values in [1 − flicker, 1] (steady with reduce flashing), and
+ * following the effect's position. Allocation-free.
+ */
 export function sustainLight(
   ctx: ArsenalContext,
   state: SustainState,
@@ -223,10 +230,18 @@ export function sustainLight(
   scale: number,
 ): void {
   if (!def || !ctx.lights || !(scale > 0)) return;
+  const interval = Math.max(def.interval, 1e-3);
+  const depth = Math.min(1, Math.max(0, def.flicker ?? ARSENAL_VFX.sustainFlicker)) * ctx.flicker;
   state.timer -= dt;
-  if (state.timer > 0) return;
-  state.timer = def.interval;
-  state.handle = ctx.lights.sustain(state.handle, flashDefOf(def, priority), position, normal, scale);
+  if (state.timer <= 0) {
+    state.timer = state.timer + interval > 0 ? state.timer + interval : interval;
+    state.from = state.to;
+    state.to = 1 - depth * ctx.rand();
+  }
+  if (depth <= 0) state.from = state.to = 1;
+  const u = 1 - Math.min(1, Math.max(0, state.timer / interval));
+  const level = state.from + (state.to - state.from) * u;
+  state.handle = ctx.lights.sustain(state.handle, flashDefOf(def, priority), position, normal, scale * level);
 }
 
 /** Physics probes of the arsenal (floor under fields): static world + props only. */

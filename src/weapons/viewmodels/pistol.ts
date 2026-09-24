@@ -274,6 +274,11 @@ export function buildPistol(kit: WeaponMaterialKit): WeaponViewmodelModel {
   b.socket('muzzle', [0, 0.026, -0.159]);
   b.socket('ejectPort', [0.015, 0.041, -0.02], [-40, -110, 0]);
   b.socket('sight', [0, SIGHT_Y, 0.0343]);
+  // Attachment mounts (M5): the optic rides the slide (cut in front of the rear sight), the laser
+  // hangs under the frame's accessory rail (+Y out of the rail surface, i.e. down).
+  b.mount('optic', [0, 0.045, 0.004], undefined, 'slide');
+  b.mount('muzzleDevice', [0, 0.026, -0.1584]);
+  b.mount('laser', [0, -0.005, -0.104], [0, 0, 180]);
 
   const built = b.build({ ...kit.materials, ...glow });
   return new ProceduralWeaponModel('pistol', def, built, glow, readoutSpec, readout);

@@ -120,6 +120,8 @@ export interface ViewmodelDriverDef {
   readonly accentBoost?: number;
   /** Easing of the source value (1/s towards the target), default instant. */
   readonly response?: number;
+  /** Floor of the source value (0..1): the driver keeps running this much at rest (a ring that always turns). */
+  readonly idle?: number;
 }
 
 export interface WeaponViewmodelDef {
@@ -506,6 +508,32 @@ export const VIEWMODEL_ANIM = {
   ],
   meleeStrike: 0.22,
   meleeHitImpulse: { pos: V(0.012, 0.004, 0.022), rot: V(4, -6, -6) },
+  /**
+   * Gestures of the off hand (M5), normalized to `duration` and added directly (too quick for the
+   * follow spring). A restart mid-gesture fades the old pose out over `restartFade` s (no pop).
+   * grenade:thrown – the weapon dips down-right out of the throwing arm's way and comes back.
+   */
+  grenadeThrow: {
+    duration: 0.45,
+    keys: [
+      { t: 0.2, pos: V(0.035, -0.085, 0.03), rot: V(-17, -9, -24) },
+      { t: 0.46, pos: V(0.03, -0.078, 0.026), rot: V(-14, -8, -20) },
+    ],
+    /** Settle thump when the weapon is back up (fraction of the duration). */
+    settleAt: 0.82,
+    settleImpulse: { pos: V(0, -0.004, 0.003), rot: V(-2, 0, 1.2) },
+  },
+  /** ability:used – a short cant while the off hand triggers the gauntlet, with an accent surge. */
+  ability: {
+    duration: 0.38,
+    keys: [
+      { t: 0.24, pos: V(0.012, -0.022, 0.014), rot: V(5, -5, -15) },
+      { t: 0.46, pos: V(0.01, -0.02, 0.012), rot: V(4, -4, -13) },
+    ],
+    /** Accent flash (like a shot's, 0..1 of VIEWMODEL_ANIM.accentPulse.fireFlash). */
+    accentFlash: 1,
+  },
+  restartFade: 0.08,
   dryFireImpulse: { pos: V(0, 0, 0.002), rot: V(0.8, 0, 0.4) },
   adsInImpulse: { pos: V(0, -0.002, 0.005), rot: V(-0.8, 0, 0) },
   adsOutImpulse: { pos: V(0, -0.004, 0), rot: V(0.6, 0, -0.8) },

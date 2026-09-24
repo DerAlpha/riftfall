@@ -28,6 +28,8 @@ export interface ViewmodelFxState {
   flash: number;
   /** 0..1 depth scale of the heat shimmer (0 with reduce-flashing); default 1. */
   flicker?: number;
+  /** Extra accent emissive intensity from state drivers (charge, beam, spin – M5); default 0. */
+  accentBoost?: number;
 }
 
 export type ReadoutSpec = { kind: 'leds'; count: number } | { kind: 'segments' } | { kind: 'none' };
@@ -152,7 +154,8 @@ export class ProceduralWeaponModel implements WeaponViewmodelModel {
     const A = VIEWMODEL_ANIM;
     const g = this.def.glow;
     const pulse = 1 + A.accentPulse.depth * Math.sin(fx.time * A.accentPulse.rate);
-    this.glow.accent.emissiveIntensity = g.accent * pulse + fx.flash * A.accentPulse.fireFlash;
+    this.glow.accent.emissiveIntensity =
+      g.accent * pulse + fx.flash * A.accentPulse.fireFlash + (fx.accentBoost ?? 0);
     const flicker = 1 + A.heatFlicker.depth * (fx.flicker ?? 1) * Math.sin(fx.time * A.heatFlicker.rate);
     // Squared: vents stay dark for a few shots, then ramp up hard during sustained fire.
     this.glow.heat.emissiveIntensity = g.heat * fx.heat * fx.heat * flicker;

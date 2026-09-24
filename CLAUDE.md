@@ -297,8 +297,11 @@ RenderPass(world)                                 (incl. decals, casings, traini
   each (the power-up pays a flat bonus); dev-console spawns pay and drop nothing; repairs are capped per
   wave; `economy/pacing.test.ts` guards the wave 1–10 rhythm (a door per wave, box ~3–4, perk ~4–6). The
   calibration hall starts with `ECONOMY.sandboxStartPoints`. Only Phoenix is lost on a revive (its fire
-  burst goes off on the next perk tick); perk blasts use their own floor-level VFX presets (`perk.*`), not
-  the frag explosion; `run kill` uses `health.kill()` (bypasses revives and damage stats).
+  burst goes off on the next perk tick). Perk blasts (Nova, Kinetik, Phoenix) do not use the frag
+  explosion: an effect straight below the first-person camera must not use smoke or big billboards (a quad
+  centered there sits at the near plane and veils the screen), so they play a small center effect (light,
+  shake, floor sparks) plus a ring of bursts around the player (`perk.*` presets, `PerkBlastDef.fx`).
+  `run kill` uses `health.kill()` (bypasses revives and damage stats).
 - **Doors block the navmesh (M4):** NavSystem.setAreaBlocked regenerates the tiles under a door box once
   (the doorway gets its own polygons), then blocking is an instant poly-flag toggle that queries and the
   crowd filter respect; blocked areas are re-applied after a rebuild. Perk machines and box spots are

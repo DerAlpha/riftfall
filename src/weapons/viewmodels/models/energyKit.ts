@@ -213,7 +213,7 @@ export interface EnergyFxState {
   flash: number;
   /** Seconds since the last detected shot (large before the first). */
   sinceShot: number;
-  /** 0..1 driver level the animator reports (charge / beam / spin), 0 when none. */
+  /** 0..1 driver level: the def drivers' current accent boost over their total (charge / beam / spin). */
   boost: number;
   /** 0..1 flicker/shimmer depth scale (0 with reduced flashing). */
   flicker: number;
@@ -227,13 +227,13 @@ const SHOT_FLASH_JUMP = 0.2;
 const NO_SHOT_YET = 1e6;
 
 /**
- * Driver level the animator hands the model, if it does (package C1's drivers: fx.boost or
- * fx.accentBoost, 0..1). Absent → 0: the materials just breathe and flash.
+ * Sum of the def's driver accent boosts: the animator hands the model their current total
+ * (fx.accentBoost, intensity units), so total / sum is the 0..1 driver level.
  */
-function driverLevel(fx: Readonly<ViewmodelFxState>): number {
-  const f = fx as Readonly<ViewmodelFxState> & { boost?: number; accentBoost?: number; driver?: number };
-  const v = f.boost ?? f.driver ?? f.accentBoost ?? 0;
-  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
+function driverBoostSum(def: WeaponViewmodelDef): number {
+  let sum = 0;
+  for (const d of def.drivers ?? []) sum += Math.max(0, d.accentBoost ?? 0);
+  return sum;
 }
 
 export class EnergyWeaponModel extends ProceduralWeaponModel {
@@ -248,6 +248,7 @@ export class EnergyWeaponModel extends ProceduralWeaponModel {
   };
   private lastTime = -1;
   private lastFlash = 0;
+  private readonly boostSum: number;
 
   constructor(
     weaponId: string,
@@ -260,6 +261,7 @@ export class EnergyWeaponModel extends ProceduralWeaponModel {
     private readonly extras: readonly ExtraAnimator[] = [],
   ) {
     super(weaponId, def, built, glow, readoutSpec, readout, channels.map((c) => c.material));
+    this.boostSum = driverBoostSum(def);
     // Rest state (also what a warm-up compile or a still screenshot shows).
     for (const c of channels) c.material.uniforms.uIntensity.value = c.intensity;
   }
@@ -277,7 +279,8 @@ export class EnergyWeaponModel extends ProceduralWeaponModel {
     else e.sinceShot = Math.min(NO_SHOT_YET, e.sinceShot + dt);
     this.lastFlash = fx.flash;
     e.flash = fx.flash;
-    e.boost = driverLevel(fx);
+    const boost = this.boostSum > 0 ? (fx.accentBoost ?? 0) / this.boostSum : 0;
+    e.boost = Number.isFinite(boost) ? Math.min(1, Math.max(0, boost)) : 0;
     for (const c of this.channels) {
       const u = c.material.uniforms;
       const pulse = 1 + (c.pulseDepth ?? 0) * Math.sin(fx.time * (c.pulseRate ?? 0));

@@ -3,8 +3,10 @@
  * weapon model: per-shot kick springs, slide/bolt/pump cycling, tactical/empty reload
  * choreography (pose keys over the reload duration + part motions on the reload markers),
  * equip raise / holster lower, inspect, melee bash, dry-fire twitch, sustained-fire drift,
- * heat glow and a slow idle drift. Everything is springs and curves – no keyframe assets – and
- * frame-rate independent (springs are sub-stepped, curves are time based).
+ * heat glow and a slow idle drift. M5: state drivers (barrels spinning with weapon:spin, rails
+ * spreading with weapon:charge, emitters opening while weapon:beam fires, vents with heat) and
+ * off-hand gestures (grenade:thrown, ability:used). Everything is springs and curves – no
+ * keyframe assets – and frame-rate independent (springs are sub-stepped, curves are time based).
  *
  * Output: `pose` – an additive offset the ViewmodelRig applies on top of its hip/ADS, sway,
  * bob and landing layers (position in viewmodel-camera space, rotation around the weapon's
@@ -29,6 +31,8 @@ import {
   type DelayedImpulseDef,
   type PartMotionDef,
   type PoseDef,
+  type PoseKeyDef,
+  type ViewmodelDriverDef,
   type WeaponViewmodelDef,
 } from '../defs/viewmodels';
 import { getWeaponDef, type ReloadStep, type WeaponDef } from '../defs/weapons';
@@ -40,6 +44,7 @@ import {
   createTimeWarp,
   ease,
   poseAddDef,
+  poseCopy,
   poseAddScaled,
   poseFromDef,
   poseZero,
@@ -78,12 +83,17 @@ const STEP_BIT: Readonly<Record<ReloadStep, number>> = {
   pump: 16,
 };
 
+const TAU = Math.PI * 2;
+const AXES = { x: new Vector3(1, 0, 0), y: new Vector3(0, 1, 0), z: new Vector3(0, 0, 1) } as const;
+
 const _v = new Vector3();
 const _q = new Quaternion();
+const _qs = new Quaternion();
 const _e = new Euler();
 const _offset = createPose();
 const _track = createPose();
 const _bash = createPose();
+const _gesture = createPose();
 
 interface PartBinding {
   readonly name: string;
@@ -91,6 +101,34 @@ interface PartBinding {
   readonly restPos: Vector3;
   readonly restQuat: Quaternion;
   readonly state: PartMotionState;
+  /** State drivers moving this part (M5). */
+  readonly drivers: DriverBinding[];
+}
+
+/** Runtime state of one WeaponViewmodelDef.drivers entry. */
+interface DriverBinding {
+  readonly def: ViewmodelDriverDef;
+  /** `def.pose` in radians, scaled by `value` onto the part's offset. */
+  readonly pose: Pose;
+  readonly axis: Vector3 | null;
+  /** Spin rate at source 1 (rad/s). */
+  readonly rate: number;
+  /** Eased source value 0..1. */
+  value: number;
+  /** Accumulated spin (rad, wrapped). */
+  angle: number;
+}
+
+/** An off-hand gesture track (grenade throw, ability) and the pose it restarted from. */
+interface GestureState {
+  active: boolean;
+  t: number;
+  readonly from: Pose;
+}
+
+interface GestureDef {
+  readonly duration: number;
+  readonly keys: readonly PoseKeyDef[];
 }
 
 interface ScheduledImpulse {
@@ -223,6 +261,17 @@ export class ViewmodelAnimator {
   private meleeDur = 1;
   private readonly meleeWarp = createTimeWarp(1);
 
+  // State drivers (M5): source values of the bound weapon, 0..1
+  private readonly drivers: DriverBinding[] = [];
+  private spinSource = 0;
+  private chargeSource = 0;
+  private beamSource = 0;
+  private accentBoost = 0;
+
+  // Off-hand gestures (M5)
+  private readonly throwGesture: GestureState = { active: false, t: 0, from: createPose() };
+  private readonly abilityGesture: GestureState = { active: false, t: 0, from: createPose() };
+
   constructor(deps: ViewmodelAnimatorDeps) {
     this.events = deps.events;
     this.showModelFn = deps.showModel;
@@ -248,6 +297,17 @@ export class ViewmodelAnimator {
         if (e.cancelled && e.weaponId === this.weaponId) this.cancelInspect();
       }),
       ev.on('weapon:melee', (e) => this.onMelee(e.weaponId, e.duration, e.hit)),
+      ev.on('weapon:spin', (e) => {
+        if (e.weaponId === this.weaponId) this.spinSource = clamp01(e.amount);
+      }),
+      ev.on('weapon:charge', (e) => {
+        if (e.weaponId === this.weaponId) this.chargeSource = clamp01(e.amount);
+      }),
+      ev.on('weapon:beam', (e) => {
+        if (e.weaponId === this.weaponId) this.beamSource = e.active ? 1 : 0;
+      }),
+      ev.on('grenade:thrown', () => this.onGrenadeThrown()),
+      ev.on('ability:used', () => this.onAbilityUsed()),
       ev.on('settings:changed', ({ settings, sections }) => {
         if (sections.includes('accessibility')) this.setReduceFlashing(settings.accessibility.reduceFlashing);
       }),
@@ -276,6 +336,11 @@ export class ViewmodelAnimator {
   /** 0..1 how far the weapon is lowered by a holster/raise (0 = up). */
   get lowering(): number {
     return this.lower;
+  }
+
+  /** Extra accent intensity the state drivers add this frame (debug / tests). */
+  get driverAccentBoost(): number {
+    return this.accentBoost;
   }
 
   /**
@@ -317,9 +382,25 @@ export class ViewmodelAnimator {
         restPos: obj.position.clone(),
         restQuat: obj.quaternion.clone(),
         state: createPartMotionState(obj.visible),
+        drivers: [],
       };
       this.parts.push(binding);
       this.partByName.set(name, binding);
+    }
+    for (const d of model.def.drivers ?? []) {
+      const spin = d.spin;
+      const idle = clamp01(d.idle ?? 0);
+      const driver: DriverBinding = {
+        def: d,
+        pose: poseFromDef(createPose(), d.pose),
+        axis: spin ? AXES[spin.axis] : null,
+        rate: spin ? spin.degPerSec * DEG2RAD : 0,
+        value: idle,
+        angle: 0,
+      };
+      this.drivers.push(driver);
+      // A driver on a missing part still boosts the accents.
+      this.partByName.get(d.part)?.drivers.push(driver);
     }
     for (const name of model.def.lockParts) this.settleNames.add(name);
     for (const list of Object.values(model.def.reloadSteps)) {
@@ -365,6 +446,8 @@ export class ViewmodelAnimator {
     // The bash is too fast for the follow spring (it would lag the blow): applied directly.
     const bash = poseZero(_bash);
     if (this.meleeActive) this.evalMelee(dt, bash);
+    this.evalGesture(this.throwGesture, A.grenadeThrow, dt, bash);
+    this.evalGesture(this.abilityGesture, A.ability, dt, bash);
 
     // --- kick springs ---
     stepPoseSpring(this.kick, null, vdef?.kickSpring ?? A.poseFollow, dt, maxStep, this.kickOut);
@@ -374,6 +457,7 @@ export class ViewmodelAnimator {
       this.sustained = Math.max(0, this.sustained - vdef.sustained.decay * dt);
       this.heat = Math.max(0, this.heat - vdef.heat.decay * dt);
     }
+    this.stepDrivers(dt);
     const accentFlash = this.accentFlash * this.flashScale;
     this.muzzleFlash = this.lightFlash * this.flashScale;
     this.accentFlash *= Math.exp(-A.accentPulse.flashDecay * dt);
@@ -402,6 +486,7 @@ export class ViewmodelAnimator {
       this.fx.time = this.time;
       this.fx.heat = clamp01(this.heat);
       this.fx.flash = accentFlash;
+      this.fx.accentBoost = this.accentBoost;
       this.model.animate(this.fx);
     }
   }
@@ -622,6 +707,21 @@ export class ViewmodelAnimator {
     }
   }
 
+  /** The off hand throws: the weapon dips out of the arm's way (whatever weapon is shown). */
+  private onGrenadeThrown(): void {
+    this.cancelInspect();
+    const G = A.grenadeThrow;
+    this.startGesture(this.throwGesture, G);
+    this.impulse(G.settleImpulse, G.settleAt * G.duration, 1);
+  }
+
+  /** The off hand triggers an ability: a short cant and an accent surge. */
+  private onAbilityUsed(): void {
+    this.cancelInspect();
+    this.startGesture(this.abilityGesture, A.ability);
+    this.accentFlash = Math.max(this.accentFlash, A.ability.accentFlash);
+  }
+
   /** A reload is visibly in progress (timeline reloads rest once their duration passed). */
   private get reloadRunning(): boolean {
     if (!this.reloadActive || this.reloadEnded) return false;
@@ -712,6 +812,56 @@ export class ViewmodelAnimator {
     if (t >= 1) this.meleeActive = false;
   }
 
+  /** (Re)start a gesture; a running one hands its current pose over as a fading offset. */
+  private startGesture(g: GestureState, def: GestureDef): void {
+    if (g.active) poseCopy(g.from, this.sampleGesture(g, def, _gesture));
+    else poseZero(g.from);
+    g.t = 0;
+    g.active = true;
+  }
+
+  private sampleGesture(g: GestureState, def: GestureDef, out: Pose): Pose {
+    samplePoseTrack(out, def.keys, def.duration > 0 ? Math.min(1, g.t / def.duration) : 1);
+    const fade = A.restartFade;
+    const w = fade > 0 ? 1 - ease('inOut', g.t / fade) : 0;
+    if (w > 0) poseAddScaled(out, g.from, w);
+    return out;
+  }
+
+  private evalGesture(g: GestureState, def: GestureDef, dt: number, target: Pose): void {
+    if (!g.active) return;
+    g.t += dt;
+    poseAddScaled(target, this.sampleGesture(g, def, _gesture), 1);
+    if (g.t >= def.duration) g.active = false;
+  }
+
+  /** Ease every driver towards its source; spin angles and the accent boost follow. */
+  private stepDrivers(dt: number): void {
+    let boost = 0;
+    for (const d of this.drivers) {
+      const def = d.def;
+      const target = Math.max(clamp01(def.idle ?? 0), this.driverSource(def.source));
+      const r = def.response ?? 0;
+      d.value = r > 0 ? damp(d.value, target, r, dt) : target;
+      if (d.rate !== 0) d.angle = (d.angle + d.rate * d.value * dt) % TAU;
+      if (def.accentBoost) boost += def.accentBoost * d.value;
+    }
+    this.accentBoost = boost;
+  }
+
+  private driverSource(source: ViewmodelDriverDef['source']): number {
+    switch (source) {
+      case 'spin':
+        return this.spinSource;
+      case 'charge':
+        return this.chargeSource;
+      case 'beam':
+        return this.beamSource;
+      case 'heat':
+        return clamp01(this.heat);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
@@ -783,6 +933,10 @@ export class ViewmodelAnimator {
     this.accentFlash = 0;
     this.lightFlash = 0;
     this.muzzleFlash = 0;
+    this.spinSource = 0;
+    this.chargeSource = 0;
+    this.beamSource = 0;
+    this.accentBoost = 0;
   }
 
   private runMotions(list: readonly PartMotionDef[]): void {
@@ -894,11 +1048,14 @@ export class ViewmodelAnimator {
     for (const b of this.parts) {
       stepPartMotion(b.state, dt);
       partOffset(b.state, _offset);
+      for (const d of b.drivers) if (d.value !== 0) poseAddScaled(_offset, d.pose, d.value);
       const obj = b.obj;
       _v.set(_offset.px, _offset.py, _offset.pz).applyQuaternion(b.restQuat);
       obj.position.copy(b.restPos).add(_v);
       _q.setFromEuler(_e.set(_offset.rx, _offset.ry, _offset.rz));
       obj.quaternion.copy(b.restQuat).multiply(_q);
+      // Spins turn the part about its own (offset) axis, after the pose offset.
+      for (const d of b.drivers) if (d.axis && d.angle !== 0) obj.quaternion.multiply(_qs.setFromAxisAngle(d.axis, d.angle));
       obj.visible = b.state.visible;
     }
   }
@@ -914,6 +1071,7 @@ export class ViewmodelAnimator {
     this.parts.length = 0;
     this.partByName.clear();
     this.settleNames.clear();
+    this.drivers.length = 0;
   }
 }
 

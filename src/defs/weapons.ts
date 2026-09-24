@@ -2,17 +2,28 @@
  * Weapon tuning (data-driven: systems never branch on a weapon id; only viewmodel builders are
  * per weapon). Angles in DEGREES, times in seconds, distances in meters, speeds in rounds/minute.
  *
- * Feel targets (DOOM-Eternal punch, CoD-Zombies economy):
- * - VX-9 "Sentinel": precise, fast semi-auto sidearm, 45 dmg, a sharp single kick per shot.
- * - KR-7 "Wächter": 650 rpm full auto, 28 dmg, learnable pattern (straight up, then drift right,
- *   then back left) that a player can pull down against.
- * - SG-12 "Brecher": 9 × 14 dmg pump shotgun (~70 rpm) that deletes things up close.
+ * This file holds the SCHEMA, the registry and the rules; the roster itself lives in
+ * defs/weaponData/<category>.ts (feel targets per weapon in each file's header), attachments in
+ * defs/attachments.ts, Rift Forge rules and looks in defs/forge.ts.
  *
- * Extension points (M5): `upgrades` (Rift Forge tiers, multiplicative stat mods), `attachmentSlots`,
- * `damage.element` (elemental mods) and `kind` ('projectile' / 'beam' are reserved).
+ * Balance frame (DOOM-Eternal punch, CoD-Zombies economy; enemies in defs/enemies.ts: Schwärmer
+ * 60 HP, Spucker 110, Koloss 900, ×1.9 by wave 10 and up to ×5 late):
+ * - wall guns 500–1500 by usefulness, ~300 body DPS for the automatics, one-to-two-tap precision
+ *   for the semis; the Rift-Kiste adds the box-only heavies (minigun), energy/experimental
+ *   weapons and the three wonder weapons (rare, strong, own base specials);
+ * - Rift Forge tiers stack ×1.6–1.8 / ×1.35 / ×1.25–1.3 damage (≈3× at tier 3) plus magazine,
+ *   handling and one special per tier – tier 3 changes how the weapon plays.
  */
 import type { DamageElement, GameEvents } from '../core/events';
 import type { Action } from './input';
+import { ENERGY } from './weaponData/energy';
+import { LMGS } from './weaponData/lmgs';
+import { PISTOLS } from './weaponData/pistols';
+import { RIFLES } from './weaponData/rifles';
+import { SHOTGUNS } from './weaponData/shotguns';
+import { SMGS } from './weaponData/smgs';
+import { SNIPERS } from './weaponData/snipers';
+import { WONDER } from './weaponData/wonder';
 
 export type WeaponCategory =
   | 'pistol'
@@ -420,6 +431,8 @@ export interface WeaponStatMods {
   /** Projectile speed / explosion radius factors (projectile weapons). */
   readonly projectileSpeed?: number;
   readonly blastRadius?: number;
+  /** Charge weapons: time to full charge factor (< 1 = faster). */
+  readonly chargeTime?: number;
 }
 
 /**
@@ -496,389 +509,58 @@ export interface WeaponDef {
   readonly spinUp?: WeaponSpinUpDef | null;
   /** Base special effect (wonder weapons); Rift Forge tiers may add or replace it. */
   readonly special?: WeaponSpecialDef | null;
+  /**
+   * Player move speed factor while this weapon is held (heavy weapons < 1; default 1). The ADS
+   * speed (`ads.moveSpeedMultiplier`) applies on top; the `moveSpeed` stat mod scales both.
+   */
+  readonly carrySpeedMultiplier?: number;
 }
 
-/** Shared melee swing (all M2 weapons bash with the same arm motion). */
-const MELEE_BASH = {
-  damage: 60,
-  range: 2.0,
-  coneDeg: 32,
-  duration: 0.5,
-  hitTime: 0.11,
-  cooldown: 0.12,
-  impulse: 6,
-  propImpulse: 90,
-  shake: 0.28,
-} as const satisfies WeaponMeleeDef;
-
-const NO_UPGRADES: readonly WeaponUpgradeTier[] = [];
-
+/**
+ * The roster (M5: 25 weapons), one file per category under defs/weaponData (feel targets in their
+ * headers). Keys equal the weapon ids and the viewmodel model ids.
+ */
 export const WEAPONS = {
-  pistol: {
-    id: 'pistol',
-    name: 'VX-9 „Sentinel“',
-    shortName: 'VX-9',
-    description: 'Präzise Halbautomatik. Schnell gezogen, tödlich auf den Kopf.',
-    category: 'pistol',
-    kind: 'hitscan',
-    fireMode: 'semi',
-    burst: null,
-    damage: {
-      base: 45,
-      headMultiplier: 2,
-      limbMultiplier: 0.75,
-      weakpointMultiplier: 2.5,
-      falloffStart: 18,
-      falloffEnd: 45,
-      minFalloffMultiplier: 0.6,
-      element: 'physical',
-      impulse: 1.6,
-      propImpulse: 45,
-    },
-    pellets: 1,
-    // Semi-auto rate cap: a fast trigger finger, not a spam button.
-    rpm: 420,
-    magazine: 12,
-    reserve: 84,
-    chambered: true,
-    reload: {
-      tactical: 1.3,
-      empty: 1.6,
-      tacticalSteps: [
-        { step: 'magOut', at: 0.28 },
-        { step: 'magIn', at: 0.82 },
-      ],
-      emptySteps: [
-        { step: 'magOut', at: 0.26 },
-        { step: 'magIn', at: 0.8 },
-        { step: 'boltRelease', at: 1.22 },
-      ],
-      perShell: null,
-    },
-    spread: {
-      hip: 0.9,
-      ads: 0.12,
-      moveAdd: 0.9,
-      airAdd: 2.4,
-      crouchMultiplier: 0.8,
-      // Paced shots stay pin-point; spamming at the rate cap blooms to the max in ~6 shots.
-      perShotBloom: 0.5,
-      bloomMax: 2,
-      recoveryPerSec: 8,
-      recoveryDelay: 0.12,
-    },
-    recoil: {
-      pattern: [
-        [0, 1.55],
-        [0.12, 1.5],
-        [-0.12, 1.5],
-      ],
-      patternRepeatFrom: 0,
-      randomYaw: 0.35,
-      randomPitch: 0.25,
-      recoveryPerSec: 10,
-      recoveryDelay: 0.07,
-      resetTime: 0.35,
-      adsMultiplier: 0.7,
-      crouchMultiplier: 0.85,
-      kickTime: 0.05,
-      viewPunch: { pitch: 1.8, yaw: 0.5, roll: 1.2 },
-      visualKick: { back: 0.045, up: 0.012, side: 0.004, pitch: 9, yaw: 1.5, roll: 3 },
-      shake: 0.2,
-    },
-    ads: {
-      zoom: 0.86,
-      inTime: 0.15,
-      outTime: 0.12,
-      moveSpeedMultiplier: 0.82,
-      sensitivityMultiplier: 0.95,
-    },
-    // Through glass and grates, not through bodies.
-    penetration: { power: 0.5, damageKeep: 0.6 },
-    range: 140,
-    equipTime: 0.32,
-    holsterTime: 0.22,
-    sprintToFireTime: 0.1,
-    inspectTime: 2.2,
-    melee: MELEE_BASH,
-    tracer: { everyNth: 1, color: 0x9fe8ff, pellets: 1 },
-    vfx: {
-      muzzle: 'muzzle.pistol',
-      impact: 'impact.bullet',
-      casing: 'casing.pistol',
-      muzzleLightColor: 0xffc27a,
-    },
-    audio: {
-      fire: ['weapon.pistol.fire', 'weapon.pistol.mech', 'weapon.tail.small'],
-      dry: 'weapon.dry',
-      equip: 'weapon.pistol.equip',
-      holster: 'weapon.holster',
-      reloadStart: 'weapon.reload.start',
-      steps: {
-        magOut: 'weapon.pistol.magOut',
-        magIn: 'weapon.pistol.magIn',
-        boltRelease: 'weapon.pistol.slide',
-      },
-      melee: 'weapon.melee',
-      inspect: 'weapon.inspect',
-    },
-    rumble: { strong: 0.25, weak: 0.55, ms: 70 },
-    model: 'pistol',
-    cost: 500,
-    attachmentSlots: ['optic', 'muzzle', 'magazine', 'laser'],
-    upgrades: NO_UPGRADES,
-  },
-  rifle: {
-    id: 'rifle',
-    name: 'KR-7 „Wächter“',
-    shortName: 'KR-7',
-    description: 'Vollautomatisches Sturmgewehr. Zieht erst hoch, dann nach rechts – halte dagegen.',
-    category: 'rifle',
-    kind: 'hitscan',
-    fireMode: 'auto',
-    burst: null,
-    damage: {
-      base: 28,
-      headMultiplier: 1.8,
-      limbMultiplier: 0.8,
-      weakpointMultiplier: 2.2,
-      falloffStart: 26,
-      falloffEnd: 60,
-      minFalloffMultiplier: 0.65,
-      element: 'physical',
-      impulse: 1.1,
-      propImpulse: 35,
-    },
-    pellets: 1,
-    rpm: 650,
-    magazine: 32,
-    reserve: 224,
-    chambered: true,
-    reload: {
-      tactical: 1.85,
-      empty: 2.35,
-      tacticalSteps: [
-        { step: 'magOut', at: 0.42 },
-        { step: 'magIn', at: 1.22 },
-      ],
-      emptySteps: [
-        { step: 'magOut', at: 0.4 },
-        { step: 'magIn', at: 1.18 },
-        { step: 'boltRelease', at: 1.86 },
-      ],
-      perShell: null,
-    },
-    spread: {
-      hip: 1.7,
-      ads: 0.2,
-      moveAdd: 1.4,
-      airAdd: 3,
-      crouchMultiplier: 0.75,
-      // Bursts of 3–5 stay tight; a full spray blooms to the cap after ~11 shots.
-      perShotBloom: 0.18,
-      bloomMax: 2,
-      recoveryPerSec: 7,
-      recoveryDelay: 0.14,
-    },
-    recoil: {
-      // Shots 1–7 climb, 8–14 drift right, 15–22 swing back left; the tail loops a gentle weave.
-      pattern: [
-        [0, 0.62],
-        [0.02, 0.66],
-        [-0.03, 0.68],
-        [0.03, 0.7],
-        [0, 0.7],
-        [0.05, 0.66],
-        [0.08, 0.62],
-        [0.16, 0.55],
-        [0.22, 0.5],
-        [0.26, 0.46],
-        [0.28, 0.42],
-        [0.26, 0.4],
-        [0.2, 0.38],
-        [0.12, 0.36],
-        [0, 0.35],
-        [-0.12, 0.34],
-        [-0.22, 0.33],
-        [-0.28, 0.32],
-        [-0.3, 0.32],
-        [-0.26, 0.31],
-        [-0.18, 0.3],
-        [-0.08, 0.3],
-        [0.1, 0.3],
-        [0.2, 0.3],
-        [0.1, 0.3],
-        [-0.1, 0.3],
-        [-0.2, 0.3],
-        [-0.1, 0.3],
-      ],
-      patternRepeatFrom: 22,
-      randomYaw: 0.1,
-      randomPitch: 0.07,
-      recoveryPerSec: 8,
-      recoveryDelay: 0.12,
-      resetTime: 0.28,
-      adsMultiplier: 0.62,
-      crouchMultiplier: 0.85,
-      kickTime: 0.045,
-      viewPunch: { pitch: 0.75, yaw: 0.3, roll: 0.6 },
-      visualKick: { back: 0.028, up: 0.006, side: 0.003, pitch: 3.5, yaw: 0.8, roll: 1.6 },
-      // Above the per-interval trauma decay: a hip spray builds up a rumble, ADS stays steady.
-      shake: 0.14,
-    },
-    ads: {
-      zoom: 0.74,
-      inTime: 0.22,
-      outTime: 0.16,
-      moveSpeedMultiplier: 0.7,
-      sensitivityMultiplier: 0.9,
-    },
-    penetration: { power: 2, damageKeep: 0.7 },
-    range: 220,
-    equipTime: 0.5,
-    holsterTime: 0.3,
-    sprintToFireTime: 0.18,
-    inspectTime: 2.8,
-    melee: MELEE_BASH,
-    tracer: { everyNth: 3, color: 0xffb35a, pellets: 1 },
-    vfx: {
-      muzzle: 'muzzle.rifle',
-      impact: 'impact.bullet',
-      casing: 'casing.rifle',
-      muzzleLightColor: 0xffb060,
-    },
-    audio: {
-      fire: ['weapon.rifle.fire', 'weapon.rifle.mech', 'weapon.tail.medium'],
-      dry: 'weapon.dry',
-      equip: 'weapon.rifle.equip',
-      holster: 'weapon.holster',
-      reloadStart: 'weapon.reload.start',
-      steps: {
-        magOut: 'weapon.rifle.magOut',
-        magIn: 'weapon.rifle.magIn',
-        boltRelease: 'weapon.rifle.bolt',
-      },
-      melee: 'weapon.melee',
-      inspect: 'weapon.inspect',
-    },
-    rumble: { strong: 0.2, weak: 0.45, ms: 55 },
-    model: 'rifle',
-    cost: 1200,
-    attachmentSlots: ['optic', 'muzzle', 'underbarrel', 'magazine', 'stock', 'laser'],
-    upgrades: NO_UPGRADES,
-  },
-  shotgun: {
-    id: 'shotgun',
-    name: 'SG-12 „Brecher“',
-    shortName: 'SG-12',
-    description: 'Pump-Schrotflinte. Neun Kugeln, ein Urteil – aus nächster Nähe vernichtend.',
-    category: 'shotgun',
-    kind: 'hitscan',
-    fireMode: 'pump',
-    burst: null,
-    damage: {
-      base: 14,
-      headMultiplier: 1.5,
-      limbMultiplier: 0.8,
-      weakpointMultiplier: 1.8,
-      falloffStart: 7,
-      falloffEnd: 22,
-      minFalloffMultiplier: 0.25,
-      element: 'physical',
-      impulse: 0.9,
-      propImpulse: 40,
-    },
-    pellets: 9,
-    rpm: 72,
-    magazine: 8,
-    reserve: 40,
-    chambered: false,
-    reload: {
-      tactical: 0,
-      empty: 0,
-      tacticalSteps: [],
-      emptySteps: [],
-      perShell: {
-        start: 0.32,
-        shell: 0.44,
-        insertAt: 0.3,
-        end: 0.26,
-        emptyEnd: 0.62,
-        pumpAt: 0.28,
-      },
-    },
-    spread: {
-      // Pellet cone: the whole ring lands on a torso inside ~4 m, half of it at ~8 m.
-      hip: 4.5,
-      ads: 3.1,
-      moveAdd: 0.6,
-      airAdd: 1.4,
-      crouchMultiplier: 0.9,
-      perShotBloom: 0.8,
-      bloomMax: 1.6,
-      recoveryPerSec: 5,
-      recoveryDelay: 0.2,
-    },
-    recoil: {
-      pattern: [[0, 5.2]],
-      patternRepeatFrom: 0,
-      randomYaw: 0.9,
-      randomPitch: 0.6,
-      recoveryPerSec: 16,
-      recoveryDelay: 0.12,
-      resetTime: 0.9,
-      adsMultiplier: 0.75,
-      crouchMultiplier: 0.85,
-      kickTime: 0.07,
-      viewPunch: { pitch: 4.2, yaw: 1.2, roll: 2.6 },
-      visualKick: { back: 0.11, up: 0.03, side: 0.008, pitch: 16, yaw: 2.5, roll: 5 },
-      shake: 0.48,
-    },
-    ads: {
-      zoom: 0.88,
-      inTime: 0.2,
-      outTime: 0.15,
-      moveSpeedMultiplier: 0.78,
-      sensitivityMultiplier: 1,
-    },
-    // Pellets punch through glass and grates, not through crates or bodies.
-    penetration: { power: 0.5, damageKeep: 0.55 },
-    range: 70,
-    equipTime: 0.55,
-    holsterTime: 0.32,
-    sprintToFireTime: 0.2,
-    inspectTime: 2.6,
-    melee: MELEE_BASH,
-    tracer: { everyNth: 1, color: 0xffd08a, pellets: 3 },
-    vfx: {
-      muzzle: 'muzzle.shotgun',
-      impact: 'impact.pellet',
-      casing: 'casing.shell',
-      muzzleLightColor: 0xffa850,
-    },
-    audio: {
-      fire: ['weapon.shotgun.fire', 'weapon.shotgun.boom', 'weapon.tail.large'],
-      extraFire: ['weapon.shotgun.pumpCycle'],
-      dry: 'weapon.dry',
-      equip: 'weapon.shotgun.equip',
-      holster: 'weapon.holster',
-      reloadStart: 'weapon.shotgun.open',
-      steps: { shellIn: 'weapon.shotgun.shellIn', pump: 'weapon.shotgun.pump' },
-      melee: 'weapon.melee',
-      inspect: 'weapon.inspect',
-    },
-    rumble: { strong: 0.8, weak: 0.9, ms: 140 },
-    model: 'shotgun',
-    cost: 1500,
-    attachmentSlots: ['optic', 'muzzle', 'underbarrel', 'stock', 'laser'],
-    upgrades: NO_UPGRADES,
-  },
+  ...PISTOLS,
+  ...SMGS,
+  ...RIFLES,
+  ...SHOTGUNS,
+  ...LMGS,
+  ...SNIPERS,
+  ...ENERGY,
+  ...WONDER,
 } as const satisfies Record<string, WeaponDef>;
 
 export type WeaponId = keyof typeof WEAPONS;
 
-/** Every weapon M2 ships (fixed ids). */
-export const WEAPON_IDS: readonly WeaponId[] = ['pistol', 'rifle', 'shotgun'];
+/** Every weapon of the roster (fixed ids), in display order: by category, then by power. */
+export const WEAPON_IDS: readonly WeaponId[] = [
+  'pistol',
+  'revolver',
+  'machinepistol',
+  'smg',
+  'pdw',
+  'vector',
+  'rifle',
+  'burstrifle',
+  'battlerifle',
+  'shotgun',
+  'autoshotgun',
+  'doublebarrel',
+  'lmg',
+  'minigun',
+  'sniper',
+  'marksman',
+  'plasma',
+  'chainlightning',
+  'railgun',
+  'flamethrower',
+  'grenadelauncher',
+  'blackhole',
+  'riftripper',
+  'aetherharp',
+  'cryonova',
+];
 
 export function getWeaponDef(id: string): WeaponDef | undefined {
   return Object.prototype.hasOwnProperty.call(WEAPONS, id)

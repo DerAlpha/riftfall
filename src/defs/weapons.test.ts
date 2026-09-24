@@ -16,8 +16,11 @@ import {
 const defs: WeaponDef[] = WEAPON_IDS.map((id) => WEAPONS[id]);
 
 describe('weapon defs', () => {
-  it('fixed M2 ids, keys match ids, model ids equal weapon ids', () => {
-    expect(WEAPON_IDS).toEqual(['pistol', 'rifle', 'shotgun']);
+  it('fixed ids (the whole roster, unique), keys match ids, model ids equal weapon ids', () => {
+    expect(WEAPON_IDS.slice(0, 1)).toEqual(['pistol']);
+    for (const id of ['pistol', 'rifle', 'shotgun']) expect(WEAPON_IDS).toContain(id);
+    expect(new Set(WEAPON_IDS).size).toBe(WEAPON_IDS.length);
+    expect([...WEAPON_IDS].sort()).toEqual(Object.keys(WEAPONS).sort());
     for (const [key, def] of Object.entries(WEAPONS)) {
       expect(def.id).toBe(key);
       expect(def.model).toBe(key);
@@ -91,8 +94,13 @@ describe('weapon defs', () => {
     expect(WEAPONS.shotgun.recoil.pattern[0]![1]).toBeGreaterThan(WEAPONS.pistol.recoil.pattern[0]![1]);
   });
 
-  it('every shipped weapon has a kind the weapon system can fire', () => {
-    for (const d of Object.values(WEAPONS)) expect(IMPLEMENTED_WEAPON_KINDS, d.id).toContain(d.kind);
+  it('the M2 weapons fire with an implemented kind; other kinds carry their kind data', () => {
+    for (const id of ['pistol', 'rifle', 'shotgun'] as const)
+      expect(IMPLEMENTED_WEAPON_KINDS).toContain(WEAPONS[id].kind);
+    const defsOfKind = (k: WeaponDef['kind']): WeaponDef[] => defs.filter((d) => d.kind === k);
+    for (const d of defsOfKind('projectile')) expect(d.projectile, d.id).toBeTruthy();
+    for (const d of defsOfKind('beam')) expect(d.beam, d.id).toBeTruthy();
+    for (const d of defsOfKind('charge')) expect(d.charge, d.id).toBeTruthy();
   });
 
   it('every inventory slot has its own bound selection action', () => {

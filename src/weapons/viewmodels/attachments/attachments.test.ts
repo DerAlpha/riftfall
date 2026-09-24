@@ -365,6 +365,25 @@ describe('ViewmodelRig outfit integration', () => {
     expect(s2.z).toBeCloseTo(-ATTACHMENT_ART.eyeRelief.scope4x, 2);
   });
 
+  it('every optic lines up on every weapon that takes it', () => {
+    const relief: Readonly<Record<string, number>> = ATTACHMENT_ART.eyeRelief;
+    for (const id of WEAPON_IDS) {
+      const optics = attachmentsFor(getWeaponDef(id)!, 'optic');
+      if (optics.length === 0) continue;
+      mods.set(id, { tier: 0, attachments: [optics[0]!.id] });
+      rig.showWeapon(id);
+      ads.adsAmount = 1;
+      for (const optic of optics) {
+        mods.set(id, { tier: 0, attachments: [optic.id] });
+        frame(40);
+        const s = viewSpace('sight');
+        const at = `${id} + ${optic.id}`;
+        expect(Math.hypot(s.x, s.y), at).toBeLessThan(0.004);
+        expect(s.z, at).toBeCloseTo(-(relief[optic.id] ?? getViewmodelDef(id)!.adsEyeDistance), 2);
+      }
+    }
+  }, 60000);
+
   it('a suppressor moves the muzzle anchor to its tip; a forge tier recolors the accent light', () => {
     rig.showWeapon('pistol');
     frame(30);

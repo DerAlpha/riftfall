@@ -221,7 +221,11 @@ export class WeaponOutfit {
     });
     const rear = new Object3D();
     rear.name = 'mount-stock-fallback';
-    rear.position.set(0, ATTACHMENT_ART.rearMount.y, box.isEmpty() ? 0 : box.max.z - ATTACHMENT_ART.rearMount.inset);
+    rear.position.set(
+      0,
+      ATTACHMENT_ART.rearMount.y,
+      box.isEmpty() ? 0 : box.max.z - ATTACHMENT_ART.rearMount.inset,
+    );
     this.model.root.add(rear);
     this.rear = rear;
     return rear;

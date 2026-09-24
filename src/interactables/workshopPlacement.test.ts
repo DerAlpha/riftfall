@@ -10,7 +10,13 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/events';
-import type { AssetsApi, LevelInstance, MaterialLibraryApi, RenderApi, SettingsStore } from '../core/contracts';
+import type {
+  AssetsApi,
+  LevelInstance,
+  MaterialLibraryApi,
+  RenderApi,
+  SettingsStore,
+} from '../core/contracts';
 import { Rng } from '../core/Rng';
 import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { RIFT_FORGE_MACHINE, WORKBENCH, type WorkshopPlacementDef } from '../defs/workshop';
@@ -104,7 +110,11 @@ for (const mapId of ['lab', 'testroom'] as const) {
       return hits;
     }
 
-    const machines: readonly [WorkshopPlacementDef | undefined, { width: number; height: number; depth: number }, number][] = [
+    const machines: readonly [
+      WorkshopPlacementDef | undefined,
+      { width: number; height: number; depth: number },
+      number,
+    ][] = [
       [RIFT_FORGE_MACHINE.placements[mapId]?.[0], RIFT_FORGE_MACHINE.size, RIFT_FORGE_MACHINE.wallGap],
       [WORKBENCH.placements[mapId]?.[0], WORKBENCH.size, WORKBENCH.wallGap],
     ];
@@ -114,7 +124,11 @@ for (const mapId of ['lab', 'testroom'] as const) {
         expect(spot, `${mapId}: placement`).toBeDefined();
         const n = facingNormal(spot!.facing);
         const off = gap + size.depth / 2;
-        const c = { x: spot!.position[0] + n.x * off, y: spot!.position[1], z: spot!.position[2] + n.z * off };
+        const c = {
+          x: spot!.position[0] + n.x * off,
+          y: spot!.position[1],
+          z: spot!.position[2] + n.z * off,
+        };
         const box = propBox(c, facingYaw(spot!.facing), size.width, size.height, size.depth);
         expect(overlaps(box.center, box.half), spot!.id).toEqual([]);
         const floor = physics.raycast({ x: c.x, y: c.y + 0.5, z: c.z }, { x: 0, y: -1, z: 0 }, 1, {
@@ -168,11 +182,15 @@ for (const mapId of ['lab', 'testroom'] as const) {
       const spawn = level.spawn.position;
       for (const it of [handle.forge!, handle.workbench!]) {
         const p = it.position;
-        const floor = physics.raycast({ x: p.x, y: p.y, z: p.z }, { x: 0, y: -1, z: 0 }, 3, { groups: WORLD_RAY });
+        const floor = physics.raycast({ x: p.x, y: p.y, z: p.z }, { x: 0, y: -1, z: 0 }, 3, {
+          groups: WORLD_RAY,
+        });
         expect(floor, `${it.id}: floor under the anchor`).not.toBeNull();
         const q = { x: p.x, y: floor!.point.y, z: p.z };
         expect(nav.closestPoint(q, out), it.id).toBe(true);
-        expect(Math.hypot(out.x - q.x, out.z - q.z), `${it.id}: standing spot`).toBeLessThan(it.range - REACH_MARGIN);
+        expect(Math.hypot(out.x - q.x, out.z - q.z), `${it.id}: standing spot`).toBeLessThan(
+          it.range - REACH_MARGIN,
+        );
         const path: THREE.Vector3[] = [];
         const n = nav.findPath(spawn, out, path);
         expect(n, `${it.id}: path`).toBeGreaterThan(0);

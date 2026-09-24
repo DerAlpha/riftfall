@@ -3,11 +3,11 @@
  * dimension comes from LAB_LAYOUT (defs/labLayout.ts), materials from defs/materials.ts (+ the
  * tinted LAB_MATERIALS variants), atmosphere from LAB (defs/maps.ts).
  *
- * Budget (68 draws at 'high', LAB_LAYOUT.maxMeshes): static geometry merged per material variant
- * (~44 meshes) + flicker panels + static crates, 10 volumetric cones, 1 shaft mesh (16 skylight
- * panes), 1 dust system, 3 fog volumes, 1 instanced draw for all spawn tears, 3 draws for the rift
- * anomaly (vortex, tear cluster, particles). Lights: 10 spots (local shadows from the QUALITY_LEVELS
- * budget, staggered refresh) + 4 points + the rift light = 15 (LAB_LAYOUT.maxLights).
+ * Budget (~68 draws at 'high', within LAB_LAYOUT.maxMeshes): static geometry merged per material
+ * variant (~44 meshes) + flicker panels + dynamic crates, 10 volumetric cones, 1 shaft mesh (16
+ * skylight panes), 1 dust system, 3 fog volumes, 1 instanced draw for all spawn tears, 3 draws for
+ * the rift anomaly (vortex, tear cluster, particles). Lights: 10 spots (local shadows from the
+ * QUALITY_LEVELS budget, staggered refresh) + 4 points + the rift light = 15 (≤ LAB_LAYOUT.maxLights).
  *
  * Extras for the composition root (MapLevelInstance): zones, M4 door slots and wall-buy slots,
  * spawn points (with a rift tear each), hasVolumetricContent (the portals draw on the volumetric

@@ -212,7 +212,12 @@ export interface SocketAnchorDef {
 }
 
 export interface EnemyVisualDef {
-  /** Instance slots (InstancedMesh capacity). */
+  /**
+   * Instance slots (InstancedMesh capacity). A dying enemy keeps its slot until it has dissolved,
+   * so a pool holds the most living enemies of the type a wave allows PLUS headroom for the ones
+   * still collapsing / dissolving – a pool sized to the alive cap stalls every refill of a full
+   * wave for a death + dissolve duration (enemyVisuals.test.ts checks it against the wave defs).
+   */
   readonly capacity: number;
   readonly zones: Readonly<Record<string, EnemyZoneDef>>;
   readonly bones: readonly RigBoneDef[];
@@ -373,7 +378,8 @@ const BONE: EnemyZoneDef = {
  * the headshot zone). Diagonal scuttle gait; bite (rear up, snap) and leap (crouch, pounce).
  */
 const SWARMER: EnemyVisualDef = {
-  capacity: 60,
+  // Swarm waves are swarmers only: every living enemy (ENEMY_AI.capacity) + the dying.
+  capacity: 80,
   zones: {
     chitin: {
       color: [0.025, 0.024, 0.03],
@@ -941,7 +947,8 @@ const SWARMER: EnemyVisualDef = {
  * Lurching gait; spit (rear up, sac inflates, snaps forward, gaping jaw) and a one-armed swipe.
  */
 const SPITTER: EnemyVisualDef = {
-  capacity: 16,
+  // Up to ~28 % of a late wave's mix (defs/waves weights) + the dying.
+  capacity: 24,
   zones: {
     flesh: {
       color: [0.1, 0.1, 0.055],

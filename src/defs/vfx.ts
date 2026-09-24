@@ -1774,13 +1774,12 @@ export const VFX_EFFECTS = {
   /** RG-9 railgun discharge: a blinding ring, radial sparks, ionised smoke. */
   'muzzle.energy': {
     emitters: [
-      shockRing([0.5, 0.85, 1], 0.08, 7, 0.16, 6, 0.05),
-      streaks(PLASMA_HOT, [8, 12], [6, 15], [0.1, 0.22], 14, 40, { gravity: 0.2 }),
-      billow('mist', [0.62, 0.72, 0.82], [2, 3], [0.06, 0.1], 6, [0.8, 1.3], [0.4, 1.2], 0.3, { spread: 30 }),
-      flashGlow(PLASMA_HOT, 0.45, 0.08, 5, 0.1),
+      shockRing([0.5, 0.85, 1], 0.04, 4, 0.1, 4, 0.08),
+      streaks(PLASMA_HOT, [5, 8], [6, 14], [0.06, 0.14], 12, 30, { gravity: 0.2, size: [0.006, 0.01] }),
+      billow('mist', [0.62, 0.72, 0.82], [1, 2], [0.04, 0.07], 6, [0.7, 1.2], [0.3, 0.9], 0.24, { spread: 25 }),
     ],
-    light: muzzleLight([0.5, 0.8, 1], 90, 12, 0.07),
-    flash: { size: 0.22, length: 0.45, color: [0.7, 0.92, 1], intensity: 22, duration: 0.05, adsScale: 0.5 },
+    light: muzzleLight([0.5, 0.8, 1], 55, 10, 0.05),
+    flash: { size: 0.11, length: 0.14, color: [0.72, 0.92, 1], intensity: 16, duration: 0.035, adsScale: 0.5 },
     tracer: 'beam.rail',
   },
   /** FW-4 pilot burst (beam weapons fire it when the stream starts). */
@@ -2165,6 +2164,37 @@ export const VFX_EFFECTS = {
   },
 
   // --- M5 beam hits / ray trails (defs/arsenalVfx BEAM_STYLES) ---
+  /** Continuous (ArsenalVfx beam styles): a few tiny arcs jumping off the prongs. */
+  'beam.lightning.muzzle': {
+    emitters: [
+      streaks(SHOCK_HOT, [1, 2], [1.5, 4], [0.04, 0.09], 10, 70, {
+        drag: 6,
+        stretch: 0.03,
+        gravity: 0,
+        size: [0.004, 0.007],
+      }),
+    ],
+  },
+  'beam.flame.muzzle': {
+    emitters: [
+      motes([1, 0.55, 0.18], [0, 1], [0.5, 1.5], [0.25, 0.5], 7, { spread: 50, gravity: 0.6, size: [0.008, 0.014] }),
+      {
+        blend: 'add',
+        sprite: 'droplet',
+        count: [0, 1],
+        life: [0.25, 0.4],
+        speed: [0.2, 0.6],
+        axis: 'down',
+        spread: 20,
+        size: [0.006, 0.01],
+        color: [1, 0.5, 0.15],
+        intensity: 4,
+        intensityEnd: 1,
+        gravity: 1,
+        stretch: 0.01,
+      },
+    ],
+  },
   'beam.lightning.hit': {
     emitters: [
       streaks(SHOCK_HOT, [3, 5], [3, 9], [0.06, 0.16], 16, 90, { drag: 5, stretch: 0.035 }),

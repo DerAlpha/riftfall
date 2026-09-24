@@ -36,6 +36,7 @@ const MAX_ARC_SEGMENTS = 16;
 
 const _p = { x: 0, y: 0, z: 0 };
 const _n = { x: 0, y: 0, z: 0 };
+const _fwd = { x: 0, y: 0, z: 0 };
 const _dir: Vec3Out = { x: 0, y: 0, z: 0 };
 const _u = { x: 0, y: 0, z: 0 };
 const _w = { x: 0, y: 0, z: 0 };
@@ -351,7 +352,10 @@ export class ArsenalBeams {
     _n.y *= inv;
     _n.z *= inv;
     pushGlow(ctx, s.muzzleGlow, f.x, f.y, f.z, -_n.x, -_n.y, -_n.z, 0, ch.age, ch.seed, 1, flicker);
-    this.muzzleSparks(ch, s.muzzleEffect, s.muzzleRate, f, dt);
+    _fwd.x = -_n.x;
+    _fwd.y = -_n.y;
+    _fwd.z = -_n.z;
+    this.muzzleSparks(ch, s.muzzleEffect, s.muzzleRate, f, _fwd, dt);
     pushGlow(ctx, s.hitGlow, t.x, t.y, t.z, _n.x, _n.y, _n.z, 0, ch.age, ch.seed, 1, flicker);
     // Chain arcs.
     const a = s.arc;
@@ -390,14 +394,14 @@ export class ArsenalBeams {
     sustainLight(ctx, ch.light, s.light, 1, dt, t, _n, ctx.flashScale);
   }
 
-  /** Continuous muzzle emission along _n (set by the caller) at `rate` spawns per second. */
-  private muzzleSparks(ch: BeamChannel, effect: string, rate: number, at: Vec3Like, dt: number): void {
+  /** Continuous muzzle emission along the beam direction `dir` at `rate` spawns per second. */
+  private muzzleSparks(ch: BeamChannel, effect: string, rate: number, at: Vec3Like, dir: Vec3Like, dt: number): void {
     if (!(rate > 0) || !(this.ctx.budget > 0)) return;
     ch.muzzleAcc += dt * rate;
     let n = 0;
     while (ch.muzzleAcc >= 1 && n++ < 3) {
       ch.muzzleAcc -= 1;
-      this.ctx.spawn(effect, at, _n, 1);
+      this.ctx.spawn(effect, at, dir, 1);
     }
     if (ch.muzzleAcc > 1) ch.muzzleAcc = 1;
   }
@@ -507,10 +511,10 @@ export class ArsenalBeams {
     }
     strips.endStrip();
     pushGlow(ctx, s.nozzleGlow, f.x, f.y, f.z, -dx, -dy, -dz, 10, ch.age, ch.seed, 1, 1);
-    _n.x = dx;
-    _n.y = dy;
-    _n.z = dz;
-    this.muzzleSparks(ch, s.muzzleEffect, s.muzzleRate, f, dt);
+    _fwd.x = dx;
+    _fwd.y = dy;
+    _fwd.z = dz;
+    this.muzzleSparks(ch, s.muzzleEffect, s.muzzleRate, f, _fwd, dt);
     _n.x = -dx;
     _n.y = -dy;
     _n.z = -dz;

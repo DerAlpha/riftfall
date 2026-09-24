@@ -1,16 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import { POSTFX } from './postfx';
+import { ENEMY_AI } from './enemies';
 import { ENEMY_RENDER, ENEMY_VISUALS, attackAnimIndex, getEnemyVisualDef } from './enemyVisuals';
 import { getEffectPreset } from './vfx';
+import { WAVES } from './waves';
 
 const luminance = (c: readonly number[]): number => 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
 const bloom = POSTFX.bloom.luminanceThreshold + POSTFX.bloom.luminanceSmoothing;
 
 describe('enemy visual defs', () => {
-  it('default capacities: swarmer 60 (swarm waves reach 60 alive), spitter 16, tank 8', () => {
-    expect(ENEMY_VISUALS.swarmer.capacity).toBe(60);
-    expect(ENEMY_VISUALS.spitter.capacity).toBe(16);
-    expect(ENEMY_VISUALS.tank.capacity).toBe(8);
+  it('instance pools hold the living enemies a wave allows plus the ones still dying', () => {
+    // A dying enemy keeps its instance slot until it has dissolved: a pool sized to the alive cap
+    // blocks every refill of a full wave (the director waits) for a death + dissolve duration.
+    const headroom = (n: number): number => n + Math.max(4, Math.ceil(n * 0.2));
+    const alive = ENEMY_AI.capacity;
+    for (const mode of Object.values(WAVES)) {
+      const fillers = mode.types;
+      const maxWeight = (id: string): number => fillers.find((t) => t.id === id)?.weight.max ?? 0;
+      const weightSum = fillers.reduce((sum, t) => sum + t.weight.max, 0);
+      for (const t of fillers) {
+        // Swarm waves spawn their types only: every living enemy may be one of them.
+        const share = mode.swarm?.types.includes(t.id) ? 1 : maxWeight(t.id) / weightSum;
+        const def = getEnemyVisualDef(t.id)!;
+        expect(def.capacity, `${mode.id}: ${t.id}`).toBeGreaterThanOrEqual(headroom(Math.ceil(alive * share)));
+      }
+      for (const sp of mode.specials) {
+        const def = getEnemyVisualDef(sp.id)!;
+        expect(def.capacity, `${mode.id}: ${sp.id}`).toBeGreaterThanOrEqual(headroom(sp.count.max));
+      }
+    }
   });
 
   it('attack sockets and aim sockets exist', () => {

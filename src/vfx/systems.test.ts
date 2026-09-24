@@ -861,6 +861,16 @@ describe('VfxBridge', () => {
       ammoInMag: 3,
       ads: false,
     });
+    // Beam weapons fire a weapon:fired per damage tick: no per-shot muzzle burst.
+    events.emit('weapon:fired', {
+      weaponId: 'chainlightning',
+      origin: v,
+      direction: v,
+      muzzle: v,
+      shotIndex: 0,
+      ammoInMag: 50,
+      ads: false,
+    });
     events.emit('weapon:fired', {
       weaponId: 'nope',
       origin: v,

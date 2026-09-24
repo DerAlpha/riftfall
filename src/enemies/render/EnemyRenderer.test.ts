@@ -45,13 +45,10 @@ describe('EnemyRenderer: instances', () => {
     expect(scene.children).not.toContain(r.root);
   });
 
-  it('hands out unique handles up to the default capacities (swarmer 60, spitter 16, tank 8)', () => {
+  it('hands out unique handles up to the default capacities', () => {
     const { r } = make();
-    for (const [type, cap] of [
-      ['swarmer', 60],
-      ['spitter', 16],
-      ['tank', 8],
-    ] as const) {
+    for (const [type, def] of Object.entries(ENEMY_VISUALS)) {
+      const cap = def.capacity;
       const handles = new Set<number>();
       for (let i = 0; i < cap; i++) handles.add(r.acquire(type));
       expect(handles.size).toBe(cap);

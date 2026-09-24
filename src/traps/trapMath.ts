@@ -147,7 +147,14 @@ export interface FanSample {
  * Is `p` inside the pull cylinder in front of a rotor at `c` facing `n` (unit), `reach` deep and
  * `radius` wide? Points just behind the plane (−0.25 m: bodies pressed against the grille) count.
  */
-export function fanSample(p: Vec3Like, c: Vec3Like, n: Vec3Like, reach: number, radius: number, out: FanSample): FanSample {
+export function fanSample(
+  p: Vec3Like,
+  c: Vec3Like,
+  n: Vec3Like,
+  reach: number,
+  radius: number,
+  out: FanSample,
+): FanSample {
   const rx = p.x - c.x;
   const ry = p.y - c.y;
   const rz = p.z - c.z;

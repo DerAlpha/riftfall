@@ -142,7 +142,9 @@ export class MapKit {
     }
     // Hidden bullet meshes of solid props hang under the kit root (or nowhere without visuals).
     const blockers: KitBlockers | null = deps.blockers ? { ...deps.blockers, parent: this.root } : null;
-    const zoneNames = new Map<string, string>(isMapLevel(level) ? level.zones.map((z) => [z.id, z.name]) : []);
+    const zoneNames = new Map<string, string>(
+      isMapLevel(level) ? level.zones.map((z) => [z.id, z.name]) : [],
+    );
     this.traps = new TrapSystem({
       slots: resolveTrapSlots(level, mapId),
       events: deps.events,
@@ -210,7 +212,9 @@ export class MapKit {
 
   /** Something of the kit draws on the volumetric layer (arcs, flames, beacons, rings, screens). */
   get hasVolumetricContent(): boolean {
-    return this.traps.hasVolumetricContent || this.director.hasVolumetricContent || this.quest.hasVolumetricContent;
+    return (
+      this.traps.hasVolumetricContent || this.director.hasVolumetricContent || this.quest.hasVolumetricContent
+    );
   }
 
   fixedUpdate(dt: number): void {

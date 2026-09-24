@@ -3,7 +3,15 @@
  * cycle telegraphs (the grate glows and hisses), then burns: enemies and the player inside the
  * column take fire damage every TRAPS.flame.tickInterval (enemies build up burn); embers rise.
  */
-import { Color, MeshStandardMaterial, Vector3, type Material, type Mesh, type PlaneGeometry, type ShaderMaterial } from 'three';
+import {
+  Color,
+  MeshStandardMaterial,
+  Vector3,
+  type Material,
+  type Mesh,
+  type PlaneGeometry,
+  type ShaderMaterial,
+} from 'three';
 import { TRAPS, type FlameSlotDef } from '../defs/traps';
 import { createLightPool, type PoolMaterial } from '../interactables/visuals/holo';
 import { createFlameColumn } from '../maps/kit/energy';
@@ -71,7 +79,14 @@ export class FlameTrap extends Trap {
     if (m) this.meshes.push(m);
     trough.dispose();
 
-    const column = createFlameColumn(this.radius, height, F.flameColor, F.coreColor, F.flameIntensity, v.time);
+    const column = createFlameColumn(
+      this.radius,
+      height,
+      F.flameColor,
+      F.coreColor,
+      F.flameIntensity,
+      v.time,
+    );
     column.position.set(x, y, z);
     column.updateMatrixWorld();
     v.root.add(column);
@@ -111,7 +126,11 @@ export class FlameTrap extends Trap {
       this.hurt(t, F.damagePerTick, 'fire', 'beam', t.aimPoint, 0, 1, 0, 0, F.statusBuildup);
       if (this.hitSoundTimer <= 0) {
         this.hitSoundTimer = F.hitSoundInterval;
-        this.ctx.audio?.play(F.audio.hit, { position: t.aimPoint, volume: F.audio.hitGain, pitchVariance: 0.1 });
+        this.ctx.audio?.play(F.audio.hit, {
+          position: t.aimPoint,
+          volume: F.audio.hitGain,
+          pitchVariance: 0.1,
+        });
       }
     }
     const player = this.ctx.player;

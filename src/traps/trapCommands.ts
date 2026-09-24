@@ -12,7 +12,11 @@ export function createTrapCommands(deps: { traps: TrapSystem }): ConsoleCommand[
       description: 'Fallen: auflisten oder kostenlos aktivieren',
       usage: 'trap list | trap activate <id|all>',
       complete: (args) =>
-        args.length <= 1 ? ['list', 'activate'] : args[0] === 'activate' ? ['all', ...traps.list.map((t) => t.id)] : [],
+        args.length <= 1
+          ? ['list', 'activate']
+          : args[0] === 'activate'
+            ? ['all', ...traps.list.map((t) => t.id)]
+            : [],
       run: (args) => {
         const sub = args[0] ?? 'list';
         if (sub === 'list') {

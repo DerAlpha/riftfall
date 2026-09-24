@@ -13,7 +13,11 @@ export function createEventCommands(deps: { director: MapEventDirector }): Conso
       description: 'Karten-Events: auflisten, auslösen, beenden',
       usage: 'event list | event trigger <id> | event stop',
       complete: (args) =>
-        args.length <= 1 ? ['list', 'trigger', 'stop'] : args[0] === 'trigger' ? director.list.map((d) => d.id) : [],
+        args.length <= 1
+          ? ['list', 'trigger', 'stop']
+          : args[0] === 'trigger'
+            ? director.list.map((d) => d.id)
+            : [],
       run: (args) => {
         const sub = args[0] ?? 'list';
         if (sub === 'list') {

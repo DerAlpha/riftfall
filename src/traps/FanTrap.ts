@@ -5,8 +5,17 @@
  * shredded (heavy damage, gore, a grinding hit). Wind streaks flow into the intake; warning strips
  * glow while it runs. The player is not pulled (the character controller has no external forces).
  */
-import type { Mesh} from 'three';
-import { Color, Group, MeshStandardMaterial, Matrix4, Quaternion, Vector3, type InstancedBufferGeometry, type ShaderMaterial } from 'three';
+import type { Mesh } from 'three';
+import {
+  Color,
+  Group,
+  MeshStandardMaterial,
+  Matrix4,
+  Quaternion,
+  Vector3,
+  type InstancedBufferGeometry,
+  type ShaderMaterial,
+} from 'three';
 import { TRAPS, type FanSlotDef } from '../defs/traps';
 import { createStreaks } from '../maps/kit/energy';
 import { PropBuilder } from '../maps/kit/PropBuilder';
@@ -56,7 +65,13 @@ export class FanTrap extends Trap {
     const size = (slot.radius ?? F.radius) * 2 + F.frame * 2;
     if (ctx.blockers && slot.facing !== 'up') {
       // The housing sticks out of the wall: solid for the player, bullets and the navmesh.
-      const box = propBox({ x: x + n.x * (depth / 2), y: y - size / 2, z: z + n.z * (depth / 2) }, 0, size, size, depth);
+      const box = propBox(
+        { x: x + n.x * (depth / 2), y: y - size / 2, z: z + n.z * (depth / 2) },
+        0,
+        size,
+        size,
+        depth,
+      );
       const across = Math.abs(n.x) > 0.5;
       const half = { x: across ? depth / 2 : size / 2, y: size / 2, z: across ? size / 2 : depth / 2 };
       const solid = { center: box.center, half };
@@ -176,18 +191,42 @@ export class FanTrap extends Trap {
       const dx = this.hub.x - c.x;
       const dz = this.hub.z - c.z;
       if (_s.axial <= F.shredRange + t.boundsRadius * 0.5 && _s.radial <= this.radius + t.boundsRadius) {
-        this.hurt(t, F.shredDamage * spin, 'physical', 'melee', t.aimPoint, dx, 0, dz, F.pullImpulse * 0.3 * spin);
+        this.hurt(
+          t,
+          F.shredDamage * spin,
+          'physical',
+          'melee',
+          t.aimPoint,
+          dx,
+          0,
+          dz,
+          F.pullImpulse * 0.3 * spin,
+        );
         if (this.goreTimer <= 0) {
           this.goreTimer = F.hitSoundInterval;
           this.ctx.vfx?.spawn(F.gore, t.aimPoint, this.normal, 1.3);
         }
         if (this.hitSoundTimer <= 0) {
           this.hitSoundTimer = F.hitSoundInterval;
-          this.ctx.audio?.play(F.audio.hit, { position: t.aimPoint, volume: F.audio.hitGain, pitchVariance: 0.1 });
+          this.ctx.audio?.play(F.audio.hit, {
+            position: t.aimPoint,
+            volume: F.audio.hitGain,
+            pitchVariance: 0.1,
+          });
         }
       } else {
         const k = 1 - Math.min(1, _s.axial / this.reach) * 0.6;
-        this.hurt(t, F.pullDamage * spin, 'physical', 'beam', t.aimPoint, dx, 0, dz, F.pullImpulse * k * spin);
+        this.hurt(
+          t,
+          F.pullDamage * spin,
+          'physical',
+          'beam',
+          t.aimPoint,
+          dx,
+          0,
+          dz,
+          F.pullImpulse * k * spin,
+        );
       }
     }
   }
@@ -205,7 +244,11 @@ export class FanTrap extends Trap {
     }
     if (this.warn) {
       const blink = reduceFlashing ? 0.8 : 0.5 + 0.5 * Math.sin(time * 8);
-      this.warn.emissiveIntensity = on ? F.warnIntensity * blink : this.state === 'cooldown' ? F.warnIntensity * 0.08 : 0;
+      this.warn.emissiveIntensity = on
+        ? F.warnIntensity * blink
+        : this.state === 'cooldown'
+          ? F.warnIntensity * 0.08
+          : 0;
     }
     if (this.streaks) {
       const u = this.streaks.material.uniforms.uOn as { value: number };

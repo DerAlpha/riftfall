@@ -71,7 +71,13 @@ export function toVolumetric<T extends Object3D>(o: T, renderOrder = 0): T {
   return o;
 }
 
-function additive(name: string, vertexShader: string, fragmentShader: string, uniforms: Record<string, unknown>, doubleSided = true): ShaderMaterial {
+function additive(
+  name: string,
+  vertexShader: string,
+  fragmentShader: string,
+  uniforms: Record<string, unknown>,
+  doubleSided = true,
+): ShaderMaterial {
   return new ShaderMaterial({
     name,
     vertexShader,
@@ -502,7 +508,13 @@ void main() {
 }
 `;
 
-export function createProgressRing(radius: number, width: number, color: Rgb, intensity: number, time: TimeUniform): Mesh {
+export function createProgressRing(
+  radius: number,
+  width: number,
+  color: Rgb,
+  intensity: number,
+  time: TimeUniform,
+): Mesh {
   const geo = new RingGeometry(0, radius + width * 3, 96, 1);
   geo.rotateX(-Math.PI / 2);
   // RingGeometry lies in XY; after rotateX(-π/2) the local XY of the fragment is (x, -z).
@@ -566,7 +578,13 @@ void main() {
 }
 `;
 
-export function createShell(radius: number, color: Rgb, intensity: number, rimPower: number, time: TimeUniform): Mesh<SphereGeometry, ShaderMaterial> {
+export function createShell(
+  radius: number,
+  color: Rgb,
+  intensity: number,
+  rimPower: number,
+  time: TimeUniform,
+): Mesh<SphereGeometry, ShaderMaterial> {
   const geo = new SphereGeometry(radius, 40, 20);
   const mat = additive('kit-shell', SHELL_VERTEX, SHELL_FRAGMENT, {
     uColor: { value: hdr(color) },

@@ -234,6 +234,10 @@ describe('MapEventDirector', () => {
   });
 
   it('the lab defines all three event kinds', () => {
-    expect(MAP_EVENT_DEFS.lab!.map((d) => d.kind).sort()).toEqual(['gravityAnomaly', 'invasion', 'powerOutage']);
+    expect(MAP_EVENT_DEFS.lab!.map((d) => d.kind).sort()).toEqual([
+      'gravityAnomaly',
+      'invasion',
+      'powerOutage',
+    ]);
   });
 });

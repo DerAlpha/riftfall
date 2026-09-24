@@ -101,7 +101,14 @@ const fenceLoop: Recipe = (g, t) => {
 };
 
 const fenceHit: Recipe = (g, t) => {
-  g.hit(t, { color: 'white', filter: 'bandpass', freq: 3600 * g.jitter(0.1), q: 0.9, decay: 0.12, peak: 0.9 });
+  g.hit(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 3600 * g.jitter(0.1),
+    q: 0.9,
+    decay: 0.12,
+    peak: 0.9,
+  });
   g.tone(t, 'square', 1100 * g.jitter(0.1), 180, 0.002, 0.14, 0.18, 4000);
   g.thump(t, 200, 70, 0.06, 0.35, 0.8);
   crackles(g, t + 0.02, 0.3, 6, 0.6);
@@ -141,7 +148,16 @@ const fanActivate: Recipe = (g, t) => {
   g.thump(t, 90, 40, 0.3, 0.5, 0.6);
   g.tone(t, 'sine', 35, 160, 0.2, 1.6, 0.35);
   g.tone(t, 'sawtooth', 60, 280, 0.2, 1.5, 0.08, 900);
-  g.hit(t + 0.1, { color: 'pink', filter: 'bandpass', freq: 300, sweepTo: 900, q: 0.8, attack: 0.5, decay: 1.4, peak: 0.45 });
+  g.hit(t + 0.1, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 300,
+    sweepTo: 900,
+    q: 0.8,
+    attack: 0.5,
+    decay: 1.4,
+    peak: 0.45,
+  });
 };
 
 const fanLoop: Recipe = (g, t) => {
@@ -157,14 +173,29 @@ const fanLoop: Recipe = (g, t) => {
 const fanHit: Recipe = (g, t) => {
   g.thump(t, 110, 40, 0.12, 0.7, 2.5);
   g.hit(t, { color: 'brown', filter: 'lowpass', freq: 380, decay: 0.3, peak: 0.8 });
-  g.hit(t, { color: 'white', filter: 'bandpass', freq: 1600 * g.jitter(0.15), q: 1.2, decay: 0.18, peak: 0.55 });
+  g.hit(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 1600 * g.jitter(0.15),
+    q: 1.2,
+    decay: 0.18,
+    peak: 0.55,
+  });
   g.hit(t + 0.05, { color: 'pink', filter: 'bandpass', freq: 700, q: 1, decay: 0.25, peak: 0.4 });
   g.ring(t, 360 * g.jitter(0.1), [1, 2.7, 4.1], 0.25, 0.1);
 };
 
 const flameActivate: Recipe = (g, t) => {
   g.thump(t, 70, 30, 0.35, 0.6, 1);
-  g.hit(t, { color: 'white', filter: 'lowpass', freq: 400, sweepTo: 3200, attack: 0.08, decay: 0.7, peak: 0.9 });
+  g.hit(t, {
+    color: 'white',
+    filter: 'lowpass',
+    freq: 400,
+    sweepTo: 3200,
+    attack: 0.08,
+    decay: 0.7,
+    peak: 0.9,
+  });
   g.hit(t + 0.05, { color: 'brown', filter: 'lowpass', freq: 250, decay: 0.8, peak: 0.6 });
 };
 
@@ -253,7 +284,15 @@ const gravityStart: Recipe = (g, t) => {
   g.thump(t, 60, 20, 1.0, 1, 1.5);
   g.hit(t, { color: 'brown', filter: 'lowpass', freq: 200, attack: 0.05, decay: 1.4, peak: 0.8 });
   g.tone(t, 'sine', 900, 180, 0.3, 1.4, 0.12);
-  g.hit(t + 0.1, { color: 'pink', filter: 'highpass', freq: 3000, sweepTo: 800, attack: 0.6, decay: 1.2, peak: 0.25 });
+  g.hit(t + 0.1, {
+    color: 'pink',
+    filter: 'highpass',
+    freq: 3000,
+    sweepTo: 800,
+    attack: 0.6,
+    decay: 1.2,
+    peak: 0.25,
+  });
   g.ring(t + 0.2, 330, [1, 1.5, 2.25], 1.5, 0.06);
 };
 
@@ -267,7 +306,15 @@ const gravityLoop: Recipe = (g, t) => {
 
 const gravityEnd: Recipe = (g, t) => {
   g.tone(t, 'sine', 160, 900, 0.3, 0.6, 0.1);
-  g.hit(t, { color: 'pink', filter: 'lowpass', freq: 3000, sweepTo: 200, attack: 0.02, decay: 0.8, peak: 0.45 });
+  g.hit(t, {
+    color: 'pink',
+    filter: 'lowpass',
+    freq: 3000,
+    sweepTo: 200,
+    attack: 0.02,
+    decay: 0.8,
+    peak: 0.45,
+  });
   g.thump(t + 0.25, 70, 25, 0.5, 0.6, 1);
 };
 
@@ -347,34 +394,90 @@ const questComplete: Recipe = (g, t) => {
 
 export const MAPKIT_SYNTH_DEFS = {
   'trap.fence.activate': { variants: 1, duration: 1.3, channels: 1, level: 0.9, recipe: fenceActivate },
-  'trap.fence.loop': { variants: 1, duration: LOOP + XF, channels: 1, level: 0.6, loop: true, recipe: fenceLoop },
+  'trap.fence.loop': {
+    variants: 1,
+    duration: LOOP + XF,
+    channels: 1,
+    level: 0.6,
+    loop: true,
+    recipe: fenceLoop,
+  },
   'trap.fence.hit': { variants: 3, duration: 0.45, channels: 1, level: 0.85, recipe: fenceHit },
   'trap.turret.activate': { variants: 1, duration: 1.4, channels: 1, level: 0.8, recipe: turretActivate },
-  'trap.turret.loop': { variants: 1, duration: LOOP + XF, channels: 1, level: 0.45, loop: true, recipe: turretLoop },
+  'trap.turret.loop': {
+    variants: 1,
+    duration: LOOP + XF,
+    channels: 1,
+    level: 0.45,
+    loop: true,
+    recipe: turretLoop,
+  },
   'trap.turret.hit': { variants: 1, duration: 0.25, channels: 1, level: 0.6, recipe: turretHit },
   'trap.turret.fire': { variants: 3, duration: 0.3, channels: 1, level: 0.9, recipe: turretFire },
   'trap.fan.activate': { variants: 1, duration: 2, channels: 1, level: 0.85, recipe: fanActivate },
-  'trap.fan.loop': { variants: 1, duration: LOOP + XF, channels: 1, level: 0.75, loop: true, recipe: fanLoop },
+  'trap.fan.loop': {
+    variants: 1,
+    duration: LOOP + XF,
+    channels: 1,
+    level: 0.75,
+    loop: true,
+    recipe: fanLoop,
+  },
   'trap.fan.hit': { variants: 3, duration: 0.6, channels: 1, level: 0.9, recipe: fanHit },
   'trap.flame.activate': { variants: 1, duration: 1.2, channels: 1, level: 0.9, recipe: flameActivate },
-  'trap.flame.loop': { variants: 1, duration: LOOP + XF, channels: 1, level: 0.75, loop: true, recipe: flameLoop },
+  'trap.flame.loop': {
+    variants: 1,
+    duration: LOOP + XF,
+    channels: 1,
+    level: 0.75,
+    loop: true,
+    recipe: flameLoop,
+  },
   'trap.flame.hit': { variants: 2, duration: 0.5, channels: 1, level: 0.6, recipe: flameHit },
   'event.power.down': { variants: 1, duration: 2.6, channels: 1, level: 1, recipe: powerDown },
   'event.power.up': { variants: 1, duration: 2.3, channels: 1, level: 0.95, recipe: powerUp },
-  'event.power.alarm': { variants: 1, duration: LOOP + XF, channels: 1, level: 0.5, loop: true, recipe: powerAlarm },
+  'event.power.alarm': {
+    variants: 1,
+    duration: LOOP + XF,
+    channels: 1,
+    level: 0.5,
+    loop: true,
+    recipe: powerAlarm,
+  },
   'event.generator.crank': { variants: 3, duration: 0.35, channels: 1, level: 0.7, recipe: generatorCrank },
   'event.generator.hum': { variants: 1, duration: 2.2, channels: 1, level: 0.8, recipe: generatorHum },
   'event.invasion.alarm': { variants: 1, duration: 1, channels: 1, level: 0.85, recipe: invasionAlarm },
   'event.gravity.start': { variants: 1, duration: 2, channels: 1, level: 0.95, recipe: gravityStart },
-  'event.gravity.loop': { variants: 1, duration: LOOP + XF, channels: 1, level: 0.6, loop: true, recipe: gravityLoop },
+  'event.gravity.loop': {
+    variants: 1,
+    duration: LOOP + XF,
+    channels: 1,
+    level: 0.6,
+    loop: true,
+    recipe: gravityLoop,
+  },
   'event.gravity.end': { variants: 1, duration: 1.2, channels: 1, level: 0.8, recipe: gravityEnd },
   'quest.tag.hum': { variants: 1, duration: LOOP + XF, channels: 1, level: 0.35, loop: true, recipe: tagHum },
   'quest.tag.hit': { variants: 1, duration: 1.5, channels: 1, level: 0.75, recipe: tagHit },
   'quest.step': { variants: 1, duration: 2.6, channels: 1, level: 0.6, recipe: questStep },
-  'quest.core.hum': { variants: 1, duration: LOOP + XF, channels: 1, level: 0.5, loop: true, recipe: coreHum },
+  'quest.core.hum': {
+    variants: 1,
+    duration: LOOP + XF,
+    channels: 1,
+    level: 0.5,
+    loop: true,
+    recipe: coreHum,
+  },
   'quest.core.pickup': { variants: 1, duration: 1.3, channels: 1, level: 0.7, recipe: corePickup },
   'quest.socket': { variants: 1, duration: 1.5, channels: 1, level: 0.8, recipe: socketFeed },
-  'quest.defend': { variants: 1, duration: LOOP + XF, channels: 1, level: 0.55, loop: true, recipe: defendLoop },
+  'quest.defend': {
+    variants: 1,
+    duration: LOOP + XF,
+    channels: 1,
+    level: 0.55,
+    loop: true,
+    recipe: defendLoop,
+  },
   'quest.complete': { variants: 1, duration: 3.4, channels: 1, level: 0.95, recipe: questComplete },
 } as const satisfies Record<string, SynthDef>;
 

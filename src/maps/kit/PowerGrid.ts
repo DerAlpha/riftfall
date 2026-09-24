@@ -20,6 +20,7 @@
  */
 import {
   Color,
+  HemisphereLight,
   Light,
   Mesh,
   MeshStandardMaterial,
@@ -172,13 +173,21 @@ export function collectLightGroups(root: Object3D): LevelLightGroup[] {
     if (!POWER.emissivePrefixes.some((p) => o.name.startsWith(p))) return;
     for (const m of mats) {
       if (!(m instanceof MeshStandardMaterial)) continue;
+      const id = (o.userData.kitMaterialId as string | undefined) ?? m.name;
+      if (POWER.keepMaterials.includes(id)) continue;
       const c = classifyColor(m.emissive.r, m.emissive.g, m.emissive.b);
       if (c === 'main') main.materials.add(m);
       else if (c === 'emergency') emergency.materials.add(m);
     }
   });
   return [
-    { id: 'main', emergency: false, lights: main.lights, materials: [...main.materials], glows: [...main.glows] },
+    {
+      id: 'main',
+      emergency: false,
+      lights: main.lights,
+      materials: [...main.materials],
+      glows: [...main.glows],
+    },
     { id: 'emergency', emergency: true, lights: emergency.lights, materials: [...emergency.materials] },
   ];
 }
@@ -189,14 +198,18 @@ function hasIntensityUniform(m: Material): m is ShaderMaterial {
 }
 
 /** Emissive / uIntensity materials of props (machine visuals that go dark). */
-export function collectPoweredMaterials(objects: readonly Object3D[], out = new Set<Material>()): Set<Material> {
+export function collectPoweredMaterials(
+  objects: readonly Object3D[],
+  out = new Set<Material>(),
+): Set<Material> {
   for (const root of objects) {
     root.traverse((o) => {
       const mat = (o as Mesh).material as Material | Material[] | undefined;
       if (!mat) return;
       for (const m of Array.isArray(mat) ? mat : [mat]) {
         if (m instanceof MeshStandardMaterial) {
-          if (m.emissiveIntensity > 0 && (m.emissive.r > 0 || m.emissive.g > 0 || m.emissive.b > 0)) out.add(m);
+          if (m.emissiveIntensity > 0 && (m.emissive.r > 0 || m.emissive.g > 0 || m.emissive.b > 0))
+            out.add(m);
         } else if (hasIntensityUniform(m)) {
           out.add(m);
         }
@@ -308,6 +321,7 @@ export class PowerGrid implements PowerApi {
   private readonly emergencyLights = new ScaledValues();
   private readonly emergencyMaterials = new ScaledValues();
   private readonly props = new ScaledValues();
+  private readonly ambient = new ScaledValues();
   /** Every material scaled by some channel (one channel per material: no double scaling). */
   private readonly claimed = new Set<Material>();
   private readonly payload: GameEvents['power:changed'] = { powered: true };
@@ -350,6 +364,23 @@ export class PowerGrid implements PowerApi {
   /** Visuals that go dark while unpowered (machine views, a level's powered props). */
   addPoweredVisuals(objects: readonly Object3D[]): void {
     for (const m of collectPoweredMaterials(objects)) this.claim(this.props, m);
+  }
+
+  /**
+   * Ambient fill of a scene (Game: the world and the viewmodel scene): its IBL intensity
+   * (scene.environmentIntensity) and its top-level hemisphere lights dim with the power.
+   */
+  addAmbient(scene: Object3D & { environmentIntensity?: number }): void {
+    if (typeof scene.environmentIntensity === 'number') {
+      this.ambient.add(
+        () => scene.environmentIntensity ?? 1,
+        (v) => {
+          scene.environmentIntensity = v;
+        },
+      );
+    }
+    for (const c of scene.children) if (c instanceof HemisphereLight) this.addLight(this.ambient, c);
+    this.ambient.release();
   }
 
   /** Materials of every channel (tests, debug). */
@@ -414,6 +445,7 @@ export class PowerGrid implements PowerApi {
     this.mainMaterials.apply(lerp(POWER.materialDim, 1, k));
     this.mainGlows.apply(lerp(POWER.coneDim, 1, k));
     this.props.apply(lerp(POWER.propDim, 1, k));
+    this.ambient.apply(lerp(POWER.ambientDim, 1, k));
     const P = POWER.emergencyPulse;
     const depth = this.reduced ? P.reducedDepth : P.depth;
     const pulse = 1 - depth * (0.5 + 0.5 * Math.sin(this.time * P.rate * Math.PI * 2));
@@ -428,6 +460,7 @@ export class PowerGrid implements PowerApi {
     this.mainMaterials.release();
     this.mainGlows.release();
     this.props.release();
+    this.ambient.release();
     this.emergencyLights.release();
     this.emergencyMaterials.release();
   }

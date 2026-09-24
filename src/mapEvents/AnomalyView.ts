@@ -95,7 +95,9 @@ export class AnomalyView {
       uSize: { value: M.size * 400 },
       uTime: visuals.time,
       uScale: { value: 1 },
-      uColor: { value: new Color(M.color[0] * M.intensity, M.color[1] * M.intensity, M.color[2] * M.intensity) },
+      uColor: {
+        value: new Color(M.color[0] * M.intensity, M.color[1] * M.intensity, M.color[2] * M.intensity),
+      },
       uOn: { value: 0 },
     });
     this.motes = toVolumetric(new Points(mg, mm));

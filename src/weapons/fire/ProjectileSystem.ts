@@ -426,12 +426,10 @@ export class ProjectileSystem implements ProjectileApi {
     // Exact constant-gravity step (scaled by the gravity zone at the tick's start).
     const vy = this.vel[o + 1]!;
     _s.set(this.pos[o]!, this.pos[o + 1]!, this.pos[o + 2]!);
-    const gravity = this.gravityField ? def.gravity * this.gravityField.scaleAt(_s.x, _s.y, _s.z) : def.gravity;
-    _e.set(
-      _s.x + this.vel[o]! * dt,
-      _s.y + vy * dt - 0.5 * gravity * dt * dt,
-      _s.z + this.vel[o + 2]! * dt,
-    );
+    const gravity = this.gravityField
+      ? def.gravity * this.gravityField.scaleAt(_s.x, _s.y, _s.z)
+      : def.gravity;
+    _e.set(_s.x + this.vel[o]! * dt, _s.y + vy * dt - 0.5 * gravity * dt * dt, _s.z + this.vel[o + 2]! * dt);
     this.vel[o + 1] = vy - gravity * dt;
 
     const P = ARSENAL.projectiles;

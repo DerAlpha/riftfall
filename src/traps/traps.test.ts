@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import type { CombatHit, DamageInfo, DamageResult, Damageable, Hitbox, Interactable } from '../core/contracts';
+import type {
+  CombatHit,
+  DamageInfo,
+  DamageResult,
+  Damageable,
+  Hitbox,
+  Interactable,
+} from '../core/contracts';
 import { EventBus } from '../core/EventBus';
 import type { GameEvents, Vec3Like } from '../core/events';
 import { TRAPS, TRAP_SLOTS, trapTiming, type TrapSlotDef } from '../defs/traps';
@@ -74,7 +81,11 @@ class Combat implements KitCombat {
   queryRadius(c: Vec3Like, r: number, out: Damageable[]): Damageable[] {
     out.length = 0;
     for (const t of this.targets) {
-      if (t.alive && Math.hypot(t.boundsCenter.x - c.x, t.boundsCenter.y - c.y, t.boundsCenter.z - c.z) <= r + t.boundsRadius)
+      if (
+        t.alive &&
+        Math.hypot(t.boundsCenter.x - c.x, t.boundsCenter.y - c.y, t.boundsCenter.z - c.z) <=
+          r + t.boundsRadius
+      )
         out.push(t);
     }
     return out;

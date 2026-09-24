@@ -50,8 +50,13 @@ describe('GravityZones', () => {
   });
 
   it('adds, fades and removes temporary zones without touching the permanent ones', () => {
-    const g = new GravityZones([{ id: 'p', shape: 'box', min: [0, 0, 0], max: [1, 1, 1], scale: 0.5, feather: 0 }]);
-    const h = g.add({ id: 'anomaly', shape: 'sphere', center: [20, 0, 0], radius: 5, scale: 0.2, feather: 0 }, 0);
+    const g = new GravityZones([
+      { id: 'p', shape: 'box', min: [0, 0, 0], max: [1, 1, 1], scale: 0.5, feather: 0 },
+    ]);
+    const h = g.add(
+      { id: 'anomaly', shape: 'sphere', center: [20, 0, 0], radius: 5, scale: 0.2, feather: 0 },
+      0,
+    );
     expect(h).toBeGreaterThan(0);
     expect(g.scaleAt(20, 0, 0)).toBe(1);
     g.setStrength(h, 0.5);
@@ -75,7 +80,9 @@ describe('GravityZones', () => {
     const g = new GravityZones([], 1);
     const handles: number[] = [];
     for (let i = 0; i < 5; i++) {
-      handles.push(g.add({ id: `z${i}`, shape: 'sphere', center: [i * 10, 0, 0], radius: 2, scale: 0.5, feather: 0 }));
+      handles.push(
+        g.add({ id: `z${i}`, shape: 'sphere', center: [i * 10, 0, 0], radius: 2, scale: 0.5, feather: 0 }),
+      );
     }
     expect(g.size).toBe(5);
     expect(g.scaleAt(40, 0, 0)).toBe(0.5);
@@ -102,7 +109,9 @@ describe('PlayerController in a low-gravity zone', () => {
     );
     if (scale !== null) {
       player.setGravityField(
-        new GravityZones([{ id: 'lowg', shape: 'box', min: [-20, -1, -20], max: [20, 30, 20], scale, feather: 0 }]),
+        new GravityZones([
+          { id: 'lowg', shape: 'box', min: [-20, -1, -20], max: [20, 30, 20], scale, feather: 0 },
+        ]),
       );
     }
     const frame = (): void => {
@@ -168,7 +177,15 @@ describe('ProjectileSystem in a low-gravity zone', () => {
           targets: [],
         },
         explosions: { explode: () => 0 },
-        fields: { spawn: () => 0, pullAt: () => false, slowAt: () => 1, active: 0, fixedUpdate() {}, update() {}, clear() {} },
+        fields: {
+          spawn: () => 0,
+          pullAt: () => false,
+          slowAt: () => 1,
+          active: 0,
+          fixedUpdate() {},
+          update() {},
+          clear() {},
+        },
       });
       sys.setGravityField(field);
       const id = sys.spawn({
@@ -192,7 +209,11 @@ describe('ProjectileSystem in a low-gravity zone', () => {
       return 50 - out.y;
     };
     const normal = drop(null);
-    const low = drop(new GravityZones([{ id: 'z', shape: 'box', min: [-100, 0, -100], max: [100, 100, 100], scale: 0.25, feather: 0 }]));
+    const low = drop(
+      new GravityZones([
+        { id: 'z', shape: 'box', min: [-100, 0, -100], max: [100, 100, 100], scale: 0.25, feather: 0 },
+      ]),
+    );
     expect(normal).toBeCloseTo(5, 0);
     expect(low).toBeCloseTo(normal * 0.25, 1);
   });

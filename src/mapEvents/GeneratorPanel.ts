@@ -4,11 +4,24 @@
  * it and it can be restarted by holding interact (POWER.generator.hold) – "Generator neu starten";
  * otherwise it is not focusable (empty prompt). Crank ticks play while the hold runs.
  */
-import { Color, CylinderGeometry, Mesh, MeshStandardMaterial, Vector3, type Object3D, type PlaneGeometry } from 'three';
+import {
+  Color,
+  CylinderGeometry,
+  Mesh,
+  MeshStandardMaterial,
+  Vector3,
+  type Object3D,
+  type PlaneGeometry,
+} from 'three';
 import type { Interactable } from '../core/contracts';
 import { POWER, type GeneratorSpotDef } from '../defs/mapEvents';
 import { facingNormal, facingYaw } from '../interactables/shapes';
-import { createBeamMaterial, createLightPool, type BeamMaterial, type PoolMaterial } from '../interactables/visuals/holo';
+import {
+  createBeamMaterial,
+  createLightPool,
+  type BeamMaterial,
+  type PoolMaterial,
+} from '../interactables/visuals/holo';
 import { toVolumetric } from '../maps/kit/energy';
 import type { KitAudio, KitBlockers, KitVisuals } from '../maps/kit/kitTypes';
 import { SolidBlocker } from '../interactables/SolidBlocker';
@@ -70,7 +83,8 @@ export class GeneratorPanel implements Interactable {
     props.box(M.hazard, 0, 0.07, 0, w + 0.04, 0.14, d + 0.04);
     props.box(M.body, 0, 0.14 + (h - 0.14) / 2, 0, w, h - 0.14, d);
     props.box(M.panel, 0, h * 0.55, d / 2 + 0.01, w * 0.84, h * 0.62, 0.02);
-    for (let i = 0; i < 6; i++) props.box(M.trim, -w * 0.18, h * 0.32 + i * 0.07, d / 2 + 0.025, w * 0.34, 0.025, 0.01);
+    for (let i = 0; i < 6; i++)
+      props.box(M.trim, -w * 0.18, h * 0.32 + i * 0.07, d / 2 + 0.025, w * 0.34, 0.025, 0.01);
     props.box(M.trim, 0, h + 0.03, 0, w + 0.06, 0.06, d + 0.06);
     props.box(M.trim, w * 0.3, h + 0.5, -d / 2 + 0.08, 0.1, 1.0, 0.1);
     props.box(M.trim, -w * 0.3, h + 0.5, -d / 2 + 0.08, 0.1, 1.0, 0.1);
@@ -164,7 +178,11 @@ export class GeneratorPanel implements Interactable {
       this.crankTimer -= dt;
       if (this.crankTimer <= 0) {
         this.crankTimer = G.crankInterval;
-        this.audio?.play(POWER.audio.crank, { position: this.position, volume: POWER.audio.crankGain, pitchVariance: 0.08 });
+        this.audio?.play(POWER.audio.crank, {
+          position: this.position,
+          volume: POWER.audio.crankGain,
+          pitchVariance: 0.08,
+        });
       }
     } else {
       this.crankTimer = 0;
@@ -196,7 +214,9 @@ export class GeneratorPanel implements Interactable {
 
   /** Objects that belong to the generator (debug). */
   get objects(): Object3D[] {
-    return [this.lampMesh, this.beam, this.pool, this.lever].filter((o): o is NonNullable<typeof o> => o !== null);
+    return [this.lampMesh, this.beam, this.pool, this.lever].filter(
+      (o): o is NonNullable<typeof o> => o !== null,
+    );
   }
 
   dispose(): void {

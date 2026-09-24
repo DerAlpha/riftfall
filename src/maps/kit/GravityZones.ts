@@ -45,7 +45,15 @@ export function boxDepth(
 }
 
 /** Depth of a point inside a sphere (radius − distance; ≤ 0 outside). */
-export function sphereDepth(x: number, y: number, z: number, cx: number, cy: number, cz: number, r: number): number {
+export function sphereDepth(
+  x: number,
+  y: number,
+  z: number,
+  cx: number,
+  cy: number,
+  cz: number,
+  r: number,
+): number {
   return r - Math.hypot(x - cx, y - cy, z - cz);
 }
 

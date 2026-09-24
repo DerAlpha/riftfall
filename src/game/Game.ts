@@ -575,6 +575,8 @@ export class Game {
     const reduceFlashing = settings.current.accessibility.reduceFlashing;
     // M7: the main power exists before the machines – they register through its gate.
     const power = createPowerGrid(level, events, reduceFlashing);
+    power.addAmbient(render.scene);
+    power.addAmbient(render.viewmodelScene);
     const interactables = placeInteractables({
       level,
       events,
@@ -739,7 +741,12 @@ export class Game {
       shockwave: (p, r, s) => render.addShockwave(p, r, s),
       // Generator cabinets, the quest socket and fan housings: collider, bullets, nav area.
       blockers: { physics, combat, nav },
-      visuals: { scene: render.scene, materials, setupMaterial: (m) => render.setupMaterial(m), reduceFlashing },
+      visuals: {
+        scene: render.scene,
+        materials,
+        setupMaterial: (m) => render.setupMaterial(m),
+        reduceFlashing,
+      },
       seed: runSeed,
     });
     player.setGravityField(mapKit.gravity);

@@ -30,7 +30,9 @@ const QUEST: QuestDef = {
       kind: 'interact',
       id: 'feed',
       requires: 'core',
-      objects: [{ id: 'socket', position: [0, 0, 20], normal: 'up', prompt: 'Einsetzen', hold: 1, style: 'socket' }],
+      objects: [
+        { id: 'socket', position: [0, 0, 20], normal: 'up', prompt: 'Einsetzen', hold: 1, style: 'socket' },
+      ],
     },
     { kind: 'kill', id: 'purge', count: 2, volume: { center: [0, 0, 0], radius: 10 }, element: 'fire' },
     { kind: 'trap', id: 'traps', count: 1, traps: ['fence'] },
@@ -66,7 +68,15 @@ describe('QuestMachine', () => {
     expect(m.objectUsed('socket')).toBe(true);
     expect(m.carrying).toBeNull();
     expect(m.current?.id).toBe('purge');
-    const kill = { x: 1, y: 0, z: 1, zone: null, element: 'fire' as const, weapon: 'flamethrower', enemy: 'swarmer' };
+    const kill = {
+      x: 1,
+      y: 0,
+      z: 1,
+      zone: null,
+      element: 'fire' as const,
+      weapon: 'flamethrower',
+      enemy: 'swarmer',
+    };
     m.onKill({ ...kill, element: 'ice' });
     m.onKill({ ...kill, x: 50 });
     expect(m.progress).toBe(0);
@@ -96,7 +106,9 @@ describe('QuestMachine', () => {
   it('ordered shoot steps restart the order on a wrong target', () => {
     const m = new QuestMachine({
       ...QUEST,
-      steps: [{ ...(QUEST.steps[0] as Extract<QuestDef['steps'][number], { kind: 'shoot' }>), ordered: true }],
+      steps: [
+        { ...(QUEST.steps[0] as Extract<QuestDef['steps'][number], { kind: 'shoot' }>), ordered: true },
+      ],
     });
     expect(m.targetHit('t2')).toBe(false);
     expect(m.targetHit('t1')).toBe(true);
@@ -245,7 +257,12 @@ describe('QuestSystem', () => {
     kill('fire', 1);
     kill('fire', 2);
     expect(r.quest.step).toBe(4);
-    r.events.emit('trap:state', { trapId: 'fence', kind: 'fence', state: 'active', position: { x: 0, y: 0, z: 0 } });
+    r.events.emit('trap:state', {
+      trapId: 'fence',
+      kind: 'fence',
+      state: 'active',
+      position: { x: 0, y: 0, z: 0 },
+    });
     expect(r.quest.step).toBe(5);
     r.player.position.set(0, 0, 20);
     r.tick(3.2);

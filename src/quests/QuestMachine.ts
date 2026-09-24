@@ -174,8 +174,7 @@ export class QuestMachine {
   tick(dt: number, player: Vec3Like | null): void {
     const s = this.current;
     if (!s || s.kind !== 'defend' || !(dt > 0)) return;
-    const inside =
-      player !== null && Math.hypot(player.x - s.point[0], player.z - s.point[2]) <= s.radius;
+    const inside = player !== null && Math.hypot(player.x - s.point[0], player.z - s.point[2]) <= s.radius;
     if (inside) {
       this.outside = 0;
       this.defendTime += dt;
@@ -231,7 +230,15 @@ export class QuestMachine {
   private enter(index: number): void {
     this._step = Math.min(index, this.def.steps.length);
     const s = this.def.steps[this._step];
-    const n = !s ? 0 : s.kind === 'shoot' ? s.targets.length : s.kind === 'collect' ? s.items.length : s.kind === 'interact' ? s.objects.length : 0;
+    const n = !s
+      ? 0
+      : s.kind === 'shoot'
+        ? s.targets.length
+        : s.kind === 'collect'
+          ? s.items.length
+          : s.kind === 'interact'
+            ? s.objects.length
+            : 0;
     this.done = new Uint8Array(n);
     this.orderCursor = 0;
     this.count = 0;

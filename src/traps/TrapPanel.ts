@@ -81,7 +81,15 @@ export class TrapPanel implements Interactable {
     const B = P.button;
     props.cylinder(P.materials.trim, 0, B.y, d + B.depth / 2, B.radius * 1.35, B.depth, 'z', 20);
     // Conduit from the panel down to the floor (the trap is wired, not magic).
-    props.box(P.materials.trim, w * 0.3, -h / 2 - py / 2 + h / 4, 0.03, 0.05, Math.max(0.05, py - h / 2), 0.05);
+    props.box(
+      P.materials.trim,
+      w * 0.3,
+      -h / 2 - py / 2 + h / 4,
+      0.03,
+      0.05,
+      Math.max(0.05, py - h / 2),
+      0.05,
+    );
 
     const group = visuals.root;
     // Glowing button.
@@ -158,7 +166,8 @@ export class TrapPanel implements Interactable {
   update(dt: number, time: number, reduceFlashing: boolean): void {
     if (!this.button) return;
     const P = TRAPS.panel;
-    const look: PanelLook = this.owner.powered || this.owner.state !== 'ready' ? this.owner.state : 'unpowered';
+    const look: PanelLook =
+      this.owner.powered || this.owner.state !== 'ready' ? this.owner.state : 'unpowered';
     const c = P.colors[look];
     let k = 1;
     if (look === 'ready') {
@@ -175,7 +184,8 @@ export class TrapPanel implements Interactable {
   private refresh(force: boolean): void {
     if (!this.screen) return;
     const P = TRAPS.panel;
-    const look: PanelLook = this.owner.powered || this.owner.state !== 'ready' ? this.owner.state : 'unpowered';
+    const look: PanelLook =
+      this.owner.powered || this.owner.state !== 'ready' ? this.owner.state : 'unpowered';
     const step = look === 'active' || look === 'cooldown' ? Math.floor(this.owner.progress * 40) : -1;
     if (!force && look === this.shown && (step === this.shownStep || this.redrawCooldown > 0)) return;
     this.shown = look;

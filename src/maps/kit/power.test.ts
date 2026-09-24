@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  BoxGeometry,
-  Group,
-  Mesh,
-  MeshStandardMaterial,
-  PointLight,
-  ShaderMaterial,
-  SpotLight,
-} from 'three';
+import { BoxGeometry, Group, Mesh, MeshStandardMaterial, PointLight, ShaderMaterial, SpotLight } from 'three';
 import { EventBus } from '../../core/EventBus';
 import type { GameEvents } from '../../core/events';
 import { POWER } from '../../defs/mapEvents';

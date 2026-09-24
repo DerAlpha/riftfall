@@ -463,7 +463,14 @@ const SECRET: readonly AchievementDef[] = inCategory('secret', [
  */
 const MAPS: readonly AchievementDef[] = inCategory('secret', [
   count(
-    C('quest_lab', 'Protokoll Kepler', 'Entschlüssle das Geheimnis des Forschungslabors.', 'gold', 'flask', true),
+    C(
+      'quest_lab',
+      'Protokoll Kepler',
+      'Entschlüssle das Geheimnis des Forschungslabors.',
+      'gold',
+      'flask',
+      true,
+    ),
     'questComplete',
     1,
     { map: 'lab' },
@@ -487,18 +494,36 @@ const MAPS: readonly AchievementDef[] = inCategory('secret', [
     { map: 'reactor' },
   ),
   count(
-    C('quest_orbital', 'Schwerelos', 'Entschlüssle das Geheimnis der Orbitalplattform.', 'gold', 'orbit', true),
+    C(
+      'quest_orbital',
+      'Schwerelos',
+      'Entschlüssle das Geheimnis der Orbitalplattform.',
+      'gold',
+      'orbit',
+      true,
+    ),
     'questComplete',
     1,
     { map: 'orbital' },
   ),
   count(
-    C('quest_rift', 'Jenseits des Risses', 'Entschlüssle das Geheimnis der Rift-Dimension.', 'platinum', 'eye', true),
+    C(
+      'quest_rift',
+      'Jenseits des Risses',
+      'Entschlüssle das Geheimnis der Rift-Dimension.',
+      'platinum',
+      'eye',
+      true,
+    ),
     'questComplete',
     1,
     { map: 'rift' },
   ),
-  count(C('trap_kills_100', 'Fallensteller', 'Töte 100 Gegner mit Fallen.', 'silver', 'nova'), 'trapKill', 100),
+  count(
+    C('trap_kills_100', 'Fallensteller', 'Töte 100 Gegner mit Fallen.', 'silver', 'nova'),
+    'trapKill',
+    100,
+  ),
 ]);
 
 export const ACHIEVEMENTS: readonly AchievementDef[] = [

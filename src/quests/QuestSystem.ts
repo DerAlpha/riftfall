@@ -173,7 +173,11 @@ export class QuestSystem implements QuestApi {
   private readonly items: QuestItem[] = [];
   private readonly objects: QuestObject[] = [];
   private readonly tagLoops: PositionalLoop[] = [];
-  private readonly defends: { step: number; view: DefendView; def: Extract<QuestStepDef, { kind: 'defend' }> }[] = [];
+  private readonly defends: {
+    step: number;
+    view: DefendView;
+    def: Extract<QuestStepDef, { kind: 'defend' }>;
+  }[] = [];
   private readonly core: CoreView | null = null;
   private readonly blockers: SolidBlocker[] = [];
   private readonly root: Group | null = null;
@@ -219,7 +223,13 @@ export class QuestSystem implements QuestApi {
           const target = new QuestTarget(nextId++, t, stepIndex, view, (q) => this.onTargetHit(q));
           this.targets.push(target);
           this.tagLoops.push(
-            new PositionalLoop(deps.audio ?? null, V.audio.tagHum, V.audio.humGain, target.aimPoint, V.audio.humDistance),
+            new PositionalLoop(
+              deps.audio ?? null,
+              V.audio.tagHum,
+              V.audio.humGain,
+              target.aimPoint,
+              V.audio.humDistance,
+            ),
           );
         });
       } else if (s.kind === 'collect') {
@@ -229,12 +239,19 @@ export class QuestSystem implements QuestApi {
             def: it,
             step: stepIndex,
             position,
-            loop: new PositionalLoop(deps.audio ?? null, V.audio.coreHum, V.audio.humGain, position, V.audio.humDistance),
+            loop: new PositionalLoop(
+              deps.audio ?? null,
+              V.audio.coreHum,
+              V.audio.humGain,
+              position,
+              V.audio.humDistance,
+            ),
           });
         }
       } else if (s.kind === 'interact') {
         for (const o of s.objects) {
-          const view = visuals && props && o.style === 'socket' ? new SocketView(o.position, visuals, props) : null;
+          const view =
+            visuals && props && o.style === 'socket' ? new SocketView(o.position, visuals, props) : null;
           const obj = new QuestObject(o, stepIndex, this.machine!, view, (u) => this.onObjectUsed(u));
           const b = deps.blockers;
           if (b && o.style === 'socket') {
@@ -266,7 +283,8 @@ export class QuestSystem implements QuestApi {
     const ev = deps.events;
     this.unsubscribe.push(
       ev.on('combat:damage', (e) => {
-        if (!e.killed || e.source !== 'player' || !this.machine || this.machine.current?.kind !== 'kill') return;
+        if (!e.killed || e.source !== 'player' || !this.machine || this.machine.current?.kind !== 'kill')
+          return;
         this.machine.onKill({
           x: e.point.x,
           y: e.point.y,
@@ -330,7 +348,11 @@ export class QuestSystem implements QuestApi {
         if (!m.isOpen(i)) continue;
         const p = player.position;
         const dy = it.position.y - p.y;
-        if (Math.hypot(it.position.x - p.x, it.position.z - p.z) <= C.pickupRadius && dy >= -0.5 && dy <= C.pickupHeight) {
+        if (
+          Math.hypot(it.position.x - p.x, it.position.z - p.z) <= C.pickupRadius &&
+          dy >= -0.5 &&
+          dy <= C.pickupHeight
+        ) {
           m.itemCollected(it.def.id);
           this.deps.audio?.play(V.audio.pickup, { volume: V.audio.stepGain, bus: 'sfx' });
         }
@@ -359,7 +381,8 @@ export class QuestSystem implements QuestApi {
     const core = this.core;
     let floatingItem: QuestItem | null = null;
     if (s?.kind === 'collect') {
-      for (const it of this.items) if (it.step === m.step && m.isOpen(s.items.indexOf(it.def))) floatingItem = it;
+      for (const it of this.items)
+        if (it.step === m.step && m.isOpen(s.items.indexOf(it.def))) floatingItem = it;
     }
     for (const it of this.items) it.loop.update(it === floatingItem, listener);
     if (core) {
@@ -524,7 +547,8 @@ export class QuestSystem implements QuestApi {
     }
     const s = m.current;
     if (s?.kind === 'defend') {
-      if (this.defendLoop === 0) this.defendLoop = audio.startLoop(V.audio.defend, { volume: V.audio.defendGain, bus: 'sfx' });
+      if (this.defendLoop === 0)
+        this.defendLoop = audio.startLoop(V.audio.defend, { volume: V.audio.defendGain, bus: 'sfx' });
       const [p0, p1] = V.defend.pitch;
       const inside = m.defending(player);
       audio.updateLoop?.(this.defendLoop, {

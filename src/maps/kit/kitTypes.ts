@@ -38,7 +38,13 @@ export interface KitVfx {
   spawn(effect: string, position: Vec3Like, normal?: Vec3Like, scale?: number): void;
   tracer(from: Vec3Like, to: Vec3Like, color?: number): void;
   readonly lights?: {
-    flash(def: LightFlashDef, position: Vec3Like, normal: Vec3Like | null, scale?: number, color?: Rgb | number): boolean;
+    flash(
+      def: LightFlashDef,
+      position: Vec3Like,
+      normal: Vec3Like | null,
+      scale?: number,
+      color?: Rgb | number,
+    ): boolean;
   };
 }
 
@@ -95,7 +101,11 @@ export class PositionalLoop {
     if (!audio) return;
     let near = false;
     if (want && listener) {
-      const d = Math.hypot(listener.x - this.position.x, listener.y - this.position.y, listener.z - this.position.z);
+      const d = Math.hypot(
+        listener.x - this.position.x,
+        listener.y - this.position.y,
+        listener.z - this.position.z,
+      );
       near = d < this.maxDistance * (this.handle > 0 ? 1.1 : 1);
     }
     if (near && this.handle <= 0) {

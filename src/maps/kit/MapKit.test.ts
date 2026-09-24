@@ -99,7 +99,12 @@ describe('MapKit on the research lab', () => {
       power,
       combat: new Combat(),
       economy: { spend: () => true, earn: (a) => a },
-      interaction: { register: (i) => registered.push(i), unregister: () => {}, focused: null, holdProgress: 0 },
+      interaction: {
+        register: (i) => registered.push(i),
+        unregister: () => {},
+        focused: null,
+        holdProgress: 0,
+      },
       zones: { isActive: () => true },
       enemies: { spawn: (type) => (spawned.push(type), spawned.length) },
       enemyType: () => null,
@@ -153,6 +158,22 @@ describe('MapKit on the research lab', () => {
       const dz = n === 'pz' ? 0.5 : n === 'nz' ? -0.5 : 0;
       expect(level.zoneAt(x + dx, z + dz), slot.id).not.toBeNull();
     }
+  });
+
+  it('a blackout dims the lab fixtures and panels to emergency levels and restores them', () => {
+    const spots: THREE.SpotLight[] = [];
+    level.root.traverse((o) => {
+      if (o instanceof THREE.SpotLight) spots.push(o);
+    });
+    expect(spots.length).toBeGreaterThan(5);
+    const before = spots.map((l) => l.intensity);
+    expect(kit.director.trigger('lab_blackout')).toBe(true);
+    run(3);
+    spots.forEach((l, i) => expect(l.intensity, l.name).toBeLessThan(before[i]! * 0.1));
+    kit.director.stop();
+    run(3);
+    spots.forEach((l, i) => expect(l.intensity).toBeCloseTo(before[i]!, 3));
+    expect(kit.power.busy).toBe(false);
   });
 
   it('runs every trap, event and quest step without errors; a reset restores the start state', () => {

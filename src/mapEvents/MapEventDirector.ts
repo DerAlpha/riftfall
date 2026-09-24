@@ -17,12 +17,7 @@
  * restart): power back on at once, anomalies gone, pending starts dropped, rng reseeded.
  */
 import { Vector3 } from 'three';
-import type {
-  EnemySpawnOptions,
-  InteractionApi,
-  MapEventApi,
-  SpawnPointDef,
-} from '../core/contracts';
+import type { EnemySpawnOptions, InteractionApi, MapEventApi, SpawnPointDef } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
 import type { GameEvents, Vec3Like } from '../core/events';
 import { createLogger } from '../core/log';
@@ -74,7 +69,10 @@ export interface MapEventDirectorDeps {
   isZoneActive(zone: string): boolean;
   zoneName(zone: string): string;
   player: KitPlayer | null;
-  interaction: Pick<InteractionApi, 'register' | 'unregister'> & { readonly focused?: unknown; readonly holdProgress?: number };
+  interaction: Pick<InteractionApi, 'register' | 'unregister'> & {
+    readonly focused?: unknown;
+    readonly holdProgress?: number;
+  };
   /** Known enemy type (defs/enemies)? */
   isKnownType(type: string): boolean;
   audio?: KitAudio | null;
@@ -162,7 +160,13 @@ export class MapEventDirector implements MapEventApi {
     for (const g of this.generators) {
       deps.interaction.register(g);
       this.alarmLoops.push(
-        new PositionalLoop(deps.audio ?? null, POWER.audio.alarm, POWER.audio.alarmGain, g.position, POWER.audio.alarmDistance),
+        new PositionalLoop(
+          deps.audio ?? null,
+          POWER.audio.alarm,
+          POWER.audio.alarmGain,
+          g.position,
+          POWER.audio.alarmDistance,
+        ),
       );
     }
     if (props && v) {
@@ -179,7 +183,8 @@ export class MapEventDirector implements MapEventApi {
       ev.on('wave:start', (e) => this.onWaveStart(e.wave)),
       ev.on('quest:step', (e) => this.onQuestStep(e.stepId)),
     );
-    if (this.defs.length > 0) log.info(`Map events: ${this.defs.map((d) => `${d.id} (${d.kind})`).join(', ')}`);
+    if (this.defs.length > 0)
+      log.info(`Map events: ${this.defs.map((d) => `${d.id} (${d.kind})`).join(', ')}`);
   }
 
   get active(): readonly string[] {
@@ -196,7 +201,9 @@ export class MapEventDirector implements MapEventApi {
   }
 
   get hasVolumetricContent(): boolean {
-    return this.generators.length > 0 || (this.anomaly?.visible ?? false);
+    // Beacons draw only during an outage, the anomaly only while it runs / collapses.
+    for (let i = 0; i < this.generators.length; i++) if (this.generators[i]!.alarm) return true;
+    return this.anomaly?.visible ?? false;
   }
 
   trigger(id: string): boolean {
@@ -371,7 +378,13 @@ export class MapEventDirector implements MapEventApi {
         this.deps.power.setPowered(false);
         this.deps.audio?.play(POWER.audio.down, { volume: POWER.audio.downGain, bus: 'sfx' });
         const B = POWER.banners.outage;
-        this.deps.banner?.(B.kicker, B.title, B.sub.replace('{zone}', this.deps.zoneName(gen.spot.zone)), POWER.banners.color, POWER.banners.seconds);
+        this.deps.banner?.(
+          B.kicker,
+          B.title,
+          B.sub.replace('{zone}', this.deps.zoneName(gen.spot.zone)),
+          POWER.banners.color,
+          POWER.banners.seconds,
+        );
         position = gen.position;
         break;
       }
@@ -400,7 +413,13 @@ export class MapEventDirector implements MapEventApi {
       case 'gravityAnomaly': {
         const center = this.pickAnomalyCenter(def);
         const handle = this.deps.gravity.add(
-          { id: def.id, shape: 'sphere', center: [center.x, center.y, center.z], radius: def.radius, scale: def.scale },
+          {
+            id: def.id,
+            shape: 'sphere',
+            center: [center.x, center.y, center.z],
+            radius: def.radius,
+            scale: def.scale,
+          },
           0,
         );
         if (handle === 0) return false;
@@ -409,7 +428,11 @@ export class MapEventDirector implements MapEventApi {
         this.anomalyCenter.copy(center).setY(center.y + G.soundLift);
         this.anomaly?.begin(center, def.radius);
         this.deps.vfx?.spawn(G.startEffect, this.anomalyCenter, UP, G.startEffectScale);
-        this.deps.audio?.play(G.audio.start, { position: this.anomalyCenter, volume: G.startGain, bus: 'sfx' });
+        this.deps.audio?.play(G.audio.start, {
+          position: this.anomalyCenter,
+          volume: G.startGain,
+          bus: 'sfx',
+        });
         this.deps.shockwave?.(center, def.radius, G.shockwave);
         this.deps.events.emit('camera:shake', { trauma: G.shake });
         this.deps.banner?.(G.banner.kicker, G.banner.title, G.banner.sub, G.banner.color, G.bannerSeconds);
@@ -442,8 +465,9 @@ export class MapEventDirector implements MapEventApi {
         const o = r as OutageRunner;
         o.generator.alarm = false;
         o.generator.onRestore(null);
+        // Power comes back either way (stop, reset); the restart cue only for a real restart.
+        this.deps.power.setPowered(true);
         if (!silent) {
-          this.deps.power.setPowered(true);
           this.deps.audio?.play(POWER.audio.up, { volume: POWER.audio.upGain, bus: 'sfx' });
           const B = POWER.banners.restored;
           this.deps.banner?.(B.kicker, B.title, B.sub, POWER.banners.restoredColor, POWER.banners.seconds);
@@ -454,7 +478,8 @@ export class MapEventDirector implements MapEventApi {
         const a = r as AnomalyRunner;
         this.deps.gravity.remove(a.handle);
         this.anomaly?.end();
-        if (!silent) this.deps.audio?.play(GRAVITY.anomaly.audio.end, { position: this.anomalyCenter, bus: 'sfx' });
+        if (!silent)
+          this.deps.audio?.play(GRAVITY.anomaly.audio.end, { position: this.anomalyCenter, bus: 'sfx' });
         break;
       }
       case 'invasion':
@@ -526,7 +551,12 @@ export class MapEventDirector implements MapEventApi {
   private anomalyStrength(r: AnomalyRunner): number {
     const fade = GRAVITY.anomaly.fade;
     const inK = fade > 0 ? Math.min(1, r.time / fade) : 1;
-    const outK = fade > 0 ? Math.min(1, Math.max(0, (r.def.duration + fade - r.time) / fade)) : r.time < r.def.duration ? 1 : 0;
+    const outK =
+      fade > 0
+        ? Math.min(1, Math.max(0, (r.def.duration + fade - r.time) / fade))
+        : r.time < r.def.duration
+          ? 1
+          : 0;
     return Math.min(inK, outK);
   }
 
@@ -554,7 +584,8 @@ export class MapEventDirector implements MapEventApi {
   private pickType(def: InvasionEventDef): string | null {
     const wave = this.deps.waves.wave;
     let total = 0;
-    for (const t of def.types) if ((t.minWave ?? 0) <= wave && this.deps.isKnownType(t.type)) total += t.weight;
+    for (const t of def.types)
+      if ((t.minWave ?? 0) <= wave && this.deps.isKnownType(t.type)) total += t.weight;
     if (!(total > 0)) return null;
     let x = this.rng.next() * total;
     for (const t of def.types) {

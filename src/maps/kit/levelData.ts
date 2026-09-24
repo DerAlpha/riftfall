@@ -107,7 +107,8 @@ export function resolveBossArena(level: LevelInstance, mapId?: string): BossAren
   const k = kit(level).bossArena;
   if (k !== undefined) return k;
   const t = own(BOSS_ARENAS, idOf(level, mapId));
-  if (t) return { center: { x: t.center[0], y: t.center[1], z: t.center[2] }, radius: t.radius, zone: t.zone };
+  if (t)
+    return { center: { x: t.center[0], y: t.center[1], z: t.center[2] }, radius: t.radius, zone: t.zone };
   const points = level.spawnPoints ?? [];
   if (points.length === 0) return null;
   const zone = resolveStartZones(level, mapId)[0] ?? points[0]!.zone;

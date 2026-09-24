@@ -6,7 +6,7 @@
  * combat:impact, damage through CombatWorld (source 'trap', head shots count). Without a target it
  * sweeps around its rest yaw. A red laser sight shows where it aims; the sensor eye shows the state.
  */
-import type { Mesh} from 'three';
+import type { Mesh } from 'three';
 import { Color, Group, MeshStandardMaterial, Vector3, type Material } from 'three';
 import type { Damageable } from '../core/contracts';
 import type { GameEvents, HitZone, SurfaceType, FleshSurface } from '../core/events';
@@ -83,7 +83,16 @@ export class TurretTrap extends Trap {
     props.setFrame(x, y, z, this.restYaw);
     props.box('pillar_metal', 0, (down * M.plate[1]) / 2, 0, M.plate[0], M.plate[1], M.plate[2]);
     props.box('painted_hazard', 0, down * (M.plate[1] + 0.01), 0, M.plate[0] * 0.7, 0.02, M.plate[2] * 0.7);
-    props.cylinder('trim_metal', 0, down * (M.plate[1] + M.rod.length / 2), 0, M.rod.radius, M.rod.length, 'y', 12);
+    props.cylinder(
+      'trim_metal',
+      0,
+      down * (M.plate[1] + M.rod.length / 2),
+      0,
+      M.rod.radius,
+      M.rod.length,
+      'y',
+      12,
+    );
     props.cylinder(
       'pillar_metal',
       0,
@@ -146,7 +155,17 @@ export class TurretTrap extends Trap {
       bar.cylinder('b', (s * B.spacing) / 2, -hh * 0.12, -hd / 2 - 0.06, B.radius * 1.6, 0.12, 'z', 10);
     }
     this.keep(bar.mesh('b', trim, barrels, false));
-    for (const s of [-1, 1]) bar.cylinder('f', (s * B.spacing) / 2, -hh * 0.12, -hd / 2 - B.length - 0.005, B.radius * 0.8, 0.01, 'z', 10);
+    for (const s of [-1, 1])
+      bar.cylinder(
+        'f',
+        (s * B.spacing) / 2,
+        -hh * 0.12,
+        -hd / 2 - B.length - 0.005,
+        B.radius * 0.8,
+        0.01,
+        'z',
+        10,
+      );
     this.keep(bar.mesh('f', this.flashMat, barrels, false));
     bar.dispose();
     for (const m of this.meshes) m.matrixAutoUpdate = true;
@@ -308,7 +327,19 @@ export class TurretTrap extends Trap {
     if (!hit) return;
     if (target && target.team === 'enemy') {
       const mult = zone === 'head' || zone === 'weakpoint' ? T.headMultiplier : 1;
-      this.hurt(target, T.damage * mult, 'physical', 'bullet', _hitPoint, _dir.x, _dir.y, _dir.z, T.impulse, 0, zone);
+      this.hurt(
+        target,
+        T.damage * mult,
+        'physical',
+        'bullet',
+        _hitPoint,
+        _dir.x,
+        _dir.y,
+        _dir.z,
+        T.impulse,
+        0,
+        zone,
+      );
     }
     const p = this.impact;
     p.point.x = _hitPoint.x;
@@ -339,7 +370,8 @@ export class TurretTrap extends Trap {
       this.eyeColor.setRGB(c[0], c[1], c[2]);
       this.eye.emissive.copy(this.eyeColor);
       const blink = active && this.target === null && !reduceFlashing ? 0.75 + 0.25 * Math.sin(time * 9) : 1;
-      this.eye.emissiveIntensity = (active ? I.active : this.state === 'cooldown' ? I.cooldown : I.ready) * blink;
+      this.eye.emissiveIntensity =
+        (active ? I.active : this.state === 'cooldown' ? I.cooldown : I.ready) * blink;
     }
     if (this.flashMat) this.flashMat.emissiveIntensity = this.muzzleGlow * T.flash.intensity * 2;
     const laser = this.laser;
@@ -366,7 +398,11 @@ export class TurretTrap extends Trap {
     this.yawGroup.updateMatrixWorld(true);
   }
 
-  private glow(name: string, color: readonly [number, number, number], intensity: number): MeshStandardMaterial {
+  private glow(
+    name: string,
+    color: readonly [number, number, number],
+    intensity: number,
+  ): MeshStandardMaterial {
     const m = new MeshStandardMaterial({
       name,
       color: 0x050607,

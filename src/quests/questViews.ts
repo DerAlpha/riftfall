@@ -4,8 +4,7 @@
  * and the defend zone (floor ring with a progress arc + a containment column that grows with it).
  * Built once at load (hidden until their step), animated per frame without allocation.
  */
-import type {
-  CanvasTexture} from 'three';
+import type { CanvasTexture } from 'three';
 import {
   Color,
   CylinderGeometry,
@@ -231,7 +230,15 @@ export class SocketView {
     props.cylinder(S.trim, 0, S.height - 0.04, 0, S.radius, 0.08, 'y', 24);
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2;
-      props.box(S.trim, Math.cos(a) * S.radius * 0.8, S.height + 0.12, Math.sin(a) * S.radius * 0.8, 0.04, 0.24, 0.04);
+      props.box(
+        S.trim,
+        Math.cos(a) * S.radius * 0.8,
+        S.height + 0.12,
+        Math.sin(a) * S.radius * 0.8,
+        0.04,
+        0.24,
+        0.04,
+      );
     }
     this.cradle.set(x, y + S.height + V.core.radius * 1.4, z);
     this.ring = new MeshStandardMaterial({
@@ -257,7 +264,11 @@ export class SocketView {
     const S = V.socket;
     const pulse = reduced ? 0.85 : 0.6 + 0.4 * Math.sin(time * 3.2);
     this.ring.emissiveIntensity =
-      mode === 'active' ? S.activeIntensity * pulse : mode === 'want' ? S.wantIntensity * pulse : S.idleIntensity;
+      mode === 'active'
+        ? S.activeIntensity * pulse
+        : mode === 'want'
+          ? S.wantIntensity * pulse
+          : S.idleIntensity;
   }
 
   dispose(): void {

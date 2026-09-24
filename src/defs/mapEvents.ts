@@ -119,6 +119,8 @@ export const POWER = {
   materialDim: 0.04,
   coneDim: 0,
   propDim: 0.03,
+  /** Image-based light and hemisphere fill of the scenes (world + viewmodel) during a blackout. */
+  ambientDim: 0.35,
   /** Main lights shift towards the emergency color by this much at full blackout. */
   emergencyColor: [1.0, 0.1, 0.05] as Rgb,
   emergencyTint: 0.9,
@@ -133,6 +135,8 @@ export const POWER = {
   emergencyRedRatio: 2,
   keepLights: ['RiftLight'] as readonly string[],
   coneNames: ['VolumetricCone'] as readonly string[],
+  /** Emissive variants that are not powered fixtures (the lab's night sky): never dimmed. */
+  keepMaterials: ['emissive_white#sky'] as readonly string[],
   /** Emissive level meshes (auto groups): names starting with these prefixes. */
   emissivePrefixes: ['level:emissive_', 'panel:emissive_'] as readonly string[],
   generator: {
@@ -145,7 +149,12 @@ export const POWER = {
     size: { width: 1.2, height: 1.75, depth: 0.5 },
     wallGap: 0.03,
     anchor: { y: 1.2, offset: 0.35 },
-    materials: { body: 'pillar_metal', panel: 'wall_panel_dark', trim: 'trim_metal', hazard: 'painted_hazard' },
+    materials: {
+      body: 'pillar_metal',
+      panel: 'wall_panel_dark',
+      trim: 'trim_metal',
+      hazard: 'painted_hazard',
+    },
     /** Status lamp / beacon colors: waiting for a restart (red), running (green). */
     alarmColor: [1.0, 0.12, 0.04] as Rgb,
     okColor: [0.2, 1.0, 0.4] as Rgb,

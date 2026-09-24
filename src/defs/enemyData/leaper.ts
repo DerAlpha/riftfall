@@ -82,10 +82,11 @@ export const LEAPER_ENEMY: EnemyTypeDef | null = {
     eyeSocket: 'head',
     eyeHeight: 1.35,
   },
-  // Wide ring: it circles out of reach and comes in with the pounce; token holders close in.
+  // Wide ring: it circles out of reach; token holders hold at pounce distance (standoff inside the
+  // pounce range) and come in only with the pounce – then slash (combo) and fall back to the ring.
   swarm: {
-    ringRadius: 8.5,
-    standoff: 1.3,
+    ringRadius: 9,
+    standoff: 6,
     engageDistance: 14,
     orbitAmplitudeDeg: 38,
     orbitHz: 0.16,

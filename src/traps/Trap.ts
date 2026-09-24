@@ -5,13 +5,7 @@
  * active tick (damage) and their visuals.
  */
 import { Vector3 } from 'three';
-import type {
-  DamageInfo,
-  DamageResult,
-  Damageable,
-  EconomyApi,
-  TrapReadout,
-} from '../core/contracts';
+import type { DamageInfo, DamageResult, Damageable, EconomyApi, TrapReadout } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
 import type { DamageElement, GameEvents, HitZone, ImpactKind, Vec3Like } from '../core/events';
 import type { Rng } from '../core/Rng';

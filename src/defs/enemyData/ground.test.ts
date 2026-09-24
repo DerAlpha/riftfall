@@ -128,10 +128,14 @@ describe('M6 ground types: defs are consistent', () => {
       expect(d.nav.radius, id).toBeLessThanOrEqual(NAV.crowd.maxAgentRadius);
       expect(d.movement.walkSpeed, id).toBeLessThanOrEqual(d.movement.runSpeed);
       expect(d.slotCost, id).toBeLessThanOrEqual(ENEMY_AI.slots.pools[d.slotPool]);
-      const melee = d.attacks.filter((a) => a.usesSlot && a.kind !== 'leap');
+      // Token holders reach one of their attacks from where they stop (the leaper: its pounce).
+      const slotted = d.attacks.filter((a) => a.usesSlot);
       const standoff = d.swarm?.standoff ?? d.brute?.standoff;
-      if (standoff !== undefined && melee.length > 0) {
-        expect(Math.max(...melee.map((a) => a.range)), id).toBeGreaterThan(standoff);
+      if (standoff !== undefined && slotted.length > 0) {
+        expect(
+          slotted.some((a) => a.minRange <= standoff && a.range > standoff),
+          id,
+        ).toBe(true);
       }
     }
     const B = def('berserker').brute!;
@@ -155,8 +159,10 @@ describe('M6 ground types: the spec roles', () => {
     expect(pounce.telegraph).toBeDefined();
     // Readable crouch.
     expect(pounce.windup).toBeGreaterThanOrEqual(0.6);
-    // Circles outside its own slash reach.
+    // Circles outside its own slash reach; token holders wait at pounce distance.
     expect(d.swarm!.ringRadius).toBeGreaterThan(pounce.minRange);
+    expect(d.swarm!.standoff).toBeGreaterThanOrEqual(pounce.minRange);
+    expect(d.swarm!.standoff).toBeLessThanOrEqual(pounce.range);
   });
 
   it('Berserker: enrages below half health; cleave combo; slower than a leaper, far faster than a tank', () => {

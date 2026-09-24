@@ -3,9 +3,14 @@
  * concrete notes in the playing theme's key, register and tempo. Stings therefore always fit the
  * music under them – a wave start in the rift sounds octatonic, the lab's in D minor.
  */
-import { INSTRUMENT_RECIPES, type InstrumentSlot, type MusicThemeDef, type StingDef } from '../../defs/music';
+import {
+  INSTRUMENT_RECIPES,
+  SCALES,
+  type InstrumentSlot,
+  type MusicThemeDef,
+  type StingDef,
+} from '../../defs/music';
 import { NATURAL, rangeOf } from './composer';
-import { SCALES } from '../../defs/music';
 import { degreeNote } from './theory';
 
 export interface ResolvedStingNote {

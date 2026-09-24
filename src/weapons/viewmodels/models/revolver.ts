@@ -24,7 +24,6 @@ import {
   profileZ,
   regularPolygonProfile,
   roundedBox,
-  tiltedAxisPoint,
   type ProfilePoint,
 } from '../shapes';
 import { ProceduralWeaponModel, createReadout, ledUv, type ReadoutSpec } from '../WeaponModel';
@@ -45,6 +44,19 @@ const CHAMBER_HOLE = 0.0056;
 const FRAME_W = 0.032;
 const FRAME_TOP = 0.066;
 const SHROUD_FRONT = -0.214;
+const SHROUD_REAR = -0.074;
+/** Lower edge of the shroud body and of the chamfered top rib. */
+const SHROUD_BOTTOM = 0.009;
+const RIB_BOTTOM = 0.044;
+const RIB_CHAMFER = 0.0065;
+/** The top strap over the cylinder window, from behind the rear sight to the shroud. */
+const STRAP_BOTTOM = 0.0578;
+const WINDOW_BOTTOM = 0.0135;
+const STRAP_REAR = 0.024;
+/** Coil window in the shroud flanks and the brass coils behind it. */
+const COIL_REAR = -0.092;
+const COIL_FRONT = -0.168;
+const COILS = 6;
 /** Sight line (rear notch ear tops = front post top). */
 const SIGHT_Y = 0.0725;
 const NOTCH_DEPTH = 0.0046;
@@ -53,15 +65,36 @@ const REAR_SIGHT_Z = 0.012;
 const FRONT_SIGHT_Z = -0.188;
 /** Crane hinge (front, low left): the cylinder swings out around it. */
 const CRANE_PIVOT: readonly [number, number, number] = [-0.013, 0.0095, CYL_FRONT - 0.0025];
-const GRIP_TILT = -20;
-const GRIP_TOP = { y: -0.002, z: 0.024 } as const;
+/** Grip side outline [forward, up]: curved backstrap, raked, rounded by a deep bevel. */
+const GRIP_OUTLINE: readonly ProfilePoint[] = [
+  [-0.044, 0.002],
+  [-0.047, -0.02],
+  [-0.052, -0.05],
+  [-0.059, -0.08],
+  [-0.066, -0.104],
+  [-0.064, -0.112],
+  [-0.026, -0.117],
+  [-0.021, -0.1],
+  [-0.017, -0.078],
+  [-0.01, -0.052],
+  [-0.004, -0.03],
+  [0.0, -0.008],
+  [0.002, 0.002],
+];
+const GRIP_PANEL: readonly ProfilePoint[] = [
+  [-0.042, -0.012],
+  [-0.047, -0.042],
+  [-0.055, -0.078],
+  [-0.06, -0.1],
+  [-0.03, -0.104],
+  [-0.023, -0.08],
+  [-0.016, -0.054],
+  [-0.009, -0.03],
+  [-0.006, -0.014],
+];
 const LEDS = 6;
 /** The LED pod on the left flank turns towards the shooter by this much (deg). */
 const POD_YAW = 25;
-
-function gripAxis(s: number): [number, number, number] {
-  return tiltedAxisPoint(GRIP_TILT, GRIP_TOP.y, GRIP_TOP.z, s);
-}
 
 /** Chamber k center [x, y] (k = 0 is the bottom chamber in line with the barrel). */
 function chamber(k: number): [number, number] {
@@ -93,7 +126,9 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
   b.part('hammer', [0, 0.03, 0.031]);
   b.part('trigger', [0, 0.0, -0.028]);
 
-  // --- frame (side profile with the cylinder window) ---
+  // --- frame: side profile open at the top around the cylinder window (the strap bridges it) ---
+  const winRear = -CYL_REAR - 0.0025;
+  const winFront = -CYL_FRONT + 0.004;
   b.add(
     BODY,
     'gunmetal',
@@ -103,28 +138,30 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
         [-0.044, 0.0],
         [-0.045, 0.036],
         [-0.036, 0.05],
-        [-0.028, 0.062],
-        [-0.02, FRAME_TOP],
-        [0.08, FRAME_TOP],
+        [-0.027, STRAP_BOTTOM + 0.0012],
+        [winRear, STRAP_BOTTOM + 0.0012],
+        [winRear, WINDOW_BOTTOM],
+        [winFront, WINDOW_BOTTOM],
+        [winFront, STRAP_BOTTOM + 0.0012],
+        [0.08, STRAP_BOTTOM + 0.0012],
         [0.08, 0.006],
         [0.068, 0.002],
         [0.03, 0.002],
         [0.0, -0.006],
       ],
       FRAME_W,
-      {
-        bevel: 0.0022,
-        holes: [
-          [
-            [-CYL_REAR - 0.0025, 0.0135],
-            [-CYL_FRONT + 0.004, 0.0135],
-            [-CYL_FRONT + 0.004, 0.0585],
-            [-CYL_REAR - 0.0025, 0.0585],
-          ],
-        ],
-      },
+      { bevel: 0.0022 },
     ),
     { paint: P.gunmetal.paint },
+  );
+  // Top strap: continues the shroud rib's chamfered top back to the rear sight.
+  b.add(
+    BODY,
+    'gunmetal',
+    profileZ(chamferRectProfile(0.03, FRAME_TOP - STRAP_BOTTOM, RIB_CHAMFER, 0.0005), STRAP_REAR - SHROUD_REAR, {
+      bevel: 0.0018,
+    }),
+    { pos: [0, (FRAME_TOP + STRAP_BOTTOM) / 2, (STRAP_REAR + SHROUD_REAR) / 2], paint: P.gunmetal.paint },
   );
   // Recoil shield: a darker face just behind the rims, with the firing-pin bushing.
   b.add(BODY, 'darkMetal', roundedBox(0.03, 0.044, 0.0016, 0.0005), {
@@ -179,21 +216,64 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
     });
   }
 
-  // --- gauss shroud over the barrel ---
-  const shroudLen = -SHROUD_FRONT - 0.074;
-  const shroudZ = (SHROUD_FRONT - 0.074) / 2;
-  const shroudBottom = BORE_Y - 0.015;
-  const shroudH = FRAME_TOP - shroudBottom;
+  // --- gauss shroud: a chamfered top rib over a lower body with a window onto the barrel coils ---
+  const shroudLen = -SHROUD_FRONT - SHROUD_REAR;
+  const shroudZ = (SHROUD_FRONT - SHROUD_REAR) / 2;
   b.add(
     BODY,
     'gunmetal',
-    profileZ(chamferRectProfile(0.03, shroudH, 0.009, 0.007), shroudLen, { bevel: 0.002 }),
-    { pos: [0, shroudBottom + shroudH / 2, shroudZ], paint: P.gunmetal.paint },
+    profileZ(chamferRectProfile(0.03, FRAME_TOP - RIB_BOTTOM, RIB_CHAMFER, 0.002), shroudLen, { bevel: 0.002 }),
+    { pos: [0, (FRAME_TOP + RIB_BOTTOM) / 2, shroudZ], paint: P.gunmetal.paint },
   );
-  // Glowing flanks along the upper chamfers (lying flat on the 45° faces).
+  const front = -SHROUD_FRONT;
+  b.add(
+    BODY,
+    'gunmetal',
+    profileX(
+      [
+        [-SHROUD_REAR, RIB_BOTTOM + 0.004],
+        [front, RIB_BOTTOM + 0.004],
+        [front, 0.03],
+        [front - 0.012, SHROUD_BOTTOM + 0.003],
+        [front - 0.03, SHROUD_BOTTOM],
+        [0.1, SHROUD_BOTTOM],
+        [0.088, 0.004],
+        [-SHROUD_REAR, 0.004],
+      ],
+      0.027,
+      {
+        bevel: 0.002,
+        holes: [
+          [
+            [-COIL_REAR, SHROUD_BOTTOM + 0.006],
+            [-COIL_FRONT, SHROUD_BOTTOM + 0.006],
+            [-COIL_FRONT, RIB_BOTTOM - 0.002],
+            [-COIL_REAR, RIB_BOTTOM - 0.002],
+          ],
+        ],
+      },
+    ),
+    { paint: P.gunmetal.paint },
+  );
+  // Barrel inside, wound with brass coils; the gaps between them glow.
+  b.add(BODY, 'darkMetal', cylinderZ(0.0082, 0.0082, -SHROUD_FRONT + SHROUD_REAR, 18), {
+    pos: [0, BORE_Y, shroudZ],
+    paint: P.darkMetal.paint,
+  });
+  const coilPitch = (COIL_REAR - COIL_FRONT - 0.008) / (COILS - 1);
+  for (let i = 0; i < COILS; i++) {
+    const z = COIL_REAR - 0.004 - i * coilPitch;
+    b.add(BODY, 'brass', cylinderZ(0.0114, 0.0114, 0.0056, 22), { pos: [0, BORE_Y, z], paint: 0.75 });
+    if (i < COILS - 1)
+      b.add(BODY, 'accent', cylinderZ(0.0101, 0.0101, coilPitch - 0.0056, 18), {
+        pos: [0, BORE_Y, z - coilPitch / 2],
+      });
+  }
+  // Glowing flanks along the rib's upper chamfers (lying flat on the 45° faces).
+  const chamferMid = 0.015 - RIB_CHAMFER / 2 + 0.0004;
   for (const side of [-1, 1]) {
-    b.add(BODY, 'accent', new BoxGeometry(0.0012, 0.0036, 0.118), {
-      pos: [side * 0.0109, FRAME_TOP - 0.0041, shroudZ - 0.004],
+    b.add(BODY, 'accent', new BoxGeometry(0.0012, 0.0034, 0.118), {
+      pos: [side * chamferMid, FRAME_TOP - RIB_CHAMFER / 2 + 0.0004, shroudZ - 0.004],
       rot: [0, 0, side * 45],
     });
   }
@@ -203,18 +283,18 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
       pos: [0, FRAME_TOP + 0.0001, -0.092 - i * 0.022],
     });
   }
-  // Heat vents on the lower flanks (slanted louvres).
+  // Heat vents on the nose flanks (slanted louvres).
   for (const side of [-1, 1]) {
-    for (let i = 0; i < 4; i++) {
-      const z = -0.1 - i * 0.026;
-      b.add(BODY, 'darkMetal', new BoxGeometry(0.0012, 0.017, 0.011), {
-        pos: [side * 0.0151, BORE_Y + 0.002, z],
-        rot: [28, 0, 0],
+    for (let i = 0; i < 2; i++) {
+      const z = COIL_FRONT - 0.012 - i * 0.014;
+      b.add(BODY, 'darkMetal', new BoxGeometry(0.0012, 0.02, 0.009), {
+        pos: [side * 0.0138, BORE_Y + 0.006, z],
+        rot: [24, 0, 0],
         paint: P.darkMetal.paint,
       });
-      b.add(BODY, 'heat', new BoxGeometry(0.0012, 0.013, 0.006), {
-        pos: [side * 0.0155, BORE_Y + 0.002, z],
-        rot: [28, 0, 0],
+      b.add(BODY, 'heat', new BoxGeometry(0.0012, 0.016, 0.005), {
+        pos: [side * 0.0142, BORE_Y + 0.006, z],
+        rot: [24, 0, 0],
       });
     }
   }
@@ -241,8 +321,8 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
     });
   }
   // Underside: a dark rail strip (the laser mount sits on it).
-  b.add(BODY, 'darkMetal', roundedBox(0.016, 0.004, 0.07, 0.0012), {
-    pos: [0, shroudBottom - 0.0015, -0.16],
+  b.add(BODY, 'darkMetal', roundedBox(0.016, 0.004, 0.05, 0.0012), {
+    pos: [0, SHROUD_BOTTOM - 0.0012, -0.14],
     paint: P.darkMetal.paint,
   });
 
@@ -277,25 +357,31 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
   );
   b.add(BODY, 'sight', new BoxGeometry(0.0021, 0.0021, 0.0006), { pos: [0, dotY, FRONT_SIGHT_Z + 0.0023] });
 
-  // --- grip (raked), knurled panels, cap with an accent band ---
-  b.add(BODY, 'polymer', roundedBox(0.031, 0.112, 0.047, 0.009, 3), {
-    pos: gripAxis(0.052),
-    rot: [GRIP_TILT, 0, 0],
+  // --- grip: a raked, rounded plow handle with knurled panels and a medallion ---
+  b.add(BODY, 'polymer', profileX(GRIP_OUTLINE, 0.031, { bevel: 0.0065, bevelSegments: 3 }), {
     paint: P.polymer.paint,
   });
-  b.add(BODY, 'grip', roundedBox(0.0335, 0.08, 0.039, 0.005), {
-    pos: gripAxis(0.056),
-    rot: [GRIP_TILT, 0, 0],
+  b.add(BODY, 'grip', profileX(GRIP_PANEL, 0.0342, { bevel: 0.002 }), {
     uvDensity: VIEWMODEL_ART.knurlDensity,
   });
-  b.add(BODY, 'darkMetal', roundedBox(0.0325, 0.008, 0.049, 0.003), {
-    pos: gripAxis(0.108),
-    rot: [GRIP_TILT, 0, 0],
-    paint: P.darkMetal.paint,
-  });
-  b.add(BODY, 'accentPaint', roundedBox(0.0332, 0.0035, 0.049, 0.0012), {
-    pos: gripAxis(0.1025),
-    rot: [GRIP_TILT, 0, 0],
+  b.add(
+    BODY,
+    'darkMetal',
+    profileX(
+      [
+        [-0.0665, -0.109],
+        [-0.024, -0.116],
+        [-0.0245, -0.123],
+        [-0.068, -0.116],
+      ],
+      0.032,
+      { bevel: 0.0015 },
+    ),
+    { paint: P.darkMetal.paint },
+  );
+  b.add(BODY, 'accentPaint', profileZ(regularPolygonProfile(0.0045, 6, 30), 0.0012, { bevel: 0.0003 }), {
+    pos: [-0.0177, -0.024, 0.036],
+    rot: [0, 90, 0],
     paint: P.accentPaint.paint,
   });
 
@@ -366,12 +452,14 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
     ),
     { paint: P.darkMetal.paint },
   );
-  // Knurled thumb pad on the spur.
-  b.add('hammer', 'grip', roundedBox(0.0092, 0.0032, 0.009, 0.0008), {
-    pos: [0, 0.0628, 0.046],
-    rot: [-20, 0, 0],
-    uvDensity: VIEWMODEL_ART.knurlDensity,
-  });
+  // Serrated thumb pad on the spur.
+  for (let i = 0; i < 3; i++) {
+    b.add('hammer', 'darkMetal', new BoxGeometry(0.0092, 0.0012, 0.0016), {
+      pos: [0, 0.0628 - i * 0.0012, 0.0435 + i * 0.0032],
+      rot: [-20, 0, 0],
+      paint: 0.8,
+    });
+  }
 
   // --- crane: yoke arm from the hinge to the cylinder hub, hinge pin into the frame ---
   const [px, py, pz] = CRANE_PIVOT;
@@ -382,9 +470,9 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
     rot: [0, 0, armDeg],
     paint: P.gunmetal.paint,
   });
-  b.add('crane', 'darkMetal', cylinderZ(0.0032, 0.0032, 0.03, 12), {
+  b.add('crane', 'gunmetal', cylinderZ(0.0032, 0.0032, 0.03, 12), {
     pos: [px, py, pz - 0.013],
-    paint: P.darkMetal.paint,
+    paint: 0.6,
   });
 
   // --- cylinder: bevelled hex with six through-chambers, fluted flats with glowing inlays ---
@@ -412,9 +500,9 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
 
   // --- ejector: star on the rear face + rod through the cylinder, knurled head in front ---
   // Corners between the chambers, flats under the rims (like a real extractor).
-  b.add('ejector', 'gunmetal', profileZ(regularPolygonProfile(0.0088, 6), 0.0008, { bevel: 0.0002 }), {
+  b.add('ejector', 'darkMetal', profileZ(regularPolygonProfile(0.0088, 6), 0.0008, { bevel: 0.0002 }), {
     pos: [0, CYL_Y, CYL_REAR - 0.0001],
-    paint: 0.6,
+    paint: 0.85,
   });
   b.add('ejector', 'darkMetal', cylinderZ(0.0024, 0.0024, CYL_LEN + 0.012, 10), {
     pos: [0, CYL_Y, CYL_Z - 0.006],
@@ -465,10 +553,10 @@ export const buildRevolver: ViewmodelBuilder = (kit) => {
   b.socket('muzzle', [0, BORE_Y, SHROUD_FRONT - 0.005]);
   // No casings fly (a revolver keeps them): the port sits at the cylinder gap for completeness.
   b.socket('ejectPort', [FRAME_W / 2 + 0.006, CYL_Y, CYL_REAR], [-40, -110, 0]);
-  b.socket('sight', [0, SIGHT_Y, REAR_SIGHT_Z]);
+  b.socket('sight', [0, SIGHT_Y, REAR_SIGHT_Z + 0.0043]);
   b.mount('optic', [0, FRAME_TOP, -0.045]);
   b.mount('muzzleDevice', [0, BORE_Y, SHROUD_FRONT - 0.005]);
-  b.mount('laser', [0, shroudBottom - 0.0035, -0.16], [0, 0, 180]);
+  b.mount('laser', [0, SHROUD_BOTTOM - 0.0032, -0.14], [0, 0, 180]);
 
   const built = b.build({ ...kit.materials, ...glow });
   return new ProceduralWeaponModel('revolver', def, built, glow, readoutSpec, readout);

@@ -219,15 +219,15 @@ export const LMGS = {
       recoveryDelay: 0.1,
     },
     recoil: {
-      // A constant shudder rather than a climb: small kicks weaving around the aim point.
+      // A constant shudder rather than a climb (~2.6°/s at 40 rounds/s): kicks weave around the aim point.
       pattern: [
-        [0, 0.16],
-        [0.06, 0.16],
-        [-0.06, 0.16],
-        [0.08, 0.14],
-        [-0.08, 0.14],
-        [0.05, 0.13],
-        [-0.05, 0.13],
+        [0, 0.12],
+        [0.06, 0.1],
+        [-0.06, 0.09],
+        [0.08, 0.07],
+        [-0.08, 0.07],
+        [0.05, 0.06],
+        [-0.05, 0.06],
       ],
       patternRepeatFrom: 3,
       randomYaw: 0.12,

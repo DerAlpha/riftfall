@@ -4,7 +4,7 @@ import { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/events';
 import { Rng } from '../core/Rng';
 import { MYSTERY_BOX, type BoxPoolEntry } from '../defs/interactables';
-import { WEAPONS, type WeaponDef } from '../defs/weapons';
+import { IMPLEMENTED_WEAPON_KINDS, WEAPONS, type WeaponDef } from '../defs/weapons';
 import { MysteryBox, resolveBoxPool, rollRate, type BoxLocation } from './MysteryBox';
 import { FakeEconomy, FakeWeapons } from './testFakes';
 
@@ -91,10 +91,15 @@ describe('mystery box roll curve and pool', () => {
 
   it('keeps known, implemented weapons and adds box-only weapons', () => {
     const base = resolveBoxPool();
-    expect(base.map((e) => e.weapon).sort()).toEqual(['pistol', 'rifle', 'shotgun']);
+    // The listed weapons the weapon system can fire (the M5 kinds join once implemented).
+    const firable = (id: string): boolean =>
+      IMPLEMENTED_WEAPON_KINDS.includes((WEAPONS as Record<string, WeaponDef>)[id]!.kind);
+    expect(base.map((e) => e.weapon)).toEqual(B.pool.map((e) => e.weapon).filter(firable));
+    for (const id of ['pistol', 'rifle', 'shotgun']) expect(base.map((e) => e.weapon)).toContain(id);
     const wonder = { ...WEAPONS.rifle, id: 'riftcannon', boxOnly: true } as WeaponDef;
     const launcher = { ...WEAPONS.rifle, id: 'launcher', kind: 'projectile' } as WeaponDef;
-    const defs: Record<string, WeaponDef> = { ...WEAPONS, riftcannon: wonder, launcher };
+    const { pistol, rifle, shotgun } = WEAPONS;
+    const defs: Record<string, WeaponDef> = { pistol, rifle, shotgun, riftcannon: wonder, launcher };
     const entries: BoxPoolEntry[] = [
       { weapon: 'rifle', weight: 2 },
       { weapon: 'ghost', weight: 5 },

@@ -129,6 +129,44 @@ describe('blocked nav areas on the test level', () => {
     nav.removeAgent(id);
   });
 
+  it('overlapping areas keep their own state (a door opening beside a machine)', () => {
+    // A doorway box and a machine footprint (always blocked) overlapping it by 0.2 m, registered
+    // in placeInteractables' order (doors first: the later area owns the overlap).
+    const door = { c: { x: 5, y: 0.5, z: -1.9 }, h: { x: 1.2, y: 1, z: 0.9 } };
+    const machine = { c: { x: 5, y: 0.5, z: -3.5 }, h: { x: 0.8, y: 1, z: 0.9 } };
+    const insideMachine = (p: Vec3Like): boolean =>
+      Math.abs(p.x - machine.c.x) < machine.h.x - 0.1 && Math.abs(p.z - machine.c.z) < machine.h.z - 0.1;
+    nav.setAreaBlocked(door.c, door.h, true);
+    nav.setAreaBlocked(machine.c, machine.h, true);
+    nav.flushAreas();
+    nav.setAreaBlocked(door.c, door.h, false);
+    const out = new THREE.Vector3();
+    // The opened doorway is walkable again…
+    expect(nav.closestPoint({ x: 5, y: 0, z: -1.4 }, out)).toBe(true);
+    expect(Math.hypot(out.x - 5, out.z + 1.4)).toBeLessThan(0.05);
+    // …the machine footprint is not: nothing snaps, samples or paths into it.
+    for (const probe of [
+      { x: 5, y: 0, z: -3.5 },
+      { x: 4.5, y: 0, z: -3.1 },
+      { x: 5.5, y: 0, z: -3 },
+      { x: 5, y: 0, z: -2.9 },
+    ]) {
+      expect(nav.closestPoint(probe, out)).toBe(true);
+      process.stderr.write(`\nPROBE ${JSON.stringify(probe)} -> ${out.x.toFixed(2)},${out.z.toFixed(2)}`);
+      expect(insideMachine(out)).toBe(false);
+    }
+    for (let i = 0; i < 200; i++) {
+      nav.randomPointAround({ x: 5, y: 0, z: -3 }, 2, out);
+      expect(insideMachine(out)).toBe(false);
+    }
+    expect(nav.walkable({ x: 5, y: 0, z: -1.4 }, { x: 5, y: 0, z: -3.5 })).toBe(false);
+    // Closing the door again blocks it without touching the machine.
+    nav.setAreaBlocked(door.c, door.h, true);
+    expect(nav.closestPoint({ x: 5, y: 0, z: -1.9 }, out)).toBe(true);
+    expect(Math.abs(out.z + 1.9) > door.h.z - 0.1 || Math.abs(out.x - 5) > door.h.x - 0.1).toBe(true);
+    nav.setAreaBlocked(door.c, door.h, false);
+  });
+
   it('re-applies areas after a rebuild', async () => {
     nav.setAreaBlocked(gap.c, gap.h, true);
     expect(await nav.build(meshes)).toBe(true);

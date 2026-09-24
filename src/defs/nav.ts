@@ -182,15 +182,27 @@ export const NAV = {
   },
   /**
    * M4 blockable areas (closed doors, perk machines, the box): NavSystem.setAreaBlocked registers an
-   * axis-aligned box; the tiles under it are regenerated with the box marked as recast area `areaId`
+   * axis-aligned box; the tiles under it are regenerated with the box marked as a recast area id
    * (its polygons are split off exactly at the box) and those polygons carry `disabledFlag` while
    * blocked. Every query filter and the crowd filter exclude `disabledFlag`.
+   *
+   * Recast merges touching spans of the same area id into one region (and polygon), so areas closer
+   * than `separation` get different ids from `firstAreaId … firstAreaId + areaIdCount − 1` (greedy
+   * coloring at registration): a door beside a perk machine never shares a polygon with it.
+   * Overlapping boxes: the later registration owns the overlap.
    */
   areas: {
     /** Poly flag of walkable polygons (recast-navigation's generators set 1). */
     walkFlag: 1,
     disabledFlag: 2,
-    areaId: 1,
+    firstAreaId: 1,
+    /** Distinct ids available (recast area ids are 6 bit; 63 is RC_WALKABLE_AREA). */
+    areaIdCount: 16,
+    /**
+     * Areas within this XZ gap (m) are neighbours and get different ids: area polygons end within a
+     * voxel or two of their box (cellSize 0.2) and polygon bounds are quantized.
+     */
+    separation: 0.6,
     /** Polygons collected per area box (queryPolygons buffer). */
     maxPolysPerArea: 128,
     /** Triangle chunks per tile rasterization (the generator's own limit). */

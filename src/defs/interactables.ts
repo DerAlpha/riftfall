@@ -236,32 +236,39 @@ export const WALL_BUYS = {
     lab: [
       {
         id: 'wallbuy_reception_pistol',
-        weapon: 'pistol',
+        weapon: 'machinepistol',
         position: [7.6, 1.55, 19],
         facing: 'pz',
         zone: 'reception',
       },
       {
         id: 'wallbuy_hall_shotgun',
-        weapon: 'shotgun',
+        weapon: 'doublebarrel',
         position: [-3, 1.55, 15.5],
         facing: 'px',
         zone: 'atrium',
       },
     ],
-    // Calibration hall: every M2 weapon on the south wall (behind the spawn), between the pilasters.
+    // Calibration hall: three M5 wall guns on the south wall (behind the spawn), between the
+    // pilasters – the loadout already carries the M2 three for comparison.
     testroom: [
       {
         id: 'wallbuy_test_pistol',
-        weapon: 'pistol',
+        weapon: 'revolver',
         position: [-16.45, 1.55, 30],
         facing: 'nz',
         zone: 'hall',
       },
-      { id: 'wallbuy_test_rifle', weapon: 'rifle', position: [-12.8, 1.55, 30], facing: 'nz', zone: 'hall' },
+      {
+        id: 'wallbuy_test_rifle',
+        weapon: 'battlerifle',
+        position: [-12.8, 1.55, 30],
+        facing: 'nz',
+        zone: 'hall',
+      },
       {
         id: 'wallbuy_test_shotgun',
-        weapon: 'shotgun',
+        weapon: 'autoshotgun',
         position: [-10, 1.55, 30],
         facing: 'nz',
         zone: 'hall',
@@ -307,11 +314,38 @@ export const MYSTERY_BOX = {
   anomalyChance: 0.5,
   /** Display steps per second: start → peak (at `peakAt` of the roll) → end. */
   roll: { startRate: 7, peakRate: 17, endRate: 1.8, peakAt: 0.3 },
-  /** Weighted pool (defs/weapons ids). Box-only weapons (WeaponDef.boxOnly) join automatically. */
+  /**
+   * Weighted pool (defs/weapons ids). Box-only weapons (WeaponDef.boxOnly) join automatically at
+   * `boxOnlyWeight` unless listed; weapons of kinds the weapon system cannot fire yet are skipped.
+   * M5: wall guns 3 (the sidearm 1), heavies/energy 2, the black hole 1.5, the three wonder
+   * weapons 1 each (≈5 % together in the full pool of 58.5).
+   */
   pool: [
     { weapon: 'pistol', weight: 1 },
+    { weapon: 'revolver', weight: 3 },
+    { weapon: 'machinepistol', weight: 3 },
+    { weapon: 'smg', weight: 3 },
+    { weapon: 'pdw', weight: 3 },
+    { weapon: 'vector', weight: 3 },
     { weapon: 'rifle', weight: 3 },
+    { weapon: 'burstrifle', weight: 3 },
+    { weapon: 'battlerifle', weight: 3 },
     { weapon: 'shotgun', weight: 3 },
+    { weapon: 'autoshotgun', weight: 3 },
+    { weapon: 'doublebarrel', weight: 3 },
+    { weapon: 'lmg', weight: 3 },
+    { weapon: 'marksman', weight: 3 },
+    { weapon: 'sniper', weight: 2 },
+    { weapon: 'minigun', weight: 2 },
+    { weapon: 'plasma', weight: 2 },
+    { weapon: 'chainlightning', weight: 2 },
+    { weapon: 'railgun', weight: 2 },
+    { weapon: 'flamethrower', weight: 2 },
+    { weapon: 'grenadelauncher', weight: 2 },
+    { weapon: 'blackhole', weight: 1.5 },
+    { weapon: 'riftripper', weight: 1 },
+    { weapon: 'aetherharp', weight: 1 },
+    { weapon: 'cryonova', weight: 1 },
   ] as readonly BoxPoolEntry[],
   boxOnlyWeight: 2,
   /** Never offer a weapon the player carries (falls back to the full pool if that empties it). */

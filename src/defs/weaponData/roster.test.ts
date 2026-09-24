@@ -11,6 +11,7 @@ import {
   type AttachmentDef,
 } from '../attachments';
 import { COMBAT } from '../combat';
+import { MYSTERY_BOX, WALL_BUYS } from '../interactables';
 import { FORGE, FORGE_LOOKS, forgePaletteId, forgeTierCost, getForgeLook, nextForgeTier } from '../forge';
 import {
   WEAPONS,
@@ -438,6 +439,29 @@ describe('weapon roster (M5 arsenal)', () => {
     for (const d of defs.filter((w) => w.category === 'wonder')) {
       expect(d.attachmentSlots, d.id).toEqual([]);
       expect(d.special, d.id).toBeTruthy();
+    }
+  });
+
+  it('every weapon is obtainable: wall buys sell only wall guns, the box knows the roster', () => {
+    const inPool = new Map(MYSTERY_BOX.pool.map((e) => [e.weapon, e.weight]));
+    for (const e of MYSTERY_BOX.pool) expect(WEAPON_IDS as readonly string[], e.weapon).toContain(e.weapon);
+    for (const d of defs) expect(inPool.get(d.id) ?? (d.boxOnly ? 1 : 0), d.id).toBeGreaterThan(0);
+    // Wonder weapons are the rarest rolls.
+    const wallWeight = Math.min(
+      ...defs.filter((d) => !d.boxOnly && d.id !== 'pistol').map((d) => inPool.get(d.id)!),
+    );
+    for (const d of defs.filter((w) => w.category === 'wonder'))
+      expect(inPool.get(d.id) ?? MYSTERY_BOX.boxOnlyWeight, d.id).toBeLessThan(wallWeight);
+    const walls = [
+      ...Object.values(WALL_BUYS.offers),
+      ...Object.values(WALL_BUYS.placements).flatMap((list) => list.map((p) => p.weapon)),
+    ];
+    expect(walls.length).toBeGreaterThan(0);
+    for (const id of walls) {
+      const d = byId(id);
+      expect(d, id).toBeDefined();
+      expect(d.boxOnly ?? false, id).toBe(false);
+      expect(d.kind, id).toBe('hitscan');
     }
   });
 

@@ -19,9 +19,9 @@
  * read afterwards are this tick's.
  *
  * Blockable areas (M4 doors, machines – setAreaBlocked): an area is an axis-aligned box. The tiles
- * under it are regenerated on the main thread with the box marked as recast area NAV.areas.areaId
- * (AreaTileBuilder: the tile pipeline of recast-navigation's tiled generator plus markBoxArea), so
- * its polygons end exactly at the box; while blocked they carry NAV.areas.disabledFlag, which the
+ * under it are regenerated on the main thread with the box marked as its own recast area id
+ * (AreaTileBuilder: the tile pipeline of recast-navigation's tiled generator plus markBoxArea;
+ * neighbouring areas get different ids, NAV.areas), so its polygons end exactly at the box; while blocked they carry NAV.areas.disabledFlag, which the
  * query filter (NavQuery) and the crowd filter (NavCrowd) exclude – closestPoint, randomPointAround,
  * findPath, walkable and agent paths all avoid them. Toggling only rewrites poly flags (instant);
  * registering a new area regenerates its tiles once (a few ms each, batched on the next update or
@@ -154,6 +154,8 @@ function validParams(p: NavAgentParams): boolean {
 interface BlockArea {
   readonly center: { x: number; y: number; z: number };
   readonly half: { x: number; y: number; z: number };
+  /** Recast area id of its polygons (differs from every neighbour's, NAV.areas). */
+  readonly areaId: number;
   blocked: boolean;
   /** pending: tiles not regenerated yet · exact: own polygons (area id) · coarse: overlap flags. */
   mode: 'pending' | 'exact' | 'coarse';
@@ -643,9 +645,11 @@ export class NavSystem implements NavApi {
     if (this.disposed || !finite(center) || !finite(halfExtents)) return;
     let area = this.findArea(center, halfExtents);
     if (!area) {
+      const half = { x: Math.abs(halfExtents.x), y: Math.abs(halfExtents.y), z: Math.abs(halfExtents.z) };
       area = {
         center: { x: center.x, y: center.y, z: center.z },
-        half: { x: Math.abs(halfExtents.x), y: Math.abs(halfExtents.y), z: Math.abs(halfExtents.z) },
+        half,
+        areaId: this.pickAreaId(center, half),
         blocked,
         mode: 'pending',
       };
@@ -675,6 +679,24 @@ export class NavSystem implements NavApi {
     for (const a of this.areas) if (a.mode === 'pending') pending = true;
     if (pending) this.splitPendingAreas();
     for (const a of this.areas) this.applyAreaFlags(a);
+  }
+
+  /**
+   * Smallest area id no neighbouring area uses (NAV.areas.separation): recast would merge touching
+   * spans of one id into shared polygons, and a door beside a machine must toggle on its own.
+   */
+  private pickAreaId(c: Vec3Like, h: Vec3Like): number {
+    const A = NAV.areas;
+    let used = 0;
+    for (const a of this.areas) {
+      const gx = Math.abs(a.center.x - c.x) - a.half.x - h.x;
+      const gz = Math.abs(a.center.z - c.z) - a.half.z - h.z;
+      const gy = Math.abs(a.center.y - c.y) - a.half.y - h.y;
+      if (gx < A.separation && gz < A.separation && gy < A.separation) used |= 1 << (a.areaId - A.firstAreaId);
+    }
+    for (let i = 0; i < A.areaIdCount; i++) if ((used & (1 << i)) === 0) return A.firstAreaId + i;
+    log.warn(`Navmesh: more than ${A.areaIdCount} blockable areas side by side – they share polygons`);
+    return A.firstAreaId;
   }
 
   private findArea(c: Vec3Like, h: Vec3Like): BlockArea | null {
@@ -736,8 +758,11 @@ export class NavSystem implements NavApi {
     this.destroyAreaTiles();
   }
 
-  /** Write the area's flags onto its polygons (exact: area-id polygons only; coarse: all overlapping). */
-  private applyAreaFlags(a: BlockArea): void {
+  /**
+   * Write the area's flags onto its polygons (exact: its own area-id polygons only; coarse: every
+   * overlapping polygon – an unblocked coarse area re-applies the blocked coarse ones, blocked wins).
+   */
+  private applyAreaFlags(a: BlockArea, reapplyCoarse = true): void {
     const navMesh = this.navMesh;
     const q = this.query;
     if (!navMesh || !q || a.mode === 'pending') return;
@@ -746,8 +771,11 @@ export class NavSystem implements NavApi {
     const n = q.queryBoxPolys(a.center, a.half);
     for (let i = 0; i < n; i++) {
       const ref = q.boxPoly(i);
-      if (a.mode === 'exact' && navMesh.getPolyArea(ref).area !== A.areaId) continue;
+      if (a.mode === 'exact' && navMesh.getPolyArea(ref).area !== a.areaId) continue;
       navMesh.setPolyFlags(ref, flags);
+    }
+    if (a.mode === 'coarse' && !a.blocked && reapplyCoarse) {
+      for (const b of this.areas) if (b !== a && b.mode === 'coarse' && b.blocked) this.applyAreaFlags(b, false);
     }
   }
 
@@ -852,7 +880,7 @@ export class NavSystem implements NavApi {
  * Regenerates single tiles of a tiled navmesh on the main thread from the build geometry, with the
  * blockable area boxes marked (markBoxArea after erosion) – the per-tile pipeline of
  * recast-navigation's generateTileNavMeshData, same config and voxel alignment as navBuild, so the
- * regenerated tile matches its neighbours. Area polygons keep area id NAV.areas.areaId and get the
+ * regenerated tile matches its neighbours. Area polygons keep their area's id and get the
  * walk flag; everything else becomes area 0 / walk flag like the generator's output.
  * Holds the geometry + chunky triangle mesh in wasm memory until destroy().
  */
@@ -995,13 +1023,13 @@ class AreaTileBuilder {
       freeHeightfield(hf);
       hf = null;
       if (!erodeWalkableArea(ctx, cfg.walkableRadius, chf)) return null;
-      const areaId = NAV.areas.areaId;
+      // Registration order: a later area owns the overlap with an earlier one.
       for (const a of areas) {
         const c = a.center;
         const h = a.half;
         if (c.x + h.x < bmin[0] || c.x - h.x > bmax[0] || c.z + h.z < bmin[2] || c.z - h.z > bmax[2])
           continue;
-        markBoxArea(ctx, [c.x - h.x, c.y - h.y, c.z - h.z], [c.x + h.x, c.y + h.y, c.z + h.z], areaId, chf);
+        markBoxArea(ctx, [c.x - h.x, c.y - h.y, c.z - h.z], [c.x + h.x, c.y + h.y, c.z + h.z], a.areaId, chf);
       }
       if (!buildDistanceField(ctx, chf)) return null;
       if (!buildRegions(ctx, chf, cfg.borderSize, cfg.minRegionArea, cfg.mergeRegionArea)) return null;
@@ -1027,8 +1055,8 @@ class AreaTileBuilder {
       for (let i = 0; i < pmesh.npolys(); i++) {
         const area = pmesh.areas(i);
         if (area === Recast.RC_WALKABLE_AREA) pmesh.setAreas(i, 0);
-        if (area === Recast.RC_WALKABLE_AREA || area === 0 || area === A.areaId)
-          pmesh.setFlags(i, A.walkFlag);
+        const blockable = area >= A.firstAreaId && area < A.firstAreaId + A.areaIdCount;
+        if (area === Recast.RC_WALKABLE_AREA || area === 0 || blockable) pmesh.setFlags(i, A.walkFlag);
       }
       if (pmesh.npolys() === 0) return 'empty';
       params = new NavMeshCreateParams();

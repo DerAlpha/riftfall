@@ -495,7 +495,10 @@ export class ViewmodelAnimator {
       this.fx.time = this.time;
       this.fx.heat = clamp01(this.heat);
       this.fx.flash = accentFlash;
-      this.fx.accentBoost = this.accentBoost + this.abilityGlow;
+      // The ability glow throbs (steady with reduce-flashing: flicker 0).
+      const G = ABILITY_RULES.glowPulse;
+      const throb = 1 + G.depth * (this.fx.flicker ?? 1) * Math.sin(this.time * G.rate);
+      this.fx.accentBoost = this.accentBoost + this.abilityGlow * throb;
       this.model.animate(this.fx);
     }
   }

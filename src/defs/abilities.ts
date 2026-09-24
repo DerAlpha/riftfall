@@ -144,7 +144,7 @@ export const ABILITIES = {
       { stat: 'reloadSpeed', op: 'mul', value: 1.6 },
     ],
     field: null,
-    weaponGlow: 3.5,
+    weaponGlow: 5,
     screen: 'overcharge',
     world: null,
   },
@@ -199,8 +199,9 @@ export function getAbilityDef(id: string): AbilityDef | undefined {
 export const ABILITY_RULES = {
   /** Equipped when the loadout names none (meta progression picks it later). */
   defaultAbility: 'schockwelle',
-  /** Viewmodel weapon glow eases in/out at this rate (1/s). */
+  /** Viewmodel weapon glow eases in/out at this rate (1/s) and throbs (rad/s, depth of the glow). */
   glowLambda: 8,
+  glowPulse: { rate: 9, depth: 0.35 },
 } as const;
 
 /** In-world ability visuals (AbilityVisuals): additive, on RENDER.volumetricLayer, self-fogged. */
@@ -213,7 +214,7 @@ export const ABILITY_VISUALS = {
     wallHeight: 0.9,
     color: [0.25, 0.6, 1] as Rgb,
     /** Ring (floor) and light wall brightness: the wall stays faint – it faces the camera all round. */
-    intensity: 2.6,
+    intensity: 6,
     wallIntensity: 0.7,
     /** Screen-space shockwave (render.addShockwave): radius × blast radius, strength. */
     shockwaveRadius: 1.3,
@@ -231,8 +232,8 @@ export const ABILITY_VISUALS = {
     color: [0.55, 0.45, 1] as Rgb,
     rimColor: [0.8, 0.72, 1] as Rgb,
     /** Floor rings and the curtain (fainter: it stands in the line of sight all round). */
-    intensity: 1.6,
-    wallIntensity: 0.9,
+    intensity: 3,
+    wallIntensity: 1.4,
     /** Floor probe below the player for the dome's base (m). */
     floorProbe: 4,
     /** Screen-space shockwave when it opens. */

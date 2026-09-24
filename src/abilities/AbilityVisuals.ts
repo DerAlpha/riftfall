@@ -116,7 +116,7 @@ void main() {
     float flick = 0.55 + 0.45 * aNoise1(ang * 18.0 + uTime * 40.0);
     float arcs = pow(aNoise1(ang * 7.0 - uTime * 25.0), 6.0) * 2.5;
     col = uRim * ring * (flick + arcs) + uColor * wake;
-    col *= pow(1.0 - p, 1.4);
+    col *= pow(1.0 - p, 0.9);
   }
   gl_FragColor = vec4(col * uIntensity * uFade * vFog, 1.0);
 }

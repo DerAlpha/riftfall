@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { MeshStandardMaterial } from 'three';
 import { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/events';
-import { ABILITIES } from '../defs/abilities';
+import { ABILITIES, ABILITY_RULES } from '../defs/abilities';
 import { VIEWMODEL_ANIM } from '../defs/viewmodels';
 import { ViewmodelAnimator } from '../weapons/ViewmodelAnimator';
 import { WeaponMaterialKit, createWeaponViewmodel, type WeaponViewmodelModel } from '../weapons/viewmodels';
@@ -44,8 +44,9 @@ describe('ability weapon glow (ViewmodelAnimator)', () => {
     const def = ABILITIES.ueberladung;
     events.emit('ability:used', { abilityId: def.id, cooldown: def.cooldown, duration: def.duration });
     step(period);
-    // The accent pulses a little: compare against the boost with margin.
-    expect(accent.emissiveIntensity - base).toBeGreaterThan(def.weaponGlow * 0.7);
+    // The glow throbs (ABILITY_RULES.glowPulse): at least its trough, with margin.
+    const trough = def.weaponGlow * (1 - ABILITY_RULES.glowPulse.depth);
+    expect(accent.emissiveIntensity - base).toBeGreaterThan(trough * 0.9);
     events.emit('ability:ended', { abilityId: def.id });
     step(period);
     expect(accent.emissiveIntensity - base).toBeLessThan(def.weaponGlow * 0.1);

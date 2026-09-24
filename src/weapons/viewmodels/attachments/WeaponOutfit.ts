@@ -13,7 +13,7 @@
 import { Box3, Group, Mesh, Object3D, Vector3, type Material } from 'three';
 import { getAttachmentDef, type AttachmentLaserDef } from '../../../defs/attachments';
 import type { AttachmentSlot } from '../../../defs/weapons';
-import { MAGAZINE_PARTS, OUTFIT_MATERIALS } from '../../../defs/weaponOutfit';
+import { ATTACHMENT_ART, MAGAZINE_PARTS, OUTFIT_MATERIALS } from '../../../defs/weaponOutfit';
 import type { MountName } from '../ModelBuilder';
 import type { WeaponViewmodelModel } from '../WeaponModel';
 import type { AttachmentInstance, AttachmentLibrary } from './library';
@@ -26,10 +26,6 @@ const SLOT_MOUNT: Readonly<Record<Exclude<AttachmentSlot, 'magazine'>, MountName
   stock: 'stock',
   laser: 'laser',
 };
-
-/** Fallback stock mount: height above the grip pivot and inset from the model's rear (m). */
-const REAR_MOUNT_Y = 0.035;
-const REAR_MOUNT_INSET = 0.015;
 
 const _box = new Box3();
 const _size = new Vector3();
@@ -225,7 +221,7 @@ export class WeaponOutfit {
     });
     const rear = new Object3D();
     rear.name = 'mount-stock-fallback';
-    rear.position.set(0, REAR_MOUNT_Y, box.isEmpty() ? 0 : box.max.z - REAR_MOUNT_INSET);
+    rear.position.set(0, ATTACHMENT_ART.rearMount.y, box.isEmpty() ? 0 : box.max.z - ATTACHMENT_ART.rearMount.inset);
     this.model.root.add(rear);
     this.rear = rear;
     return rear;

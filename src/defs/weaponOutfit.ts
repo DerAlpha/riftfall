@@ -70,6 +70,8 @@ export const ATTACHMENT_ART = {
   lens: { color: 0x9fd6ff, opacity: 0.1, thermal: 0xffa040, thermalOpacity: 0.22 },
   /** Gyro stabilizer spin (rad/s). */
   gyroSpin: 9,
+  /** A stock slot without a stock mount: a mount at the model's rear, this high above the grip / inset (m). */
+  rearMount: { y: 0.035, inset: 0.015 },
   /**
    * Magnified optics: eye relief at full ADS from the eye to the ocular (the sight point), so
    * the ocular frames the (zoomed) world like the sniper's scope.

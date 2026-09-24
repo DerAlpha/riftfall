@@ -1,4 +1,12 @@
-import { Color, InstancedMesh, Scene, Vector3, type InstancedBufferAttribute, type Material } from 'three';
+import {
+  Color,
+  InstancedMesh,
+  Scene,
+  Vector3,
+  type InstancedBufferAttribute,
+  type Material,
+  type Vector4,
+} from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { Hitbox } from '../../core/contracts';
 import { onLog } from '../../core/log';
@@ -318,6 +326,33 @@ describe('EnemyRenderer: culling', () => {
         expect(u).toBe(radius);
       }
     }
+    r.dispose();
+  });
+
+  it("hands the level's sunlit box to the sun shadow passes (off without one)", () => {
+    const sunMin = (r: EnemyRenderer): { value: Vector4 } => {
+      const shader = {
+        vertexShader: '#include <common>\n#include <begin_vertex>',
+        fragmentShader:
+          '#include <common>\n#include <clipping_planes_fragment>\n#include <dithering_fragment>',
+        uniforms: {} as Record<string, { value: Vector4 }>,
+      };
+      mesh(r, 'swarmer').customDepthMaterial!.onBeforeCompile(shader as never, null as never);
+      return shader.uniforms.rfSunMin!;
+    };
+    const plain = make().r;
+    expect(sunMin(plain).value.w).toBe(0);
+    plain.dispose();
+    const bounds = { min: { x: -11, y: 0, z: -7 }, max: { x: 6, y: 17.7, z: 10.3 } };
+    const r = new EnemyRenderer({
+      scene: new Scene(),
+      render: { setupMaterial: () => {} },
+      surfaceTexture: false,
+      sunCasterBounds: bounds,
+    });
+    expect(sunMin(r).value.toArray()).toEqual([-11, 0, -7, 1]);
+    r.setSunCasterBounds(null);
+    expect(sunMin(r).value.w).toBe(0);
     r.dispose();
   });
 

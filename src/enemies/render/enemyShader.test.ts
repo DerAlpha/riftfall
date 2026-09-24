@@ -172,11 +172,11 @@ describe('shader patches (three r186 chunks)', () => {
     for (const d of depth) {
       expect(d).toContain('transformed = vec3( 0.0 );');
       expect(d).toContain(
-        'if ( rfInstanceVisible() ) rfDeform( position, vec3( 0.0, 1.0, 0.0 ), transformed',
+        'if ( rfInstanceVisible() && rfSunCaster() ) rfDeform( position, vec3( 0.0, 1.0, 0.0 ), transformed',
       );
     }
     for (const src of [color, ...depth]) {
-      expect(src.indexOf('bool rfInstanceVisible()')).toBeLessThan(src.indexOf('if ( rfInstanceVisible() )'));
+      expect(src.indexOf('bool rfInstanceVisible()')).toBeLessThan(src.indexOf('if ( rfInstanceVisible()'));
       expect(src.indexOf('bool rfInsidePlane(')).toBeLessThan(src.indexOf('bool rfInstanceVisible()'));
     }
     // Instancing only (instanceMatrix): the planes of all six frustum sides, radius × instance scale.

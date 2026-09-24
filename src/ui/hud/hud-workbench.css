@@ -7,8 +7,9 @@
   --bench-accent: #3dffc0;
   --bench-accent-soft: rgba(61, 255, 192, 0.3);
   position: absolute;
+  /* Left of the crosshair, its bottom edge just above the interaction prompt (50% + 116px). */
   right: calc(50% + 70px);
-  top: calc(50% - 176px);
+  bottom: calc(50% - 108px);
   width: 312px;
   display: flex;
   flex-direction: column;
@@ -21,7 +22,7 @@
     0 0 24px rgba(0, 0, 0, 0.45);
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
   scale: var(--hud-scale);
-  transform-origin: 100% 50%;
+  transform-origin: 100% 100%;
   white-space: nowrap;
 }
 .hud-bench.is-in-a {
@@ -84,8 +85,8 @@
   opacity: 1;
 }
 .hud-bench__list {
-  transition: transform 0.12s ease-out;
-  will-change: transform;
+  /* Scrolled by a transform; no transition (it would lag behind fast wheel steps). */
+  transform: translateY(0);
 }
 
 .hud-bench__group {
@@ -239,23 +240,20 @@
   animation-duration: 0.2s;
 }
 
+/* Slide-in only: the menu is readable from its first frame (no fade from transparent). */
 @keyframes rf-bench-in-a {
   from {
-    opacity: 0;
     translate: -10px 0;
   }
   to {
-    opacity: 1;
     translate: 0 0;
   }
 }
 @keyframes rf-bench-in-b {
   from {
-    opacity: 0;
     translate: -10px 0;
   }
   to {
-    opacity: 1;
     translate: 0 0;
   }
 }

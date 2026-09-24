@@ -293,6 +293,10 @@ RenderPass(world)                                 (incl. decals, casings, traini
   identically by the vertex shader and `poseMath` (hitboxes follow the drawn pose); one program for all
   types compiled in `EnemyRenderer.warmup`. AI: per-target melee token pools (light 3 / heavy 1), per-kind
   attack spacing, lobbed acid flattens under probed ceilings, the player is a parked crowd agent.
+  The vertex shaders cull single instances (reach sphere vs. the drawing camera's frustum: main camera,
+  cascades, spot shadow cameras) before running the rig; sun shadow passes also skip enemies outside
+  `MapLevelInstance.sunCasterBounds` (lab: under the atrium lantern). Instance pools hold the alive cap
+  plus the dying (a dying enemy keeps its slot until dissolved).
 - **Run flow (M3):** RunFlow owns the run (begin/restart/abandon), the death slow motion (real time) and
   the game over screen; `run:restart` (and main menu → start) runs `game/runReset.ts`: every run
   system incl. the M4 economy (power-ups → perks → stat table → health, zones → doors, seals, seeds)

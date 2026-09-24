@@ -76,7 +76,7 @@ export const RIFT_FORGE_MACHINE = {
     /** Rift core window on the tower front. */
     core: { y: 2.4, radius: 0.62, ring: 0.095, segments: 48, recess: 0.1, corona: 1.9 },
     /** Coolant tanks behind the pylons with glowing rift-fluid windows. */
-    tank: { x: 1.28, z: -0.6, radius: 0.2, height: 2.1, window: 0.06 },
+    tank: { x: 1.42, z: -0.62, radius: 0.17, height: 2.1, window: 0.05 },
     /** Exhaust stack on the crown. */
     stack: { radius: 0.2, height: 0.5, z: -0.45 },
     anvil: {
@@ -206,8 +206,8 @@ export const WORKBENCH = {
     close: { id: 'bench.close', gain: 0.45 },
   },
   placements: {
-    // Atrium (mid-map, behind the first door): on the east wall between the rift tear and the hall.
-    lab: [{ id: 'bench_atrium', position: [14, 0, 3.6], facing: 'nx', zone: 'atrium' }],
+    // Atrium (mid-map, behind the first door): on the east wall between two ring supports.
+    lab: [{ id: 'bench_atrium', position: [14, 0, 6.3], facing: 'nx', zone: 'atrium' }],
     // Calibration hall: east of the spawn, facing west.
     testroom: [{ id: 'bench_test', position: [10.8, 0, 25.4], facing: 'nx', zone: 'hall' }],
   } as Readonly<Record<string, readonly WorkshopPlacementDef[]>>,
@@ -218,7 +218,7 @@ export const WORKBENCH_MENU = {
   title: 'WERKBANK',
   elementGroup: 'Element-Modul',
   /** Rows visible at once (the list scrolls with the selection). */
-  visibleRows: 9,
+  visibleRows: 8,
   /** Row states (German). */
   equipped: 'MONTIERT',
   installed: 'EINGEBAUT',

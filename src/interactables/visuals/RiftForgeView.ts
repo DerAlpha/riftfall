@@ -680,8 +680,14 @@ function drawForgePanel(
     const cx = x0 + span * (i + 0.5);
     ctx.textAlign = 'center';
     ctx.globalAlpha = 0.7;
-    ctx.font = `600 ${Math.round(h * 0.18)}px ${HOLOGRAM.fontMono}`;
-    ctx.fillText(FORGE.tierLabels[i] ?? '', cx, h * 0.3);
+    const label = FORGE.tierLabels[i] ?? '';
+    let lp = h * 0.18;
+    ctx.font = `600 ${Math.round(lp)}px ${HOLOGRAM.fontMono}`;
+    while (lp > 8 && ctx.measureText(label).width > span * 0.9) {
+      lp *= 0.9;
+      ctx.font = `600 ${Math.round(lp)}px ${HOLOGRAM.fontMono}`;
+    }
+    ctx.fillText(label, cx, h * 0.3);
     ctx.globalAlpha = 0.95;
     ctx.font = `700 ${Math.round(h * 0.28)}px ${HOLOGRAM.fontDisplay}`;
     ctx.fillText(Math.round(FORGE.tierCosts[i] ?? 0).toLocaleString('de-DE'), cx, h * 0.66);

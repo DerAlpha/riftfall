@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import { ammoCost, weaponCost } from '../defs/economy';
 import { PERK_MACHINES, WALL_BUYS } from '../defs/interactables';
-import { WEAPONS } from '../defs/weapons';
+import { IMPLEMENTED_WEAPON_KINDS, WEAPONS, type WeaponDef } from '../defs/weapons';
 import { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/events';
 import { CombatWorld } from '../combat/CombatWorld';
@@ -20,6 +20,7 @@ import {
   type PerkMachineInfo,
 } from './types';
 import { WallBuy } from './WallBuy';
+import { wallBuyWeapon } from './placeInteractables';
 
 const PERK: PerkMachineInfo = { id: 'titan', name: 'Titanplatte', tagline: '', color: 0xff0000, glyph: '' };
 
@@ -250,5 +251,15 @@ describe('WallBuy', () => {
     expect(pistol.canInteract()).toBe(true);
     expect(pistol.cost()).toBe(pistol.ammoPrice);
     weapons.dispose();
+  });
+
+  it('walls only sell weapons the player can get (known, not box-only, a firable kind)', () => {
+    expect(wallBuyWeapon('rifle')?.id).toBe('rifle');
+    expect(wallBuyWeapon('ghost')).toBeNull();
+    const all = Object.values(WEAPONS) as WeaponDef[];
+    for (const def of all.filter((d) => d.boxOnly === true)) expect(wallBuyWeapon(def.id)).toBeNull();
+    for (const def of all.filter((d) => !IMPLEMENTED_WEAPON_KINDS.includes(d.kind))) {
+      expect(wallBuyWeapon(def.id)).toBeNull();
+    }
   });
 });

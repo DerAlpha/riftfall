@@ -382,11 +382,12 @@ export const MYSTERY_BOX = {
     spinRate: 0.55,
     bobAmplitude: 0.03,
     bobRate: 0.9,
-    /** The offer's last seconds: the hologram sinks and flickers. */
+    /** The offer's last seconds: the hologram sinks and flickers (this flicker depth, 0..1). */
     sinkWarning: 2.2,
+    warningFlicker: 0.6,
   },
-  /** The "Riss-Anomalie" hologram (a torn eye) instead of a weapon. */
-  anomaly: { color: [1.0, 0.18, 0.32] as Rgb, intensity: 2.2, size: 0.62 },
+  /** The "Riss-Anomalie" hologram (a torn eye) instead of a weapon; `glitch` band strength. */
+  anomaly: { color: [1.0, 0.18, 0.32] as Rgb, intensity: 2.2, size: 0.62, glitch: 1 },
   /** Light beam over the active location (additive, volumetric layer). */
   beam: {
     radius: 0.34,

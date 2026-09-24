@@ -201,11 +201,15 @@ export const buildSmg: ViewmodelBuilder = (kit) => {
     [0.012, 0.041],
     [0, 0.012],
   ] as const) {
-    b.add(BODY, 'darkMetal', cylinderZ(0.0036, 0.0036, buttZ - RECEIVER_REAR, 12), {
+    b.add(BODY, 'darkMetal', cylinderZ(0.0046, 0.0046, buttZ - RECEIVER_REAR, 12), {
       pos: [x, y, (buttZ + RECEIVER_REAR) / 2],
       paint: P.darkMetal.paint,
     });
   }
+  b.add(BODY, 'darkMetal', roundedBox(0.036, 0.042, 0.012, 0.003), {
+    pos: [0, 0.028, RECEIVER_REAR + 0.004],
+    paint: P.darkMetal.paint,
+  });
   b.add(
     BODY,
     'polymer',

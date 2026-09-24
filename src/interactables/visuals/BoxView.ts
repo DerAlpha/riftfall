@@ -13,7 +13,7 @@
  */
 import { CylinderGeometry, Group, Mesh, PlaneGeometry, type MeshStandardMaterial } from 'three';
 import { clamp01, lerp, smoothstep } from '../../core/math';
-import { MYSTERY_BOX } from '../../defs/interactables';
+import { HOLOGRAM, MYSTERY_BOX } from '../../defs/interactables';
 import type { BoxLocation, BoxState, MysteryBoxReadout, MysteryBoxViewApi } from '../MysteryBox';
 import { createCanvasSurface, drawAnomaly, drawBoxEmblem, redraw, type CanvasSurface } from './canvas';
 import { createGlowMaterial, type VisualContext } from './context';
@@ -191,7 +191,7 @@ export class BoxView implements MysteryBoxViewApi {
       seed: 0.13,
       frame: false,
     });
-    this.anomalyMat.uniforms.uGlitch.value = ctx.reduceFlashing ? 0 : 1;
+    this.anomalyMat.uniforms.uGlitch.value = ctx.reduceFlashing ? 0 : B.anomaly.glitch;
     this.anomaly = toVolumetricLayer(
       new Mesh(new PlaneGeometry(B.anomaly.size, B.anomaly.size), this.anomalyMat),
     );
@@ -290,7 +290,9 @@ export class BoxView implements MysteryBoxViewApi {
       const c = s === 'rolling' ? H.color : H.resultColor;
       this.holoMat.uniforms.uColor.value.setRGB(c[0], c[1], c[2]);
       const warning = s === 'offering' && B.offerDuration - box.stateTime < H.sinkWarning;
-      this.holoMat.uniforms.uFlicker.value = warning && !this.ctx.reduceFlashing ? 0.6 : 0.12;
+      const reduce = this.ctx.reduceFlashing;
+      this.holoMat.uniforms.uFlicker.value =
+        warning && !reduce ? H.warningFlicker : reduce ? HOLOGRAM.reducedFlickerDepth : HOLOGRAM.flickerDepth;
       this.holoMat.uniforms.uFade.value = s === 'closing' ? clamp01(1 - p * 1.5) : 1;
     } else {
       this.holo.visible = false;
@@ -301,6 +303,8 @@ export class BoxView implements MysteryBoxViewApi {
     const showAnomaly = s === 'anomaly' || (s === 'leaving' && p < 0.3);
     this.anomaly.visible = showAnomaly;
     if (showAnomaly) {
+      // Its glitch band is stronger than the shared holo default (setHoloReducedFlashing).
+      this.anomalyMat.uniforms.uGlitch.value = this.ctx.reduceFlashing ? 0 : B.anomaly.glitch;
       this.anomaly.position.set(0, top + 0.12 + H.rise + 0.1, 0.05);
       this.anomalyMat.uniforms.uFade.value = s === 'anomaly' ? smoothstep(0, 0.15, p) : 1 - p / 0.3;
     }

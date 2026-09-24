@@ -16,6 +16,7 @@ import { BODY, ModelBuilder } from '../ModelBuilder';
 import { createGlowMaterials } from '../materials';
 import {
   chamferRectProfile,
+  cylinderX,
   cylinderZ,
   latheZ,
   profileX,
@@ -33,6 +34,8 @@ const RAIL_TOP = 0.078;
 /** Sight line: peep hole center = front post top. */
 const SIGHT_Y = 0.093;
 const REAR_SIGHT_Z = 0.056;
+/** Peep aperture radius: large enough to frame the front post at arm's length. */
+const PEEP_R = 0.0047;
 const FRONT_SIGHT_Z = -0.274;
 const RECEIVER_REAR = 0.075;
 const SHROUD_REAR = -0.2;
@@ -139,8 +142,21 @@ export const buildVector: ViewmodelBuilder = (kit) => {
       rot: [slopeDeg, 0, 0],
     });
   }
-  // Carrier window (left flank): a dark recess the counter-mass shows through.
-  b.add(BODY, 'bore', new BoxGeometry(0.0012, 0.03, 0.046), { pos: [-LOWER_W / 2 - 0.0001, 0.021, -0.028] });
+  // Carrier window (left flank): a raised bezel around the dark recess the counter-mass shows through.
+  b.add(BODY, 'darkMetal', roundedBox(0.0016, 0.036, 0.054, 0.0006), {
+    pos: [-LOWER_W / 2 - 0.0006, 0.021, -0.028],
+    paint: P.darkMetal.paint,
+  });
+  b.add(BODY, 'bore', new BoxGeometry(0.0012, 0.03, 0.046), { pos: [-LOWER_W / 2 - 0.0013, 0.021, -0.028] });
+  // Takedown pins (both flanks).
+  for (const side of [-1, 1]) {
+    for (const [y, z] of [
+      [0.036, 0.05],
+      [0.03, -0.1],
+    ] as const) {
+      b.add(BODY, 'gunmetal', cylinderX(0.0022, 0.0014, 10), { pos: [side * (LOWER_W / 2 + 0.0004), y, z], paint: 0.9 });
+    }
+  }
   // Magazine release (right) and a darker magwell lip.
   b.add(BODY, 'accentPaint', roundedBox(0.0026, 0.007, 0.008, 0.001), {
     pos: [LOWER_W / 2 + 0.0008, -0.012, -0.058],
@@ -329,15 +345,15 @@ export const buildVector: ViewmodelBuilder = (kit) => {
     'darkMetal',
     profileZ(
       [
-        [0.011, RAIL_TOP + 0.002 - SIGHT_Y],
-        [0.011, 0.007],
-        [0.007, 0.011],
-        [-0.007, 0.011],
-        [-0.011, 0.007],
-        [-0.011, RAIL_TOP + 0.002 - SIGHT_Y],
+        [0.0085, RAIL_TOP + 0.002 - SIGHT_Y],
+        [0.0085, 0.0055],
+        [0.0055, 0.0085],
+        [-0.0055, 0.0085],
+        [-0.0085, 0.0055],
+        [-0.0085, RAIL_TOP + 0.002 - SIGHT_Y],
       ],
       0.004,
-      { bevel: 0.0006, holes: [circle(0.0026, 14)] },
+      { bevel: 0.0006, holes: [circle(PEEP_R, 18)] },
     ),
     { pos: [0, SIGHT_Y, REAR_SIGHT_Z], paint: P.darkMetal.paint },
   );
@@ -372,11 +388,11 @@ export const buildVector: ViewmodelBuilder = (kit) => {
 
   // --- counter-mass carrier behind the left window ---
   b.add('bolt', 'gunmetal', roundedBox(0.0018, 0.017, 0.03, 0.0006), {
-    pos: [-LOWER_W / 2 - 0.0008, 0.022, -0.028],
+    pos: [-LOWER_W / 2 - 0.0022, 0.022, -0.028],
     paint: 0.55,
   });
   b.add('bolt', 'accent', new BoxGeometry(0.0006, 0.0016, 0.026), {
-    pos: [-LOWER_W / 2 - 0.0018, 0.027, -0.028],
+    pos: [-LOWER_W / 2 - 0.0033, 0.027, -0.028],
   });
 
   // --- magazine (double stack, straight down out of the magwell) ---

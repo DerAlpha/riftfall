@@ -13,7 +13,7 @@ import { BLACKHOLE_VIEWMODEL } from '../../../defs/viewmodelData/blackhole';
 import { VIEWMODEL_ART } from '../../../defs/viewmodels';
 import { BODY, ModelBuilder } from '../ModelBuilder';
 import { createGlowMaterials, type WeaponMaterialKit } from '../materials';
-import { chamferRectProfile, cylinderZ, latheZHard, profileX, profileZ, roundedBox, tubeZ } from '../shapes';
+import { chamferRectProfile, cylinderZ, profileX, profileZ, roundedBox, tubeZ } from '../shapes';
 import { createReadout, ledUv, type ReadoutSpec, type WeaponViewmodelModel } from '../WeaponModel';
 import type { ViewmodelBuilder } from '../index';
 import {
@@ -35,8 +35,8 @@ const GRIP_TILT = -18;
 const GRIP_TOP = { y: 0.004, z: 0.012 } as const;
 const LEDS = 3;
 const BASE_Z = -0.205;
-const CORE = { z: -0.29, r: 0.017 } as const;
-const RING_R = 0.05;
+const CORE = { z: -0.318, r: 0.024 } as const;
+const RING_R = 0.066;
 /** Claws: angle around the bore (deg, 90 = top). */
 const CLAWS = [135, 45, 270] as const;
 /** Free-node motion (model content): idle spins (rad/s), core bob (m, rad/s), collapse on shot. */
@@ -67,7 +67,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   const horizon = createEnergyMaterial('void-horizon', {
     core: 0x000000,
     rim: VOID.rim,
-    rimPower: 2.4,
+    rimPower: 1.8,
     noise: 0.5,
     noiseScale: 260,
     flow: [2, -1, 3],
@@ -160,6 +160,22 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     b.add(BODY, 'accent', new BoxGeometry(0.0012, 0.0016, 0.16), { pos: [side * 0.0352, 0.048, -0.075] });
     b.add(BODY, 'accent', new BoxGeometry(0.0012, 0.03, 0.0016), { pos: [side * 0.0352, 0.048, 0.0] });
   }
+  // Void conduit along the shooter-facing flank into the containment base, clamped.
+  const conduit: [number, number, number][] = [
+    [-0.036, 0.052, 0.03],
+    [-0.042, 0.056, -0.04],
+    [-0.041, 0.06, -0.14],
+    [-0.03, BORE_Y + 0.012, BASE_Z + 0.02],
+  ];
+  b.add(BODY, 'cellGlow', bentTube(conduit, 0.0052, 24, 10), { uv: 'keep' });
+  b.add(BODY, 'lens', bentTube(conduit, 0.0068, 24, 12), { uv: 'keep' });
+  for (const [x, y, z] of [
+    [-0.0415, 0.0555, -0.02],
+    [-0.0418, 0.058, -0.09],
+    [-0.039, 0.059, -0.16],
+  ] as const) {
+    b.add(BODY, 'gunmetal', tubeZ(0.009, 0.0068, 0.008, 18), { pos: [x, y, z + 0.004], paint: P.gunmetal.paint });
+  }
   b.add(BODY, 'darkMetal', new BoxGeometry(0.024, 0.004, 0.16), { pos: [0, 0.091, -0.04], paint: P.darkMetal.paint });
   for (let i = 0; i < 11; i++) {
     b.add(BODY, 'darkMetal', new BoxGeometry(0.026, 0.0035, 0.0065), {
@@ -182,8 +198,8 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   }
 
   // --- containment base, claws ---
-  b.add(BODY, 'gunmetal', tubeZ(0.04, 0.012, 0.022, 32), { pos: [0, BORE_Y, BASE_Z + 0.016], paint: P.gunmetal.paint });
-  b.add(BODY, 'field', new TorusGeometry(0.027, 0.0022, 8, 36), { pos: [0, BORE_Y, BASE_Z - 0.007], uv: 'keep' });
+  b.add(BODY, 'gunmetal', tubeZ(0.046, 0.012, 0.024, 36), { pos: [0, BORE_Y, BASE_Z + 0.018], paint: P.gunmetal.paint });
+  b.add(BODY, 'field', new TorusGeometry(0.031, 0.0024, 8, 40), { pos: [0, BORE_Y, BASE_Z - 0.007], uv: 'keep' });
   b.add(BODY, 'darkMetal', tubeZ(0.02, 0.008, 0.014, 24), { pos: [0, BORE_Y, BASE_Z - 0.004], paint: 0.4 });
   b.add(BODY, 'horizon', cylinderZ(0.008, 0.008, 0.002, 16), { pos: [0, BORE_Y, BASE_Z - 0.012] });
   for (const deg of CLAWS) {
@@ -195,43 +211,43 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       BODY,
       'gunmetal',
       bentTube(
-        [pt(0.03, BASE_Z), pt(0.058, BASE_Z - 0.03), pt(0.066, CORE.z), pt(0.056, CORE.z - 0.04), pt(0.034, CORE.z - 0.062)],
-        0.0058,
+        [pt(0.034, BASE_Z), pt(0.074, BASE_Z - 0.035), pt(0.086, CORE.z), pt(0.074, CORE.z - 0.052), pt(0.044, CORE.z - 0.084)],
+        0.0072,
         26,
         8,
       ),
       { paint: P.gunmetal.paint },
     );
-    b.add(BODY, 'darkMetal', roundedBox(0.016, 0.014, 0.026, 0.003), {
-      pos: pt(0.052, BASE_Z - 0.022),
+    b.add(BODY, 'darkMetal', roundedBox(0.02, 0.017, 0.03, 0.003), {
+      pos: pt(0.062, BASE_Z - 0.026),
       rot: [0, 0, deg - 90],
       paint: P.darkMetal.paint,
     });
-    b.add(BODY, 'field', new SphereGeometry(0.0046, 12, 8), { pos: pt(0.032, CORE.z - 0.063) });
+    b.add(BODY, 'field', new SphereGeometry(0.006, 12, 8), { pos: pt(0.042, CORE.z - 0.085) });
   }
 
   // --- containment ring (heat spin) + its idle-spinning body ---
-  b.add('ringSpin', 'gunmetal', new TorusGeometry(RING_R, 0.0048, 10, 48), { pos: [0, BORE_Y, CORE.z], paint: P.gunmetal.paint });
-  b.add('ringSpin', 'field', new TorusGeometry(RING_R - 0.0045, 0.0016, 8, 48), { pos: [0, BORE_Y, CORE.z], uv: 'keep' });
+  b.add('ringSpin', 'gunmetal', new TorusGeometry(RING_R, 0.0056, 10, 56), { pos: [0, BORE_Y, CORE.z], paint: P.gunmetal.paint });
+  b.add('ringSpin', 'field', new TorusGeometry(RING_R - 0.0052, 0.0018, 8, 56), { pos: [0, BORE_Y, CORE.z], uv: 'keep' });
   for (let i = 0; i < 6; i++) {
     const a = (i * Math.PI) / 3;
-    b.add('ringSpin', 'darkMetal', roundedBox(0.012, 0.009, 0.014, 0.002), {
+    b.add('ringSpin', 'darkMetal', roundedBox(0.014, 0.011, 0.016, 0.002), {
       pos: [Math.cos(a) * RING_R, BORE_Y + Math.sin(a) * RING_R, CORE.z],
       rot: [0, 0, (a * 180) / Math.PI],
       paint: P.darkMetal.paint,
     });
-    b.add('ringSpin', 'accent', new BoxGeometry(0.0016, 0.004, 0.0145), {
-      pos: [Math.cos(a) * (RING_R - 0.0062), BORE_Y + Math.sin(a) * (RING_R - 0.0062), CORE.z],
+    b.add('ringSpin', 'accent', new BoxGeometry(0.0016, 0.005, 0.0165), {
+      pos: [Math.cos(a) * (RING_R - 0.0072), BORE_Y + Math.sin(a) * (RING_R - 0.0072), CORE.z],
       rot: [0, 0, (a * 180) / Math.PI],
     });
   }
   // Gyro ring (free, tilted, counter-spinning).
-  b.add('gyro', 'gunmetal', new TorusGeometry(0.036, 0.0022, 8, 40), { local: true, paint: P.gunmetal.paint });
-  b.add('gyro', 'field', new TorusGeometry(0.036, 0.0009, 6, 40), { local: true, pos: [0, 0, 0.002], uv: 'keep' });
+  b.add('gyro', 'gunmetal', new TorusGeometry(0.05, 0.0026, 8, 48), { local: true, paint: P.gunmetal.paint });
+  b.add('gyro', 'field', new TorusGeometry(0.05, 0.0011, 6, 48), { local: true, pos: [0, 0, 0.0025], uv: 'keep' });
 
   // --- the singularity: horizon, lensing halo, accretion disk ---
   b.add('coreFloat', 'horizon', new SphereGeometry(CORE.r, 28, 20), { pos: [0, BORE_Y, CORE.z] });
-  b.add('coreFloat', 'lens', new SphereGeometry(CORE.r * 1.65, 28, 20), { pos: [0, BORE_Y, CORE.z], uv: 'keep' });
+  b.add('coreFloat', 'lens', new SphereGeometry(CORE.r * 1.75, 28, 20), { pos: [0, BORE_Y, CORE.z], uv: 'keep' });
   b.add('disk', 'disk', new RingGeometry(CORE.r * 1.25, CORE.r * 2.3, 48, 2), { local: true, uv: 'keep' });
 
   // --- magwell + void cell ---
@@ -387,7 +403,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     readoutSpec,
     readout,
     [
-      { material: horizon, intensity: 3.2, pulseRate: 1.3, pulseDepth: 0.2, flash: 4 },
+      { material: horizon, intensity: 4, pulseRate: 1.3, pulseDepth: 0.2, flash: 4 },
       { material: lens, intensity: 1.4, pulseRate: 0.9, pulseDepth: 0.3, flash: 3, heat: 1 },
       { material: disk, intensity: 1.1, pulseRate: 2.2, pulseDepth: 0.2, flash: 2.5, heat: 1.2 },
       { material: field, intensity: 2.3, pulseRate: 1.9, pulseDepth: 0.15, flash: 4, boost: 3 },

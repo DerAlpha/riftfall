@@ -450,3 +450,46 @@ export function reformScale(sinceShot: number, regrow: number, min: number): num
   const back = 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2);
   return min + (1 - min) * back;
 }
+
+/**
+ * Closed Catmull-Rom smoothing of a 2D outline (organic carapaces): `samples` points per control
+ * segment. Feed the result to profileX / profileZ.
+ */
+export function smoothOutline(points: readonly (readonly [number, number])[], samples = 4): [number, number][] {
+  const n = points.length;
+  const out: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const p0 = points[(i - 1 + n) % n]!;
+    const p1 = points[i]!;
+    const p2 = points[(i + 1) % n]!;
+    const p3 = points[(i + 2) % n]!;
+    for (let k = 0; k < samples; k++) {
+      const u = k / samples;
+      const u2 = u * u;
+      const u3 = u2 * u;
+      const f = (a: number, b: number, c: number, d: number): number =>
+        0.5 * (2 * b + (-a + c) * u + (2 * a - 5 * b + 4 * c - d) * u2 + (-a + 3 * b - 3 * c + d) * u3);
+      out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  return out;
+}
+
+/** Iridescent alien shell (carapaces, organic grips): lit, per model (disposed with it). */
+export function createChitinMaterial(name: string, color: number, sheen: number): MeshPhysicalMaterial {
+  return new MeshPhysicalMaterial({
+    name: `vm-chitin-${name}`,
+    color,
+    metalness: 0.35,
+    roughness: 0.38,
+    clearcoat: 1,
+    clearcoatRoughness: 0.22,
+    iridescence: 1,
+    iridescenceIOR: 1.35,
+    iridescenceThicknessRange: [180, 520],
+    sheen: 1,
+    sheenColor: new Color(sheen),
+    sheenRoughness: 0.4,
+    vertexColors: true,
+  });
+}

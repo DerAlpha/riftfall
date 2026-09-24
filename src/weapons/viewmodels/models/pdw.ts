@@ -154,7 +154,7 @@ export const buildPdw: ViewmodelBuilder = (kit) => {
   const b = new ModelBuilder('pdw', VIEWMODEL_ART.uvDensity);
 
   b.part('magazine', [0, MAG_Y, (MAG_FRONT + MAG_REAR) / 2]);
-  b.part('bolt', [-BODY_W / 2 - 0.001, 0.061, -0.19]);
+  b.part('bolt', [-BODY_W / 2 - 0.002, 0.061, -0.19]);
   b.part('trigger', [0, 0.012, -0.03]);
 
   // --- shell: body, finger loop, grip, thumbhole bar, butt pad ---
@@ -182,23 +182,49 @@ export const buildPdw: ViewmodelBuilder = (kit) => {
     pos: [0, BODY_TOP - 0.0035, -0.02],
     paint: P.gunmetal.paint,
   });
-  // Glowing seam along the left flank; ejection chute under the butt.
-  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.26), { pos: [-BODY_W / 2 - 0.0002, 0.044, -0.03] });
-  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.26), { pos: [BODY_W / 2 + 0.0002, 0.044, -0.03] });
+  // Gunmetal receiver plates along both flanks (two-tone shell) and knurled cheek panels on the butt.
+  for (const side of [-1, 1]) {
+    b.add(
+      BODY,
+      'gunmetal',
+      profileX(
+        [
+          [0.2, 0.066],
+          [0.21, 0.056],
+          [0.205, 0.03],
+          [0.12, 0.026],
+          [-0.05, 0.024],
+          [-0.07, 0.034],
+          [-0.07, 0.066],
+        ],
+        0.0016,
+        { bevel: 0.0005 },
+      ),
+      { pos: [side * (BODY_W / 2 + 0.0002), 0, 0], paint: P.gunmetal.paint },
+    );
+    b.add(BODY, 'grip', roundedBox(0.0016, 0.07, 0.1, 0.0006), {
+      pos: [side * (BODY_W / 2 + 0.0001), -0.01, 0.205],
+      uvDensity: VIEWMODEL_ART.knurlDensity,
+    });
+  }
+  // Glowing seam along both flanks; ejection chute under the butt.
+  for (const side of [-1, 1]) {
+    b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.24), { pos: [side * (BODY_W / 2 + 0.0014), 0.046, -0.05] });
+  }
   b.add(BODY, 'bore', new BoxGeometry(0.014, 0.0012, 0.03), { pos: [0, -0.1134, 0.085] });
   // Charging-handle slot (left).
-  b.add(BODY, 'bore', new BoxGeometry(0.0012, 0.006, 0.07), { pos: [-BODY_W / 2 - 0.0002, 0.061, -0.165] });
+  b.add(BODY, 'bore', new BoxGeometry(0.0012, 0.006, 0.07), { pos: [-BODY_W / 2 - 0.0014, 0.061, -0.165] });
   // Heat vents on both nose flanks.
   for (const side of [-1, 1]) {
     for (let i = 0; i < 3; i++) {
       const z = -0.186 - i * 0.012;
       b.add(BODY, 'darkMetal', new BoxGeometry(0.0012, 0.02, 0.008), {
-        pos: [side * (BODY_W / 2 + 0.0002), BORE_Y - 0.004, z],
+        pos: [side * (BODY_W / 2 + 0.0014), BORE_Y - 0.004, z],
         rot: [24, 0, 0],
         paint: P.darkMetal.paint,
       });
       b.add(BODY, 'heat', new BoxGeometry(0.0012, 0.016, 0.0045), {
-        pos: [side * (BODY_W / 2 + 0.0006), BORE_Y - 0.004, z],
+        pos: [side * (BODY_W / 2 + 0.0018), BORE_Y - 0.004, z],
         rot: [24, 0, 0],
       });
     }
@@ -272,11 +298,11 @@ export const buildPdw: ViewmodelBuilder = (kit) => {
 
   // --- charging handle (left, rides forward; locks back when empty) ---
   b.add('bolt', 'darkMetal', cylinderX(0.003, 0.012, 10), {
-    pos: [-BODY_W / 2 - 0.004, 0.061, -0.19],
+    pos: [-BODY_W / 2 - 0.005, 0.061, -0.19],
     paint: P.darkMetal.paint,
   });
   b.add('bolt', 'accentPaint', roundedBox(0.008, 0.013, 0.012, 0.0028), {
-    pos: [-BODY_W / 2 - 0.011, 0.062, -0.19],
+    pos: [-BODY_W / 2 - 0.012, 0.062, -0.19],
     paint: P.accentPaint.paint,
   });
 

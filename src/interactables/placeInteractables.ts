@@ -51,7 +51,7 @@ import {
   type BoxLocationDef,
   type WallBuyPlacementDef,
 } from '../defs/interactables';
-import { getWeaponDef } from '../defs/weapons';
+import { IMPLEMENTED_WEAPON_KINDS, getWeaponDef, type WeaponDef } from '../defs/weapons';
 import { isMapLevel } from '../maps/types';
 import { Door } from './Door';
 import { MysteryBox, resolveBoxPool, type BoxLocation } from './MysteryBox';
@@ -230,9 +230,10 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
   // --- wall buys ---
   const wallBuys: WallBuy[] = [];
   for (const def of collectWallBuys(deps.level, mapId)) {
-    const weapon = getWeaponDef(def.weapon);
-    if (!weapon || weapon.boxOnly === true) {
-      log.warn(`Wall buy "${def.id}": weapon "${def.weapon}" is unknown or box-only – skipped`);
+    const weapon = wallBuyWeapon(def.weapon);
+    if (!weapon) {
+      // Selling it would take the points and hand out nothing.
+      log.warn(`Wall buy "${def.id}": weapon "${def.weapon}" is unknown, box-only or not firable – skipped`);
       continue;
     }
     const n = facingNormal(def.facing);
@@ -386,6 +387,13 @@ export function placeInteractables(deps: PlaceInteractablesDeps): InteractablesH
       root?.removeFromParent();
     },
   };
+}
+
+/** A weapon a wall may sell: known, not box-only, of a kind the weapon system can fire (else null). */
+export function wallBuyWeapon(id: string): WeaponDef | null {
+  const def = getWeaponDef(id);
+  if (!def || def.boxOnly === true || !IMPLEMENTED_WEAPON_KINDS.includes(def.kind)) return null;
+  return def;
 }
 
 /** Level wall-buy slots (with the per-slot weapon offer) + the map's extra placements. */

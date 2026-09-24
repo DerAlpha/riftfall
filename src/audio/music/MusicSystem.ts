@@ -359,6 +359,8 @@ export class MusicSystem implements MusicApi, ConductorSink {
     const g = this.graph;
     const def = MUSIC_STINGS[id];
     if (!g || this.disposed || !def) return;
+    // The tab went to the background (visibility pause): nobody hears a pause sting.
+    if (id === 'pause' && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     const now = g.ctx.currentTime;
     const earliest = now + S.startDelay * 0.5;
     if (def.route === 'ui') {
@@ -423,19 +425,30 @@ export class MusicSystem implements MusicApi, ConductorSink {
    * map themes while music is on.
    */
   private prepare(): void {
-    if (this.disposed) return;
-    if (!this.cuesStarted && this.bank.supported) {
-      this.cuesStarted = true;
-      void renderCues().then((cues) => {
-        if (this.disposed) return;
-        for (const [id, buf] of cues) this.deps.host.registerBuffer?.(id, buf);
-        this.cuesReady = cues.size > 0;
-      });
-      void this.bank.load(MUSIC.uiTheme);
-    }
-    if (!this._enabled || this.prepared) return;
-    this.prepared = true;
-    void this.bank.load(MUSIC.menuTheme).then(() => this.bank.load(this.conductor.themeFor('intermission')));
+    // After the synchronous start-up that follows game:ready (autostart / start screen): the
+    // theme the state needs now renders first, one theme at a time, the small kits after.
+    queueMicrotask(() => {
+      if (this.disposed) return;
+      let chain: Promise<unknown> = Promise.resolve();
+      if (this._enabled && !this.prepared) {
+        this.prepared = true;
+        const state = this.conductor.state;
+        const map = this.conductor.themeFor('intermission');
+        const first = state === 'off' || state === 'menu' ? MUSIC.menuTheme : this.conductor.themeId;
+        chain = this.bank.load(first).then(() => this.bank.load(first === MUSIC.menuTheme ? map : MUSIC.menuTheme));
+      }
+      if (!this.cuesStarted && this.bank.supported) {
+        this.cuesStarted = true;
+        void chain
+          .then(() => this.bank.load(MUSIC.uiTheme))
+          .then(() => renderCues())
+          .then((cues) => {
+            if (this.disposed) return;
+            for (const [id, buf] of cues) this.deps.host.registerBuffer?.(id, buf);
+            this.cuesReady = cues.size > 0;
+          });
+      }
+    });
   }
 
   private setVolume(a: Readonly<AudioSettings>): void {

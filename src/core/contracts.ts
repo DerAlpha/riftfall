@@ -660,6 +660,11 @@ export interface DamageInfo {
    * build-up = applied damage × this), 0 / absent = none. Set by the arsenal for elemental damage.
    */
   statusBuildup?: number;
+  /**
+   * A repeating tick of a lasting source (field damage ticks; beam ticks and damage over time are
+   * kind 'beam', which implies it): hit reactions stay dim and rate-limited (enemy hit flash).
+   */
+  sustained?: boolean;
 }
 
 export interface DamageResult {

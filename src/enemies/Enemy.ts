@@ -277,9 +277,10 @@ export class Enemy implements Damageable {
 
     // Hit reaction (recorded; the manager turns it into pose/state next).
     const P = ENEMY_AI.pose;
-    if (info.kind === 'beam') {
-      // Sustained damage ticks at up to 12 Hz: a full flash per tick would hold the body white-hot
-      // over its burn / shock rim. A dim pulse at a capped rate; it never lowers a stronger flash.
+    if (info.kind === 'beam' || info.sustained === true) {
+      // Sustained damage ticks at up to 12 Hz (beams, field ticks, damage over time): a full flash
+      // per tick would hold the body white-hot over its burn / shock rim, or strobe it. A dim
+      // pulse at a capped rate instead; it never lowers a stronger flash.
       if (this.sustainedFlashCooldown <= 0) {
         this.pose.hitFlash = Math.max(this.pose.hitFlash, P.sustainedFlash.peak);
         this.sustainedFlashCooldown = P.sustainedFlash.interval;

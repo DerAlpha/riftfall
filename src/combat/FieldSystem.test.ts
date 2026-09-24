@@ -121,6 +121,8 @@ describe('FieldSystem', () => {
     expect(inside.received[0]!.amount).toBeCloseTo(PULL.dps * ARSENAL.fields.tickInterval * 2, 6);
     expect(inside.received[0]!.element).toBe('void');
     expect(inside.received[0]!.statusBuildup).toBe(1);
+    // Repeating ticks: the enemy hit flash stays dim instead of strobing white-hot.
+    expect(inside.received[0]!.sustained).toBe(true);
     expect(behindWall.received).toHaveLength(0);
     expect(outside.received).toHaveLength(0);
   });

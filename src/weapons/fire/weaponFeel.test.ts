@@ -19,7 +19,7 @@ import { AudioEventBridge, type AudioBridgeTarget } from '../../audio/AudioEvent
 import { AUDIO } from '../../defs/audio';
 import { FORGE_LOOKS, forgePaletteId, getForgeLook } from '../../defs/forge';
 import { VfxBridge } from '../../vfx/VfxBridge';
-import { VfxSystem } from '../../vfx/VfxSystem';
+import { VfxSystem, createVfxAtlases } from '../../vfx/VfxSystem';
 import { FakeSockets, fakeRender } from '../../vfx/testFakes';
 import { WeaponMaterialKit, createWeaponViewmodel } from '../viewmodels';
 
@@ -195,12 +195,13 @@ describe('suppressor and forged muzzle light (weapon:fired → VFX / audio)', ()
     bridge.dispose();
   });
 
-  it('VfxSystem: a suppressed shot draws a smaller flash and a dimmer world light', () => {
+  it('VfxSystem: a suppressed shot draws a smaller flash and a dimmer world light', async () => {
     const rifle = WEAPONS.rifle;
+    const atlases = await createVfxAtlases(() => Promise.resolve());
     const shoot = (suppressed: boolean): { size: number; light: number } => {
       const render = fakeRender();
       const sockets = new FakeSockets(render.viewmodelCamera);
-      const vfx = new VfxSystem({ render, settings: fakeSettings(), sockets });
+      const vfx = new VfxSystem({ render, settings: fakeSettings(), sockets, atlases });
       vfx.muzzle(rifle.vfx.muzzle, rifle.vfx.muzzleLightColor, null, false, O3, FWD, suppressed);
       vfx.update(1 / 60);
       const star = sockets.anchors.muzzle.children[0]!.children[0]!;
@@ -213,7 +214,7 @@ describe('suppressor and forged muzzle light (weapon:fired → VFX / audio)', ()
     expect(quiet.size).toBeLessThan(loud.size * 0.8);
     expect(quiet.light).toBeGreaterThan(0);
     expect(quiet.light).toBeLessThan(loud.light * 0.5);
-  });
+  }, 30_000);
 
   it('audio: a suppressed shot drops the tail, quiets the body and adds the can layer', () => {
     const events = new EventBus<GameEvents>();
@@ -262,5 +263,29 @@ describe('attachment mounts', () => {
     }
     expect(missing).toEqual([]);
     kit.dispose();
+  });
+});
+
+describe('optics', () => {
+  it('a magnifying optic keeps the weapon’s aim speed on screen (ADS sensitivity follows the zoom)', () => {
+    const ratio = (d: WeaponDef): number => d.ads.sensitivityMultiplier / d.ads.zoom;
+    for (const [id, att] of [
+      ['rifle', 'scope4x'],
+      ['rifle', 'acog'],
+      ['smg', 'thermal'],
+      ['sniper', 'thermal'],
+      ['marksman', 'scope4x'],
+      ['railgun', 'scope4x'],
+    ] as const) {
+      const base = WEAPONS[id] as WeaponDef;
+      const d = resolveWeapon(base, { attachments: [att] });
+      expect(d.ads.zoom, `${id}+${att} zoom`).not.toBeCloseTo(base.ads.zoom, 3);
+      expect(ratio(d), `${id}+${att}`).toBeCloseTo(ratio(base), 6);
+    }
+    // Non-magnifying sights leave it alone.
+    const rifle = WEAPONS.rifle as WeaponDef;
+    expect(resolveWeapon(rifle, { attachments: ['reddot'] }).ads.sensitivityMultiplier).toBe(
+      rifle.ads.sensitivityMultiplier,
+    );
   });
 });

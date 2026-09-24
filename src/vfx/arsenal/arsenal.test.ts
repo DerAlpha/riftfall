@@ -384,6 +384,58 @@ describe('ArsenalVfx pools and handles', () => {
     arsenal.dispose();
   });
 
+  it('reduce flashing steadies the lightning flicker and softens blinking LEDs', () => {
+    const coreBrightness = (a: ArsenalVfx): number => {
+      const mesh = a.object.getObjectByName('ArsenalStrips') as THREE.Mesh | undefined;
+      const geo = mesh!.geometry as THREE.InstancedBufferGeometry;
+      const col = geo.getAttribute('iColA').array as Float32Array;
+      let sum = 0;
+      for (let i = 0; i < geo.instanceCount; i++) sum += col[i * 4]! + col[i * 4 + 1]! + col[i * 4 + 2]!;
+      return sum;
+    };
+    const glowBrightness = (a: ArsenalVfx): number => {
+      const mesh = a.object.getObjectByName('ArsenalGlow') as THREE.Mesh;
+      const geo = mesh.geometry as THREE.InstancedBufferGeometry;
+      const col = geo.getAttribute('iColor').array as Float32Array;
+      let sum = 0;
+      for (let i = 0; i < geo.instanceCount; i++) sum += col[i * 4]! + col[i * 4 + 1]! + col[i * 4 + 2]!;
+      return sum;
+    };
+    const run = (scale: number) => {
+      const { arsenal } = rig();
+      arsenal.setFlashScale(scale);
+      const beam: number[] = [];
+      for (let i = 0; i < 40; i++) {
+        arsenal.beam('beam.lightning', { x: 0, y: 1.4, z: -0.5 }, { x: 0, y: 1, z: -8 }, [], 0);
+        arsenal.update(1 / 60);
+        beam.push(coreBrightness(arsenal));
+      }
+      arsenal.clear();
+      // A grenade LED blinking at 6 Hz: the largest frame-to-frame brightness jump.
+      const h = arsenal.projectileStart('projectile.grenade', null, { x: 0, y: 1, z: -6 }, ZERO);
+      let prev = -1;
+      let jump = 0;
+      let peak = 0;
+      for (let i = 0; i < 60; i++) {
+        arsenal.projectileMove(h, { x: 0, y: 1, z: -6 }, ZERO);
+        arsenal.update(1 / 120);
+        const g = glowBrightness(arsenal);
+        if (prev >= 0) jump = Math.max(jump, Math.abs(g - prev));
+        peak = Math.max(peak, g);
+        prev = g;
+      }
+      arsenal.dispose();
+      return { beamSpread: (Math.max(...beam) - Math.min(...beam)) / Math.max(...beam), jump: jump / peak };
+    };
+    const normal = run(1);
+    const reduced = run(ARSENAL_VFX.reducedFlashingScale);
+    expect(normal.beamSpread).toBeGreaterThan(0.05);
+    expect(reduced.beamSpread).toBeLessThan(1e-3);
+    // Hard on/off blink normally; a soft pulse (no frame-to-frame jump near the full swing).
+    expect(normal.jump).toBeGreaterThan(0.6);
+    expect(reduced.jump).toBeLessThan(0.25);
+  });
+
   it('warm-up draws one invisible instance per batch', () => {
     const { arsenal } = rig();
     arsenal.setWarmup(true);

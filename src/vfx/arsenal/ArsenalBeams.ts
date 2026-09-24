@@ -327,7 +327,8 @@ export class ArsenalBeams {
     const t = ch.to;
     const len = dist(f, t);
     if (len < 1e-3) return;
-    const flicker = 0.8 + 0.4 * ch.rnd[RND - 1]!;
+    // ±20 % brightness per re-roll; steady with reduce flashing (the bolt still re-forms).
+    const flicker = 1 + ctx.flicker * (0.4 * ch.rnd[RND - 1]! - 0.2);
     const b = s.bolt;
     const segs = clampSegs(len / b.segmentLength, b.minSegments, ARSENAL_VFX.beams.maxSegments);
     const n = buildBolt(

@@ -137,6 +137,7 @@ export class ArsenalVfx implements ArsenalVfxApi {
       rand: deps.random ?? Math.random,
       budget: 1,
       flashScale: 1,
+      flicker: 1,
       time: 0,
       lensQueue: createLensQueue(),
       lensCount: 0,
@@ -274,9 +275,13 @@ export class ArsenalVfx implements ArsenalVfxApi {
     this.ctx.budget = Math.max(0, Number.isFinite(multiplier) ? multiplier : 1);
   }
 
-  /** Reduce-flashing multiplier on glows, beams and lights. */
+  /**
+   * Reduce-flashing multiplier on glows, beams and lights; below 1 (reduce flashing on) beams
+   * also stop flickering and blinking LEDs pulse softly.
+   */
   setFlashScale(scale: number): void {
     this.ctx.flashScale = Math.max(0, Number.isFinite(scale) ? scale : 1);
+    this.ctx.flicker = this.ctx.flashScale < 1 ? 0 : 1;
   }
 
   /** Dev preview driver (console `fx`), run at the start of every update(). */

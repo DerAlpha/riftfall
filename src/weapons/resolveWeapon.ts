@@ -18,8 +18,8 @@
  *   def's (× the selfDamage factor), damage mods never make the player's own blasts deadlier; rpm scales a beam's tick and drain rates;
  *   projectileSpeed / blastRadius / chargeTime scale their kind data; an element mod turns a
  *   projectile's blast of the weapon's own element into that element (convention VFX/audio ids).
- * - Handling: adsTime (in/out), adsZoom, equipTime, moveSpeed (ADS speed and carry speed),
- *   hipSpread (hip cone only).
+ * - Handling: adsTime (in/out), adsZoom (the ADS sensitivity follows it: the aim keeps its speed
+ *   on screen), equipTime, moveSpeed (ADS speed and carry speed), hipSpread (hip cone only).
  */
 import type { DamageElement } from '../core/events';
 import { getAttachmentDef, attachmentMods } from '../defs/attachments';
@@ -320,6 +320,9 @@ export function resolveWeapon(base: WeaponDef, state: WeaponModState = {}): Weap
       inTime: base.ads.inTime * f.adsTime,
       outTime: base.ads.outTime * f.adsTime,
       moveSpeedMultiplier: base.ads.moveSpeedMultiplier * f.moveSpeed,
+      // The aim moves as fast on screen as through the weapon's own sights: a 4× scope on a
+      // rifle must not turn 2.4× twitchier than the sniper's.
+      sensitivityMultiplier: base.ads.sensitivityMultiplier * f.adsZoom,
     },
     range: base.range * f.range,
     penetration: { ...base.penetration, power: base.penetration.power * f.penetration },

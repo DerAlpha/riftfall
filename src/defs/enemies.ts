@@ -888,8 +888,8 @@ export const ENEMY_AI = {
   pose: {
     hitFlashDecay: 9,
     /**
-     * Sustained damage (kind 'beam': beam ticks, arcs, burn / poison ticks): flash peak (of the
-     * white-hot 1) and the shortest time between two such pulses (s).
+     * Sustained damage (kind 'beam': beam ticks, arcs, burn / poison ticks; `sustained` field
+     * ticks): flash peak (of the white-hot 1) and the shortest time between two such pulses (s).
      */
     sustainedFlash: { peak: 0.3, interval: 0.25 },
     flinchPerHealth: 3,

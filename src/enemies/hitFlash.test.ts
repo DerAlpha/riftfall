@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { DamageInfo, ImpactKind } from '../core/contracts';
+import type { DamageInfo } from '../core/contracts';
+import type { ImpactKind } from '../core/events';
 import { ENEMY_AI } from '../defs/enemies';
 import type { Enemy } from './Enemy';
 import { DT, createEnemyHarness } from './testFakes';

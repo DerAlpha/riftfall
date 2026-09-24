@@ -124,18 +124,29 @@ describe('MusicSystem', () => {
     music.dispose();
   });
 
-  it('does no work at music volume 0: no theme renders, no scheduler, no voices', () => {
+  it('does no work at music volume 0: no theme renders, no scheduler, no voices', async () => {
     const { events, ctx, music, bank, play, scheduler } = setup({ audio: { music: 0 } });
     events.emit('game:ready', {});
     events.emit('ui:menu', { open: true, menu: 'start' });
     events.emit('game:resumed', {});
     events.emit('wave:start', { wave: 1, total: 5 });
+    for (let k = 0; k < 10; k++) await Promise.resolve();
     play(2);
+    // Only the small UI kit renders (level-up / achievement stings ride the ui volume).
+    expect(bank.loads).toEqual([MUSIC.uiTheme]);
     expect(music.enabled).toBe(false);
     expect(bank.loads.filter((id) => id !== MUSIC.uiTheme)).toEqual([]);
     expect(scheduler()).toHaveLength(0);
     expect(ctx!.sources).toHaveLength(0);
     expect(music.status.timer).toBe(false);
+  });
+
+  it('renders the theme the state needs first, one at a time', async () => {
+    const { events, bank } = setup({ themes: [] });
+    events.emit('game:ready', {});
+    events.emit('game:resumed', {});
+    for (let k = 0; k < 20; k++) await Promise.resolve();
+    expect(bank.loads.slice(0, 3)).toEqual(['lab', 'lab', MUSIC.menuTheme]);
   });
 
   it('plays the menu theme on the menu route and holds the context awake for it', () => {

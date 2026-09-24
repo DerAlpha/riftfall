@@ -56,6 +56,8 @@ export interface ArsenalContext {
   budget: number;
   /** Reduce-flashing multiplier for glows, beams and lights. */
   flashScale: number;
+  /** 1: beams flicker, LEDs blink hard; 0 with reduce flashing (steady beams, soft LED pulses). */
+  flicker: number;
   /** Seconds since construction (animated patterns). */
   time: number;
   /** Lens requests of this frame (x, y, z, radius, strength per entry). */
@@ -112,11 +114,11 @@ export function requestLens(ctx: ArsenalContext, p: Vec3Like, radius: number, st
   q[o + 4] = strength;
 }
 
-/** Pulse factor of a glow layer at time t (s). */
-export function pulseFactor(layer: GlowLayerDef, t: number): number {
+/** Pulse factor of a glow layer at time t (s); `flicker` 0 turns hard blinks into soft pulses. */
+export function pulseFactor(layer: GlowLayerDef, t: number, flicker = 1): number {
   const p = layer.pulse;
   if (!p) return 1;
-  if (p.square) {
+  if (p.square && flicker > 0) {
     const phase = t * p.rate - Math.floor(t * p.rate);
     return phase < 0.5 ? 1 : 1 - p.depth;
   }
@@ -154,7 +156,7 @@ export function pushGlow(
     ctx.dark.push(px, py, pz, size, shape, 0, 0, 0, Math.min(1, fade), seed, age, rot);
     return;
   }
-  const k = layer.intensity * pulseFactor(layer, age + seed) * fade * ctx.flashScale;
+  const k = layer.intensity * pulseFactor(layer, age + seed, ctx.flicker) * fade * ctx.flashScale;
   if (!(k > 0)) return;
   const stretch = layer.stretch ? Math.min(layer.maxStretch ?? Infinity, speed * layer.stretch) * scale : 0;
   ctx.glows.push(

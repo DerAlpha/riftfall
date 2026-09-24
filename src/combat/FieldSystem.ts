@@ -92,6 +92,7 @@ export class FieldSystem implements FieldApi {
     kind: 'explosion',
     impulse: 0,
     statusBuildup: 0,
+    sustained: true,
   };
   private readonly hit = createSpecialHit();
   private readonly from: {

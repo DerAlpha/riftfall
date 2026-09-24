@@ -118,8 +118,11 @@ export class IntensityModel {
   /** External intensity (null releases it). Director values expire after MUSIC.intensity.directorTimeout. */
   setOverride(value: number | null, source: MusicIntensitySource): void {
     const v = value === null || !Number.isFinite(value) ? null : clamp01(value);
-    if (source === 'dev') this.dev = v;
-    else if (source === 'director') {
+    if (source === 'dev') {
+      this.dev = v;
+      // The console takes effect at once (the game may be paused).
+      if (v !== null) this.smoothed = v;
+    } else if (source === 'director') {
       this.director = v;
       this.directorAge = 0;
     }

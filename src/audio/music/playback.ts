@@ -165,7 +165,18 @@ export class VoicePool {
         return false;
       }
       this.cut(victim, Math.max(now, r.time));
-      // The victim fades on its own gain node; the slot continues with a fresh one.
+      // The victim fades on its own gain node (released with its source); the slot continues with a fresh one.
+      const oldGain = victim.gain;
+      const oldSrc = victim.src;
+      if (oldSrc) {
+        oldSrc.onended = () => {
+          oldSrc.disconnect();
+          oldGain.disconnect();
+        };
+      } else {
+        oldGain.disconnect();
+      }
+      victim.src = null;
       victim.gain = this.ctx.createGain();
       victim.dest = null;
       slot = victim;

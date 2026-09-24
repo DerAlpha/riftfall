@@ -102,8 +102,11 @@ export class MusicConductor {
     this.offs.push(
       events.on('ui:menu', (e) => {
         if (!e.open) return;
-        if (e.menu === 'start') this.go('menu');
-        else if (e.menu === 'pause') this.sting('pause');
+        if (e.menu === 'start') {
+          // Main menu: the run is over (its enemies were cleared without enemy:died).
+          this.resetRun();
+          this.go('menu');
+        } else if (e.menu === 'pause') this.sting('pause');
       }),
       events.on('game:paused', () => {
         this._paused = true;

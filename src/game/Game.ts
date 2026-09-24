@@ -363,6 +363,8 @@ export class Game {
       scene: render.scene,
       render,
       reduceFlashing: settings.current.accessibility.reduceFlashing,
+      // Sun shadow passes skip enemies under a roof (the lab: only the atrium lantern is open).
+      sunCasterBounds: isMapLevel(level) ? (level.sunCasterBounds ?? null) : null,
     });
 
     progress(BOOT_PROGRESS.environment, 'Kalibriere Umgebung…');

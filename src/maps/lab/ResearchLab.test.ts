@@ -10,6 +10,7 @@ import type { GameEvents } from '../../core/events';
 import type { AssetsApi, MaterialLibraryApi, RenderApi, SettingsStore } from '../../core/contracts';
 import { COLLISION_GROUP, interactionGroups } from '../../defs/physics';
 import { LAB_LAYOUT as L, RIFT_PORTAL } from '../../defs/labLayout';
+import { LAB } from '../../defs/maps';
 import { isMaterialId } from '../../defs/materials';
 import { NAV } from '../../defs/nav';
 import { PhysicsWorld } from '../../physics/PhysicsWorld';
@@ -194,6 +195,40 @@ describe('buildResearchLab', () => {
         expect(hit, s.id).not.toBeNull();
       }
     }
+  });
+
+  it('sunlight reaches only the sun caster bounds (sun shadow passes skip enemies outside)', () => {
+    const b = level.sunCasterBounds!;
+    expect(b).toBeTruthy();
+    const d = LAB.sun.direction;
+    const toSun = new THREE.Vector3(-d[0], -d[1], -d[2]).normalize();
+    const eps = 1e-3;
+    let lit = 0;
+    let outside = 0;
+    for (let x = L.bounds.minX + 0.5; x < L.bounds.maxX; x += 1) {
+      for (let z = L.bounds.minZ + 0.5; z < L.bounds.maxZ; z += 1) {
+        const space = L.spaces.find((sp) => insideSpace(sp.rects, x, z));
+        if (!space) continue;
+        for (const y of [0.3, 1.5, 3, 5.6, 8, 12]) {
+          if (y >= space.ceiling) continue;
+          const inside =
+            x > b.min.x - eps &&
+            x < b.max.x + eps &&
+            y > b.min.y - eps &&
+            y < b.max.y + eps &&
+            z > b.min.z - eps &&
+            z < b.max.z + eps;
+          if (!inside) outside++;
+          const hit = physics.raycast({ x, y, z }, toSun, 60, { groups: WORLD_RAY });
+          if (hit) continue;
+          lit++;
+          expect(inside, `sunlit (${x}, ${y}, ${z}) outside the sun caster bounds`).toBe(true);
+        }
+      }
+    }
+    // The atrium floor under the lantern is sunlit; most of the map is not in the bounds at all.
+    expect(lit).toBeGreaterThan(100);
+    expect(outside).toBeGreaterThan(lit * 5);
   });
 
   it('builds a navmesh that connects every zone, spawn point and the ring to the player spawn', () => {

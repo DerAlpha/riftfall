@@ -1063,3 +1063,15 @@ export function instanceInFrustum(
   }
   return true;
 }
+
+/**
+ * CPU mirror of the sun-caster test of the enemy shadow shaders (enemyShader RIG_GLSL
+ * rfSunCaster): does the reach sphere (`radius` around `center`) touch the world box the sun
+ * reaches? Enemies that do not are skipped in the sun's shadow passes.
+ */
+export function sunCasterInBox(center: XYZ, radius: number, min: XYZ, max: XYZ): boolean {
+  const dx = Math.max(min.x - center.x, center.x - max.x, 0);
+  const dy = Math.max(min.y - center.y, center.y - max.y, 0);
+  const dz = Math.max(min.z - center.z, center.z - max.z, 0);
+  return dx * dx + dy * dy + dz * dz <= radius * radius;
+}

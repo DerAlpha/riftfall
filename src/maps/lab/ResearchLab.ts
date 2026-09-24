@@ -11,7 +11,8 @@
  *
  * Extras for the composition root (MapLevelInstance): zones, M4 door slots and wall-buy slots,
  * spawn points (with a rift tear each), hasVolumetricContent (the portals draw on the volumetric
- * layer even with volumetrics off), zoneAt().
+ * layer even with volumetrics off), sunCasterBounds (the only sunlit space: under the lantern),
+ * zoneAt().
  */
 import * as THREE from 'three';
 import type { LevelBuildContext, LevelBuilder, SpawnPointDef } from '../../core/contracts';
@@ -206,6 +207,27 @@ export function labDoorSlots(): DoorSlotDef[] {
   return out;
 }
 
+/**
+ * The space the sun reaches (world AABB): the atrium roof opening swept along the sun direction
+ * from the lantern top down to the floor. Every other space is closed by a ceiling (ResearchLab
+ * test: the sun probe sees no sky outside the lantern). Null when the sun does not shine down.
+ */
+export function labSunCasterBounds(): { min: THREE.Vector3; max: THREE.Vector3 } | null {
+  const d = LAB.sun.direction;
+  const dir = new THREE.Vector3(d[0], d[1], d[2]);
+  if (dir.lengthSq() < 1e-8 || dir.y >= 0) return null;
+  dir.normalize();
+  const S = L.atrium.skylight;
+  const top = findSpace(L.spaces, 'atrium')!.ceiling + L.atrium.roofThickness + S.lanternHeight;
+  // Rays through the opening land this far off it on the floor (from the lantern top: generous).
+  const sx = (dir.x * top) / -dir.y;
+  const sz = (dir.z * top) / -dir.y;
+  return {
+    min: new THREE.Vector3(Math.min(S.minX, S.minX + sx), 0, Math.min(S.minZ, S.minZ + sz)),
+    max: new THREE.Vector3(Math.max(S.maxX, S.maxX + sx), top, Math.max(S.maxZ, S.maxZ + sz)),
+  };
+}
+
 export function labWallBuySlots(): WallBuySlotDef[] {
   const W = L.reception.wallBuy;
   return [
@@ -269,6 +291,7 @@ class ResearchLabInstance implements MapLevelInstance {
   readonly zones: readonly LevelZoneDef[] = L.zones;
   readonly doorSlots: readonly DoorSlotDef[];
   readonly wallBuySlots: readonly WallBuySlotDef[];
+  readonly sunCasterBounds = labSunCasterBounds();
   private readonly unsubscribe: (() => void)[] = [];
   private volumetricsLevel: QualityLevel | null = null;
   private reduceFlashing: boolean;

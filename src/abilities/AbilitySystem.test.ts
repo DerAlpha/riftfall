@@ -206,7 +206,7 @@ describe('AbilitySystem', () => {
       pointsRules: step('pointsRules'),
       health: step('health'),
       player: { teleport: () => {}, pitch: 0 },
-      level: { id: 'x', spawn: { position: { x: 0, y: 0, z: 0 }, yaw: 0 } },
+      level: { id: 'x', spawn: { position: new Vector3(), yaw: 0 } },
       map: { waves: false },
       nav: { setRandomSeed: () => {} },
       zones: step('zones'),

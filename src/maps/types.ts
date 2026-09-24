@@ -5,6 +5,7 @@
  */
 import type * as THREE from 'three';
 import type { LevelInstance } from '../core/contracts';
+import type { Vec3Like } from '../core/events';
 import type { Facing } from '../defs/level';
 
 /** A zone of a wave map (spawn points and door slots reference its id). */
@@ -59,6 +60,12 @@ export interface MapLevelInstance extends LevelInstance {
    * RenderSystem.setVolumetricContentProbe, or the portals vanish on the 'low' preset.
    */
   readonly hasVolumetricContent: boolean;
+  /**
+   * World box of the space the sun can reach (below the skylights), or null: everywhere. Hand it to
+   * the enemy renderer (EnemyRenderer sunCasterBounds): the sun's shadow cascades skip enemies
+   * outside it – under a roof they cast no shadow the roof does not already cast.
+   */
+  readonly sunCasterBounds?: { readonly min: Vec3Like; readonly max: Vec3Like } | null;
   /** Zone containing a world point (feet), or null (walls / outside). */
   zoneAt(x: number, z: number): string | null;
 }

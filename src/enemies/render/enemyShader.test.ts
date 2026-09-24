@@ -13,6 +13,7 @@ import {
   patchEnemyVertex,
   rigDefines,
   setFlashScale,
+  setSunCasterBounds,
 } from './enemyShader';
 import { CODE_STRIDE, DRIVER_CODE, MIN_SCALE, RARE_DRIVER_MASK, WAVE_CODE, compileRig } from './poseMath';
 
@@ -182,6 +183,22 @@ describe('shader patches (three r186 chunks)', () => {
     expect(RIG_GLSL).toMatch(/#ifdef USE_INSTANCING[\s\S]*instanceMatrix[\s\S]*#else\s*return true;/);
     expect(RIG_GLSL.match(/rfInsidePlane\( r3 [+-] r[012], c, r \)/g)).toHaveLength(6);
     expect(RIG_GLSL).toContain('float r = rfCullRadius * length( instanceMatrix[ 0 ].xyz );');
+  });
+
+  it('sun shadow passes (orthographic) also skip enemies outside the sunlit box; color passes never do', () => {
+    const color = patchEnemyVertex(ShaderLib.physical.vertexShader, false)!;
+    const depth = patchEnemyVertex(ShaderLib.depth.vertexShader, true)!;
+    expect(depth).toContain('if ( rfInstanceVisible() && rfSunCaster() ) rfDeform(');
+    expect(color).not.toContain('rfSunCaster() )');
+    expect(RIG_GLSL).toContain('projectionMatrix[ 3 ][ 3 ] != 1.0');
+    expect(RIG_GLSL).toContain('rfSunMin.w <= 0.0');
+    const shared = createSharedUniforms(null);
+    expect(shared.rfSunMin.value.w).toBe(0);
+    setSunCasterBounds(shared, { min: { x: -11, y: 0, z: -7 }, max: { x: 6, y: 17.7, z: 10.3 } });
+    expect(shared.rfSunMin.value.toArray()).toEqual([-11, 0, -7, 1]);
+    expect(shared.rfSunMax.value.toArray()).toEqual([6, 17.7, 10.3]);
+    setSunCasterBounds(shared, null);
+    expect(shared.rfSunMin.value.w).toBe(0);
   });
 
   it('refuses shaders without the anchors (renders undeformed instead of crashing)', () => {

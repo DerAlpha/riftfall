@@ -32,6 +32,7 @@ import {
   evaluateRig,
   instanceInFrustum,
   motionValue,
+  sunCasterInBox,
   slotModelToWorld,
   yawToward,
   type CompiledRig,
@@ -628,5 +629,21 @@ describe('per-instance frustum culling (CPU mirror of the vertex shader test)', 
     expect(
       instanceInFrustum(cam.projectionMatrix.elements, cam.matrixWorldInverse.elements, far.elements, 1),
     ).toBe(false);
+  });
+});
+
+describe('sun caster box (CPU mirror of the shadow shader test)', () => {
+  const min = { x: -11, y: 0, z: -7 };
+  const max = { x: 6, y: 17, z: 10 };
+  it('keeps reach spheres touching the box, drops the ones under the roof elsewhere', () => {
+    expect(sunCasterInBox({ x: 0, y: 0, z: 0 }, 1, min, max)).toBe(true);
+    // Feet just outside, the body reaches in.
+    expect(sunCasterInBox({ x: 7, y: 0, z: 0 }, 1.2, min, max)).toBe(true);
+    expect(sunCasterInBox({ x: 7.3, y: 0, z: 0 }, 1.2, min, max)).toBe(false);
+    // Corner: the distance to the corner counts, not per axis.
+    expect(sunCasterInBox({ x: 6.9, y: 0, z: 10.9 }, 1.2, min, max)).toBe(false);
+    expect(sunCasterInBox({ x: 6.5, y: 0, z: 10.5 }, 1.2, min, max)).toBe(true);
+    // The reception (z 19..30) never casts sun shadows.
+    expect(sunCasterInBox({ x: 0, y: 0, z: 24 }, 2, min, max)).toBe(false);
   });
 });

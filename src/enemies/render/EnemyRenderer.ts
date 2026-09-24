@@ -36,6 +36,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import type { Hitbox, RenderApi } from '../../core/contracts';
+import type { Vec3Like } from '../../core/events';
 import { createLogger } from '../../core/log';
 import { ENEMY_RENDER, ENEMY_VISUALS, getEnemyVisualDef, type EnemyVisualDef } from '../../defs/enemyVisuals';
 import { setUpdateRange, type UpdateRange } from '../../vfx/gpuUpload';
@@ -44,6 +45,7 @@ import {
   createEnemyMaterials,
   createSharedUniforms,
   setFlashScale,
+  setSunCasterBounds,
   type EnemyMaterialSet,
   type EnemySharedUniforms,
 } from './enemyShader';
@@ -82,6 +84,8 @@ export interface EnemyRendererDeps {
   reduceFlashing?: boolean;
   /** Build GPU-side resources (procedural surface texture). Tests may pass false. */
   surfaceTexture?: boolean;
+  /** World box the sun reaches (MapLevelInstance.sunCasterBounds); default: everywhere. */
+  sunCasterBounds?: { readonly min: Vec3Like; readonly max: Vec3Like } | null;
 }
 
 interface TypeState {
@@ -192,6 +196,7 @@ export class EnemyRenderer implements EnemyVisualsApi {
     this.surface = deps.surfaceTexture === false ? null : createEnemySurfaceTexture();
     this.shared = createSharedUniforms(this.surface);
     if (deps.reduceFlashing) this.setReducedFlashing(true);
+    this.setSunCasterBounds(deps.sunCasterBounds ?? null);
     const ids = deps.types ?? Object.keys(ENEMY_VISUALS);
     for (const id of ids) {
       const def = getEnemyVisualDef(id);
@@ -402,6 +407,15 @@ export class EnemyRenderer implements EnemyVisualsApi {
   /** Accessibility "reduce flashing": dims the white-hot hit flash. */
   setReducedFlashing(on: boolean): void {
     setFlashScale(this.shared, on ? ENEMY_RENDER.hitFlash.reducedFlashingScale : 1);
+  }
+
+  /**
+   * The space the sun can reach on this level (world AABB, e.g. under the atrium skylight), or null
+   * for everywhere: the sun's shadow cascades skip the rig of every enemy outside it (an enemy under
+   * a roof casts no sun shadow the roof does not already cast).
+   */
+  setSunCasterBounds(bounds: { readonly min: Vec3Like; readonly max: Vec3Like } | null): void {
+    setSunCasterBounds(this.shared, bounds);
   }
 
   /** Enemies cast sun shadows (default on). */

@@ -8,7 +8,9 @@
  * culling: an instance whose reach sphere lies outside the frustum of the camera drawing it (main
  * camera, every shadow cascade / spot shadow camera) skips the rig and collapses to a point – the
  * InstancedMesh itself is only culled as a whole (one bounding sphere around all instances), so
- * without it every shadow map would run the rig of every enemy on the map.
+ * without it every shadow map would run the rig of every enemy on the map. Sun (directional light,
+ * orthographic shadow camera) passes also skip instances outside the space the sun can reach
+ * (MapLevelInstance.sunCasterBounds): under a roof they cast nothing the roof does not already.
  *
  * Fragment: per-part material zones (uniform palette), triplanar procedural surface in rest-pose
  * space (blotches, plate seams, pores → albedo/roughness/clearcoat + bump), emissive veins with
@@ -24,12 +26,14 @@ import {
   MeshDistanceMaterial,
   MeshPhysicalMaterial,
   Vector2,
+  Vector3,
   Vector4,
   type DataTexture,
   type Material,
   type Texture,
   type WebGLProgramParametersWithUniforms,
 } from 'three';
+import type { Vec3Like } from '../../core/events';
 import { createLogger } from '../../core/log';
 import { ENEMY_RENDER, GAIT_WAVES, RIG_DRIVERS, type EnemyVisualDef } from '../../defs/enemyVisuals';
 import {
@@ -49,7 +53,7 @@ import {
 const log = createLogger('EnemyShader');
 
 /** Bump when the injected GLSL changes (program cache keys). */
-export const ENEMY_SHADER_KEY = 'rf-enemy-3';
+export const ENEMY_SHADER_KEY = 'rf-enemy-4';
 
 /** vec4 entries per material zone in `rfZones`. */
 export const ZONE_VEC4 = 6;
@@ -97,6 +101,8 @@ uniform ivec4 rfCounts; // attacks, bones, parts, motions
 uniform vec2 rfLook; // look yaw / pitch limits (rad)
 uniform float rfTime;
 uniform float rfCullRadius; // reach around the feet (m at scale 1, EnemyRenderer cullReach); <= 0: off
+uniform vec4 rfSunMin; // world box the sun reaches: min, w > 0 = on (sun shadow passes only)
+uniform vec3 rfSunMax;
 
 float rfLoc;
 float rfPhase;
@@ -137,6 +143,20 @@ bool rfInstanceVisible() {
 	return rfInsidePlane( r3 + r0, c, r ) && rfInsidePlane( r3 - r0, c, r ) &&
 		rfInsidePlane( r3 + r1, c, r ) && rfInsidePlane( r3 - r1, c, r ) &&
 		rfInsidePlane( r3 + r2, c, r ) && rfInsidePlane( r3 - r2, c, r );
+#else
+	return true;
+#endif
+}
+
+// Sun shadow passes (orthographic projection: the directional light) only: does the reach sphere
+// touch the world box the sun can reach? Mirrors poseMath.sunCasterInBox.
+bool rfSunCaster() {
+#ifdef USE_INSTANCING
+	if ( rfCullRadius <= 0.0 || rfSunMin.w <= 0.0 || projectionMatrix[ 3 ][ 3 ] != 1.0 ) return true;
+	vec3 c = ( modelMatrix * instanceMatrix * vec4( 0.0, 0.0, 0.0, 1.0 ) ).xyz;
+	float r = rfCullRadius * length( instanceMatrix[ 0 ].xyz );
+	vec3 d = max( max( rfSunMin.xyz - c, c - rfSunMax ), vec3( 0.0 ) );
+	return dot( d, d ) <= r * r;
 #else
 	return true;
 #endif
@@ -340,7 +360,7 @@ const VERTEX_DEFORM_DEPTH = /* glsl */ `
 rfSetup();
 vec3 rfNrmUnused;
 transformed = vec3( 0.0 );
-if ( rfInstanceVisible() ) rfDeform( position, vec3( 0.0, 1.0, 0.0 ), transformed, rfNrmUnused );
+if ( rfInstanceVisible() && rfSunCaster() ) rfDeform( position, vec3( 0.0, 1.0, 0.0 ), transformed, rfNrmUnused );
 vRfDissolvePos = ${DISSOLVE_POS};
 vRfLocalY = transformed.y;
 vRfFx = vec4( rfPose2.x, rfRimAttr.w, rfPose1.z, rfPose1.w );
@@ -544,6 +564,9 @@ export interface EnemySharedUniforms {
   readonly rfFlashShape: { value: Vector2 };
   readonly rfRimParams: { value: Vector4 };
   readonly rfPulse: { value: Vector4 };
+  /** World box the sun reaches (min, w = 1: on; max): sun shadow passes skip enemies outside. */
+  readonly rfSunMin: { value: Vector4 };
+  readonly rfSunMax: { value: Vector3 };
 }
 
 export function createSharedUniforms(noise: Texture | null): EnemySharedUniforms {
@@ -564,7 +587,22 @@ export function createSharedUniforms(noise: Texture | null): EnemySharedUniforms
     rfPulse: {
       value: new Vector4(R.veinPulse.speed, R.veinPulse.travel, R.veinPulse.sharpness, R.glowPulse.speed),
     },
+    rfSunMin: { value: new Vector4(0, 0, 0, 0) },
+    rfSunMax: { value: new Vector3() },
   };
+}
+
+/** Space the sun reaches (world AABB), or null: every enemy casts sun shadows. Uniform writes only. */
+export function setSunCasterBounds(
+  shared: EnemySharedUniforms,
+  bounds: { readonly min: Vec3Like; readonly max: Vec3Like } | null,
+): void {
+  if (!bounds) {
+    shared.rfSunMin.value.set(0, 0, 0, 0);
+    return;
+  }
+  shared.rfSunMin.value.set(bounds.min.x, bounds.min.y, bounds.min.z, 1);
+  shared.rfSunMax.value.set(bounds.max.x, bounds.max.y, bounds.max.z);
 }
 
 /** Hit flash strength (accessibility: reduce flashing). Uniform write only. */

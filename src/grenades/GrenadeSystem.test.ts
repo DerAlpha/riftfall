@@ -199,6 +199,18 @@ describe('GrenadeSystem throwing', () => {
     expect(t.spawned[1]!.speedScale).toBeCloseTo(GRENADE_RULES.lobSpeedScale, 6);
   });
 
+  it('a pause while primed puts the grenade back', () => {
+    const t = setup();
+    press(t);
+    t.frame();
+    expect(t.g.isPrimed).toBe(true);
+    t.events.emit('game:paused', { reason: 'menu' });
+    t.input.down.delete('grenade');
+    t.frame();
+    expect(t.spawned).toHaveLength(0);
+    expect(t.g.count('frag')).toBe(2);
+  });
+
   it('a primed grenade is thrown by itself after maxHold', () => {
     const t = setup();
     press(t);

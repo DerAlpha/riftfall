@@ -228,9 +228,10 @@ export class ArsenalVfx implements ArsenalVfxApi {
     ctx.hazeCount = 0;
 
     this.flushShots();
+    // Fields first: a singularity's lens outranks a void orb's for the few lens slots.
+    this.fields.update(step);
     this.projectiles.update(step);
     this.beams.update(step);
-    this.fields.update(step);
     this.updateCharge(step);
 
     ctx.glows.end();

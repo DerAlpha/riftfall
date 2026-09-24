@@ -164,6 +164,11 @@ export class GrenadeSystem implements GrenadeApi {
       this.events.on('powerup:collected', (e) => {
         if (getPowerUpDef(e.type)?.effect.kind === 'maxAmmo') this.refill();
       }),
+      // A pause while primed puts the pin back (the release on resume must not throw it).
+      this.events.on('game:paused', () => {
+        this.primed = false;
+        this.releasing = false;
+      }),
     );
     this.applyStart();
   }

@@ -132,6 +132,26 @@ describe('ProjectileSystem', () => {
     expect(s.spawned).not.toContain(ACID.impactEffect.effect);
   });
 
+  it('an ally standing under the lob path is no ceiling (the arc stays a lob)', () => {
+    const flight = (withAlly: boolean): { ticks: number; maxY: number } => {
+      const s = setup();
+      // Head top at 2.06 m, above the mouth: an upward ceiling probe from the path would hit it.
+      if (withAlly) s.combat.register(new FakeTarget({ x: 0, y: 0.3, z: -7 }));
+      const aim = new Vector3(0, s.player.eyePosition.y - 0.45, 0);
+      s.proj.lob('acid.glob', new Vector3(0, 1.45, -14), aim, s.player.velocity, 1, { source: 'enemy' });
+      let ticks = 0;
+      let maxY = 0;
+      for (; s.proj.stats.active > 0 && ticks < 200; ticks++) {
+        s.proj.fixedUpdate(DT);
+        s.proj.forEachProjectile((_x, y) => (maxY = Math.max(maxY, y)));
+      }
+      return { ticks, maxY };
+    };
+    const free = flight(false);
+    expect(free.maxY).toBeGreaterThan(2.5);
+    expect(flight(true)).toEqual(free);
+  });
+
   it('splash falls off with distance and a floor impact leaves a burning puddle', () => {
     const s = setup();
     // Straight down onto the floor 1.2 m from the player.
@@ -184,6 +204,30 @@ describe('ProjectileSystem', () => {
     expect(s.proj.stats.puddles).toBe(1);
   });
 
+  it('splash and puddles never reach through the wall the glob hit', () => {
+    const wall = { center: { x: 0, y: 2, z: -1 }, size: { x: 6, y: 4, z: 0.2 } };
+    const shoot = (playerZ: number) => {
+      const s = setup([wall]);
+      // 1 m beside the glob's line: it flies past the player.
+      s.player.setPosition(1, 0, playerZ);
+      // Splats on the near face (z = −1.1), within splash range of both sides.
+      s.proj.fire('acid.glob', { x: 0, y: 1.2, z: -3 }, { x: 0, y: 0, z: 14 });
+      for (let i = 0; i < 60 && s.proj.stats.active > 0; i++) s.proj.fixedUpdate(DT);
+      expect(s.impacts).toHaveLength(1);
+      expect(s.impacts[0]!.normal.z).toBeLessThan(-0.9);
+      expect(s.proj.stats.puddles).toBe(1); // ran down to the floor in front of the wall
+      const splash = s.player.hits.length;
+      for (let i = 0; i < Math.round(1 / DT); i++) s.proj.fixedUpdate(DT);
+      return { splash, burns: s.player.hits.length - splash };
+    };
+    // Behind the wall, hugging it: nothing.
+    expect(shoot(-0.5)).toEqual({ splash: 0, burns: 0 });
+    // Control: as close on the near side, splash and puddle both reach.
+    const near = shoot(-1.6);
+    expect(near.splash).toBe(1);
+    expect(near.burns).toBeGreaterThan(0);
+  });
+
   it('enemy globs pass through enemies (no friendly fire) and never hit their owner', () => {
     const s = setup();
     const ally = new FakeTarget({ x: 0, y: 0, z: -6 });
@@ -198,6 +242,20 @@ describe('ProjectileSystem', () => {
     for (let i = 0; i < 90 && s.proj.stats.active > 0; i++) s.proj.fixedUpdate(DT);
     expect(ally.received).toHaveLength(0);
     expect(s.player.hits.length).toBeGreaterThan(0);
+  });
+
+  it('passing an enemy that clips into a wall does not tunnel the glob through the wall', () => {
+    const s = setup([{ center: { x: 0, y: 2, z: -1 }, size: { x: 6, y: 4, z: 0.2 } }]);
+    // Body capsule (radius 0.24) centred inside the wall, poking 1 cm out of its near face.
+    const ally = new FakeTarget({ x: 0, y: 0, z: -1.1 + 0.24 - 0.01 });
+    s.combat.register(ally);
+    s.player.setPosition(0, 0, 3);
+    s.proj.fire('acid.glob', { x: 0, y: 1.15, z: -3 }, { x: 0, y: 0.5, z: 14 }, { source: 'enemy' });
+    for (let i = 0; i < 90 && s.proj.stats.active > 0; i++) s.proj.fixedUpdate(DT);
+    expect(s.impacts).toHaveLength(1);
+    expect(s.impacts[0]!.point.z).toBeCloseTo(-1.1, 3);
+    expect(s.player.hits).toHaveLength(0);
+    expect(ally.received).toHaveLength(0);
   });
 
   it('pools: capacity is a hard limit, freed slots are reused, unknown ids are refused', () => {

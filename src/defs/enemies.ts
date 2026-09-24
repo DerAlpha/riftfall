@@ -278,7 +278,10 @@ export interface EnemyTypeDef {
     readonly hearingRadius: number;
     /** Forget the last known position after this long without news (s). */
     readonly memory: number;
-    /** Socket the line of sight starts from (spitter: its mouth – what it fires from). */
+    /**
+     * Socket whose height the line of sight starts at, on the body axis (spitter: its mouth – what
+     * it fires from; the socket itself may stick out through a thin wall).
+     */
     readonly eyeSocket: string;
     /** Fallback eye height when the socket is unknown (m). */
     readonly eyeHeight: number;
@@ -359,7 +362,7 @@ const SWARMER: EnemyTypeDef = {
       damage: 7,
       priority: 1,
       usesSlot: true,
-      requiresLos: false,
+      requiresLos: true,
       trackTurnRateDeg: 360,
       shake: 0.12,
       sound: 'enemy.swarmer.bite',
@@ -474,7 +477,7 @@ const SPITTER: EnemyTypeDef = {
       damage: 12,
       priority: 2,
       usesSlot: false,
-      requiresLos: false,
+      requiresLos: true,
       trackTurnRateDeg: 300,
       shake: 0.2,
       sound: 'enemy.spitter.swipe',
@@ -577,7 +580,7 @@ const TANK: EnemyTypeDef = {
       damage: 32,
       priority: 3,
       usesSlot: true,
-      requiresLos: false,
+      requiresLos: true,
       trackTurnRateDeg: 90,
       shake: 0.7,
       sound: 'enemy.tank.slam',
@@ -606,7 +609,7 @@ const TANK: EnemyTypeDef = {
       damage: 22,
       priority: 2,
       usesSlot: true,
-      requiresLos: false,
+      requiresLos: true,
       trackTurnRateDeg: 150,
       shake: 0.45,
       sound: 'enemy.tank.swipe',
@@ -777,6 +780,11 @@ export const ENEMY_AI = {
     EnemyAttackKind,
     number
   >,
+  /**
+   * Ready attackers queue for the next spacing slot (longest waiter first); one that has not asked
+   * for this long (s) leaves the queue (lost sight, staggered, dead).
+   */
+  spacingQueueTimeout: 0.1,
   surround: {
     /** Angular slots around the target. */
     slotCount: 10,
@@ -851,6 +859,11 @@ export const ENEMY_AI = {
     faceTargetDistance: 5,
     /** Keep this gap to the player's capsule (m) – visible positions are pushed out. */
     playerGap: 0.05,
+    /**
+     * Ring / stand-off goals are checked to lie on the target's floor (ai/floorGoal: off a deck edge
+     * they snap to the hall below); the check is repeated once the goal moved this far (m).
+     */
+    goalRecheckDistance: 1,
   },
   /** Pose: hit flash decay (1/s), flinch per HP fraction and its decay, stagger ramp-in share. */
   pose: { hitFlashDecay: 9, flinchPerHealth: 3, flinchMax: 0.35, flinchDecay: 6, staggerRampIn: 0.2 },
@@ -1033,10 +1046,15 @@ export const PROJECTILE_POOL = {
   leadIterations: 3,
   /** Ceiling probes along a lob (fractions of origin → aim; the arc peaks around the middle). */
   ceilingSamples: [0.25, 0.5, 0.75],
-  /** Continue a ray past a damageable the projectile ignores at most this often. */
+  /** Re-cast a ray without a damageable the projectile ignores at most this often. */
   maxPassThrough: 4,
-  /** Nudge past a surface when continuing a ray (m). */
-  passThroughStep: 0.02,
+  /**
+   * Splash reaches what the impact sees from this far off the hit surface (m, along its normal) –
+   * never through the wall it hit.
+   */
+  splashLosOffset: 0.15,
+  /** Puddles only burn feet their surface can see at this height (m): not through a wall beside them. */
+  puddleLosLift: 0.3,
   /** Puddles burn feet down to this far below their surface (m, slopes / steps) ... */
   puddleDepthTolerance: 0.2,
   /** ... and this fraction of the player radius beyond their rim. */

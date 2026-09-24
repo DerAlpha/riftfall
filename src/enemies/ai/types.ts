@@ -33,10 +33,11 @@ export interface AiHost {
   coordinator(e: Enemy): AttackSlotCoordinator;
   surround(slot: number): SurroundSlots;
   /**
-   * Per-kind attack spacing at the target of `slot` (ENEMY_AI.attackSpacing): may an attack of
-   * `kind` start now? (No synchronized acid volleys, no simultaneous charges.)
+   * Per-kind attack spacing at the enemy's target (ENEMY_AI.attackSpacing): may its attack of
+   * `kind` start now? (No synchronized acid volleys, no simultaneous charges.) Ask only when the
+   * attack is otherwise ready: askers queue up and the one waiting longest goes next.
    */
-  spacingAllows(slot: number, kind: EnemyAttackKind): boolean;
+  spacingAllows(e: Enemy, kind: EnemyAttackKind): boolean;
 
   /** Spend nav path queries / static spot rays of this tick's budget (false: try next tick). */
   takePaths(n: number): boolean;

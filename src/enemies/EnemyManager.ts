@@ -15,8 +15,9 @@
  * Frame: update(dt, alpha) → visuals.update (interpolation) + projectile blobs.
  *
  * Budgets keep 60 enemies inside ~2.5 ms/tick: LOS rays, nav path queries (surround slots), spot
- * rays (spitter search) are rationed per tick and handed out first come first served (the order
- * rotates with the LOS cursor), everything else is O(enemies) with no allocations.
+ * rays (spitter search) are rationed per tick and handed out first come first served (the think
+ * order rotates every tick; per-kind attack-spacing slots go to the longest waiter), everything
+ * else is O(enemies) with no allocations.
  */
 import { Vector3, type Object3D } from 'three';
 import type RAPIER from '@dimforge/rapier3d-compat';
@@ -56,6 +57,7 @@ import { AttackSlotCoordinator } from './ai/AttackSlotCoordinator';
 import {
   aoeFactor,
   attackAnimProgress,
+  blastReachesCapsule,
   distXZ,
   distanceToCapsule,
   inFov,
@@ -75,6 +77,8 @@ import type { EnemyVisualsApi } from './types';
 const log = createLogger('enemies');
 
 const TAU = Math.PI * 2;
+/** Fractional golden ratio: the think-order rotation per tick. */
+const GOLDEN_STEP = 0.6180339887;
 const UP: Vec3Like = { x: 0, y: 1, z: 0 };
 /** The player's stand-in crowd agent: it never steers itself. */
 const PLAYER_AGENT_PARAMS: NavAgentParams = {
@@ -192,6 +196,10 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   private readonly facing: Float64Array;
   /** Last attack start per aggro target × attack kind (ENEMY_AI.attackSpacing). */
   private readonly lastStart: Float64Array;
+  /** Per aggro target × attack kind: the enemy next in line for a spaced attack (0 = none). */
+  private readonly spacingHead: Int32Array;
+  private readonly spacingHeadSince: Float64Array;
+  private readonly spacingHeadSeen: Float64Array;
   private readonly shotDir = new Vector3();
   private shotTime = Number.NEGATIVE_INFINITY;
   private spawnPoints: readonly SpawnPointDef[] = [];
@@ -201,6 +209,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
   private nextId: number = ENEMY_AI.firstId;
   private serial = 0;
   private losCursor = 0;
+  private thinkPhase = 0;
   private nextAlertTime = 0;
   private disposed = false;
   /** Crowd agent standing in for the player (enemies steer around it), -1 = none yet. */
@@ -299,6 +308,9 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     this.lastStart = new Float64Array(this.threat.maxTargets * ATTACK_KINDS.length).fill(
       Number.NEGATIVE_INFINITY,
     );
+    this.spacingHead = new Int32Array(this.lastStart.length);
+    this.spacingHeadSince = new Float64Array(this.lastStart.length);
+    this.spacingHeadSeen = new Float64Array(this.lastStart.length);
     this.primarySlot = this.threat.register(deps.target, ENEMY_AI.aggro.playerBias);
 
     const byType: Record<string, number> = {};
@@ -459,6 +471,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     for (const c of this.coordinators) c.reset();
     for (const s of this.surrounds) s.reset();
     this.lastStart.fill(Number.NEGATIVE_INFINITY);
+    this.spacingHead.fill(0);
     this.projectiles?.clear();
   }
 
@@ -497,7 +510,13 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     this.processDeaths();
     this.updateFacing();
     if (this.aiEnabled) this.perceive(dt);
-    for (let i = 0; i < this.active.length; i++) this.think(this.active[i]!, dt);
+    // Per-tick budgets go to whoever asks first: the start of the think order rotates by the golden
+    // ratio (equidistributed and deterministic – a +1 step beats with periodic demands), so the
+    // head of the list does not always win.
+    const n = this.active.length;
+    this.thinkPhase = (this.thinkPhase + GOLDEN_STEP) % 1;
+    const start = Math.floor(this.thinkPhase * n);
+    for (let k = 0; k < n; k++) this.think(this.active[(start + k) % n]!, dt);
     this.pushMoves();
     this.syncPlayerAgent();
     if (this.stepNav) this.nav.update(dt);
@@ -579,11 +598,31 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     return this.surrounds[slot] ?? this.surrounds[0]!;
   }
 
-  spacingAllows(slot: number, kind: EnemyAttackKind): boolean {
+  spacingAllows(e: Enemy, kind: EnemyAttackKind): boolean {
     const spacing = ENEMY_AI.attackSpacing[kind];
     if (!(spacing > 0)) return true;
-    const last = this.lastStart[slot * ATTACK_KINDS.length + ATTACK_KINDS.indexOf(kind)];
-    return last === undefined || this._time - last >= spacing;
+    const ki = ATTACK_KINDS.indexOf(kind);
+    const k = e.targetSlot * ATTACK_KINDS.length + ki;
+    if (k < 0 || k >= this.lastStart.length) return true;
+    const now = this._time;
+    const stale = ENEMY_AI.spacingQueueTimeout;
+    // Queue up (a wait lasts while the enemy keeps asking); the longest waiter heads the line. A
+    // fixed first-come order let the first few spitters in the list take every volley slot.
+    if (e.spacingKind !== ki || now - e.spacingAskedAt > stale) e.spacingSince = now;
+    e.spacingKind = ki;
+    e.spacingAskedAt = now;
+    const head = this.spacingHead[k]!;
+    if (
+      head === 0 ||
+      head === e.id ||
+      now - this.spacingHeadSeen[k]! > stale ||
+      e.spacingSince < this.spacingHeadSince[k]!
+    ) {
+      this.spacingHead[k] = e.id;
+      this.spacingHeadSince[k] = e.spacingSince;
+      this.spacingHeadSeen[k] = now;
+    }
+    return now - this.lastStart[k]! >= spacing && this.spacingHead[k] === e.id;
   }
 
   takePaths(n: number): boolean {
@@ -630,7 +669,12 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.attackReady[index] = this._time + a.cooldown;
     if (a.usesSlot) this.coordinator(e).noteAttack(e.id, this._time);
     const k = e.targetSlot * ATTACK_KINDS.length + ATTACK_KINDS.indexOf(a.kind);
-    if (k >= 0 && k < this.lastStart.length) this.lastStart[k] = this._time;
+    if (k >= 0 && k < this.lastStart.length) {
+      this.lastStart[k] = this._time;
+      // Out of the spacing queue: the next longest waiter heads it.
+      if (this.spacingHead[k] === e.id) this.spacingHead[k] = 0;
+    }
+    e.spacingKind = -1;
     e.hasMove = false;
     e.pose.attackId = rt.animIndex[index]!;
     e.pose.attack = 0;
@@ -795,20 +839,12 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       e.canSee = false;
       return false;
     }
-    if (this.socket(e, per.eyeSocket, _eye)) {
-      // The socket as it will be when the enemy faces the target (it turns to shoot): a mouth that
-      // pokes past a wall edge only because of the current facing must not count as sight.
-      const turn = wrapPi(yawTo(target.position.x - e.position.x, target.position.z - e.position.z) - e.yaw);
-      const ox = _eye.x - e.position.x;
-      const oz = _eye.z - e.position.z;
-      const c = Math.cos(turn);
-      const s = Math.sin(turn);
-      _eye.x = e.position.x + ox * c + oz * s;
-      _eye.z = e.position.z - ox * s + oz * c;
-    } else {
-      _eye.copy(e.position);
-      _eye.y += per.eyeHeight * e.pose.scale;
-    }
+    // From the body axis at the eye socket's height (the spitter's mouth: what it spits from) –
+    // not from the socket itself: it sticks out past the body (the mouth 0.76 m ahead) and pokes
+    // through a thin wall the agent stands at (the navmesh keeps only the axis a nav radius away).
+    // Facing the target to shoot, the socket lies on this ray anyway.
+    const eyeY = this.socket(e, per.eyeSocket, _eye) ? _eye.y : e.position.y + per.eyeHeight * e.pose.scale;
+    _eye.set(e.position.x, eyeY, e.position.z);
     e.canSee = this.combat.lineOfSight(_eye, target.eyePosition);
     this.stats.losRays++;
     if (e.canSee) {
@@ -1308,6 +1344,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.phase = 0;
     e.phaseTime = 0;
     e.attackHit = false;
+    e.spacingKind = -1;
+    e.spacingAskedAt = Number.NEGATIVE_INFINITY;
     // Stagger the first attacks of a wave (no synchronized volley after emerging).
     for (let i = 0; i < def.attacks.length; i++) {
       e.attackReady[i] = now + this.rng.next() * def.attacks[i]!.cooldown * ENEMY_AI.firstAttackJitter;
@@ -1332,6 +1370,8 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.nextActionTime = now;
     e.laneClear = false;
     e.laneCheckAt = 0;
+    e.goalChecked = false;
+    e.goalOk = true;
 
     resetStuck(e.stuck, position.x, position.z, now, ENEMY_AI.stuck);
     e.stuckTeleports = 0;
@@ -1408,6 +1448,10 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
       const d = Math.max(0, distanceToCapsule(center, t.position, t.eyePosition, ENEMY_AI.player.radius));
       const f = aoeFactor(d, b.innerRadius, radius, b.minFactor);
       if (f <= 0) continue;
+      // Not through walls: the acid has to reach the body.
+      if (!blastReachesCapsule(this.combat, center, t.position, t.eyePosition, ENEMY_AI.player.radius)) {
+        continue;
+      }
       const dx = center.x - t.eyePosition.x;
       const dy = center.y - t.eyePosition.y;
       const dz = center.z - t.eyePosition.z;
@@ -1433,7 +1477,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
         if (t === e || !t.alive || t.team !== 'enemy') continue;
         const d = Math.max(0, t.boundsCenter.distanceTo(center) - t.boundsRadius);
         const f = aoeFactor(d, b.innerRadius, radius, b.minFactor);
-        if (f <= 0) continue;
+        if (f <= 0 || !this.combat.lineOfSight(center, t.boundsCenter)) continue;
         _w.subVectors(t.boundsCenter, center);
         const len = _w.length();
         if (len > 1e-6) _w.multiplyScalar(1 / len);

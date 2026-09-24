@@ -342,6 +342,23 @@ describe('Spitter positioning', () => {
     }
   });
 
+  it('every spitter gets its turn: the spaced volley slots go to the longest waiter', () => {
+    const h = createEnemyHarness();
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      h.manager.spawn('spitter', { x: Math.cos(a) * 13, y: 0, z: Math.sin(a) * 13 });
+    }
+    const spits = new Map<number, number>();
+    h.events.on('enemy:attack', (e) => {
+      if (e.attack === 'spit') spits.set(e.id, (spits.get(e.id) ?? 0) + 1);
+    });
+    h.tick(seconds(30));
+    // A fixed think order let the first four take every slot (the other six never spat).
+    expect(spits.size).toBe(10);
+    const counts = [...spits.values()];
+    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(2);
+  });
+
   it('never fires without line of sight', () => {
     // The spitter is boxed in: every candidate spot is behind the ring wall.
     const boxes = [
@@ -714,5 +731,55 @@ describe('Stuck handling', () => {
     expect(h.nav.frozen.has(far.agent)).toBe(false); // the teleport freed it
     expect(h.nav.frozen.has(near.agent)).toBe(true); // never touched
     expect(h.manager.stats.relocations).toBe(0);
+  });
+});
+
+describe('No damage through walls', () => {
+  // A 0.2 m wall between the player (origin) and the enemy; the enemy's agent is wedged in place
+  // (FakeNav agents would walk through the wall).
+  const thin = { center: { x: 0, y: 2, z: -1 }, size: { x: 8, y: 4, z: 0.2 } };
+
+  for (const [type, z] of [
+    ['swarmer', -1.6],
+    ['spitter', -1.6],
+    ['tank', -2.2],
+  ] as const) {
+    it(`a ${type} within reach behind a thin wall neither swings nor hits`, () => {
+      const h = createEnemyHarness({ boxes: [thin] });
+      const e = enemyById(h, h.manager.spawn(type, { x: 0, y: 0, z })!);
+      const contact: string[] = [];
+      h.events.on('enemy:attack', (a) => {
+        const kind = ENEMIES[type].attacks.find((x) => x.id === a.attack)!.kind;
+        if (kind === 'melee' || kind === 'slam') contact.push(a.attack);
+      });
+      h.tick(seconds(8), () => h.nav.frozen.add(e.agent));
+      expect(Math.hypot(e.position.x, e.position.z)).toBeLessThan(ENEMIES[type].attacks[0]!.range);
+      expect(contact).toEqual([]);
+      expect(h.player.hits).toHaveLength(0);
+    });
+  }
+
+  it('a sac burst does not splash through a wall', () => {
+    const h = createEnemyHarness({ boxes: [thin] });
+    const e = enemyById(h, h.manager.spawn('spitter', { x: 0, y: 0, z: -1.6 })!);
+    h.tick(2);
+    h.combat.dealDamage(e, info(1000, 'body'));
+    h.tick(1);
+    expect(h.byType('enemy:died')).toHaveLength(1);
+    expect(h.player.hits).toHaveLength(0);
+  });
+
+  it('a spitter hugging a thin wall does not spit through it (its mouth pokes past the wall)', () => {
+    const h = createEnemyHarness({ boxes: [thin], player: { x: 0, y: 0, z: 12 } });
+    // Body axis 0.4 m (a nav radius) in front of the wall, facing it: the mouth socket sits
+    // beyond the wall's far face.
+    const e = enemyById(h, h.manager.spawn('spitter', { x: 0, y: 0, z: -1.5 })!);
+    const mouth = new Vector3();
+    h.tick(2);
+    h.visuals.computeSocket('spitter', e.handle, 'mouth', mouth);
+    expect(mouth.z).toBeGreaterThan(-0.9);
+    h.tick(seconds(10), () => h.nav.frozen.add(e.agent));
+    expect(h.manager.projectiles!.stats.fired).toBe(0);
+    expect(h.player.hits).toHaveLength(0);
   });
 });

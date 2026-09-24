@@ -6,9 +6,10 @@
  * `def.substep` meters – the player's capsule by a swept segment test (enemy shots), the world
  * (BVH level meshes + props) and damageables through CombatWorld.raycast. Damageables a projectile
  * does not affect (an enemy glob passing its own kind) are passed through. On impact: direct damage,
- * splash with linear falloff, a `combat:impact` event (surface from the def → the VFX/audio bridges
- * spawn 'impact.slime' + splatter decal + sound) and optionally a lingering puddle (pooled damage
- * zone with DoT, dropped to the floor below wall hits).
+ * splash with linear falloff (only to what the impact point can see – never through the wall it
+ * hit), a `combat:impact` event (surface from the def → the VFX/audio bridges spawn 'impact.slime'
+ * + splatter decal + sound) and optionally a lingering puddle (pooled damage zone with DoT, dropped
+ * to the floor below wall hits; it burns only what it can see).
  *
  * Rendering: ONE InstancedMesh of glowing HDR blobs (unlit, instance colors > 1 bloom) draws both
  * flying projectiles (stretched along their velocity, interpolated between ticks) and puddles
@@ -41,7 +42,13 @@ import type { EventBus } from '../core/EventBus';
 import type { GameEvents, Vec3Like } from '../core/events';
 import { createLogger } from '../core/log';
 import { ENEMY_AI, PROJECTILES, PROJECTILE_POOL, type ProjectileDef } from '../defs/enemies';
-import { aoeFactor, distanceToCapsule, segmentSegment, type SegmentClosest } from '../enemies/ai/attackMath';
+import {
+  aoeFactor,
+  blastReachesCapsule,
+  distanceToCapsule,
+  segmentSegment,
+  type SegmentClosest,
+} from '../enemies/ai/attackMath';
 
 const log = createLogger('projectiles');
 
@@ -55,7 +62,7 @@ type DamageSource = DamageInfo['source'];
 const SOURCES: readonly DamageSource[] = ['player', 'enemy', 'trap', 'environment'];
 
 /** The CombatWorld part projectiles use (CombatWorld honours the extended raycast options). */
-export type ProjectileCombat = Pick<CombatWorldApi, 'raycast' | 'queryRadius' | 'dealDamage'>;
+export type ProjectileCombat = Pick<CombatWorldApi, 'raycast' | 'queryRadius' | 'dealDamage' | 'lineOfSight'>;
 
 export interface ProjectileSystemDeps {
   events: EventBus<GameEvents>;
@@ -170,6 +177,9 @@ const _vel = new Vector3();
 const _Y = new Vector3(0, 1, 0);
 const _seg: SegmentClosest = { distSq: 0, s: 0 };
 const _dirTo = { x: 0, y: 0, z: 0 };
+const _losFrom = new Vector3();
+const _probe = new Vector3();
+const _losTo = new Vector3();
 
 const IMPACT_NONE = 0;
 const IMPACT_WORLD = 1;
@@ -366,7 +376,7 @@ export class ProjectileSystem {
     const d = this.resolve(defId);
     if (d < 0) return false;
     const def = this.defs[d]!;
-    const apex = this.ceilingAbove(def, origin, aim, opts?.owner ?? null) - def.radius - def.ceilingMargin;
+    const apex = this.ceilingAbove(def, origin, aim) - def.radius - def.ceilingMargin;
     solveLob(origin, aim, targetVel, lead, def, _vel, PROJECTILE_POOL.leadIterations, apex);
     return this.fire(defId, origin, _vel, opts);
   }
@@ -374,26 +384,20 @@ export class ProjectileSystem {
   /**
    * Lowest ceiling over the lob (upward probes at PROJECTILE_POOL.ceilingSamples along origin →
    * aim, from the higher end's height): indoors a long lob must flatten or it splats on the
-   * ceiling. +∞ when nothing is within def.ceilingProbe.
+   * ceiling. +∞ when nothing is within def.ceilingProbe. Damageables are no ceiling (a tank's head
+   * under the path would flatten the glob into a fast, near-hitscan shot).
    */
-  private ceilingAbove(
-    def: ProjectileDef,
-    origin: Vec3Like,
-    aim: Vec3Like,
-    owner: Damageable | null,
-  ): number {
+  private ceilingAbove(def: ProjectileDef, origin: Vec3Like, aim: Vec3Like): number {
     if (!(def.ceilingProbe > 0)) return Number.POSITIVE_INFINITY;
     const y0 = Math.max(origin.y, aim.y);
     const samples = PROJECTILE_POOL.ceilingSamples;
     let ceiling = Number.POSITIVE_INFINITY;
-    this.rayOpts.ignore = owner;
     for (let i = 0; i < samples.length; i++) {
       const f = samples[i]!;
-      _pos.set(origin.x + (aim.x - origin.x) * f, y0, origin.z + (aim.z - origin.z) * f);
-      const hit = this.combat.raycast(_pos, UP, def.ceilingProbe, this.rayOpts);
+      _probe.set(origin.x + (aim.x - origin.x) * f, y0, origin.z + (aim.z - origin.z) * f);
+      const hit = this.raycastWorld(_probe, UP, def.ceilingProbe);
       if (hit && hit.point.y < ceiling) ceiling = hit.point.y;
     }
-    this.rayOpts.ignore = null;
     return ceiling;
   }
 
@@ -618,12 +622,10 @@ export class ProjectileSystem {
     ignore.length = 0;
     const owner = this.owner[i] ?? null;
     this.rayOpts.ignore = owner;
-    let from = 0;
     let hit: CombatHit | null = null;
     let hitTarget: Damageable | null = null;
     for (let pass = 0; pass <= PROJECTILE_POOL.maxPassThrough; pass++) {
-      _pos.copy(_a).addScaledVector(_dir, from);
-      hit = this.combat.raycast(_pos, _dir, reach - from, this.rayOpts);
+      hit = this.combat.raycast(_a, _dir, reach, this.rayOpts);
       if (!hit) break;
       const t = hit.target;
       if (!t) break;
@@ -631,18 +633,17 @@ export class ProjectileSystem {
         hitTarget = t;
         break;
       }
-      // Not ours to hit: continue behind it.
+      // Not ours to hit: cast the whole ray again without it. (Restarting just behind its hitbox
+      // would start inside a wall it clips into – the ray would then tunnel through the wall.)
       ignore.push(t);
-      from += hit.distance + PROJECTILE_POOL.passThroughStep;
       hit = null;
-      if (from >= reach) break;
     }
     ignore.length = 0;
     this.rayOpts.ignore = null;
 
     let worldT = 2;
     if (hit) {
-      worldT = Math.max(0, (from + hit.distance - def.radius) / len);
+      worldT = Math.max(0, (hit.distance - def.radius) / len);
       _hitPoint.copy(hit.point);
       _hitNormal.copy(hit.normal);
     }
@@ -672,6 +673,9 @@ export class ProjectileSystem {
     const nx = _hitNormal.x;
     const ny = _hitNormal.y;
     const nz = _hitNormal.z;
+    // Splash sees the world from just off the hit surface (not from inside the wall it hit).
+    const off = PROJECTILE_POOL.splashLosOffset;
+    _losFrom.set(px + nx * off, py + ny * off, pz + nz * off);
 
     if (kind === IMPACT_PLAYER && target) {
       dirTowards(target.eyePosition, this.origin[o]!, this.origin[o + 1]!, this.origin[o + 2]!);
@@ -687,7 +691,17 @@ export class ProjectileSystem {
         distanceToCapsule(_pos, target.position, target.eyePosition, ENEMY_AI.player.radius),
       );
       const f = aoeFactor(dist, def.splash.innerRadius, def.splash.radius, def.splash.minFactor);
-      if (f > 0 && def.splash.damage > 0) {
+      if (
+        f > 0 &&
+        def.splash.damage > 0 &&
+        blastReachesCapsule(
+          this.combat,
+          _losFrom,
+          target.position,
+          target.eyePosition,
+          ENEMY_AI.player.radius,
+        )
+      ) {
         dirTowards(target.eyePosition, px, py, pz);
         target.damage(def.splash.damage * f * scale, _dirTo);
       }
@@ -720,7 +734,7 @@ export class ProjectileSystem {
         if (t === direct || t === owner || t.team === ownerTeam || !t.alive) continue;
         const dist = Math.max(0, t.boundsCenter.distanceTo(_pos) - t.boundsRadius);
         const f = aoeFactor(dist, def.splash.innerRadius, def.splash.radius, def.splash.minFactor);
-        if (f <= 0) continue;
+        if (f <= 0 || !this.combat.lineOfSight(_losFrom, t.boundsCenter)) continue;
         info.amount = def.splash.damage * f * scale;
         info.zone = 'body';
         this.combat.dealDamage(t, info);
@@ -771,20 +785,16 @@ export class ProjectileSystem {
   private raycastWorld(origin: Vec3Like, dir: Vec3Like, maxDistance: number): CombatHit | null {
     const ignore = this.ignore;
     ignore.length = 0;
-    let from = 0;
     let result: CombatHit | null = null;
-    _a.set(origin.x, origin.y, origin.z);
     for (let pass = 0; pass <= PROJECTILE_POOL.maxPassThrough; pass++) {
-      _b.set(_a.x + dir.x * from, _a.y + dir.y * from, _a.z + dir.z * from);
-      const hit = this.combat.raycast(_b, dir, maxDistance - from, this.rayOpts);
+      const hit = this.combat.raycast(origin, dir, maxDistance, this.rayOpts);
       if (!hit) break;
       if (!hit.target) {
         result = hit;
         break;
       }
+      // Again without it (see collide).
       ignore.push(hit.target);
-      from += hit.distance + PROJECTILE_POOL.passThroughStep;
-      if (from >= maxDistance) break;
     }
     ignore.length = 0;
     return result;
@@ -814,7 +824,7 @@ export class ProjectileSystem {
         Math.hypot(target.position.x - x, target.position.z - z) <=
           P.radius + ENEMY_AI.player.radius * PROJECTILE_POOL.puddleFootFraction;
       const dps = P.dps * this.pScale[i]!;
-      if (inside && dps > this.burnDps) {
+      if (inside && dps > this.burnDps && this.puddleSees(x, y, z, target.position)) {
         this.burnDps = dps;
         this.burnInterval = P.tickInterval;
         this.burnAt.set(x, y, z);
@@ -845,10 +855,19 @@ export class ProjectileSystem {
     info.impulse = 0;
     for (let k = 0; k < list.length; k++) {
       const t = list[k]!;
-      if (t.team !== team && t.alive) this.combat.dealDamage(t, info);
+      if (t.team !== team && t.alive && this.puddleSees(x, y, z, t.boundsCenter))
+        this.combat.dealDamage(t, info);
     }
     list.length = 0;
     return false;
+  }
+
+  /** Line of sight from just above the puddle at (x, y, z) to just above `to` (feet / bounds). */
+  private puddleSees(x: number, y: number, z: number, to: Vec3Like): boolean {
+    const lift = PROJECTILE_POOL.puddleLosLift;
+    _losFrom.set(x, y + lift, z);
+    _losTo.set(to.x, to.y + lift, to.z);
+    return this.combat.lineOfSight(_losFrom, _losTo);
   }
 
   /** DoT of the strongest puddle the player stands in, applied in ticks of its interval. */

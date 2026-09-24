@@ -11,6 +11,7 @@ import { ENEMY_AI, type EnemyAttackDef } from '../../../defs/enemies';
 import type { Enemy } from '../../Enemy';
 import { pickAttack } from '../attacks';
 import { distXZ } from '../attackMath';
+import { goalOnTargetFloor } from '../floorGoal';
 import type { AiHost, EnemyBrain } from '../types';
 
 const _p = new Vector3();
@@ -50,19 +51,32 @@ export const bruteBrain: EnemyBrain = {
 
     // Token holders close in to the standoff; the others keep to the wait ring (backing off, eyes
     // on the target, after a charge carried them close) – from there they charge again.
-    const dx = e.position.x - target.position.x;
-    const dz = e.position.z - target.position.z;
-    const len = Math.hypot(dx, dz);
-    if (holds ? len <= B.standoff : Math.abs(len - B.waitRadius) <= B.waitSlack) {
-      host.stopMoving(e);
-      return;
-    }
-    const radius = holds ? B.standoff : B.waitRadius;
-    if (!holds) e.faceTarget = true;
-    const k = len > 1e-3 ? radius / len : 0;
-    _p.set(target.position.x + dx * k, target.position.y, target.position.z + dz * k);
     const run = holds || dist > B.runDistance;
-    host.moveTo(e, _p, run ? e.def.movement.runSpeed : e.def.movement.walkSpeed);
+    const speed = run ? e.def.movement.runSpeed : e.def.movement.walkSpeed;
+    if (level) {
+      const dx = e.position.x - target.position.x;
+      const dz = e.position.z - target.position.z;
+      const len = Math.hypot(dx, dz);
+      if (holds ? len <= B.standoff : Math.abs(len - B.waitRadius) <= B.waitSlack) {
+        host.stopMoving(e);
+        return;
+      }
+      const radius = holds ? B.standoff : B.waitRadius;
+      if (!holds) e.faceTarget = true;
+      const k = len > 1e-3 ? radius / len : 0;
+      _p.set(target.position.x + dx * k, target.position.y, target.position.z + dz * k);
+      if (goalOnTargetFloor(e, host, target, _p)) {
+        host.moveTo(e, _p, speed);
+        return;
+      }
+      // The wait point hangs off the edge of the target's deck: close enough, wait here.
+      if (!holds && len <= B.waitRadius + B.waitSlack) {
+        host.stopMoving(e);
+        return;
+      }
+    }
+    // Another floor or no goal on the target's floor: follow the target itself up / down the stairs.
+    host.moveTo(e, target.position, speed);
   },
 
   resume(e: Enemy): void {

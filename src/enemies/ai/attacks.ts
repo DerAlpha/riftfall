@@ -9,6 +9,9 @@
  *   charge      strike: straight dash (nav steering override, slight homing); ends on a hit, at max
  *               distance, on overshoot, or on a wall (the attacker staggers itself)
  *
+ * Every contact hit (melee, slam, leap, charge) also needs a static line of sight from the
+ * attacker's eye to the target's eye at that moment: no damage through walls or decks.
+ *
  * Phases: wind-up (telegraph, target tracking) → strike → recover. Leap/charge move the enemy
  * themselves during the strike (MoveOverride); the host teleports the parked nav agent afterwards.
  */
@@ -23,6 +26,7 @@ import type { AiHost } from './types';
 const _v = new Vector3();
 const _w = new Vector3();
 const _aim = new Vector3();
+const _strike = new Vector3();
 const UP = { x: 0, y: 1, z: 0 } as const;
 const TAU = Math.PI * 2;
 
@@ -48,9 +52,9 @@ export function attackUsable(
     const coord = host.coordinator(e);
     if (!coord.holds(e.id) || !coord.canStartAttack(host.time)) return false;
   }
-  if (!host.spacingAllows(e.targetSlot, a.kind)) return false;
   if (a.requiresLos && !host.refreshLos(e, ENEMY_AI.perception.losMaxAge)) return false;
-  return true;
+  // Last: it queues the enemy for the next spacing slot (only ready attackers may queue).
+  return host.spacingAllows(e, a.kind);
 }
 
 /** Highest-priority usable attack (-1 = none). Cheap checks first; LOS only for candidates. */
@@ -144,7 +148,7 @@ function beginStrike(e: Enemy, host: AiHost, a: EnemyAttackDef, target: EnemyTar
           m.coneDeg * DEG2RAD,
           m.height,
         );
-        if (hit) host.hitTarget(e, a, target, a.damage, a.shake);
+        if (hit && strikeReaches(e, host, target)) host.hitTarget(e, a, target, a.damage, a.shake);
       }
       return true;
     }
@@ -155,6 +159,11 @@ function beginStrike(e: Enemy, host: AiHost, a: EnemyAttackDef, target: EnemyTar
       if (!host.socket(e, p.socket, _v)) {
         _v.copy(e.position);
         _v.y += e.def.perception.eyeHeight * e.pose.scale;
+      } else {
+        // The socket sticks out past the body and may poke through a thin wall the attacker
+        // stands at: then the glob leaves from the body axis (and splats on that wall).
+        _w.set(e.position.x, _v.y, e.position.z);
+        if (!host.combat.lineOfSight(_w, _v)) _v.copy(_w);
       }
       _aim.copy(target.eyePosition);
       _aim.y -= p.aimDrop;
@@ -190,7 +199,7 @@ function beginStrike(e: Enemy, host: AiHost, a: EnemyAttackDef, target: EnemyTar
       const dist = Math.max(0, distXZ(_v, target.position) - ENEMY_AI.player.radius);
       const dy = target.position.y - _v.y;
       const f = dy <= s.height && dy >= -s.height ? aoeFactor(dist, s.innerRadius, radius, s.minFactor) : 0;
-      if (f > 0) {
+      if (f > 0 && strikeReaches(e, host, target)) {
         host.hitTarget(e, a, target, a.damage * f, a.shake * f);
       } else {
         const near = 1 - distXZ(_v, target.position) / s.shakeRadius;
@@ -260,7 +269,7 @@ function updateLeap(e: Enemy, host: AiHost, a: EnemyAttackDef, target: EnemyTarg
   if (!e.attackHit && target && target.alive) {
     _v.set(e.position.x, e.position.y + L.bodyHeight * e.pose.scale, e.position.z);
     const d = capsuleDistance(_v, target);
-    if (d <= L.hitRadius * e.pose.scale) {
+    if (d <= L.hitRadius * e.pose.scale && strikeReaches(e, host, target)) {
       e.attackHit = true;
       host.hitTarget(e, a, target, a.damage, a.shake);
     }
@@ -338,7 +347,7 @@ function updateCharge(
     if (!e.attackHit) {
       const d = distXZ(e.position, target.position) - ENEMY_AI.player.radius;
       const dy = Math.abs(target.position.y - e.position.y);
-      if (d <= C.hitRadius * e.pose.scale && dy <= e.def.nav.height) {
+      if (d <= C.hitRadius * e.pose.scale && dy <= e.def.nav.height && strikeReaches(e, host, target)) {
         e.attackHit = true;
         host.hitTarget(e, a, target, a.damage, a.shake);
         return true;
@@ -354,6 +363,16 @@ function updateCharge(
 
 const _la = new Vector3();
 const _lb = new Vector3();
+
+/**
+ * A contact blow (melee, slam, leap, charge) lands only with a static line of sight from the
+ * attacker's eye height to the target's eye: reach tests are horizontal, walls and floors are not
+ * (no damage through a thin wall or a deck). Checked at the hit moment only (one ray).
+ */
+function strikeReaches(e: Enemy, host: AiHost, target: EnemyTargetApi): boolean {
+  _strike.set(e.position.x, e.position.y + e.def.perception.eyeHeight * e.pose.scale, e.position.z);
+  return host.combat.lineOfSight(_strike, target.eyePosition);
+}
 
 /**
  * Straight lane from → to: walkable on the navmesh AND no static wall at `height` above the feet.

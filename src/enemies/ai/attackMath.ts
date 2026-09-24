@@ -188,6 +188,40 @@ export function distanceToCapsule(p: Vec3Like, feet: Vec3Like, eye: Vec3Like, ra
   return Math.sqrt(d2) - radius;
 }
 
+/** Static-world line of sight (CombatWorldApi.lineOfSight). */
+export interface LineOfSightQuery {
+  lineOfSight(from: Vec3Like, to: Vec3Like): boolean;
+}
+
+const _axis = { x: 0, y: 0, z: 0 };
+
+/**
+ * Does a blast at `from` reach the player capsule (feet, eye, radius – the distanceToCapsule axis)?
+ * It needs a static line of sight to the axis point nearest the blast or, failing that, to the eye
+ * (a head above cover still gets hit): splash never passes through walls or floors.
+ */
+export function blastReachesCapsule(
+  los: LineOfSightQuery,
+  from: Vec3Like,
+  feet: Vec3Like,
+  eye: Vec3Like,
+  radius: number,
+): boolean {
+  const ay = feet.y + radius;
+  const by = Math.max(ay, eye.y);
+  const ux = eye.x - feet.x;
+  const uy = by - ay;
+  const uz = eye.z - feet.z;
+  const len2 = ux * ux + uy * uy + uz * uz;
+  let t = len2 > 0 ? ((from.x - feet.x) * ux + (from.y - ay) * uy + (from.z - feet.z) * uz) / len2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  _axis.x = feet.x + ux * t;
+  _axis.y = ay + uy * t;
+  _axis.z = feet.z + uz * t;
+  if (los.lineOfSight(from, _axis)) return true;
+  return t < 1 && los.lineOfSight(from, eye);
+}
+
 /** Horizontal distance. */
 export function distXZ(a: Vec3Like, b: Vec3Like): number {
   return Math.hypot(a.x - b.x, a.z - b.z);

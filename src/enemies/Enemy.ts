@@ -150,6 +150,10 @@ export class Enemy implements Damageable {
   attackHit = false;
   /** Earliest start time per attack (def.attacks index). */
   readonly attackReady: Float64Array;
+  /** Attack-spacing queue: kind index waited for (-1 = none), since when, last ask. */
+  spacingKind = -1;
+  spacingSince = 0;
+  spacingAskedAt = Number.NEGATIVE_INFINITY;
 
   // --- stagger / hit reaction ---
   staggerAccum = 0;
@@ -177,6 +181,10 @@ export class Enemy implements Damageable {
   nextActionTime = 0;
   laneClear = false;
   laneCheckAt = 0;
+  /** Last goal checked by goalOnTargetFloor and its result. */
+  readonly goalCheck = new Vector3();
+  goalChecked = false;
+  goalOk = true;
 
   // --- stuck / leash ---
   readonly stuck: StuckState = { ax: 0, az: 0, next: 0, fails: 0 };

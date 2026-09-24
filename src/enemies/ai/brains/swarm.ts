@@ -16,6 +16,7 @@ import { ENEMY_AI } from '../../../defs/enemies';
 import type { Enemy } from '../../Enemy';
 import { pickAttack } from '../attacks';
 import { distXZ } from '../attackMath';
+import { goalOnTargetFloor } from '../floorGoal';
 import type { AiHost, EnemyBrain } from '../types';
 
 const _p = new Vector3();
@@ -62,9 +63,13 @@ function chooseSlot(e: Enemy, host: AiHost, target: EnemyTargetApi): void {
       const straight = distXZ(e.position, _p);
       const n = host.nav.findPath(e.position, _p, host.pathScratch);
       const len = pathLength(host.pathScratch, n, e.position);
-      // A partial path that ends far from the slot point means the slot is unreachable.
+      // A partial path that ends far from the slot point – or on another floor (a ring point off
+      // the edge of a deck snaps to the hall below) – means the slot is unreachable.
       const end = n > 0 ? host.pathScratch[n - 1]! : null;
-      const reach = end ? distXZ(end, _p) : Number.POSITIVE_INFINITY;
+      const reach =
+        end && Math.abs(end.y - target.position.y) <= ENEMY_AI.slots.engageHeight
+          ? distXZ(end, _p)
+          : Number.POSITIVE_INFINITY;
       const cost =
         slots.rankedCost[r]! +
         A.pathWeight * (Number.isFinite(len) ? len - straight : A.unreachableCost) +
@@ -109,23 +114,36 @@ export const swarmBrain: EnemyBrain = {
       }
     }
 
-    if (e.slot < 0 || now >= e.slotEvalAt) chooseSlot(e, host, target);
-    const slots = host.surround(e.targetSlot);
-    let angle = slots.angle(e.slot);
-    let radius = S.standoff;
-    if (!holds) {
-      // Pace around the slot while waiting (per-enemy phase).
-      angle += Math.sin(now * S.orbitHz * TAU + e.orbitPhase) * S.orbitAmplitudeDeg * DEG2RAD;
-      radius = S.ringRadius;
+    if (level) {
+      if (e.slot < 0 || now >= e.slotEvalAt) chooseSlot(e, host, target);
+      const slots = host.surround(e.targetSlot);
+      let angle = slots.angle(e.slot);
+      let radius = S.standoff;
+      if (!holds) {
+        // Pace around the slot while waiting (per-enemy phase).
+        angle += Math.sin(now * S.orbitHz * TAU + e.orbitPhase) * S.orbitAmplitudeDeg * DEG2RAD;
+        radius = S.ringRadius;
+      }
+      _p.set(
+        target.position.x + Math.cos(angle) * radius,
+        target.position.y,
+        target.position.z + Math.sin(angle) * radius,
+      );
+      // Token holders run in; waiting swarmers trot on the ring once they are close.
+      const nearRing = !holds && dist < S.ringRadius + ENEMY_AI.surround.ringWalkMargin;
+      if (goalOnTargetFloor(e, host, target, _p)) {
+        host.moveTo(e, _p, nearRing ? e.def.movement.walkSpeed : e.def.movement.runSpeed);
+        return;
+      }
+      // The slot point hangs off the edge of the target's deck: a waiter close by waits here.
+      if (nearRing) {
+        host.stopMoving(e);
+        return;
+      }
     }
-    _p.set(
-      target.position.x + Math.cos(angle) * radius,
-      target.position.y,
-      target.position.z + Math.sin(angle) * radius,
-    );
-    // Token holders run in; waiting swarmers trot on the ring once they are close.
-    const nearRing = !holds && dist < S.ringRadius + ENEMY_AI.surround.ringWalkMargin;
-    host.moveTo(e, _p, nearRing ? e.def.movement.walkSpeed : e.def.movement.runSpeed);
+    // Another floor (the target on a deck above, or down in the hall) or no slot point on its
+    // floor: follow the target itself – the crowd paths up / down the stairs.
+    host.moveTo(e, target.position, e.def.movement.runSpeed);
   },
 
   resume(e: Enemy): void {

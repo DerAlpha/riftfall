@@ -52,7 +52,7 @@ const REQUIRED_PARTS: Record<string, readonly string[]> = {
   autoshotgun: ['magazine', 'drum', 'bolt', 'trigger', 'chargingHandle', 'sight'],
   doublebarrel: ['barrels', 'shells', 'hammers', 'trigger', 'lever'],
   lmg: ['cover', 'magazine', 'belt', 'bolt', 'trigger', 'sight'],
-  minigun: ['barrels', 'magazine', 'trigger', 'chute', 'lever'],
+  minigun: ['barrels', 'magazine', 'trigger', 'chute', 'lever', 'sight'],
   sniper: ['bolt', 'boltHandle', 'magazine', 'trigger', 'sight'],
   marksman: ['bolt', 'dustCover', 'boltCatch', 'magazine', 'trigger', 'sight'],
 };

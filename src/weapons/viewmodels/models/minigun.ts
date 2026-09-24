@@ -78,6 +78,7 @@ export const buildMinigun: ViewmodelBuilder = (kit) => {
   b.part('chute', [-0.062, 0.036, -0.07], { parent: 'magazine' });
   b.part('lever', [-0.0385, 0.078, -0.005]);
   b.part('trigger', [0, 0.004, -0.034]);
+  b.part('sight', [0, HANDLE_TOP, SIGHT_REAR - SIGHT_LEN / 2]);
 
   // --- rotor housing (static), front lip glow ---
   b.add(
@@ -265,12 +266,12 @@ export const buildMinigun: ViewmodelBuilder = (kit) => {
     uvDensity: VIEWMODEL_ART.knurlDensity,
   });
   b.add(BODY, 'accent', new BoxGeometry(0.0172, 0.0016, 0.1), { pos: [0, HANDLE_TOP - 0.0125, 0.0] });
-  b.add(BODY, 'darkMetal', roundedBox(0.018, 0.006, 0.05, 0.0015), {
+  b.add('sight', 'darkMetal', roundedBox(0.018, 0.006, 0.05, 0.0015), {
     pos: [0, HANDLE_TOP + 0.003, SIGHT_REAR - SIGHT_LEN / 2],
     paint: P.darkMetal.paint,
   });
   b.add(
-    BODY,
+    'sight',
     'gunmetal',
     profileZ(chamferRectProfile(0.026, 0.022, 0.005, 0.002), SIGHT_LEN, {
       bevel: 0.0012,
@@ -278,16 +279,16 @@ export const buildMinigun: ViewmodelBuilder = (kit) => {
     }),
     { pos: [0, SIGHT_Y, SIGHT_REAR - SIGHT_LEN / 2], paint: P.gunmetal.paint },
   );
-  b.add(BODY, 'lens', new PlaneGeometry(0.019, 0.015), {
+  b.add('sight', 'lens', new PlaneGeometry(0.019, 0.015), {
     pos: [0, SIGHT_Y, SIGHT_REAR - SIGHT_LEN + 0.002],
     uv: 'keep',
   });
   const rz = SIGHT_REAR - SIGHT_LEN + 0.0025;
-  b.add(BODY, 'sight', cylinderZ(0.0008, 0.0008, 0.0003, 12), { pos: [0, SIGHT_Y, rz] });
+  b.add('sight', 'sight', cylinderZ(0.0008, 0.0008, 0.0003, 12), { pos: [0, SIGHT_Y, rz] });
   for (const s of [-1, 1]) {
-    b.add(BODY, 'sight', new BoxGeometry(0.003, 0.0004, 0.0003), { pos: [s * 0.0032, SIGHT_Y, rz] });
+    b.add('sight', 'sight', new BoxGeometry(0.003, 0.0004, 0.0003), { pos: [s * 0.0032, SIGHT_Y, rz] });
   }
-  b.add(BODY, 'sight', new BoxGeometry(0.0004, 0.003, 0.0003), { pos: [0, SIGHT_Y - 0.0032, rz] });
+  b.add('sight', 'sight', new BoxGeometry(0.0004, 0.003, 0.0003), { pos: [0, SIGHT_Y - 0.0032, rz] });
 
   // --- barrel cluster (spins): collar, spindle, six barrels, mid clamp, saw clamp, hub ---
   b.add('barrels', 'darkMetal', cylinderZ(0.034, 0.034, 0.012, 28), {
@@ -449,7 +450,7 @@ export const buildMinigun: ViewmodelBuilder = (kit) => {
   b.socket('muzzle', [0, AXIS_Y, MUZZLE_Z]);
   b.socket('ejectPort', [0.04, 0.012, -0.05], [-70, -90, 0]);
   b.socket('sight', [0, SIGHT_Y, SIGHT_REAR - 0.002]);
-  b.mount('optic', [0, HANDLE_TOP, 0.0]);
+  b.mount('optic', [0, HANDLE_TOP, SIGHT_REAR - SIGHT_LEN / 2]);
   b.mount('muzzleDevice', [0, AXIS_Y, MUZZLE_Z]);
   b.mount('underbarrel', [0, AXIS_Y - HOUSING_R, -0.08]);
   b.mount('laser', [HOUSING_R + 0.002, AXIS_Y, -0.04], [0, 0, -90]);

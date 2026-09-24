@@ -73,8 +73,8 @@ export const buildBurstrifle: ViewmodelBuilder = (kit) => {
   }
   // Cheek pads on the flanks (flush: nothing rises under the aimed eye).
   for (const side of [-1, 1]) {
-    b.add(BODY, 'grip', roundedBox(0.0022, 0.022, 0.12, 0.001), {
-      pos: [side * 0.0242, 0.064, 0.18],
+    b.add(BODY, 'grip', roundedBox(0.0022, 0.018, 0.12, 0.001), {
+      pos: [side * 0.0242, 0.05, 0.18],
       uvDensity: VIEWMODEL_ART.knurlDensity,
     });
   }

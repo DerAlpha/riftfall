@@ -19,12 +19,14 @@ import {
   Curve,
   DoubleSide,
   FrontSide,
+  MeshPhysicalMaterial,
   NormalBlending,
   ShaderMaterial,
   TubeGeometry,
   Vector3,
   type BufferGeometry,
   type DataTexture,
+  type Material,
   type Object3D,
 } from 'three';
 import type { WeaponViewmodelDef } from '../../../defs/viewmodels';
@@ -259,8 +261,10 @@ export class EnergyWeaponModel extends ProceduralWeaponModel {
     readout: { texture: DataTexture; data: Uint8Array } | null,
     private readonly channels: readonly EnergyChannel[],
     private readonly extras: readonly ExtraAnimator[] = [],
+    /** Further per-model materials (ceramics, ice) disposed with the model. */
+    owned: readonly Material[] = [],
   ) {
-    super(weaponId, def, built, glow, readoutSpec, readout, channels.map((c) => c.material));
+    super(weaponId, def, built, glow, readoutSpec, readout, [...channels.map((c) => c.material), ...owned]);
     this.boostSum = driverBoostSum(def);
     // Rest state (also what a warm-up compile or a still screenshot shows).
     for (const c of channels) c.material.uniforms.uIntensity.value = c.intensity;
@@ -316,6 +320,19 @@ export function freeParts<const K extends string>(built: BuiltModel, names: read
     delete built.parts[n];
   }
   return out;
+}
+
+/** Glazed ceramic (insulators, ivory inlays): lit, glossy, per model (disposed with it). */
+export function createCeramicMaterial(name: string, color: number): MeshPhysicalMaterial {
+  return new MeshPhysicalMaterial({
+    name: `vm-ceramic-${name}`,
+    color,
+    metalness: 0,
+    roughness: 0.32,
+    clearcoat: 0.8,
+    clearcoatRoughness: 0.18,
+    vertexColors: true,
+  });
 }
 
 // ---------------------------------------------------------------------------

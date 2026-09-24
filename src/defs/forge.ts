@@ -189,7 +189,7 @@ export const FORGE_LOOKS: Readonly<Record<string, ForgeLookDef>> = {
       pulseDepth: 0.25,
     },
   },
-  /** Wonder weapons at tier 3: void-black body, magenta-violet veins (Riss-Zerreißer, SX-0). */
+  /** Void-themed tier 3 overrides: void-black body, magenta-violet veins (Riss-Zerreißer, SX-0, RM-44, FW-4). */
   forgeVoid: {
     id: 'forgeVoid',
     name: 'Leerenglut',
@@ -218,7 +218,7 @@ export const FORGE_LOOKS: Readonly<Record<string, ForgeLookDef>> = {
       pulseDepth: 0.3,
     },
   },
-  /** Cold wonder weapons at tier 3: glacier-blue veins through frosted metal (Kryo-Nova, Äther-Harfe). */
+  /** Frost-themed tier 3 overrides: glacier-blue veins through frosted metal (Kryo-Nova, LM-60 „Eiswall“). */
   forgeFrost: {
     id: 'forgeFrost',
     name: 'Ewiges Eis',

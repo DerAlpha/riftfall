@@ -277,7 +277,12 @@ export const RIFLES = {
     melee: MELEE_BASH,
     // Every third round (the first of each burst) traces.
     tracer: { everyNth: 3, color: 0xffb35a, pellets: 1 },
-    vfx: { muzzle: 'muzzle.rifle', impact: 'impact.bullet', casing: 'casing.rifle', muzzleLightColor: 0xffb060 },
+    vfx: {
+      muzzle: 'muzzle.rifle',
+      impact: 'impact.bullet',
+      casing: 'casing.rifle',
+      muzzleLightColor: 0xffb060,
+    },
     audio: conventionAudio('burstrifle', 'medium'),
     rumble: { strong: 0.22, weak: 0.5, ms: 60 },
     model: 'burstrifle',
@@ -396,7 +401,12 @@ export const RIFLES = {
     inspectTime: 2.9,
     melee: MELEE_BASH,
     tracer: { everyNth: 1, color: 0xffa048, pellets: 1 },
-    vfx: { muzzle: 'muzzle.rifle', impact: 'impact.bullet', casing: 'casing.rifle', muzzleLightColor: 0xffa850 },
+    vfx: {
+      muzzle: 'muzzle.rifle',
+      impact: 'impact.bullet',
+      casing: 'casing.rifle',
+      muzzleLightColor: 0xffa850,
+    },
     audio: conventionAudio('battlerifle', 'large'),
     rumble: { strong: 0.35, weak: 0.6, ms: 80 },
     model: 'battlerifle',

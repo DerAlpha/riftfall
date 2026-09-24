@@ -237,7 +237,12 @@ export const SHOTGUNS = {
     inspectTime: 2.8,
     melee: MELEE_BASH,
     tracer: { everyNth: 1, color: 0xffc070, pellets: 2 },
-    vfx: { muzzle: 'muzzle.shotgun', impact: 'impact.pellet', casing: 'casing.shell', muzzleLightColor: 0xffa850 },
+    vfx: {
+      muzzle: 'muzzle.shotgun',
+      impact: 'impact.pellet',
+      casing: 'casing.shell',
+      muzzleLightColor: 0xffa850,
+    },
     audio: conventionAudio('autoshotgun', 'large'),
     rumble: { strong: 0.6, weak: 0.8, ms: 100 },
     model: 'autoshotgun',

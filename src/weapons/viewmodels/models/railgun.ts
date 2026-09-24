@@ -7,7 +7,7 @@
  * (capacitor pack in the magwell), primer (charging lever, right flank), trigger, sight (holo
  * projector with a crosshair reticle). Six shot LEDs on the receiver's left top chamfer.
  */
-import { BoxGeometry, CylinderGeometry, PlaneGeometry, TorusGeometry } from 'three';
+import { BoxGeometry, PlaneGeometry, TorusGeometry } from 'three';
 import { RAILGUN_VIEWMODEL } from '../../../defs/viewmodelData/railgun';
 import { VIEWMODEL_ART } from '../../../defs/viewmodels';
 import { BODY, ModelBuilder } from '../ModelBuilder';
@@ -27,10 +27,10 @@ const GRIP_TOP = { y: 0.002, z: 0.012 } as const;
 const LEDS = 6;
 /** Rail roots (inside the collar) and tips (forward distance); rail centers sit ±RAIL_X off the bore. */
 const RAIL_ROOT = 0.235;
-const RAIL_TIP = 0.665;
+const RAIL_TIP = 0.69;
 const RAIL_X = 0.03;
 /** Accelerator ring stations (z) and the ring frame / glowing inner edge sizes (w, h, chamfer). */
-const RING_Z = [-0.3, -0.385, -0.47, -0.555] as const;
+const RING_Z = [-0.292, -0.352, -0.412] as const;
 const RING_OUTER = [0.104, 0.076, 0.018] as const;
 const RING_INNER = [0.088, 0.06, 0.012] as const;
 const RING_EDGE = [0.083, 0.055, 0.01] as const;
@@ -61,6 +61,15 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     noise: 0.6,
     noiseScale: 90,
     flow: [0, 0, -9],
+  });
+  const sheet = createEnergyMaterial('rail-sheet', {
+    core: 0x2a9dff,
+    rim: 0x9ff4ff,
+    rimPower: 1,
+    noise: 1,
+    noiseScale: 70,
+    flow: [0, 0.6, -6],
+    additive: true,
   });
   const cap = createEnergyMaterial('rail-cap', {
     core: 0x78e6ff,
@@ -99,26 +108,22 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   // Priming-lever slot (right flank).
   b.add(BODY, 'bore', new BoxGeometry(0.0012, 0.007, 0.068), { pos: [0.0263, 0.064, 0.006] });
 
-  // Capacitor bank on the left flank: three glowing columns behind a cage, facing the shooter.
-  b.add(BODY, 'bore', new BoxGeometry(0.0014, 0.036, 0.118), { pos: [-0.0262, 0.047, -0.078] });
-  for (let i = 0; i < 3; i++) {
-    const z = -0.04 - i * 0.038;
-    b.add(BODY, 'cap', new CylinderGeometry(0.0068, 0.0068, 0.032, 14), { pos: [-0.0232, 0.047, z] });
-    b.add(BODY, 'darkMetal', cylinderX(0.0082, 0.004, 14), {
-      pos: [-0.0262, 0.047, z],
-      rot: [90, 0, 0],
-      paint: 0.4,
-    });
+  // Capacitor tube on the left flank, facing the shooter behind a slotted cage.
+  b.add(BODY, 'bore', new BoxGeometry(0.0014, 0.024, 0.13), { pos: [-0.0262, 0.047, -0.08] });
+  b.add(BODY, 'cap', cylinderZ(0.0085, 0.0085, 0.124, 16), { pos: [-0.0236, 0.047, -0.08] });
+  for (const cz of [-0.017, -0.143]) {
+    b.add(BODY, 'darkMetal', cylinderZ(0.0105, 0.0105, 0.008, 16), { pos: [-0.0236, 0.047, cz], paint: 0.4 });
   }
   for (const y of [0.0345, 0.0595]) {
-    b.add(BODY, 'gunmetal', roundedBox(0.003, 0.0034, 0.124, 0.0012), {
-      pos: [-0.0272, y, -0.078],
+    b.add(BODY, 'gunmetal', roundedBox(0.004, 0.0034, 0.134, 0.0012), {
+      pos: [-0.0278, y, -0.08],
       paint: P.gunmetal.paint,
     });
   }
-  for (const z of [-0.021, -0.059, -0.097, -0.135]) {
-    b.add(BODY, 'gunmetal', roundedBox(0.003, 0.03, 0.0032, 0.0012), {
-      pos: [-0.0272, 0.047, z],
+  for (let i = 0; i < 5; i++) {
+    b.add(BODY, 'gunmetal', roundedBox(0.0036, 0.028, 0.0034, 0.0012), {
+      pos: [-0.0296, 0.047, -0.03 - i * 0.025],
+      rot: [0, 0, 0],
       paint: P.gunmetal.paint,
     });
   }
@@ -179,21 +184,29 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     pos: [0, 0.025, -0.44],
     paint: P.darkMetal.paint,
   });
-  b.add(BODY, 'darkMetal', new TorusGeometry(0.011, 0.0034, 8, 24), { pos: [0, BORE_Y, -0.625], paint: 0.4 });
-  b.add(BODY, 'darkMetal', roundedBox(0.01, 0.018, 0.012, 0.002), { pos: [0, 0.034, -0.625], paint: 0.4 });
-  b.add(BODY, 'field', new TorusGeometry(0.0085, 0.0013, 8, 24), { pos: [0, BORE_Y, -0.6285], uv: 'keep' });
-  // Slug channel: a thread of light down the bore.
-  b.add(BODY, 'slug', cylinderZ(0.0021, 0.0021, 0.37, 10), { pos: [0, BORE_Y, -0.44] });
+  b.add(BODY, 'darkMetal', new TorusGeometry(0.011, 0.0034, 8, 24), { pos: [0, BORE_Y, -0.64], paint: 0.4 });
+  b.add(BODY, 'darkMetal', roundedBox(0.01, 0.018, 0.012, 0.002), { pos: [0, 0.034, -0.64], paint: 0.4 });
+  b.add(BODY, 'field', new TorusGeometry(0.0085, 0.0013, 8, 24), { pos: [0, BORE_Y, -0.6435], uv: 'keep' });
+  // Slug channel: a thread of light down the bore, and the field sheet between the bare rails.
+  b.add(BODY, 'slug', cylinderZ(0.0021, 0.0021, 0.385, 10), { pos: [0, BORE_Y, -0.4475] });
+  b.add(BODY, 'sheet', new PlaneGeometry(0.2, 0.03), { pos: [0, BORE_Y, -0.535], rot: [0, 90, 0], uv: 'keep' });
 
   // --- rails: tapered lance blades, glowing conductor faces towards the bore ---
   const railProfile: [number, number][] = [
     [RAIL_ROOT - 0.012, 0.072],
-    [0.6, 0.07],
-    [RAIL_TIP - 0.006, 0.062],
-    [RAIL_TIP, 0.052],
-    [RAIL_TIP - 0.01, 0.038],
-    [0.6, 0.031],
-    [RAIL_ROOT - 0.012, 0.029],
+    [0.44, 0.072],
+    [0.6, 0.081],
+    [RAIL_TIP - 0.012, 0.086],
+    [RAIL_TIP, 0.079],
+    [RAIL_TIP - 0.004, 0.062],
+    [RAIL_TIP - 0.03, 0.054],
+    [RAIL_TIP - 0.03, 0.046],
+    [RAIL_TIP - 0.004, 0.038],
+    [RAIL_TIP, 0.022],
+    [RAIL_TIP - 0.012, 0.014],
+    [0.6, 0.019],
+    [0.44, 0.028],
+    [RAIL_ROOT - 0.012, 0.028],
   ];
   for (const [part, side] of [
     ['railL', -1],
@@ -411,7 +424,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   b.add('sight', 'sight', cylinderZ(0.0006, 0.0006, 0.0003, 10), { pos: [0, SIGHT_Y, reticleZ] });
 
   // --- sockets & mounts ---
-  b.socket('muzzle', [0, BORE_Y, -(RAIL_TIP - 0.01)]);
+  b.socket('muzzle', [0, BORE_Y, -(RAIL_TIP - 0.012)]);
   // No casings: the vent louvres (right) stand in for the ejection port.
   b.socket('ejectPort', [0.028, BORE_Y, -0.17], [-30, -100, 0]);
   b.socket('sight', [0, SIGHT_Y, -0.047]);
@@ -419,10 +432,11 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   b.mount('laser', [0.05, 0.046, -0.225]);
   b.mount('underbarrel', [0, 0.001, -0.24]);
 
-  const built = b.build({ ...kit.materials, ...glow, field, slug, cap });
+  const built = b.build({ ...kit.materials, ...glow, field, slug, sheet, cap });
   return new EnergyWeaponModel('railgun', def, built, glow, readoutSpec, readout, [
     { material: field, intensity: 2.2, pulseRate: 2.1, pulseDepth: 0.14, flash: 7, heat: 2, boost: 8 },
     { material: slug, intensity: 1.8, pulseRate: 3.3, pulseDepth: 0.2, flash: 12, boost: 12 },
+    { material: sheet, intensity: 0.35, pulseRate: 4.1, pulseDepth: 0.3, flash: 3, boost: 3.5 },
     { material: cap, intensity: 1.7, pulseRate: 1.3, pulseDepth: 0.22, flash: 3, boost: 6 },
   ]);
 }

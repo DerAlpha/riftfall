@@ -65,17 +65,34 @@ export const buildBattlerifle: ViewmodelBuilder = (kit) => {
       b.add(BODY, 'gunmetal', cylinderX(0.0026, 0.003, 8), { pos: [side * 0.028, 0.046, z], paint: 0.6 });
     }
   }
-  // Full-length top rail + teeth.
-  b.add(BODY, 'darkMetal', new BoxGeometry(0.022, 0.006, 0.6), {
-    pos: [0, RAIL_TOP - 0.005, -0.2],
+  // Top rail from the sight base forward (the receiver behind it stays flat: nothing under the eye).
+  b.add(BODY, 'darkMetal', new BoxGeometry(0.022, 0.006, 0.52), {
+    pos: [0, RAIL_TOP - 0.005, -0.24],
     paint: P.darkMetal.paint,
   });
-  for (let i = 0; i < 38; i++) {
-    b.add(BODY, 'darkMetal', new BoxGeometry(0.024, 0.004, 0.0065), {
-      pos: [0, RAIL_TOP - 0.002, 0.092 - i * 0.0155],
+  for (let i = 0; i < 40; i++) {
+    b.add(BODY, 'darkMetal', new BoxGeometry(0.024, 0.0035, 0.0062), {
+      pos: [0, RAIL_TOP - 0.00175, 0.012 - i * 0.0128],
       paint: P.darkMetal.paint,
     });
   }
+  // Rear top cover: a sloped armour plate over the action.
+  b.add(
+    BODY,
+    'darkMetal',
+    profileX(
+      [
+        [-0.105, 0.078],
+        [0.02, 0.078],
+        [0.02, 0.086],
+        [-0.03, 0.086],
+        [-0.105, 0.082],
+      ],
+      0.036,
+      { bevel: 0.0015 },
+    ),
+    { paint: P.darkMetal.paint },
+  );
   // Ejection port (right) and charging slot (left, forward).
   b.add(BODY, 'bore', new BoxGeometry(0.0008, 0.017, 0.064), { pos: [0.0262, 0.058, -0.045] });
   b.add(BODY, 'bore', new BoxGeometry(0.0012, 0.0065, 0.12), { pos: [-0.0262, 0.067, -0.16] });
@@ -186,36 +203,41 @@ export const buildBattlerifle: ViewmodelBuilder = (kit) => {
     uvDensity: VIEWMODEL_ART.knurlDensity,
   });
 
-  // --- stock: straight-line slab with a cheek riser and a thick pad ---
+  // --- stock: solid slab with a cut that shows the hydraulic recoil buffer, cheek riser, thick pad ---
   b.add(
     BODY,
     'polymer',
     profileX(
       [
         [-0.105, 0.08],
-        [-0.34, 0.077],
-        [-0.352, 0.066],
-        [-0.352, -0.056],
-        [-0.336, -0.064],
-        [-0.2, -0.022],
-        [-0.105, 0.012],
+        [-0.34, 0.076],
+        [-0.352, 0.064],
+        [-0.352, -0.058],
+        [-0.336, -0.066],
+        [-0.24, -0.038],
+        [-0.17, -0.008],
+        [-0.105, 0.014],
       ],
-      0.04,
+      0.042,
       {
         bevel: 0.003,
         holes: [
           [
-            [-0.175, 0.06],
-            [-0.305, 0.058],
-            [-0.305, -0.028],
-            [-0.175, 0.008],
+            [-0.165, 0.052],
+            [-0.305, 0.05],
+            [-0.305, 0.004],
+            [-0.24, -0.012],
+            [-0.165, 0.018],
           ],
         ],
       },
     ),
     { paint: P.polymer.paint },
   );
-  b.add(BODY, 'grip', roundedBox(0.044, 0.134, 0.02, 0.005), {
+  b.add(BODY, 'gunmetal', cylinderZ(0.0095, 0.0095, 0.18, 16), { pos: [0, 0.032, 0.235], paint: 0.55 });
+  b.add(BODY, 'darkMetal', cylinderZ(0.0125, 0.0125, 0.03, 16), { pos: [0, 0.032, 0.15], paint: P.darkMetal.paint });
+  b.add(BODY, 'accent', cylinderZ(0.0128, 0.0128, 0.003, 16), { pos: [0, 0.032, 0.17] });
+  b.add(BODY, 'grip', roundedBox(0.046, 0.134, 0.02, 0.005), {
     pos: [0, 0.006, 0.362],
     uvDensity: VIEWMODEL_ART.knurlDensity,
   });
@@ -226,7 +248,7 @@ export const buildBattlerifle: ViewmodelBuilder = (kit) => {
   for (const z of [0.19, 0.29]) {
     b.add(BODY, 'gunmetal', new BoxGeometry(0.006, 0.012, 0.008), { pos: [0, 0.083, z], paint: 0.6 });
   }
-  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0022, 0.16), { pos: [-0.0203, 0.058, 0.24] });
+  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0022, 0.12), { pos: [-0.0213, 0.066, 0.24] });
 
   // --- handguard: long octagon with heat louvres, bottom + left rail sections ---
   b.add(
@@ -340,6 +362,17 @@ export const buildBattlerifle: ViewmodelBuilder = (kit) => {
       pos: [0, -0.032 - i * 0.03, -(0.11 + i * 0.006)],
       rot: [6 + i * 3, 0, 0],
       paint: P.darkMetal.paint,
+    });
+  }
+  // Witness window on the left: brass rounds stacked inside.
+  b.add('magazine', 'bore', new BoxGeometry(0.0008, 0.07, 0.012), {
+    pos: [-0.0147, -0.056, -0.108],
+    rot: [6, 0, 0],
+  });
+  for (let i = 0; i < 5; i++) {
+    b.add('magazine', 'brass', cylinderZ(0.0045, 0.0045, 0.011, 10), {
+      pos: [-0.011, -0.03 - i * 0.013, -0.108 - i * 0.0015],
+      paint: 1,
     });
   }
   b.add('magazine', 'accentPaint', roundedBox(0.034, 0.01, 0.066, 0.003), {

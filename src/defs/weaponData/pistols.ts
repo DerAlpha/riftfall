@@ -384,7 +384,12 @@ export const PISTOLS = {
     inspectTime: 2.2,
     melee: MELEE_QUICK,
     tracer: { everyNth: 3, color: 0xffcf70, pellets: 1 },
-    vfx: { muzzle: 'muzzle.smg', impact: 'impact.bullet', casing: 'casing.pistol', muzzleLightColor: 0xffc070 },
+    vfx: {
+      muzzle: 'muzzle.smg',
+      impact: 'impact.bullet',
+      casing: 'casing.pistol',
+      muzzleLightColor: 0xffc070,
+    },
     audio: conventionAudio('machinepistol', 'small'),
     rumble: { strong: 0.12, weak: 0.35, ms: 40 },
     model: 'machinepistol',

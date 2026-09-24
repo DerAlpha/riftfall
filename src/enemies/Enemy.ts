@@ -167,6 +167,8 @@ export class Enemy implements Damageable {
   staggerImmuneUntil = 0;
   staggerDuration = 0;
   flinch = 0;
+  /** Sustained-damage flash (beam ticks, arcs, burn / poison ticks) re-arms after this (s). */
+  sustainedFlashCooldown = 0;
 
   // --- brain scratch (meaning per brain) ---
   mode = 0;
@@ -275,7 +277,16 @@ export class Enemy implements Damageable {
 
     // Hit reaction (recorded; the manager turns it into pose/state next).
     const P = ENEMY_AI.pose;
-    this.pose.hitFlash = 1;
+    if (info.kind === 'beam') {
+      // Sustained damage ticks at up to 12 Hz: a full flash per tick would hold the body white-hot
+      // over its burn / shock rim. A dim pulse at a capped rate; it never lowers a stronger flash.
+      if (this.sustainedFlashCooldown <= 0) {
+        this.pose.hitFlash = Math.max(this.pose.hitFlash, P.sustainedFlash.peak);
+        this.sustainedFlashCooldown = P.sustainedFlash.interval;
+      }
+    } else {
+      this.pose.hitFlash = 1;
+    }
     this.flinch = Math.min(
       P.flinchMax,
       this.flinch + (applied / Math.max(1, this.maxHealth)) * P.flinchPerHealth,

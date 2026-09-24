@@ -444,8 +444,8 @@ function arpBar(def: MusicThemeDef, b: BarBuilder, pool: readonly number[], rng:
       }
       case 'walk': {
         if (k === start) return pool[mod(idx, len)]!;
-        let next = idx + dir;
-        if (rng.chance(0.3)) dir = -dir;
+        if (rng.chance(0.15)) dir = -dir;
+        let next = idx + dir * (rng.chance(0.2) ? 2 : 1);
         if (next < 0 || next >= len) {
           dir = -dir;
           next = idx + dir;
@@ -583,6 +583,8 @@ function composePhrase(
       const above = foldAround(degreeNote(tonic, scale, nextRoot + 1), nextNote + 2);
       const below = foldAround(degreeNote(tonic, scale, nextRoot - 1), nextNote - 2);
       approach = Math.abs(above - rootNote) < Math.abs(below - rootNote) ? above : below;
+      // An approach that merely repeats the current root is no approach: take the other side.
+      if (approach === rootNote) approach = approach === above ? below : above;
     }
     bassBar(def, b, rootNote, fifthNote, approach);
 
@@ -626,7 +628,8 @@ function composePhrase(
     const chordAtAbs = (absStep: number): readonly number[] => {
       let bar = 0;
       while (bar < bars - 1 && barStart[bar + 1]! <= absStep) bar++;
-      return chordDegrees(chordOf(bar), def.chordColor);
+      // A melody over bare power chords still outlines the (modal) triad.
+      return chordDegrees(chordOf(bar), def.chordColor === 'power' ? 'triad' : def.chordColor);
     };
     const unit = barStart[Math.min(2, bars)] ?? total;
     const motif = (offset: number, r: Rng): MotifNote[] =>
@@ -642,16 +645,30 @@ function composePhrase(
       });
     const a = motif(0, motifSeed);
     const answer = motif(unit * 2, motifSeed);
-    const place = (notes: readonly MotifNote[], offset: number, shift: number, cadence: boolean): void => {
+    const place = (notes: readonly MotifNote[], offset: number, wanted: number, cadence: boolean): void => {
+      // Transpose by octaves (in degrees) so the sequence stays inside the lead's window.
+      let shift = wanted;
+      let top = Number.NEGATIVE_INFINITY;
+      let bottom = Number.POSITIVE_INFINITY;
+      for (const m of notes) {
+        top = Math.max(top, m.degree);
+        bottom = Math.min(bottom, m.degree);
+      }
+      if (top + shift > hi && bottom + shift - len >= lo - 1) shift -= len;
+      else if (bottom + shift < lo && top + shift + len <= hi + 1) shift += len;
+      let prev: number | null = null;
       notes.forEach((m, k) => {
         const abs = offset + m.step;
         if (abs >= total) return;
         let deg = m.degree + shift;
         const lastNote = k === notes.length - 1;
+        // Keep the motif's contour: snap in its direction and not back onto the previous note.
+        const dir = k > 0 && m.degree < notes[k - 1]!.degree ? -1 : 1;
         if ((abs - offset) % def.beatSteps === 0 || lastNote)
-          deg = nearestChordDegree(deg, chordAtAbs(abs), len);
-        if (cadence && lastNote) deg = nearestChordDegree(deg, [0], len);
+          deg = nearestChordDegree(deg, chordAtAbs(abs), len, dir, prev);
+        if (cadence && lastNote) deg = nearestChordDegree(deg, [0], len, dir);
         deg = Math.max(lo, Math.min(hi, deg));
+        prev = deg;
         let bar = 0;
         while (bar < bars - 1 && barStart[bar + 1]! <= abs) bar++;
         const dur = Math.min(m.dur, total - abs);
@@ -700,9 +717,9 @@ function composePhrase(
 const cache = new Map<string, ComposedTheme>();
 
 /** Compose (and cache) a theme: phrase A and B, played A A B A. Deterministic per theme id. */
-export function composeTheme(themeId: string): ComposedTheme {
+export function composeTheme(themeId: string, useCache = true): ComposedTheme {
   const def = getThemeDef(themeId);
-  const hit = cache.get(def.id);
+  const hit = useCache ? cache.get(def.id) : undefined;
   if (hit) return hit;
   const rng = new Rng(`${MUSIC.seed}:${def.id}`);
   const progRng = rng.fork('progression');

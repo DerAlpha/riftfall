@@ -77,6 +77,8 @@ export function notesInRange(pcs: readonly number[], low: number, high: number):
 const MUDDY_INTERVAL = 5;
 const MUDDY_BELOW = 55;
 const MUDDY_PENALTY = 6;
+/** Doubling a chord tone other than the root (voice-leading cost in semitones). */
+const DOUBLING_PENALTY = 2.5;
 /** Candidates considered per voicing search (keeps the combination count small). */
 const MAX_CANDIDATES = 14;
 
@@ -94,6 +96,8 @@ export function voiceLead(
   voices: number,
   center = (low + high) / 2,
 ): number[] {
+  // pcs[0] is the chord root: doubling it is fine, doubling the others (the third) is avoided.
+  const root = pcs[0];
   let cand = notesInRange(pcs, low, high);
   if (cand.length === 0) return [];
   const k = Math.max(1, Math.min(voices, cand.length));
@@ -124,6 +128,11 @@ export function voiceLead(
     }
     for (let v = 1; v < pick.length; v++) {
       if (pick[v - 1]! < MUDDY_BELOW && pick[v]! - pick[v - 1]! < MUDDY_INTERVAL) cost += MUDDY_PENALTY;
+    }
+    for (let v = 0; v < pick.length; v++) {
+      const pc = mod(pick[v]!, 12);
+      if (pc === root) continue;
+      for (let w = v + 1; w < pick.length; w++) if (mod(pick[w]!, 12) === pc) cost += DOUBLING_PENALTY;
     }
     if (cost < bestCost) {
       bestCost = cost;
@@ -183,15 +192,25 @@ export interface MotifOptions {
   readonly leapChance: number;
 }
 
-/** Nearest degree to `d` whose pitch class (mod scaleLength) is in `chord`. */
-export function nearestChordDegree(d: number, chord: readonly number[], scaleLength: number): number {
+/**
+ * Nearest degree to `d` whose pitch class (mod scaleLength) is in `chord`; ties go in direction
+ * `prefer` (+1 up, −1 down) and `avoid` (e.g. the previous note) is only taken when nothing else
+ * is within reach.
+ */
+export function nearestChordDegree(
+  d: number,
+  chord: readonly number[],
+  scaleLength: number,
+  prefer = -1,
+  avoid: number | null = null,
+): number {
   let best = d;
   let bestDist = Number.POSITIVE_INFINITY;
   for (let o = -scaleLength; o <= scaleLength; o++) {
     const c = d + o;
     const pc = mod(c, scaleLength);
     if (!chord.some((x) => mod(x, scaleLength) === pc)) continue;
-    const dist = Math.abs(o) + (o > 0 ? 0.01 : 0);
+    const dist = Math.abs(o) + (Math.sign(o) === -Math.sign(prefer) ? 0.01 : 0) + (c === avoid ? 1.5 : 0);
     if (dist < bestDist) {
       bestDist = dist;
       best = c;
@@ -245,7 +264,10 @@ export function generateMotif(rng: Rng, o: MotifOptions): MotifNote[] {
     }
     const strong = step % o.beatSteps === 0 || n === durs.length - 1;
     if (strong) {
-      const snapped = nearestChordDegree(degree, o.chordAt(step), o.scaleLength);
+      // Snap onto a chord tone in the direction of motion, not back onto the previous note.
+      const prev = n > 0 ? notes[n - 1]!.degree : null;
+      const dir = prev === null ? -1 : degree >= prev ? 1 : -1;
+      const snapped = nearestChordDegree(degree, o.chordAt(step), o.scaleLength, dir, prev);
       if (snapped >= o.low && snapped <= o.high) degree = snapped;
     }
     notes.push({ step, dur: durs[n]!, degree });

@@ -10,7 +10,7 @@ import {
   type MusicThemeDef,
   type StingDef,
 } from '../../defs/music';
-import { NATURAL, rangeOf } from './composer';
+import { NATURAL, foldAround, rangeOf } from './composer';
 import { degreeNote } from './theory';
 
 export interface ResolvedStingNote {
@@ -26,13 +26,9 @@ export interface ResolvedStingNote {
   readonly glideTime: number;
 }
 
-/** The tonic moved into the lowest octave of a slot's register. */
+/** The tonic moved into the second octave of a slot's register (room for chords above and below). */
 export function registerBase(tonic: number, slot: InstrumentSlot): number {
-  const [lo] = rangeOf(slot);
-  let base = tonic;
-  while (base < lo) base += 12;
-  while (base > lo + 11) base -= 12;
-  return base;
+  return foldAround(tonic, rangeOf(slot)[0] + 12);
 }
 
 /**

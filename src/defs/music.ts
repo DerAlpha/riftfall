@@ -824,7 +824,7 @@ export const MUSIC_STINGS: Readonly<Record<MusicStingId, StingDef>> = {
     route: 'game',
     quantize: 'beat',
     maxWait: 0.45,
-    gain: 0.75,
+    gain: 0.9,
     minInterval: 2,
     fallback: { id: 'sting.wave.complete', bus: 'music' },
     notes: [
@@ -943,15 +943,16 @@ export const MUSIC_STINGS: Readonly<Record<MusicStingId, StingDef>> = {
     route: 'game',
     quantize: 'half',
     maxWait: 0.3,
-    gain: 0.7,
+    gain: 0.95,
     minInterval: 1.5,
     notes: [
-      n('arp', 0, 0.25, 0.8, { degree: 7 }),
-      n('arp', 0.25, 0.25, 0.7, { degree: 7, semi: 1 }),
-      n('arp', 0.5, 0.25, 0.8, { degree: 7 }),
-      n('arp', 0.75, 0.25, 0.7, { degree: 7, semi: 1 }),
-      n('arp', 1, 0.25, 0.8, { degree: 7 }),
-      n('arp', 1.25, 0.5, 0.7, { degree: 7, semi: 1 }),
+      n('arp', 0, 0.25, 0.85, { degree: 0 }),
+      n('arp', 0.25, 0.25, 0.75, { degree: 0, semi: 1 }),
+      n('arp', 0.5, 0.25, 0.85, { degree: 0 }),
+      n('arp', 0.75, 0.25, 0.75, { degree: 0, semi: 1 }),
+      n('arp', 1, 0.25, 0.85, { degree: 0 }),
+      n('arp', 1.25, 0.5, 0.75, { degree: 0, semi: 1 }),
+      n('sub', 0, 1.5, 0.6, { degree: 0 }),
       n('choir', 0, 1.5, 0.55, { degree: 0 }),
       n('choir', 0, 1.5, 0.45, { degree: 0, semi: 6 }),
       n('metal', 0, 1, 0.5),
@@ -962,7 +963,7 @@ export const MUSIC_STINGS: Readonly<Record<MusicStingId, StingDef>> = {
     route: 'ui',
     quantize: 'none',
     maxWait: 0,
-    gain: 0.34,
+    gain: 0.5,
     minInterval: 1,
     notes: [
       n('arp', 0, 1, 0.7, { degree: 0 }),
@@ -980,7 +981,7 @@ export const MUSIC_STINGS: Readonly<Record<MusicStingId, StingDef>> = {
     route: 'ui',
     quantize: 'none',
     maxWait: 0,
-    gain: 0.36,
+    gain: 0.5,
     minInterval: 0.8,
     notes: [
       n('arp', 0, 2, 0.75, { degree: 0 }),
@@ -1110,6 +1111,8 @@ export const MUSIC = {
     layers: { ambient: 0.9, low: 0.75, mid: 0.85, high: 0.85, peak: 0.85 } satisfies Record<MusicLayer, number>,
     /** Rumble below this (Hz) is cut: the sub range belongs to explosions and gunshot bodies. */
     highpass: 34,
+    /** Stings sit this much above the layers they interrupt. */
+    stings: 1.5,
     /** Tempo-synced ping-pong echo per theme (space for arps and leads, no convolver). */
     echo: {
       beats: 0.75,

@@ -885,7 +885,18 @@ export const ENEMY_AI = {
     goalRecheckDistance: 1,
   },
   /** Pose: hit flash decay (1/s), flinch per HP fraction and its decay, stagger ramp-in share. */
-  pose: { hitFlashDecay: 9, flinchPerHealth: 3, flinchMax: 0.35, flinchDecay: 6, staggerRampIn: 0.2 },
+  pose: {
+    hitFlashDecay: 9,
+    /**
+     * Sustained damage (kind 'beam': beam ticks, arcs, burn / poison ticks): flash peak (of the
+     * white-hot 1) and the shortest time between two such pulses (s).
+     */
+    sustainedFlash: { peak: 0.3, interval: 0.25 },
+    flinchPerHealth: 3,
+    flinchMax: 0.35,
+    flinchDecay: 6,
+    staggerRampIn: 0.2,
+  },
   /** Player capsule for enemy hit tests (m). */
   player: { radius: 0.38, hitRadius: 0.42 },
   /**

@@ -978,6 +978,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.stateTime += dt;
     const PP = ENEMY_AI.pose;
     e.pose.hitFlash = Math.max(0, e.pose.hitFlash - PP.hitFlashDecay * dt);
+    e.sustainedFlashCooldown = Math.max(0, e.sustainedFlashCooldown - dt);
     e.flinch = Math.max(0, e.flinch - PP.flinchDecay * dt);
     e.staggerAccum = Math.max(0, e.staggerAccum - e.def.stagger.decayPerSecond * dt);
     e.faceTarget = false;
@@ -1665,6 +1666,7 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.staggerImmuneUntil = 0;
     e.staggerDuration = 0;
     e.flinch = 0;
+    e.sustainedFlashCooldown = 0;
 
     e.mode = 0;
     e.modeTime = now;

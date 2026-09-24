@@ -34,10 +34,10 @@ function sustained(kind: ImpactKind, rate: number, seconds: number) {
     if (clock >= every - 1e-9) {
       clock -= every;
       h.combat.dealDamage(e, info(kind));
+      peak = Math.max(peak, e.pose.hitFlash);
     }
     h.tick(1);
     sum += e.pose.hitFlash;
-    peak = Math.max(peak, e.pose.hitFlash);
   }
   return { mean: sum / ticks, peak, alive: e.alive };
 }

@@ -612,7 +612,11 @@ export class StingPlayer {
     this.pool = new VoicePool(ctx, voices);
     const bus = (route: MusicRoute): GainNode => {
       const g = ctx.createGain();
-      g.connect(outs[route]);
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = MIX.highpass;
+      hp.Q.value = 0.6;
+      g.connect(hp).connect(outs[route]);
       return g;
     };
     this.buses = { game: bus('game'), menu: bus('menu'), ui: bus('ui') };
@@ -646,7 +650,7 @@ export class StingPlayer {
       r.rate = v.rate;
       r.time = n.time;
       r.gate = set.loop ? n.dur : 0;
-      r.gain = Math.pow(n.vel, MIX.velocityCurve) * set.gain * gain;
+      r.gain = Math.pow(n.vel, MIX.velocityCurve) * set.gain * gain * MIX.stings;
       r.dest = this.buses[route];
       r.attack = Math.min(env.attack, 0.08);
       r.release = env.release;

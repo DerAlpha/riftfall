@@ -9,6 +9,10 @@
  * Model ids equal weapon ids. A weapon without an entry here shows the placeholder device.
  */
 import type { ReloadStep } from './weapons';
+import { LONG_GUN_LOWERED, PUMP_CYCLE, PUMP_FIRE_DELAY, TRIGGER_PULL, V } from './viewmodelParts';
+import { M5_VIEWMODELS } from './viewmodelData';
+
+export { LONG_GUN_LOWERED, PUMP_CYCLE, PUMP_FIRE_DELAY, TRIGGER_PULL, V } from './viewmodelParts';
 
 export type EaseName = 'linear' | 'in' | 'out' | 'inOut' | 'outBack' | 'snap';
 
@@ -101,6 +105,23 @@ export interface ReloadLoopDef {
   readonly outroTime: number;
 }
 
+/**
+ * Continuous part motion driven by weapon state (M5): minigun barrels spinning with `weapon:spin`,
+ * railgun coils sliding/glowing with `weapon:charge`, a beam emitter while `weapon:beam` is active,
+ * vents opening with barrel heat. The source value (0..1, eased) scales `pose` (added to the part's
+ * offset), spins the part at `spin.degPerSec × value` and boosts the accent glow.
+ */
+export interface ViewmodelDriverDef {
+  readonly part: string;
+  readonly source: 'spin' | 'charge' | 'beam' | 'heat';
+  readonly pose?: PoseDef;
+  readonly spin?: { readonly axis: 'x' | 'y' | 'z'; readonly degPerSec: number };
+  /** Extra accent emissive intensity at source 1. */
+  readonly accentBoost?: number;
+  /** Easing of the source value (1/s towards the target), default instant. */
+  readonly response?: number;
+}
+
 export interface WeaponViewmodelDef {
   /** Uniform model scale (default 1 = real-world meters); sockets, pivot and ADS follow it. */
   readonly scale?: number;
@@ -156,41 +177,9 @@ export interface WeaponViewmodelDef {
     /** Heat vents at heat 1 (0 when cold). */
     readonly heat: number;
   };
+  /** Continuous state-driven motions (M5). */
+  readonly drivers?: readonly ViewmodelDriverDef[];
 }
-
-const V = (x: number, y: number, z: number): Vec3Def => ({ x, y, z });
-
-const TRIGGER_PULL: PartMotionDef = {
-  part: 'trigger',
-  type: 'pulse',
-  pose: { rot: V(-22, 0, 0) },
-  duration: 0.025,
-  hold: 0.03,
-  release: 0.07,
-  ease: 'snap',
-  releaseEase: 'out',
-};
-
-/** Holster pose of rifles/shotguns: dropped and rolled away, the stock stays behind the eye. */
-const LONG_GUN_LOWERED: PoseDef = { pos: V(0.04, -0.26, 0.06), rot: V(-18, -14, 28) };
-
-/**
- * SG-12 pump stroke, synced to the pump sound (audio/weaponSynth `pump`): back stop 55 ms and
- * forward slam 140 ms after the stroke starts. After a shot it starts PUMP_FIRE_DELAY later,
- * matching the fire layer's lead-in.
- */
-const PUMP_FIRE_DELAY = 0.16;
-const PUMP_CYCLE: PartMotionDef = {
-  part: 'pump',
-  type: 'pulse',
-  pose: { pos: V(0, 0, 0.085) },
-  delay: PUMP_FIRE_DELAY,
-  duration: 0.055,
-  hold: 0.03,
-  release: 0.055,
-  ease: 'inOut',
-  releaseEase: 'in',
-};
 
 export const VIEWMODELS = {
   pistol: {
@@ -473,8 +462,11 @@ export const VIEWMODELS = {
 } as const satisfies Record<string, WeaponViewmodelDef>;
 
 export function getViewmodelDef(id: string): WeaponViewmodelDef | undefined {
-  return Object.prototype.hasOwnProperty.call(VIEWMODELS, id)
-    ? (VIEWMODELS as Record<string, WeaponViewmodelDef>)[id]
+  if (Object.prototype.hasOwnProperty.call(VIEWMODELS, id))
+    return (VIEWMODELS as Record<string, WeaponViewmodelDef>)[id];
+  // M5 weapons: one def file each (defs/viewmodelData); null = not built yet (placeholder device).
+  return Object.prototype.hasOwnProperty.call(M5_VIEWMODELS, id)
+    ? (M5_VIEWMODELS[id] ?? undefined)
     : undefined;
 }
 

@@ -7,7 +7,7 @@
 import { Color, SRGBColorSpace, type DataTexture, type Group, type Material, type Object3D } from 'three';
 import type { WeaponViewmodel } from '../../core/contracts';
 import { VIEWMODEL_ANIM, VIEWMODEL_ART, type WeaponViewmodelDef } from '../../defs/viewmodels';
-import type { BuiltModel, SocketName } from './ModelBuilder';
+import type { BuiltModel, MountName, SocketName } from './ModelBuilder';
 import type { GlowMaterials } from './materials';
 import {
   createReadoutTexture,
@@ -35,6 +35,8 @@ export type ReadoutSpec = { kind: 'leds'; count: number } | { kind: 'segments' }
 export interface WeaponViewmodelModel extends WeaponViewmodel {
   readonly def: WeaponViewmodelDef;
   readonly sockets: Readonly<Record<SocketName, Object3D>>;
+  /** Attachment mounts (M5); a missing mount shows no attachment model for that slot. */
+  readonly mounts: Readonly<Partial<Record<MountName, Object3D>>>;
   /** Refresh the ammo readout (no-op when nothing changed). */
   setAmmo(mag: number, magSize: number): void;
   /** Uniform-only emissive animation, once per frame while shown. */
@@ -93,6 +95,7 @@ export class ProceduralWeaponModel implements WeaponViewmodelModel {
   readonly sight: Object3D;
   readonly parts: Readonly<Record<string, Object3D>>;
   readonly sockets: Readonly<Record<SocketName, Object3D>>;
+  readonly mounts: Readonly<Partial<Record<MountName, Object3D>>>;
   private lastMag = -1;
   private lastMagSize = -1;
   private readoutBoost = 1;
@@ -112,6 +115,7 @@ export class ProceduralWeaponModel implements WeaponViewmodelModel {
     this.root.scale.setScalar(def.scale ?? 1);
     this.root.userData.weaponId = weaponId;
     this.sockets = built.sockets;
+    this.mounts = built.mounts;
     this.muzzle = built.sockets.muzzle;
     this.ejectPort = built.sockets.ejectPort;
     this.sight = built.sockets.sight;

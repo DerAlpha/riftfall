@@ -30,6 +30,15 @@ const log = createLogger('viewmodel');
 export type SocketName = 'muzzle' | 'ejectPort' | 'sight';
 export const SOCKET_NAMES: readonly SocketName[] = ['muzzle', 'ejectPort', 'sight'];
 
+/**
+ * Attachment mount points (M5, optional per model): an attachment's part is parented to its mount.
+ * optic: top rail center, local +Y up, −Z forward (the optic's sight line sits `height` above it) ·
+ * muzzleDevice: barrel tip (−Z out) · underbarrel: rail below the handguard · laser: side rail ·
+ * stock: rear of the receiver (+Z back).
+ */
+export type MountName = 'optic' | 'muzzleDevice' | 'underbarrel' | 'laser' | 'stock';
+export const MOUNT_NAMES: readonly MountName[] = ['optic', 'muzzleDevice', 'underbarrel', 'laser', 'stock'];
+
 /** The static body of the model (not a movable part). */
 export const BODY = 'body';
 
@@ -71,10 +80,18 @@ interface SocketSpec {
   matrix: Matrix4;
 }
 
+interface MountSpec {
+  name: MountName;
+  parent: string;
+  matrix: Matrix4;
+}
+
 export interface BuiltModel {
   root: Group;
   parts: Record<string, Object3D>;
   sockets: Record<SocketName, Object3D>;
+  /** Attachment mounts the model declared (missing = that slot shows no attachment model). */
+  mounts: Partial<Record<MountName, Object3D>>;
   /** Merged geometries owned by the model (dispose with it). */
   geometries: BufferGeometry[];
   meshes: Mesh[];
@@ -159,6 +176,7 @@ export class ModelBuilder {
   private readonly pieces: Piece[] = [];
   private readonly partSpecs = new Map<string, PartSpec>();
   private readonly socketSpecs: SocketSpec[] = [];
+  private readonly mountSpecs: MountSpec[] = [];
 
   constructor(
     readonly name: string,
@@ -218,6 +236,12 @@ export class ModelBuilder {
     return this;
   }
 
+  /** Attach an attachment mount (M5). Local −Z forward, +Y up. */
+  mount(name: MountName, pos: Vec3Tuple, rotDeg?: Vec3Tuple, parent: string = BODY): this {
+    this.mountSpecs.push({ name, parent, matrix: composeMatrix(new Matrix4(), pos, rotDeg) });
+    return this;
+  }
+
   /** Model-space rest matrix of a part (identity for the body). */
   private modelMatrixOf(target: string): Matrix4 {
     return this.partSpecs.get(target)?.matrix ?? new Matrix4();
@@ -252,6 +276,16 @@ export class ModelBuilder {
       _m.decompose(obj.position, obj.quaternion, obj.scale);
       parentNode.add(obj);
       sockets[spec.name] = obj;
+    }
+    const mounts: Partial<Record<MountName, Object3D>> = {};
+    for (const spec of this.mountSpecs) {
+      const obj = new Object3D();
+      obj.name = `mount-${spec.name}`;
+      const parentNode = nodes.get(spec.parent) ?? root;
+      _m.copy(this.modelMatrixOf(spec.parent)).invert().multiply(spec.matrix);
+      _m.decompose(obj.position, obj.quaternion, obj.scale);
+      parentNode.add(obj);
+      mounts[spec.name] = obj;
     }
     for (const name of SOCKET_NAMES) {
       if (!sockets[name]) {
@@ -299,7 +333,7 @@ export class ModelBuilder {
       meshes.push(mesh);
     }
     this.pieces.length = 0;
-    return { root, parts, sockets, geometries, meshes };
+    return { root, parts, sockets, mounts, geometries, meshes };
   }
 }
 

@@ -8,6 +8,7 @@ import type { WeaponMaterialKit } from './materials';
 import { buildPistol } from './pistol';
 import { buildRifle } from './rifle';
 import { buildShotgun } from './shotgun';
+import { M5_BUILDERS } from './models';
 import type { WeaponViewmodelModel } from './WeaponModel';
 
 export type { WeaponViewmodelModel, ViewmodelFxState } from './WeaponModel';
@@ -23,6 +24,7 @@ const BUILDERS = new Map<string, ViewmodelBuilder>([
   ['rifle', buildRifle],
   ['shotgun', buildShotgun],
 ]);
+for (const [id, build] of Object.entries(M5_BUILDERS)) if (build) BUILDERS.set(id, build);
 
 /** Register (or replace) a model builder – future weapons / modded content. */
 export function registerViewmodelBuilder(modelId: string, builder: ViewmodelBuilder): void {

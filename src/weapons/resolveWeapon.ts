@@ -336,7 +336,8 @@ export function resolveWeapon(base: WeaponDef, state: WeaponModState = {}): Weap
     penetration: { ...base.penetration, power: base.penetration.power * f.penetration },
     equipTime: base.equipTime * f.equipTime,
     tracer: tracerColor === base.tracer.color ? base.tracer : { ...base.tracer, color: tracerColor },
-    vfx: muzzleLight === base.vfx.muzzleLightColor ? base.vfx : { ...base.vfx, muzzleLightColor: muzzleLight },
+    vfx:
+      muzzleLight === base.vfx.muzzleLightColor ? base.vfx : { ...base.vfx, muzzleLightColor: muzzleLight },
     suppressed,
     special,
     projectile: scaleProjectile(base.projectile, f, baseElement, element),

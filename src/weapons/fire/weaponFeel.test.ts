@@ -148,7 +148,9 @@ describe('suppressor and forged muzzle light (weapon:fired → VFX / audio)', ()
     }
     // A tier naming its own palette (RM-44 tier 3: void).
     const revolver = WEAPONS.revolver as WeaponDef;
-    expect(resolveWeapon(revolver, { tier: 3 }).vfx.muzzleLightColor).toBe(FORGE_LOOKS.forgeVoid!.muzzleLight);
+    expect(resolveWeapon(revolver, { tier: 3 }).vfx.muzzleLightColor).toBe(
+      FORGE_LOOKS.forgeVoid!.muzzleLight,
+    );
   });
 
   it('weapon:fired carries the effective light color and the suppressor', () => {
@@ -186,7 +188,15 @@ describe('suppressor and forged muzzle light (weapon:fired → VFX / audio)', ()
       },
     });
     const O = { x: 0, y: 0, z: 0 };
-    const shot = { weaponId: 'rifle', origin: O, direction: O, muzzle: O, shotIndex: 0, ammoInMag: 9, ads: false };
+    const shot = {
+      weaponId: 'rifle',
+      origin: O,
+      direction: O,
+      muzzle: O,
+      shotIndex: 0,
+      ammoInMag: 9,
+      ads: false,
+    };
     events.emit('weapon:fired', shot);
     events.emit('weapon:fired', { ...shot, muzzleLightColor: 0x123456, suppressed: true });
     expect(calls).toEqual([
@@ -234,7 +244,15 @@ describe('suppressor and forged muzzle light (weapon:fired → VFX / audio)', ()
       () => 0.5,
     );
     const O = { x: 0, y: 0, z: 0 };
-    const shot = { weaponId: 'rifle', origin: O, direction: O, muzzle: O, shotIndex: 0, ammoInMag: 20, ads: false };
+    const shot = {
+      weaponId: 'rifle',
+      origin: O,
+      direction: O,
+      muzzle: O,
+      shotIndex: 0,
+      ammoInMag: 20,
+      ads: false,
+    };
     events.emit('weapon:fired', shot);
     const loud = plays.splice(0);
     events.emit('weapon:fired', { ...shot, suppressed: true });
@@ -310,7 +328,8 @@ describe('singularity launcher', () => {
     for (let i = 0; i < 240 && !at; i++) t.frame();
     expect(at, 'singularity').not.toBeNull();
     let nearest = Infinity;
-    for (const b of bodies) nearest = Math.min(nearest, Math.hypot(b.boundsCenter.x - at!.x, b.boundsCenter.z - at!.z));
+    for (const b of bodies)
+      nearest = Math.min(nearest, Math.hypot(b.boundsCenter.x - at!.x, b.boundsCenter.z - at!.z));
     return nearest;
   }
 

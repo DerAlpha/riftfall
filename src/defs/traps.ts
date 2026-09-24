@@ -139,8 +139,16 @@ export const TRAPS = {
     height: 2.1,
     /** Arc strands between the posts, bottom .. top (fractions of the height). */
     strands: [0.12, 0.32, 0.52, 0.72, 0.92] as readonly number[],
-    /** Damage slab: half thickness around the post line (m, + the target's radius share). */
+    /** Damage slab: half thickness around the post line (m) + this share of a body's radius. */
     halfThickness: 0.35,
+    radiusShare: 0.4,
+    /** Enemy query reach beyond the half length (m). */
+    queryMargin: 1.5,
+    /** Sparks / strikes / sounds per zap at most (the damage hits everyone). */
+    effectsPerZap: 3,
+    playerEffectScale: 0.8,
+    /** Arc energy ramp rates (1/s) on / off. */
+    ramp: { on: 6, off: 3 },
     /** Every `zapInterval` s everything inside takes `zapDamage` shock damage (stuns via build-up). */
     zapInterval: 0.25,
     zapDamage: 55,

@@ -461,8 +461,11 @@ export class Game {
       lineOfSight: (a, b) => combat.lineOfSight(a, b),
       enabled: playing,
     });
-    // Pad X is shared by reload and interact: at an interactable it buys instead of reloading.
-    weapons.setReloadSuppressor(() => interaction.offering && input.device === 'gamepad');
+    // Pad X is shared by reload and interact: at a purchase it buys instead of reloading. Hold
+    // interactions (seal repairs) keep the tap for reloading – they are where the fighting is.
+    weapons.setReloadSuppressor(
+      () => input.device === 'gamepad' && interaction.offering && (interaction.focused?.holdTime() ?? 0) <= 0,
+    );
     const reduceFlashing = settings.current.accessibility.reduceFlashing;
     const interactables = placeInteractables({
       level,
@@ -937,7 +940,8 @@ export class Game {
   private resetRunSystems(startWaves = true): void {
     const { enemies, waves, health, player, level, weapons, viewmodel, vfx, map, hud, audioBridge } =
       this.sys;
-    const { powerUps, perks, stats, economy, pointsRules, zones, interactables, interaction, seals } = this.sys;
+    const { powerUps, perks, stats, economy, pointsRules, zones, interactables, interaction, seals } =
+      this.sys;
     enemies.clear();
     waves.reset();
     vfx.clear();

@@ -531,6 +531,16 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     this.emitAmmo();
   }
 
+  /** Add `fraction` of every carried weapon's full reserve (ammo scraps, Aasgeier perk). */
+  addReserveFraction(fraction: number): void {
+    if (!(fraction > 0)) return;
+    this.syncStats();
+    for (const s of this.slots) {
+      if (s) s.reserve = Math.min(s.def.reserve, s.reserve + Math.ceil(s.def.reserve * fraction));
+    }
+    this.emitAmmo();
+  }
+
   /** Switch to a slot (holster → equip). Ignored for empty/invalid slots. */
   switchTo(slot: number): void {
     this.requestSwitch(slot);

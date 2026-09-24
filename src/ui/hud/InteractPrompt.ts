@@ -40,7 +40,11 @@ export class InteractPrompt {
     const row = h('div', 'hud-interact__row', this.el);
     this.rowEl = row;
     this.keyEl = h('span', 'hud-key', row);
-    const ring = svgEl('svg', { class: 'hud-key__ring', viewBox: '0 0 40 40', 'aria-hidden': 'true' }, this.keyEl);
+    const ring = svgEl(
+      'svg',
+      { class: 'hud-key__ring', viewBox: '0 0 40 40', 'aria-hidden': 'true' },
+      this.keyEl,
+    );
     svgEl('circle', { class: 'hud-key__track', cx: 20, cy: 20, r: RING_R }, ring);
     this.ringFill = svgEl(
       'circle',

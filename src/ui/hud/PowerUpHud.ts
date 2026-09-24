@@ -215,7 +215,10 @@ export class PowerUpHud {
 
   private renderTimer(t: TimerView): void {
     const r = timerRing(t.left, t.full, PU.warnSeconds, _ring);
-    if (Math.abs(r.fraction - t.shownFraction) >= PU.ringQuantum || (r.fraction === 0) !== (t.shownFraction === 0)) {
+    if (
+      Math.abs(r.fraction - t.shownFraction) >= PU.ringQuantum ||
+      (r.fraction === 0) !== (t.shownFraction === 0)
+    ) {
       t.shownFraction = r.fraction;
       t.fill.setAttribute('stroke-dashoffset', (RING_C * (1 - r.fraction)).toFixed(2));
     }

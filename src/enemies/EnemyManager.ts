@@ -1354,7 +1354,10 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     if (e.leashTime >= L.time) this.relocate(e, target);
   }
 
-  /** Too far for too long: re-emerge at the spawn point nearest to the target (not too close). */
+  /**
+   * Too far for too long: re-emerge at the spawn point nearest to the target (not too close). A
+   * sealed spawn point holds the enemy like a fresh spawn: it re-emerges in the pen and breaches.
+   */
   private relocate(e: Enemy, target: EnemyTargetApi): void {
     const L = ENEMY_AI.leash;
     e.leashTime = 0;
@@ -1367,9 +1370,19 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
         best = sp;
       }
     }
-    const ok = best
-      ? this.nav.closestPoint(best.position, _v)
-      : this.nav.randomPointAround(target.position, L.fallbackRadius, _v);
+    const breach = this.breachApi;
+    let sealedAt: SpawnPointDef | null = null;
+    let ok: boolean;
+    if (best) {
+      _probe.copy(best.position);
+      if (breach !== null && breach.segmentsLeft(best.id) > 0) {
+        breach.confine(best.id, _probe, e.def.nav.radius * e.pose.scale);
+        sealedAt = best;
+      }
+      ok = this.nav.closestPoint(_probe, _v);
+    } else {
+      ok = this.nav.randomPointAround(target.position, L.fallbackRadius, _v);
+    }
     if (!ok || distXZ(_v, target.position) < L.minRelocateDistance * L.fallbackMinFraction) return;
     this.stats.relocations++;
     const rt = this.types.get(e.type);
@@ -1382,7 +1395,9 @@ export class EnemyManager implements EnemyManagerApi, EnemyOwner, AiHost {
     e.state = 'emerge';
     e.stateTime = 0;
     e.pose.emerge = 0;
-    e.yaw = yawTo(target.position.x - _v.x, target.position.z - _v.z);
+    e.yaw = sealedAt ? sealedAt.yaw : yawTo(target.position.x - _v.x, target.position.z - _v.z);
+    e.breachPoint = sealedAt ? sealedAt.id : null;
+    e.breachYaw = e.yaw;
     if (rt?.spawnEffect) this.vfx?.spawn(rt.spawnEffect, _v, UP, rt.spawnScale * e.pose.scale);
   }
 

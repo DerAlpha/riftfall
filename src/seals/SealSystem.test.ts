@@ -3,10 +3,11 @@ import { Vector3 } from 'three';
 import type { SpawnPointDef } from '../core/contracts';
 import { EventBus } from '../core/EventBus';
 import type { GameEvents } from '../core/events';
+import { ECONOMY } from '../defs/economy';
 import { SEALS } from '../defs/seals';
 import { EconomySystem } from '../economy/EconomySystem';
+import { PointsRules } from '../economy/PointsRules';
 import { InteractionSystem } from '../interactables/InteractionSystem';
-import { RepairRewards } from './RepairRewards';
 import { SealSystem } from './SealSystem';
 
 const DT = 1 / 60;
@@ -18,10 +19,13 @@ function spawnPoints(): SpawnPointDef[] {
   ];
 }
 
-function setup(rule = { perPlank: 10, capPerWave: 30 }) {
+const { perPlank, capPerWave } = ECONOMY.repair;
+
+function setup() {
   const events = new EventBus<GameEvents>();
   const economy = new EconomySystem({ events }, 0);
-  const rewards = new RepairRewards({ events, economy }, rule);
+  // The game's repair rule (per-bar points, per-wave cap).
+  const rewards = new PointsRules({ events, economy });
   const vfx: { effect: string }[] = [];
   const seals = new SealSystem({
     events,
@@ -72,7 +76,7 @@ describe('SealSystem', () => {
   });
 
   it('holding interact repairs one bar per hold and pays points up to the per-wave cap', () => {
-    const t = setup({ perPlank: 10, capPerWave: 30 });
+    const t = setup();
     const seal = t.seals.seal('rift_a')!;
     t.seals.breakSeal('rift_a');
     expect(seal.up).toBe(0);
@@ -110,7 +114,7 @@ describe('SealSystem', () => {
     expect(seal.up).toBe(1);
     expect(t.repaired).toHaveLength(1);
     expect(t.repaired[0]).toMatchObject({ sealId: 'seal:rift_a', planks: 1 });
-    expect(t.economy.points).toBe(10);
+    expect(t.economy.points).toBe(perPlank);
 
     // One bar per hold: release and hold again for the next ones.
     tick(SEALS.repair.holdTime * 2);
@@ -124,24 +128,61 @@ describe('SealSystem', () => {
     repairOnce();
     repairOnce();
     expect(seal.up).toBe(3);
-    expect(t.economy.points).toBe(30);
+    expect(t.economy.points).toBe(3 * perPlank);
+
+    // The swarm keeps tearing, the player keeps repairing: points stop at the per-wave cap.
+    const farm = Math.ceil(capPerWave / perPlank);
+    for (let i = 0; i < farm; i++) {
+      t.seals.strike('rift_a', 1, seal.position);
+      repairOnce();
+    }
+    expect(seal.up).toBe(3);
+    expect(t.economy.points).toBe(capPerWave);
     // Cap reached: repairs go on, points do not; the prompt says so.
     expect(seal.prompt()).toBe(SEALS.prompts.repairNoPoints);
     repairOnce();
     expect(seal.up).toBe(4);
-    expect(t.economy.points).toBe(30);
+    expect(t.economy.points).toBe(capPerWave);
     // A new wave resets the cap.
     t.events.emit('wave:start', { wave: 2, total: 10 });
     expect(seal.prompt()).toBe(SEALS.prompts.repair);
     repairOnce();
     expect(seal.up).toBe(5);
-    expect(t.economy.points).toBe(40);
+    expect(t.economy.points).toBe(capPerWave + perPlank);
     // Intact again: nothing to focus.
     tick(0.1);
     expect(interaction.focused).toBeNull();
-    expect(t.rewards.earned).toBe(40);
+    expect(t.rewards.stats.repair).toBe(capPerWave + perPlank);
     t.seals.dispose();
     expect(interaction.all).toHaveLength(0);
+  });
+
+  it('pays nothing while the player is dead (the interaction system is disabled)', () => {
+    const t = setup();
+    const seal = t.seals.seal('rift_a')!;
+    t.seals.breakSeal('rift_a', 2);
+    const f = seal.frame;
+    let alive = false;
+    const interaction = new InteractionSystem({
+      events: t.events,
+      input: { isDown: () => true, pressed: () => false },
+      viewer: {
+        eyePosition: new Vector3(seal.position.x + f.fx, seal.position.y, seal.position.z + f.fz),
+        yaw: Math.atan2(f.fx, f.fz),
+        pitch: 0,
+      },
+      economy: t.economy,
+      lineOfSight: () => true,
+      enabled: () => alive,
+    });
+    t.seals.attach(interaction);
+    for (let i = 0; i < 60; i++) interaction.fixedUpdate(DT);
+    expect(seal.up).toBe(SEALS.segments - 2);
+    expect(t.economy.points).toBe(0);
+    alive = true;
+    for (let i = 0; i < 60; i++) interaction.fixedUpdate(DT);
+    expect(seal.up).toBe(SEALS.segments - 1);
+    expect(t.economy.points).toBe(perPlank);
   });
 
   it('repairAll (carpenter) restores every seal without repair points; reset() is silent', () => {

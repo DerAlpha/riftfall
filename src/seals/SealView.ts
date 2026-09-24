@@ -231,6 +231,9 @@ export class SealView {
   private readonly rD: UpdateRange = { start: 0, count: 0 };
   /** First instance of each seal (bars, bands, emitters, floor follow). */
   private readonly first: Int32Array;
+  /** Bars standing per seal at the last write, and whether that write was an idle (final) state. */
+  private readonly writtenUp: Int32Array;
+  private idleWritten = false;
   private readonly count: number;
   private time = 0;
 
@@ -241,6 +244,7 @@ export class SealView {
   ) {
     const V = SEALS.visual;
     this.first = new Int32Array(seals.length);
+    this.writtenUp = new Int32Array(seals.length).fill(-1);
     let n = 0;
     for (let i = 0; i < seals.length; i++) {
       this.first[i] = n;
@@ -345,16 +349,27 @@ export class SealView {
     this.material.uniforms.uReduced!.value = on ? SEALS.visual.reducedFlash : 1;
   }
 
-  /** Per frame: animation state of every seal → aC/aD. */
+  /**
+   * Per frame: animation state of every seal → aC/aD. Idle seals (nothing forming, breaking or
+   * flashing; the warning pulse runs on uTime) are written once, then the upload is skipped.
+   */
   update(dt: number): void {
     if (dt > 0 && Number.isFinite(dt)) this.time += dt;
     this.material.uniforms.uTime!.value = this.time;
     const n = this.count;
     if (n === 0) return;
+    let busy = false;
+    for (let s = 0; s < this.seals.length && !busy; s++) {
+      const seal = this.seals[s]!;
+      busy = seal.animating || seal.up !== this.writtenUp[s];
+    }
+    if (!busy && this.idleWritten) return;
+    this.idleWritten = !busy;
     const c = this.aC.array as Float32Array;
     const d = this.aD.array as Float32Array;
     for (let s = 0; s < this.seals.length; s++) {
       const seal = this.seals[s]!;
+      this.writtenUp[s] = seal.up;
       const segs = seal.segments;
       const integrity = seal.up / segs;
       const next = seal.up;

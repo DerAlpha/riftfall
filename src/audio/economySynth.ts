@@ -174,7 +174,8 @@ class Kit {
     p.value = 0;
     p.setValueAtTime(0, t);
     const n = LOOP_EDGE_STEPS;
-    for (let i = 1; i <= n; i++) p.linearRampToValueAtTime(gain * Math.sin((i / n) * Math.PI * 0.5), t + (xf * i) / n);
+    for (let i = 1; i <= n; i++)
+      p.linearRampToValueAtTime(gain * Math.sin((i / n) * Math.PI * 0.5), t + (xf * i) / n);
     const fall = t + Math.max(xf, dur - xf);
     p.setValueAtTime(gain, fall);
     for (let i = 1; i <= n; i++) {
@@ -275,7 +276,15 @@ class Kit {
   }
 
   /** Constant-level noise bed for loops (no envelope). */
-  bed(t: number, dur: number, color: NoiseColor, filter: BiquadFilterType, freq: number, q: number, level: number): void {
+  bed(
+    t: number,
+    dur: number,
+    color: NoiseColor,
+    filter: BiquadFilterType,
+    freq: number,
+    q: number,
+    level: number,
+  ): void {
     const src = this.noiseSource(color, t, dur);
     const f = this.filter(filter, freq, q);
     const g = this.ctx.createGain();
@@ -344,7 +353,16 @@ class Kit {
   }
 
   /** Two-operator FM tone; the modulation index decays with the note (bright attack, soft tail). */
-  fm(t: number, carrier: number, ratio: number, index: number, attack: number, decay: number, peak: number, pan = 0): void {
+  fm(
+    t: number,
+    carrier: number,
+    ratio: number,
+    index: number,
+    attack: number,
+    decay: number,
+    peak: number,
+    pan = 0,
+  ): void {
     const ctx = this.ctx;
     const stop = t + attack + decay * 1.4 + 0.01;
     const mod = ctx.createOscillator();
@@ -428,7 +446,14 @@ const purchase: Recipe = (g, t) => {
   const k = kitOf(g);
   k.noise(t, { color: 'white', filter: 'highpass', freq: 2800, decay: 0.018, peak: 0.55 });
   k.thump(t, 190, 95, 0.03, 0.05, 0.4);
-  k.noise(t + 0.035, { color: 'white', filter: 'bandpass', freq: 5200 * k.j(0.05), q: 4, decay: 0.035, peak: 0.5 });
+  k.noise(t + 0.035, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 5200 * k.j(0.05),
+    q: 4,
+    decay: 0.035,
+    peak: 0.5,
+  });
   const b = midiHz(91) * k.j(0.006); // G6
   k.bell(t + 0.07, b, 0.75, 0.3);
   k.bell(t + 0.07, b * 1.3348, 0.65, 0.22); // C7
@@ -477,7 +502,14 @@ function doorOpen(blast: boolean): Recipe {
       // Locking bolts retract before the leaf moves.
       for (let i = 0; i < 3; i++) {
         const s = t + 0.1 + i * 0.075;
-        k.noise(s, { color: 'white', filter: 'bandpass', freq: 1900 * k.j(0.1), q: 2, decay: 0.03, peak: 0.4 });
+        k.noise(s, {
+          color: 'white',
+          filter: 'bandpass',
+          freq: 1900 * k.j(0.1),
+          q: 2,
+          decay: 0.03,
+          peak: 0.4,
+        });
         k.ring(s, 410 * k.j(0.05), [1, 2.6], 0.14, 0.07);
       }
     }
@@ -565,7 +597,15 @@ const boxResolve: Recipe = (g, t) => {
   const k = kitOf(g);
   const chord = [72, 76, 79, 84];
   for (let i = 0; i < chord.length; i++) k.bell(t + i * 0.025, midiHz(chord[i]! + 12), 1.1, 0.2);
-  k.swell(t, { color: 'white', filter: 'highpass', freq: 5000, attack: 0.02, hold: 0.2, release: 0.8, peak: 0.16 });
+  k.swell(t, {
+    color: 'white',
+    filter: 'highpass',
+    freq: 5000,
+    attack: 0.02,
+    hold: 0.2,
+    release: 0.8,
+    peak: 0.16,
+  });
   k.thump(t, 90, 45, 0.1, 0.4, 0.35);
   k.note(t, 'triangle', midiHz(60), midiHz(60), 0.01, 0.4, 0.6, 0.2);
 };
@@ -719,7 +759,8 @@ export function composeJingle(perkId: string): Jingle {
   let time = 0;
   for (let i = 0; i < rhythm.length; i++) {
     const last = i === rhythm.length - 1;
-    if (last) degree = n; // resolve on the root an octave up
+    if (last)
+      degree = n; // resolve on the root an octave up
     else if (i > 0) {
       const step = rng.pick([-2, -1, 1, 1, 2, 2, 3]);
       degree = Math.max(0, Math.min(2 * n - 1, degree + step));
@@ -790,7 +831,13 @@ type PerkJingleId = `perk.jingle.${PerkId}`;
 const JINGLE_DEFS = Object.fromEntries(
   PERK_IDS.map((id) => [
     `${EA.perks.jinglePrefix}${id}`,
-    { variants: 1, duration: JINGLE_SECONDS, channels: 1, level: 0.85, recipe: perkJingle(id) } satisfies SynthDef,
+    {
+      variants: 1,
+      duration: JINGLE_SECONDS,
+      channels: 1,
+      level: 0.85,
+      recipe: perkJingle(id),
+    } satisfies SynthDef,
   ]),
 ) as Record<PerkJingleId, SynthDef>;
 
@@ -811,7 +858,8 @@ const perkAcquire: Recipe = (g, t) => {
   const s = t + 0.28;
   k.thump(s, 120, 42, 0.08, 0.5, 0.7, 1.4);
   const chord = [60, 67, 71, 74, 79];
-  for (let i = 0; i < chord.length; i++) k.fm(s, midiHz(chord[i]!), 1, 1.2, 0.005, 0.9, 0.11, i % 2 ? 0.35 : -0.35);
+  for (let i = 0; i < chord.length; i++)
+    k.fm(s, midiHz(chord[i]!), 1, 1.2, 0.005, 0.9, 0.11, i % 2 ? 0.35 : -0.35);
   k.noise(s, { color: 'white', filter: 'highpass', freq: 6000, attack: 0.005, decay: 0.5, peak: 0.12 });
   k.thump(s + 0.36, 70, 45, 0.06, 0.15, 0.35);
   k.thump(s + 0.53, 65, 42, 0.06, 0.15, 0.25);
@@ -865,7 +913,15 @@ const powerUpSpawn: Recipe = (g, t) => {
   const k = kitOf(g);
   const run = [84, 88, 91, 96, 100];
   for (let i = 0; i < run.length; i++) k.bell(t + i * 0.05, midiHz(run[i]!) * k.j(0.005), 0.5, 0.16);
-  k.swell(t, { color: 'white', filter: 'highpass', freq: 4500, attack: 0.15, hold: 0.2, release: 0.6, peak: 0.24 });
+  k.swell(t, {
+    color: 'white',
+    filter: 'highpass',
+    freq: 4500,
+    attack: 0.15,
+    hold: 0.2,
+    release: 0.6,
+    peak: 0.24,
+  });
   k.note(t, 'sine', 220, 440, 0.1, 0.25, 0.4, 0.16);
 };
 
@@ -894,12 +950,31 @@ function pick<T>(rng: Rng, items: readonly T[]): T {
 
 const stingNuke: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.swell(t, { color: 'white', filter: 'bandpass', freq: 400, sweepTo: 5000, q: 1, attack: 0.35, hold: 0.35, release: 0.03, peak: 0.55 });
+  k.swell(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 400,
+    sweepTo: 5000,
+    q: 1,
+    attack: 0.35,
+    hold: 0.35,
+    release: 0.03,
+    peak: 0.55,
+  });
   const s = t + 0.35;
   k.thump(s, 70, 22, 0.9, 1.6, 1, 3);
   k.noise(s, { color: 'white', filter: 'highpass', freq: 1800, decay: 0.12, peak: 0.6 });
   for (const pan of [-0.5, 0.5]) {
-    k.swell(s, { color: 'brown', filter: 'lowpass', freq: 380, attack: 0.02, hold: 0.9, release: 1.2, peak: 0.7, pan });
+    k.swell(s, {
+      color: 'brown',
+      filter: 'lowpass',
+      freq: 380,
+      attack: 0.02,
+      hold: 0.9,
+      release: 1.2,
+      peak: 0.7,
+      pan,
+    });
   }
   k.clicks(s + 0.05, 24, 1.4, 1200, 1.2, 0.25);
   const drone = k.bus({ drive: 2, lowpass: 900, gain: 0.5 });
@@ -924,13 +999,29 @@ const stingInstakill: Recipe = (g, t) => {
   for (const m of [40, 41, 46]) b.note(t, 'sawtooth', midiHz(m), midiHz(m) * 0.96, 0.005, 0.5, 0.6, 0.24);
   k.thump(t, 95, 35, 0.15, 0.6, 0.8, 2);
   k.note(t + 0.05, 'sine', 2400, 600, 0.02, 0.9, 0.4, 0.12);
-  k.swell(t + 0.1, { color: 'pink', filter: 'bandpass', freq: 900, q: 3, attack: 0.2, hold: 0.4, release: 0.5, peak: 0.25 });
+  k.swell(t + 0.1, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 900,
+    q: 3,
+    attack: 0.2,
+    hold: 0.4,
+    release: 0.5,
+    peak: 0.25,
+  });
 };
 
 const stingMaxAmmo: Recipe = (g, t) => {
   const k = kitOf(g);
   for (const s of [t, t + 0.12]) {
-    k.noise(s, { color: 'white', filter: 'bandpass', freq: 2400 * k.j(0.05), q: 2.5, decay: 0.03, peak: 0.55 });
+    k.noise(s, {
+      color: 'white',
+      filter: 'bandpass',
+      freq: 2400 * k.j(0.05),
+      q: 2.5,
+      decay: 0.03,
+      peak: 0.55,
+    });
     k.ring(s, 780 * k.j(0.03), [1, 2.4, 3.9], 0.2, 0.1);
     k.thump(s, 160, 90, 0.03, 0.05, 0.3);
   }
@@ -952,7 +1043,16 @@ const stingCarpenter: Recipe = (g, t) => {
   const s = t + 0.32;
   for (const m of [79, 86, 91]) k.bell(s, midiHz(m), 1, 0.2);
   k.thump(s, 140, 60, 0.05, 0.2, 0.45, 1.2);
-  k.swell(s, { color: 'white', filter: 'bandpass', freq: 3600, q: 1.5, attack: 0.01, hold: 0.05, release: 0.5, peak: 0.2 });
+  k.swell(s, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 3600,
+    q: 1.5,
+    attack: 0.01,
+    hold: 0.05,
+    release: 0.5,
+    peak: 0.2,
+  });
 };
 
 const stingSlowmo: Recipe = (g, t) => {
@@ -960,7 +1060,17 @@ const stingSlowmo: Recipe = (g, t) => {
   k.note(t, 'sine', 900, 110, 0.01, 1.2, 0.3, 0.3);
   const tape = k.bus({ lowpass: 1600, gain: 0.5 });
   tape.note(t, 'sawtooth', 450, 55, 0.01, 1.2, 0.3, 0.2);
-  k.swell(t, { color: 'pink', filter: 'bandpass', freq: 2400, sweepTo: 300, q: 1.2, attack: 0.05, hold: 1, release: 0.4, peak: 0.4 });
+  k.swell(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 2400,
+    sweepTo: 300,
+    q: 1.2,
+    attack: 0.05,
+    hold: 1,
+    release: 0.4,
+    peak: 0.4,
+  });
   k.thump(t + 1.05, 60, 28, 0.3, 0.7, 0.6, 1.5);
 };
 
@@ -988,7 +1098,16 @@ const powerUpExpire: Recipe = (g, t) => {
   k.note(t, 'sine', 900, 200, 0.005, 0.45, 0.2, 0.35);
   const b = k.bus({ lowpass: 1800, gain: 0.5 });
   b.note(t, 'square', 450, 100, 0.005, 0.45, 0.2, 0.15);
-  k.swell(t, { color: 'pink', filter: 'lowpass', freq: 3000, sweepTo: 200, attack: 0.02, hold: 0.4, release: 0.2, peak: 0.25 });
+  k.swell(t, {
+    color: 'pink',
+    filter: 'lowpass',
+    freq: 3000,
+    sweepTo: 200,
+    attack: 0.02,
+    hold: 0.4,
+    release: 0.2,
+    peak: 0.25,
+  });
 };
 
 // ---------------------------------------------------------------------------
@@ -1019,7 +1138,16 @@ const sealRepair: Recipe = (g, t) => {
 const zoneUnlock: Recipe = (g, t) => {
   const k = kitOf(g);
   for (const pan of [-0.4, 0.4]) {
-    k.swell(t, { color: 'brown', filter: 'lowpass', freq: 260, attack: 0.6, hold: 0.9, release: 1, peak: 0.55, pan });
+    k.swell(t, {
+      color: 'brown',
+      filter: 'lowpass',
+      freq: 260,
+      attack: 0.6,
+      hold: 0.9,
+      release: 1,
+      peak: 0.55,
+      pan,
+    });
   }
   const pad = k.bus({ lowpass: 1200, gain: 0.7 });
   const chord = [45, 48, 52, 57];

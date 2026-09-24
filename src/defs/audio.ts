@@ -358,7 +358,13 @@ export const AUDIO = {
     purchase: { id: 'econ.purchase', gain: 0.55 },
     denied: { id: 'econ.denied', gain: 0.5, minInterval: 0.25 },
     /** Subtle tick per earning (not for dev grants / the start balance); pitch rises a little with the amount. */
-    pointsTick: { id: 'econ.points', gain: 0.13, minInterval: 0.07, pitchVariance: 0.03, pitchPerDecade: 0.08 },
+    pointsTick: {
+      id: 'econ.points',
+      gain: 0.13,
+      minInterval: 0.07,
+      pitchVariance: 0.03,
+      pitchPerDecade: 0.08,
+    },
     /** A new interaction focus: a quiet UI blip. */
     focus: { id: 'ui.hover', gain: 0.16, minInterval: 0.15 },
     door: { id: 'door.open', blastId: 'door.open.blast', gain: 0.85, pitchVariance: 0.03 },
@@ -374,7 +380,8 @@ export const AUDIO = {
     },
     perks: {
       acquire: { id: 'perk.acquire', gain: 0.6 },
-      lost: { id: 'perk.lost', gain: 0.5 },
+      /** Silent this long after a revive (the revive sound covers the consumed Phoenix implant). */
+      lost: { id: 'perk.lost', gain: 0.5, afterReviveSeconds: 1 },
       revive: { id: 'perk.revive', gain: 0.85 },
       /** `perk.jingle.<perkId>`: from the machine after a purchase (this much later, s), else 2D. */
       jinglePrefix: 'perk.jingle.',
@@ -395,8 +402,16 @@ export const AUDIO = {
         fadeIn: 0.8,
         fadeOut: 0.6,
       },
-      /** A machine within `distance` m plays its jingle now and then (CoD style), game time (s). */
-      idleJingle: { distance: 5, interval: [35, 80] as readonly [number, number], gain: 0.32 },
+      /**
+       * A machine within `distance` m plays its jingle now and then (CoD style), every `interval`
+       * s of game time; coming close first waits `firstWait` × the interval's lower end at least.
+       */
+      idleJingle: {
+        distance: 5,
+        interval: [35, 80] as readonly [number, number],
+        firstWait: 0.5,
+        gain: 0.32,
+      },
     },
     powerUps: {
       /** One-shot shimmer when a pickup materializes + a quiet loop while it floats. */
@@ -415,7 +430,7 @@ export const AUDIO = {
       defaultStinger: 'powerup.collect',
       stingerGain: 0.75,
       /** Clock ticks during the last `seconds` of a timed power-up, and its power-down. */
-      tick: { id: 'powerup.tick', gain: 0.3, seconds: 3 },
+      tick: { id: 'powerup.tick', gain: 0.3, seconds: 3, pitchStep: 0.06 },
       expire: { id: 'powerup.expire', gain: 0.5 },
       /** Pickup loops tracked at most (POWERUPS.capacity). */
       maxLoops: 8,

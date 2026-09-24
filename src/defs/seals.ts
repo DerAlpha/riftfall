@@ -4,7 +4,8 @@
  * `offset` m in front of the spawn point across its emerge direction. Enemies emerging there are
  * held in the pen behind it and tear the bars down (per-type timing: defs/enemies.ts `breach`);
  * the player repairs one bar per hold of 'interact' (points: defs/economy.ts ECONOMY.repair, capped
- * per wave by economy/PointsRules). The lattice never stops bullets (it is no `level:` mesh): shoot the breachers through it.
+ * per wave by economy/PointsRules). The lattice never stops bullets (it is no `level:` mesh): shoot
+ * the breachers through it.
  *
  * Meters, seconds. Colors: linear RGB, multiplied by the HDR intensities (bars bloom).
  */
@@ -103,9 +104,10 @@ export const SEALS = {
     /** Bar re-forming (grows from the pylons) and shattering durations (s). */
     formTime: 0.45,
     breakTime: 0.38,
-    /** Hit flash and ripple decay (1/s). */
+    /** Hit flash and ripple decay (1/s); below `settle` they snap to 0 (the view goes idle). */
     flashDecay: 4.5,
     rippleDecay: 2.2,
+    settle: 0.002,
     /** Damaged-seal warning pulse (Hz). */
     warnHz: 1.6,
     /** Reduced flashing: flashes / flicker scaled by this. */

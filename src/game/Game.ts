@@ -501,12 +501,21 @@ export class Game {
           events.emit('fx:hitPulse', { strength: nukeFx.pulse });
           events.emit('camera:shake', { trauma: nukeFx.shake });
         },
+        // Zeitdehnung: the HUD's cold, desaturating tint overlay.
+        timeTint: (amount) => gameRef?.sys.hud.setTimeTint(amount),
       },
       scene: render.scene,
       seed: `powerups:${runSeed}`,
       reduceFlashing,
     });
     perks.setAmmoDropHandler(powerUps.dropAmmo);
+    // Economy sounds play at their world objects; the power-up clock drives the expiry ticks.
+    audioBridge.setEconomySources({
+      doors: interactables.doors.map((d) => ({ id: d.id, position: d.slot.position, blast: d.slot.blast })),
+      perkMachines: interactables.perkMachines,
+      box: interactables.box,
+      powerUps,
+    });
 
     // Particles/tracers, target barriers, holograms, seals and pickups share the volumetric layer:
     // its pass runs only while one of them (or the level's volumetrics) draws.
@@ -525,6 +534,10 @@ export class Game {
     hud.setCamera(render.camera);
     // The countdown shows the director's clock (fixed ticks; frozen while the player is dead).
     hud.setWaveCountdownSource(() => waves.intermissionLeft);
+    // M4: power-up timers read the system's clock; zone names for the unlock banner; prompt key cap.
+    hud.setPowerUpSource(powerUps);
+    hud.setZoneNames(isMapLevel(level) ? level.zones : []);
+    hud.setInputDevice(input.device);
     health.announce();
     economy.announce();
     const debug = new DebugOverlay(el('debug'), events);
@@ -716,6 +729,9 @@ export class Game {
     // The crosshair gap shows the real cone: projected with this frame's FOV (after playerCamera).
     hud.setSpreadCone(weapons.spreadDegrees, render.camera.fov);
     hud.setAds(weapons.adsAmount);
+    // The prompt's hold ring (seal repairs): progress of the focus, drawn for hold interactions only.
+    const focus = interaction.focused;
+    hud.setInteractHold(interaction.holdProgress, focus !== null && focus.holdTime() > 0);
     hud.update(dt, player.yaw);
   }
 

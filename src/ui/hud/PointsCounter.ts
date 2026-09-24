@@ -7,7 +7,14 @@
 import type { PointsReason } from '../../core/events';
 import { ECONOMY_HUD } from '../../defs/ui';
 import { h, restartAnim, setText } from './dom';
-import { PointsPopupModel, PointsRoll, formatPoints, formatPopup, popupMotion, type PopupMotion } from './economyModel';
+import {
+  PointsPopupModel,
+  PointsRoll,
+  formatPoints,
+  formatPopup,
+  popupMotion,
+  type PopupMotion,
+} from './economyModel';
 
 const PT = ECONOMY_HUD.points;
 const PO = ECONOMY_HUD.popups;
@@ -52,7 +59,15 @@ export class PointsCounter {
     for (let i = 0; i < this.popups.items.length; i++) {
       const el = h('span', 'hud-pop', pops);
       el.style.opacity = '0';
-      this.views.push({ el, version: -1, tone: '', y: Number.NaN, x: Number.NaN, scale: Number.NaN, opacity: 0 });
+      this.views.push({
+        el,
+        version: -1,
+        tone: '',
+        y: Number.NaN,
+        x: Number.NaN,
+        scale: Number.NaN,
+        opacity: 0,
+      });
     }
     corner.prepend(this.el);
   }
@@ -77,7 +92,8 @@ export class PointsCounter {
     }
     this.popups.push(d, reason);
     if (d < 0) this.flashSpend();
-    else if (d >= PT.bumpMinDelta && !this.reduced) this.bumpPhase = restartAnim(this.valueEl, 'is-bump', this.bumpPhase);
+    else if (d >= PT.bumpMinDelta && !this.reduced)
+      this.bumpPhase = restartAnim(this.valueEl, 'is-bump', this.bumpPhase);
   }
 
   /** Total without animation; null shows the placeholder. */

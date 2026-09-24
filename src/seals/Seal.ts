@@ -147,6 +147,19 @@ export class Seal implements Interactable {
     this.ripple = 1;
   }
 
+  /**
+   * Anything animating (a bar forming / shattering, a flash, the ripple, the repair ghost)? An idle
+   * seal's view state is final: the view skips rewriting it.
+   */
+  get animating(): boolean {
+    if (this.preview > 0 || this.ripple > 0) return true;
+    for (let i = 0; i < this.segments; i++) {
+      const g = this.grow[i]!;
+      if (this.flash[i]! > 0 || this.shatter[i]! > 0 || (g > 0 && g < 1)) return true;
+    }
+    return false;
+  }
+
   /** Advance the bar animations (frame time). */
   updateVisual(dt: number): void {
     if (!(dt > 0)) return;
@@ -154,6 +167,7 @@ export class Seal implements Interactable {
     const form = dt / V.formTime;
     const brk = dt / V.breakTime;
     const decay = Math.exp(-V.flashDecay * dt);
+    const settle = V.settle;
     for (let i = 0; i < this.segments; i++) {
       if (i < this._up) {
         if (this.grow[i]! < 1) this.grow[i] = Math.min(1, this.grow[i]! + form);
@@ -165,8 +179,10 @@ export class Seal implements Interactable {
           this.shatter[i] = 0;
         } else this.shatter[i] = s;
       }
-      this.flash[i] = this.flash[i]! * decay;
+      const f = this.flash[i]! * decay;
+      this.flash[i] = f < settle ? 0 : f;
     }
-    this.ripple *= Math.exp(-V.rippleDecay * dt);
+    const r = this.ripple * Math.exp(-V.rippleDecay * dt);
+    this.ripple = r < settle ? 0 : r;
   }
 }

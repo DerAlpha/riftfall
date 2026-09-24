@@ -195,6 +195,27 @@ describe('enemies at a sealed rift (breach state)', () => {
   });
 });
 
+describe('relocation (leash) at a sealed spawn point', () => {
+  it('re-emerges in the pen and breaches instead of walking through the seal', () => {
+    const t = setup();
+    t.h.manager.setSpawnPoints([SPAWN]);
+    // Far beyond the leash distance, spawned without a spawn point: it hunts the player.
+    const far = ENEMY_AI.leash.maxDistance + 20;
+    const id = t.h.manager.spawn('swarmer', { x: far, y: 0, z: far });
+    const e = t.h.manager.enemies.find((x) => x.id === id)!;
+    expect(e.breachPoint).toBeNull();
+    t.tick(seconds(ENEMY_AI.leash.time + ENEMY_AI.leash.checkInterval * 2 + ENEMIES.swarmer.emergeTime) + 2);
+    expect(t.h.manager.stats.relocations).toBeGreaterThan(0);
+    expect(e.state).toBe('breach');
+    expect(e.breachPoint).toBe(SPAWN.id);
+    expect(frontDistance(t.seal.frame, e.position)).toBeLessThan(0);
+    // An open seal lets relocated enemies straight through.
+    t.seals.breakSeal(SPAWN.id);
+    t.tick(seconds(1));
+    expect(e.state).not.toBe('breach');
+  });
+});
+
 function spawn(t: ReturnType<typeof setup>, type: string, at?: { x: number; y: number; z: number }): Enemy {
   return t.spawn(type, at);
 }

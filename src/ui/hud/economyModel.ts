@@ -206,7 +206,7 @@ export function popupMotion(age: number, out: PopupMotion): PopupMotion {
   out.rise = P.risePx * (1 - (1 - k) * (1 - k));
   out.scale = a < P.popTime ? P.popScale + (1 - P.popScale) * (a / P.popTime) : 1;
   const fadeStart = P.lifetime - P.fadeTime;
-  out.opacity = a <= fadeStart ? 1 : clamp01(1 - (a - fadeStart) / P.fadeTime);
+  out.opacity = a >= P.lifetime ? 0 : a <= fadeStart ? 1 : clamp01((P.lifetime - a) / P.fadeTime);
   return out;
 }
 
@@ -299,7 +299,7 @@ export function timerRing(
 ): TimerRing {
   const r = Number.isFinite(remaining) ? Math.max(0, remaining) : 0;
   out.fraction = duration > 0 && Number.isFinite(duration) ? clamp01(r / duration) : 0;
-  out.seconds = Math.ceil(r - 1e-6);
+  out.seconds = Math.max(0, Math.ceil(r - 1e-6));
   out.ending = r > 0 && r <= warnSeconds;
   return out;
 }

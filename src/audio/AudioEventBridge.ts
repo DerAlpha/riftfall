@@ -24,6 +24,11 @@
  * feeds the distance checks. Enemy projectile impacts with their own sound (acid splash) replace
  * the surface impact. Wave start / complete stings play on the music bus; the game over sting on
  * the ui bus (it plays on into the paused game over screen).
+ *
+ * Economy (M4, EconomyAudio in economyAudio.ts): purchases / denials / points ticks, doors, the
+ * Rift-Kiste, perk machines (hums, jingles, perk stings), power-up pickups, stingers and expiry,
+ * rift seals. World anchors (doors, machines, the box, the power-up clock) come from
+ * setEconomySources; update() and resetRun() drive it too.
  */
 import type { PlayOptions } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
@@ -34,6 +39,7 @@ import { MOVEMENT } from '../defs/movement';
 import { getWeaponDef, type ReloadStep } from '../defs/weapons';
 import { remapClamped } from './dsp';
 import type { LoopOptions } from './AudioEngine';
+import { EconomyAudio, type EconomyAudioSources } from './economyAudio';
 
 /** The engine surface the bridge needs (AudioEngine implements it; tests use a fake). */
 export interface AudioBridgeTarget {
@@ -296,6 +302,8 @@ export class AudioEventBridge {
   private readonly hurtAt = new Float64Array(E.hurtMerge.slots).fill(Number.NEGATIVE_INFINITY);
   private hurtNext = 0;
   private readonly lastSpawn = { x: 0, y: 0, z: 0, time: Number.NEGATIVE_INFINITY, id: '' };
+  /** M4 economy sounds (doors, box, perks, power-ups, seals, purchases). */
+  readonly economy: EconomyAudio;
 
   /**
    * Casing bounce hook with the VFX ClinkCallback signature (position, sound id, impact speed) –
@@ -357,6 +365,12 @@ export class AudioEventBridge {
     );
     this.wireWeapons(events);
     this.wireEnemies(events);
+    this.economy = new EconomyAudio(events, audio, now, random);
+  }
+
+  /** World anchors of the economy sounds: doors, perk machines, the box, the power-up clock. */
+  setEconomySources(sources: EconomyAudioSources): void {
+    this.economy.setSources(sources);
   }
 
   /**
@@ -393,6 +407,7 @@ export class AudioEventBridge {
     this.gameTime += dt;
     this.frame++;
     this.updateStrikes();
+    this.economy.update(dt, this.hasListener ? this.listener : null);
     const list = this.enemySource?.enemies;
     if (!list) return;
     for (let i = 0; i < list.length; i++) {
@@ -408,6 +423,7 @@ export class AudioEventBridge {
     this.offs.length = 0;
     this.stopSlide();
     this.enemySource = null;
+    this.economy.dispose();
   }
 
   // -------------------------------------------------------------------------
@@ -684,6 +700,7 @@ export class AudioEventBridge {
       b.step.reset();
     }
     this.lastSpawn.time = Number.NEGATIVE_INFINITY;
+    this.economy.resetRun();
   }
 
   // -------------------------------------------------------------------------

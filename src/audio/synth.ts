@@ -24,6 +24,7 @@ import {
 } from './dsp';
 import { WEAPON_SYNTH_DEFS, weaponSynthAlias } from './weaponSynth';
 import { ENEMY_SYNTH_DEFS, enemySynthAlias } from './enemySynth';
+import { ECONOMY_SYNTH_DEFS } from './economySynth';
 
 const log = createLogger('Synth');
 const S = AUDIO.synth;
@@ -625,6 +626,8 @@ export const SYNTH_DEFS = {
   // Weapons, impacts, casings, hit feedback (audio/weaponSynth.ts) – rendered after movement.
   ...WEAPON_SYNTH_DEFS,
   ...ENEMY_SYNTH_DEFS,
+  // Purchases, doors, box, perks, power-ups, seals (M4, audio/economySynth.ts) – rendered last.
+  ...ECONOMY_SYNTH_DEFS,
 } as const satisfies Record<string, SynthDef>;
 
 export type SynthId = keyof typeof SYNTH_DEFS;

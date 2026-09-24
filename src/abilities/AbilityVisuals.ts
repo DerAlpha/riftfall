@@ -25,7 +25,7 @@ import {
   type BufferGeometry,
   type Object3D,
 } from 'three';
-import type { PhysicsApi } from '../core/contracts';
+import type { PhysicsApi, RaycastOptions } from '../core/contracts';
 import type { Vec3Like } from '../core/events';
 import { clamp01 } from '../core/math';
 import { ABILITY_VISUALS, type AbilityWorldFx } from '../defs/abilities';
@@ -34,7 +34,10 @@ import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { HEIGHT_FOG_GLSL, HEIGHT_FOG_PARAMS } from '../render/postfx/fogShared';
 import type { AbilityVisualsApi } from './AbilitySystem';
 
-const FLOOR_GROUPS = interactionGroups(COLLISION_GROUP.WORLD, COLLISION_GROUP.WORLD);
+/** Floor probe: static world only. */
+const FLOOR_PROBE: RaycastOptions = {
+  groups: interactionGroups(COLLISION_GROUP.WORLD, COLLISION_GROUP.WORLD),
+};
 const DOWN = { x: 0, y: -1, z: 0 };
 /** Discs sit this far above the floor (no z-fighting; the depth test keeps them under walls). */
 const FLOOR_LIFT = 0.03;
@@ -320,9 +323,7 @@ export class AbilityVisuals implements AbilityVisualsApi {
       if (physics) {
         _probe.set(a.x, a.y + PROBE_LIFT, a.z);
         const reach = C.floorProbe + PROBE_LIFT + Math.max(0, a.y - l.center.y);
-        const hit = physics.raycast(_probe, DOWN, reach, {
-          groups: FLOOR_GROUPS,
-        });
+        const hit = physics.raycast(_probe, DOWN, reach, FLOOR_PROBE);
         if (hit) y = hit.point.y;
       }
       l.center.set(a.x, y, a.z);
@@ -339,13 +340,16 @@ export class AbilityVisuals implements AbilityVisualsApi {
   }
 
   private setUniforms(l: Look, fade: number, intensity: number, progress: number): void {
-    for (const m of [l.discMat, l.wallMat]) {
-      const u = m.uniforms;
-      u.uTime!.value = this.time;
-      u.uFade!.value = fade;
-      u.uIntensity!.value = intensity * this.flashScale;
-      u.uProgress!.value = progress;
-    }
+    this.setMaterial(l.discMat, fade, intensity, progress);
+    this.setMaterial(l.wallMat, fade, intensity, progress);
+  }
+
+  private setMaterial(m: ShaderMaterial, fade: number, intensity: number, progress: number): void {
+    const u = m.uniforms;
+    u.uTime!.value = this.time;
+    u.uFade!.value = fade;
+    u.uIntensity!.value = intensity * this.flashScale;
+    u.uProgress!.value = progress;
   }
 
   private hide(l: Look): void {

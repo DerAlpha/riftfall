@@ -37,7 +37,7 @@ const DARK = AUDIO.synth.darkRate;
 // Gunshots
 // ---------------------------------------------------------------------------
 
-export interface GunProfile {
+interface GunProfile {
   crack: { freq: number; decay: number; peak: number };
   snap: { freq: number; q: number; decay: number; peak: number };
   body: { f0: number; f1: number; pitchTime: number; decay: number; peak: number; drive: number };
@@ -62,7 +62,7 @@ export interface GunProfile {
   roll?: { decay: number; peak: number };
 }
 
-export function gunshot(p: GunProfile): Recipe {
+function gunshot(p: GunProfile): Recipe {
   return (g, t) => {
     const k = kitOf(g);
     const b = k.bus({ drive: p.drive, lowpass: p.lowpass });
@@ -219,7 +219,7 @@ export function gunshot(p: GunProfile): Recipe {
   };
 }
 
-export const GUN: Record<
+const GUN: Record<
   | 'revolver'
   | 'machinepistol'
   | 'smg'

@@ -29,21 +29,21 @@ function chevron(b: ModelBuilder, y: number, z: number, arm: number, width: numb
   }
 }
 
-/** Fine crosshair with thick outer posts (the 4× scope). */
+/** Duplex crosshair: black outer posts, a fine illuminated center cross and dot (the 4× scope). */
 function crosshair(b: ModelBuilder, y: number, z: number, inner: number, edge: number): void {
   const fine = 0.00011;
-  const post = 0.0004;
+  const post = 0.00045;
   b.add(BODY, 'reticle', new BoxGeometry(inner * 2, fine, RETICLE_DEPTH), { pos: [0, y, z] });
   b.add(BODY, 'reticle', new BoxGeometry(fine, inner * 2, RETICLE_DEPTH), { pos: [0, y, z] });
   for (const s of [-1, 1]) {
-    b.add(BODY, 'reticle', new BoxGeometry(edge - inner, post, RETICLE_DEPTH), {
+    b.add(BODY, 'bore', new BoxGeometry(edge - inner, post, RETICLE_DEPTH), {
       pos: [(s * (inner + edge)) / 2, y, z],
     });
-    b.add(BODY, 'reticle', new BoxGeometry(post, edge - inner, RETICLE_DEPTH), {
+    b.add(BODY, 'bore', new BoxGeometry(post, edge - inner, RETICLE_DEPTH), {
       pos: [0, y + (s * (inner + edge)) / 2, z],
     });
   }
-  b.add(BODY, 'reticle', cylinderZ(0.00035, 0.00035, RETICLE_DEPTH, 10), { pos: [0, y, z + 0.0001] });
+  b.add(BODY, 'reticle', cylinderZ(0.00032, 0.00032, RETICLE_DEPTH, 10), { pos: [0, y, z + 0.0001] });
 }
 
 /** Ocular window of a magnified optic: tint, dark edge ring, reticle plane, then the mask behind. */
@@ -246,10 +246,7 @@ export const buildScope4x: AttachmentBuilder = (b) => {
     ),
     { pos: [0, SY, 0.08], paint: P.darkMetal.paint },
   );
-  b.add(BODY, 'grip', tubeZ(0.0172, OR, 0.0075, 32), {
-    pos: [0, SY, 0.0875],
-    uvDensity: VIEWMODEL_ART.knurlDensity,
-  });
+  b.add(BODY, 'bore', tubeZ(0.0172, OR, 0.0075, 32), { pos: [0, SY, 0.0875] });
   b.add(BODY, 'accent', tubeZ(0.0204, 0.0198, 0.0025, 32), { pos: [0, SY, -0.058] });
   // Elevation (top) and windage (right) turrets with knurled caps.
   b.add(BODY, 'darkMetal', new CylinderGeometry(0.0072, 0.0078, 0.011, 18), { pos: [0, SY + 0.0175, 0.0] });

@@ -98,6 +98,8 @@ uniform float uCamoPulseRate;
 uniform float uCamoPulseDepth;
 uniform float uCamoBaseMix;
 uniform float uCamoShiftRate;
+uniform float uCamoLines;
+uniform float uCamoVeinScale;
 varying vec3 vCamoPos;
 float camoVein;
 float camoHash(vec3 p) {
@@ -129,7 +131,9 @@ const CAMO_COLOR = /* glsl */ `
   float cn = camoNoise(cp + cw * uCamoWarp * 2.0 + vec3(ct * 0.6));
   float cov = camoNoise(vCamoPos * uCamoScale * 0.31 + vec3(4.1, 1.7, 2.9));
   float cmask = uCamoCoverage >= 0.999 ? 1.0 : smoothstep(0.92 - uCamoCoverage, 1.08 - uCamoCoverage, cov);
-  camoVein = pow(clamp(1.0 - abs(cn - 0.5) / max(uCamoWidth, 1e-3), 0.0, 1.0), uCamoSharp) * cmask;
+  // Veins: iso-lines of the warped noise (thin flowing contours, not its broad middle band).
+  float cd = abs(fract(cn * uCamoLines) - 0.5);
+  camoVein = pow(clamp(1.0 - cd / max(uCamoWidth, 1e-3), 0.0, 1.0), uCamoSharp) * cmask;
   vec3 cbase = uCamoBase;
   #ifdef USE_COLOR
   cbase *= 0.6 + 0.4 * vColor.r;
@@ -142,7 +146,7 @@ const CAMO_EMISSIVE = /* glsl */ `
 {
   float cpulse = 1.0 + uCamoPulseDepth * sin(uCamoTime * uCamoPulseRate + vCamoPos.x * 7.0 + vCamoPos.y * 5.0);
   vec3 cvein = mix(uCamoVein, uCamoShift, 0.5 + 0.5 * sin(uCamoTime * uCamoShiftRate + vCamoPos.z * 11.0));
-  totalEmissiveRadiance += cvein * camoVein * uCamoVeinIntensity * cpulse;
+  totalEmissiveRadiance += cvein * camoVein * uCamoVeinIntensity * uCamoVeinScale * cpulse;
 }
 `;
 
@@ -165,6 +169,8 @@ function camoUniforms(c: ForgeCamoDef, time: { value: number }): Uniforms {
     uCamoPulseDepth: { value: c.pulseDepth },
     uCamoBaseMix: { value: FORGE_VIEW.camoBaseMix },
     uCamoShiftRate: { value: FORGE_VIEW.camoShiftRate },
+    uCamoLines: { value: FORGE_VIEW.camoLines },
+    uCamoVeinScale: { value: FORGE_VIEW.camoVeinScale },
   };
 }
 

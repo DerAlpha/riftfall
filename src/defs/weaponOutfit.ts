@@ -35,6 +35,12 @@ export const FORGE_VIEW = {
   camoBaseMix: 0.82,
   /** Camo vein color shift speed (rad/s). */
   camoShiftRate: 0.7,
+  /**
+   * Veins are iso-lines of the warped noise: this many per noise unit; their glow is the look's
+   * veinIntensity × `camoVeinScale` (the looks are tuned as HDR peaks, the viewmodel sits close).
+   */
+  camoLines: 2.5,
+  camoVeinScale: 0.4,
   /** The viewmodel accent light takes the look's accent color at this intensity factor. */
   accentLightScale: 1.6,
 } as const;
@@ -105,13 +111,13 @@ export const LASER_SIGHT = {
   /** Max reach of the ray (m); beyond it no dot is drawn. */
   range: 60,
   /** Dot size: world radius per meter of distance (constant screen size), clamped (m). */
-  dotPerMeter: 0.0045,
+  dotPerMeter: 0.006,
   minDot: 0.012,
-  maxDot: 0.09,
-  dotIntensity: 6,
+  maxDot: 0.12,
+  dotIntensity: 8,
   /** Visible beam (targetlaser): core width (m) and intensity; fades out over `fade` m. */
-  beamWidth: 0.012,
-  beamIntensity: 1.1,
+  beamWidth: 0.005,
+  beamIntensity: 0.9,
   beamFade: 18,
   /** The dot sits this far in front of the hit surface (m). */
   surfaceOffset: 0.01,

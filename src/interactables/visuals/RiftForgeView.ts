@@ -662,22 +662,29 @@ function drawForgePanel(
   ctx.textBaseline = 'middle';
   ctx.globalAlpha = 0.95;
   ctx.textAlign = 'left';
-  ctx.font = `800 ${Math.round(h * 0.42)}px ${HOLOGRAM.fontDisplay}`;
+  // Caption in the left 40 %, fitted to it.
+  const capW = w * 0.38;
+  let px = h * 0.4;
+  ctx.font = `800 ${Math.round(px)}px ${HOLOGRAM.fontDisplay}`;
+  while (px > 8 && ctx.measureText(M.panelCaption).width > capW) {
+    px *= 0.92;
+    ctx.font = `800 ${Math.round(px)}px ${HOLOGRAM.fontDisplay}`;
+  }
   ctx.fillText(M.panelCaption, w * 0.04, h * 0.52);
-  const captionW = ctx.measureText(M.panelCaption).width;
-  const x0 = w * 0.04 + captionW + w * 0.04;
+  const x0 = w * 0.46;
   ctx.globalAlpha = 0.45;
   ctx.fillRect(x0 - w * 0.02, h * 0.2, Math.max(2, w * 0.004), h * 0.6);
-  ctx.globalAlpha = 0.9;
   const n = FORGE.tierCosts.length;
   const span = (w * 0.97 - x0) / n;
   for (let i = 0; i < n; i++) {
     const cx = x0 + span * (i + 0.5);
     ctx.textAlign = 'center';
-    ctx.font = `600 ${Math.round(h * 0.2)}px ${HOLOGRAM.fontMono}`;
+    ctx.globalAlpha = 0.7;
+    ctx.font = `600 ${Math.round(h * 0.18)}px ${HOLOGRAM.fontMono}`;
     ctx.fillText(FORGE.tierLabels[i] ?? '', cx, h * 0.3);
-    ctx.font = `700 ${Math.round(h * 0.34)}px ${HOLOGRAM.fontDisplay}`;
-    ctx.fillText(Math.round(FORGE.tierCosts[i] ?? 0).toLocaleString('de-DE'), cx, h * 0.68);
+    ctx.globalAlpha = 0.95;
+    ctx.font = `700 ${Math.round(h * 0.28)}px ${HOLOGRAM.fontDisplay}`;
+    ctx.fillText(Math.round(FORGE.tierCosts[i] ?? 0).toLocaleString('de-DE'), cx, h * 0.66);
   }
   // Frame.
   ctx.globalAlpha = 0.35;

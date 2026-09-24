@@ -9,6 +9,7 @@
  */
 import {
   Color,
+  Group,
   LinearSRGBColorSpace,
   Vector3,
   type Camera,
@@ -194,7 +195,7 @@ export class ViewmodelOutfitter {
   releaseWarmup(objects: readonly Object3D[]): void {
     const lib = this.library;
     for (const o of objects) {
-      if (o.name === 'attachment-warmup' && lib) lib.releaseWarmup(o as never);
+      if (lib && o instanceof Group && o.name === 'attachment-warmup') lib.releaseWarmup(o);
       else o.removeFromParent();
     }
   }

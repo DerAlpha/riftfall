@@ -17,7 +17,10 @@ function bore(b: ModelBuilder, z: number, r: number): void {
 }
 
 export const buildSuppressor: AttachmentBuilder = (b) => {
-  b.add(BODY, 'darkMetal', cylinderZ(0.0105, 0.0105, 0.016, 20), { pos: [0, 0, -0.008], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', cylinderZ(0.0105, 0.0105, 0.016, 20), {
+    pos: [0, 0, -0.008],
+    paint: P.darkMetal.paint,
+  });
   b.add(
     BODY,
     'darkMetal',
@@ -33,7 +36,10 @@ export const buildSuppressor: AttachmentBuilder = (b) => {
     ),
     { pos: [0, 0, -0.012], paint: P.darkMetal.paint },
   );
-  b.add(BODY, 'grip', tubeZ(0.0169, 0.0164, 0.032, 28), { pos: [0, 0, -0.03], uvDensity: VIEWMODEL_ART.knurlDensity });
+  b.add(BODY, 'grip', tubeZ(0.0169, 0.0164, 0.032, 28), {
+    pos: [0, 0, -0.03],
+    uvDensity: VIEWMODEL_ART.knurlDensity,
+  });
   b.add(BODY, 'accent', tubeZ(0.0168, 0.0164, 0.003, 28), { pos: [0, 0, -0.138] });
   bore(b, -0.1683, 0.0048);
   return { muzzle: [0, 0, -0.169] };
@@ -57,8 +63,14 @@ export const buildCompensator: AttachmentBuilder = (b) => {
 };
 
 export const buildMuzzleBrake: AttachmentBuilder = (b) => {
-  b.add(BODY, 'darkMetal', cylinderZ(0.011, 0.011, 0.012, 18), { pos: [0, 0, -0.006], paint: P.darkMetal.paint });
-  b.add(BODY, 'darkMetal', roundedBox(0.034, 0.024, 0.062, 0.003), { pos: [0, 0, -0.043], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', cylinderZ(0.011, 0.011, 0.012, 18), {
+    pos: [0, 0, -0.006],
+    paint: P.darkMetal.paint,
+  });
+  b.add(BODY, 'darkMetal', roundedBox(0.034, 0.024, 0.062, 0.003), {
+    pos: [0, 0, -0.043],
+    paint: P.darkMetal.paint,
+  });
   for (const z of [-0.024, -0.042, -0.06]) {
     for (const s of [-1, 1]) {
       b.add(BODY, 'bore', new BoxGeometry(0.0012, 0.016, 0.011), { pos: [s * 0.0172, 0, z] });
@@ -73,7 +85,10 @@ export const buildMuzzleBrake: AttachmentBuilder = (b) => {
 
 export const buildLongBarrel: AttachmentBuilder = (b) => {
   b.add(BODY, 'gunmetal', cylinderZ(0.0082, 0.0082, 0.11, 16), { pos: [0, 0, -0.055] });
-  b.add(BODY, 'darkMetal', roundedBox(0.02, 0.022, 0.018, 0.002), { pos: [0, 0.004, -0.03], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.02, 0.022, 0.018, 0.002), {
+    pos: [0, 0.004, -0.03],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'darkMetal', new BoxGeometry(0.004, 0.012, 0.006), { pos: [0, 0.0195, -0.03] });
   b.add(
     BODY,
@@ -102,7 +117,10 @@ export const buildLongBarrel: AttachmentBuilder = (b) => {
 };
 
 export const buildShortBarrel: AttachmentBuilder = (b) => {
-  b.add(BODY, 'darkMetal', cylinderZ(0.0145, 0.0145, 0.034, 20), { pos: [0, 0, -0.017], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', cylinderZ(0.0145, 0.0145, 0.034, 20), {
+    pos: [0, 0, -0.017],
+    paint: P.darkMetal.paint,
+  });
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * 360 + 30;
     const r = (a * Math.PI) / 180;
@@ -119,7 +137,10 @@ export const buildShortBarrel: AttachmentBuilder = (b) => {
 
 export const buildChoke: AttachmentBuilder = (b) => {
   b.add(BODY, 'gunmetal', cylinderZ(0.0135, 0.0135, 0.04, 22), { pos: [0, 0, -0.02] });
-  b.add(BODY, 'grip', tubeZ(0.0139, 0.0132, 0.014, 22), { pos: [0, 0, -0.005], uvDensity: VIEWMODEL_ART.knurlDensity });
+  b.add(BODY, 'grip', tubeZ(0.0139, 0.0132, 0.014, 22), {
+    pos: [0, 0, -0.005],
+    uvDensity: VIEWMODEL_ART.knurlDensity,
+  });
   b.add(BODY, 'accent', tubeZ(0.0138, 0.0134, 0.0022, 22), { pos: [0, 0, -0.03] });
   bore(b, -0.0405, 0.0092);
   return { muzzle: [0, 0, -0.041] };
@@ -127,7 +148,10 @@ export const buildChoke: AttachmentBuilder = (b) => {
 
 /** Energy weapons: an emitter ring with three prongs around a glowing focusing lens. */
 export const buildFocusLens: AttachmentBuilder = (b) => {
-  b.add(BODY, 'darkMetal', cylinderZ(0.012, 0.0145, 0.012, 20), { pos: [0, 0, -0.006], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', cylinderZ(0.012, 0.0145, 0.012, 20), {
+    pos: [0, 0, -0.006],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'gunmetal', new TorusGeometry(0.019, 0.0034, 8, 32), { pos: [0, 0, -0.014] });
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2 + Math.PI / 2;

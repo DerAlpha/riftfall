@@ -13,7 +13,13 @@ import { WORKBENCH, WORKBENCH_MENU } from '../defs/workshop';
 import { fakeSettings } from '../player/testHelpers';
 import { FakeCamera, FakePlayer, FakeWeaponInput, fakeRenderCamera } from '../weapons/testFakes';
 import { WeaponSystem } from '../weapons/WeaponSystem';
-import { benchEntries, describeMods, entryEquipped, opticMagnification, type BenchEntry } from './benchEntries';
+import {
+  benchEntries,
+  describeMods,
+  entryEquipped,
+  opticMagnification,
+  type BenchEntry,
+} from './benchEntries';
 import { FakeEconomy } from './testFakes';
 import { Workbench, type WorkbenchMenuApi } from './Workbench';
 
@@ -117,7 +123,10 @@ describe('bench entries', () => {
         expect(e.promptBuy).toBe(WORKBENCH.prompts.buy.replace('{name}', att.name));
       }
       if (def.category === 'wonder') expect(entries).toHaveLength(0);
-      else expect(entries.filter((e) => e.kind === 'element').length).toBeGreaterThanOrEqual(ELEMENT_MODS.length - 1);
+      else
+        expect(entries.filter((e) => e.kind === 'element').length).toBeGreaterThanOrEqual(
+          ELEMENT_MODS.length - 1,
+        );
     }
   });
 
@@ -199,7 +208,9 @@ describe('Werkbank', () => {
     t.bench.select(indexOf(t.bench, ice.id));
     t.bench.interact();
     expect(t.weapons.modsOf('rifle')!.element).toBe('ice');
-    expect(entryEquipped(t.bench.menuEntries[indexOf(t.bench, fire.id)]!, t.weapons.modsOf('rifle'))).toBe(false);
+    expect(entryEquipped(t.bench.menuEntries[indexOf(t.bench, fire.id)]!, t.weapons.modsOf('rifle'))).toBe(
+      false,
+    );
     expect(t.weapons.tierOf('rifle')).toBe(2);
   });
 

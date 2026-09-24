@@ -3,7 +3,15 @@
  * patch, recolors) and the rig integration (optic sight line, muzzle devices, stow).
  */
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { Color, Mesh, MeshStandardMaterial, ShaderLib, Vector3, type Material, type Object3D } from 'three';
+import {
+  Color,
+  ShaderLib,
+  Vector3,
+  type Material,
+  type Mesh,
+  type MeshStandardMaterial,
+  type Object3D,
+} from 'three';
 import type { SettingsStore } from '../../../core/contracts';
 import { EventBus } from '../../../core/EventBus';
 import type { GameEvents } from '../../../core/events';
@@ -19,7 +27,14 @@ import { FakeInput, fakeRender, fakeSettings, type FakeRender } from '../../../p
 import { ViewmodelRig } from '../../../player/ViewmodelRig';
 import type { WeaponModState } from '../../resolveWeapon';
 import { WeaponMaterialKit, createWeaponViewmodel, type WeaponViewmodelModel } from '../index';
-import { CAMO_PROGRAM_KEY, ForgeLookApplier, materialRole, patchCamoShader } from './forgeLook';
+import {
+  CAMO_PROGRAM_KEY,
+  ForgeLookApplier,
+  READOUT_PROGRAM_KEY,
+  materialRole,
+  patchCamoShader,
+  patchReadoutShader,
+} from './forgeLook';
 import { AttachmentLibrary, meshesOf } from './library';
 import { WeaponOutfit } from './WeaponOutfit';
 
@@ -52,7 +67,8 @@ describe('attachment part library', () => {
       expect(lib.has(id), id).toBe(true);
       expect(built.has(id), `${id} builds`).toBe(true);
     }
-    for (const c of group.children) expect(meshesOf(c).length, String(c.userData.attachmentId)).toBeGreaterThan(0);
+    for (const c of group.children)
+      expect(meshesOf(c).length, String(c.userData.attachmentId)).toBeGreaterThan(0);
     lib.releaseWarmup(group);
     expect(lib.create('nope')).toBeNull();
   });
@@ -134,7 +150,9 @@ describe('weapon outfits', () => {
       const outfit = new WeaponOutfit(model, lib);
       outfit.apply([att]);
       expect(outfit.muzzle, `${weapon} ${att}`).not.toBeNull();
-      expect(modelSpace(outfit.muzzle!, model.root).z).toBeLessThan(modelSpace(model.muzzle, model.root).z - 0.02);
+      expect(modelSpace(outfit.muzzle!, model.root).z).toBeLessThan(
+        modelSpace(model.muzzle, model.root).z - 0.02,
+      );
       outfit.dispose();
     }
   });
@@ -160,7 +178,9 @@ describe('weapon outfits', () => {
     const rifle = models.get('rifle')!;
     const outfit = new WeaponOutfit(rifle, lib);
     outfit.apply(['reddot']);
-    const names = meshesOf(rifle.root.getObjectByName('att-reddot')!).map((m) => (m.material as Material).name);
+    const names = meshesOf(rifle.root.getObjectByName('att-reddot')!).map(
+      (m) => (m.material as Material).name,
+    );
     expect(names).toContain('vm-accent');
     expect(names).not.toContain('vm-att-accent');
     outfit.dispose();
@@ -234,6 +254,34 @@ describe('forge looks', () => {
     plasma.dispose();
   });
 
+  it('recolors the lit readout segments through a patched program (uniforms only)', () => {
+    const looks = new ForgeLookApplier();
+    const rifle = createWeaponViewmodel('rifle', kit)!;
+    looks.prepare(rifle.root);
+    const readout = meshesOf(rifle.root)
+      .map((m) => m.material as Material)
+      .find((m) => m.name === 'vm-readout')!;
+    expect(readout.customProgramCacheKey()).toBe(READOUT_PROGRAM_KEY);
+    const u = readout.userData.readoutUniforms as {
+      uReadoutMix: { value: number };
+      uReadoutTint: { value: Color };
+    };
+    looks.apply(rifle.root, FORGE_LOOKS.forge1!);
+    expect(u.uReadoutMix.value).toBe(1);
+    expect(u.uReadoutTint.value.r).toBeGreaterThan(u.uReadoutTint.value.b);
+    looks.apply(rifle.root, null);
+    expect(u.uReadoutMix.value).toBe(0);
+    const shader = {
+      fragmentShader: ShaderLib.standard.fragmentShader,
+      uniforms: {} as Record<string, { value: unknown }>,
+    };
+    patchReadoutShader(shader, u);
+    expect(shader.fragmentShader).toContain('uniform float uReadoutMix;');
+    expect(shader.fragmentShader).toContain('emissive * uReadoutTint');
+    looks.dispose();
+    rifle.dispose();
+  });
+
   it('the camo patch lands in the standard / physical shaders', () => {
     const shader = {
       vertexShader: ShaderLib.physical.vertexShader,
@@ -276,7 +324,9 @@ describe('ViewmodelRig outfit integration', () => {
   const viewSpace = (socket: 'muzzle' | 'sight'): Vector3 => {
     const obj = rig.getSocketObject(socket);
     obj.updateWorldMatrix(true, false);
-    return new Vector3().setFromMatrixPosition(obj.matrixWorld).applyMatrix4(render.viewmodelCamera.matrixWorldInverse);
+    return new Vector3()
+      .setFromMatrixPosition(obj.matrixWorld)
+      .applyMatrix4(render.viewmodelCamera.matrixWorldInverse);
   };
 
   beforeEach(async () => {
@@ -287,7 +337,10 @@ describe('ViewmodelRig outfit integration', () => {
     settings = fakeSettings();
     settings.update('accessibility', { cameraMotion: 0 });
     render = fakeRender();
-    player = new PlayerController({ physics, input, events, settings }, { position: { x: 0, y: 0, z: 0 }, yaw: 0 });
+    player = new PlayerController(
+      { physics, input, events, settings },
+      { position: { x: 0, y: 0, z: 0 }, yaw: 0 },
+    );
     camera = new PlayerCamera({ player, input, render: render.api, events, settings });
     ads.adsAmount = 0;
     mods.clear();

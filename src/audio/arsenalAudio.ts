@@ -393,7 +393,8 @@ export class ArsenalAudio {
       events.on('field:spawned', (e) => {
         const id = this.fieldId(e.kind, e.element);
         if (!this.known(id)) return;
-        this.fields.add(e.id, id, e.position, e.duration + AR.fields.overrun, this.listenerOrNull());
+        const safety = e.duration * AR.fields.durationScale + AR.fields.overrun;
+        this.fields.add(e.id, id, e.position, safety, this.listenerOrNull());
       }),
       events.on('field:ended', (e) => this.fields.remove(e.id)),
       events.on('combat:status', (e) => {

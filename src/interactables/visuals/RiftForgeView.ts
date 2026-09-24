@@ -35,7 +35,13 @@ import { HEIGHT_FOG_GLSL, HEIGHT_FOG_PARAMS } from '../../render/postfx/fogShare
 import type { RiftForgeReadout, RiftForgeViewApi } from '../RiftForge';
 import { createCanvasSurface, redraw, type CanvasSurface } from './canvas';
 import { createGlowMaterial, srgbHexToLinear, type VisualContext } from './context';
-import { createHoloMaterial, createLightPool, toVolumetricLayer, type HoloMaterial, type PoolMaterial } from './holo';
+import {
+  createHoloMaterial,
+  createLightPool,
+  toVolumetricLayer,
+  type HoloMaterial,
+  type PoolMaterial,
+} from './holo';
 import { PartBuilder } from './parts';
 
 const M = RIFT_FORGE_MACHINE;
@@ -78,11 +84,11 @@ void main() {
   float a = atan(p.y, p.x);
   // Logarithmic spiral arms drifting inwards, a fine grain, a hot center and a bright lip.
   float spiral = sin(a * 3.0 + log(r + 0.04) * 5.5 + uPhase * 2.0);
-  float arms = smoothstep(0.1, 1.0, spiral * 0.5 + 0.5);
+  float arms = smoothstep(0.35, 1.0, spiral * 0.5 + 0.5);
   float grain = 0.5 + 0.5 * sin(a * 13.0 - uPhase * 3.3 + r * 31.0);
-  float core = 1.0 - smoothstep(0.0, 0.42, r);
-  float lip = smoothstep(0.72, 0.97, r) * (1.0 - smoothstep(0.97, 1.0, r));
-  float i = arms * (0.25 + 0.75 * (1.0 - r)) + grain * 0.14 * (1.0 - r) + core * (0.5 + 1.6 * uHeat) + lip * 0.9;
+  float core = 1.0 - smoothstep(0.0, 0.3, r);
+  float lip = smoothstep(0.8, 0.97, r) * (1.0 - smoothstep(0.97, 1.0, r));
+  float i = 0.06 + arms * (0.2 + 0.8 * (1.0 - r)) + grain * 0.1 * (1.0 - r) + core * (0.3 + 1.8 * uHeat) + lip * 0.7;
   vec3 col = mix(uColor, uHot, clamp(core * (0.35 + uHeat) + uHeat * 0.3 * (1.0 - r), 0.0, 1.0));
   gl_FragColor = vec4(col * i * uIntensity * vFog, 1.0);
 }
@@ -179,11 +185,35 @@ export class RiftForgeView implements RiftForgeViewApi {
     // --- plinth, base, deck ---
     pb.boxMinMax('hazard', -W / 2 + P.inset, 0, -D / 2 + P.inset, W / 2 - P.inset, P.height, D / 2 - P.inset);
     pb.boxMinMax('body', -B.width / 2, P.height, -B.depth / 2, B.width / 2, baseTop, B.depth / 2);
-    pb.boxMinMax('deck', -B.width / 2 + 0.06, baseTop, -B.depth / 2 + 0.06, B.width / 2 - 0.06, baseTop + 0.02, B.depth / 2 - 0.06);
+    pb.boxMinMax(
+      'deck',
+      -B.width / 2 + 0.06,
+      baseTop,
+      -B.depth / 2 + 0.06,
+      B.width / 2 - 0.06,
+      baseTop + 0.02,
+      B.depth / 2 - 0.06,
+    );
     // Hazard lip along the base front top edge and trim corners.
-    pb.boxMinMax('hazard', -B.width / 2, baseTop - 0.07, B.depth / 2, B.width / 2, baseTop, B.depth / 2 + 0.015);
+    pb.boxMinMax(
+      'hazard',
+      -B.width / 2,
+      baseTop - 0.07,
+      B.depth / 2,
+      B.width / 2,
+      baseTop,
+      B.depth / 2 + 0.015,
+    );
     for (const s of [-1, 1]) {
-      pb.boxMinMax('trim', s * B.width / 2 - 0.07, P.height, B.depth / 2 - 0.07, s * B.width / 2 + 0.07, baseTop + 0.03, B.depth / 2 + 0.03);
+      pb.boxMinMax(
+        'trim',
+        (s * B.width) / 2 - 0.07,
+        P.height,
+        B.depth / 2 - 0.07,
+        (s * B.width) / 2 + 0.07,
+        baseTop + 0.03,
+        B.depth / 2 + 0.03,
+      );
     }
 
     // --- furnace tower ---
@@ -192,8 +222,24 @@ export class RiftForgeView implements RiftForgeViewApi {
     pb.boxMinMax('panel', -T.width / 2, baseTop, tz0, T.width / 2, T.top, tz1);
     for (const s of [-1, 1]) {
       // Corner ribs and a mid band.
-      pb.boxMinMax('trim', s * T.width / 2 - 0.08, baseTop, tz1 - 0.08, s * T.width / 2 + 0.03, T.top, tz1 + 0.03);
-      pb.boxMinMax('trim', s * T.width / 2 - 0.08, baseTop, tz0 - 0.03, s * T.width / 2 + 0.03, T.top, tz0 + 0.08);
+      pb.boxMinMax(
+        'trim',
+        (s * T.width) / 2 - 0.08,
+        baseTop,
+        tz1 - 0.08,
+        (s * T.width) / 2 + 0.03,
+        T.top,
+        tz1 + 0.03,
+      );
+      pb.boxMinMax(
+        'trim',
+        (s * T.width) / 2 - 0.08,
+        baseTop,
+        tz0 - 0.03,
+        (s * T.width) / 2 + 0.03,
+        T.top,
+        tz0 + 0.08,
+      );
     }
     pb.boxMinMax('trim', -T.width / 2, baseTop + 0.62, tz1, T.width / 2, baseTop + 0.7, tz1 + 0.025);
     // Heat vents on both flanks: a glowing slot behind slats.
@@ -210,14 +256,40 @@ export class RiftForgeView implements RiftForgeViewApi {
     // Crown with a hazard band and a warning lamp.
     const C = L.crown;
     pb.boxMinMax('hazard', -T.width / 2, T.top - 0.12, tz0, T.width / 2, T.top, tz1 + 0.01);
-    pb.boxMinMax('trim', -T.width / 2 - C.overhang, T.top, tz0 - C.overhang, T.width / 2 + C.overhang, T.top + C.height, tz1 + C.overhang);
+    pb.boxMinMax(
+      'trim',
+      -T.width / 2 - C.overhang,
+      T.top,
+      tz0 - C.overhang,
+      T.width / 2 + C.overhang,
+      T.top + C.height,
+      tz1 + C.overhang,
+    );
     pb.box('strip', 0, T.top + C.height + 0.05, tz1 - 0.1, 0.5, 0.1, 0.12);
 
     // Exhaust stack with a glowing throat.
     const SK = L.stack;
     pb.cylinder('trim', 0, T.top + C.height + SK.height / 2, SK.z, SK.radius, SK.height, 'y', CYL_SEGMENTS);
-    pb.cylinder('coreBack', 0, T.top + C.height + SK.height + 0.005, SK.z, SK.radius * 0.72, 0.012, 'y', CYL_SEGMENTS);
-    pb.cylinder('hazard', 0, T.top + C.height + SK.height * 0.7, SK.z, SK.radius + 0.012, 0.06, 'y', CYL_SEGMENTS);
+    pb.cylinder(
+      'coreBack',
+      0,
+      T.top + C.height + SK.height + 0.005,
+      SK.z,
+      SK.radius * 0.72,
+      0.012,
+      'y',
+      CYL_SEGMENTS,
+    );
+    pb.cylinder(
+      'hazard',
+      0,
+      T.top + C.height + SK.height * 0.7,
+      SK.z,
+      SK.radius + 0.012,
+      0.06,
+      'y',
+      CYL_SEGMENTS,
+    );
     // Coolant tanks behind the pylons: rift fluid glowing through a front window.
     const TK = L.tank;
     for (const s of [-1, 1]) {
@@ -225,7 +297,15 @@ export class RiftForgeView implements RiftForgeViewApi {
       pb.cylinder('body', x, baseTop + TK.height / 2, TK.z, TK.radius, TK.height, 'y', CYL_SEGMENTS);
       pb.cylinder('trim', x, baseTop + TK.height + 0.04, TK.z, TK.radius + 0.03, 0.08, 'y', CYL_SEGMENTS);
       pb.cylinder('trim', x, baseTop + 0.05, TK.z, TK.radius + 0.03, 0.1, 'y', CYL_SEGMENTS);
-      pb.box('coreBack', x, baseTop + TK.height / 2, TK.z + TK.radius - 0.005, TK.window, TK.height * 0.8, 0.02);
+      pb.box(
+        'coreBack',
+        x,
+        baseTop + TK.height / 2,
+        TK.z + TK.radius - 0.005,
+        TK.window,
+        TK.height * 0.8,
+        0.02,
+      );
     }
 
     // --- rift core window ---
@@ -254,16 +334,67 @@ export class RiftForgeView implements RiftForgeViewApi {
     for (const s of [-1, 1]) {
       const x = s * Y.x;
       pb.boxMinMax('body', x - Y.width / 2, baseTop, Y.back, x + Y.width / 2, Y.top, Y.back + Y.depth);
-      pb.boxMinMax('trim', x - Y.width / 2 - 0.03, Y.top, Y.back - 0.03, x + Y.width / 2 + 0.03, Y.top + 0.08, Y.back + Y.depth + 0.03);
+      pb.boxMinMax(
+        'trim',
+        x - Y.width / 2 - 0.03,
+        Y.top,
+        Y.back - 0.03,
+        x + Y.width / 2 + 0.03,
+        Y.top + 0.08,
+        Y.back + Y.depth + 0.03,
+      );
       // Amber strip up the pylon front.
       const fz = Y.back + Y.depth + 0.006;
-      pb.box('strip', x, (baseTop + 0.15 + Y.top - 0.45) / 2, fz, M.layout.strip.width, Y.top - 0.45 - baseTop - 0.15, 0.012);
+      pb.box(
+        'strip',
+        x,
+        (baseTop + 0.15 + Y.top - 0.45) / 2,
+        fz,
+        M.layout.strip.width,
+        Y.top - 0.45 - baseTop - 0.15,
+        0.012,
+      );
       // Shoulder bracket and joint.
-      pb.boxMinMax('trim', s * A.pivot[0] - 0.12, A.pivot[1] - 0.2, Y.back + Y.depth - 0.05, s * A.pivot[0] + 0.12, A.pivot[1] + 0.2, A.pivot[2] - 0.08);
-      pb.cylinder('trim', s * A.pivot[0], A.pivot[1], A.pivot[2] - 0.04, A.shoulder * 1.15, 0.1, 'z', CYL_SEGMENTS);
+      pb.boxMinMax(
+        'trim',
+        s * A.pivot[0] - 0.12,
+        A.pivot[1] - 0.2,
+        Y.back + Y.depth - 0.05,
+        s * A.pivot[0] + 0.12,
+        A.pivot[1] + 0.2,
+        A.pivot[2] - 0.08,
+      );
+      pb.cylinder(
+        'trim',
+        s * A.pivot[0],
+        A.pivot[1],
+        A.pivot[2] - 0.04,
+        A.shoulder * 1.15,
+        0.1,
+        'z',
+        CYL_SEGMENTS,
+      );
       // Conduits from the tower into the pylon.
-      pb.cylinder('trim', (s * (T.width / 2 + Y.x - Y.width / 2)) / 2, baseTop + 1.9, tz0 + 0.3, 0.05, Y.x - Y.width / 2 - T.width / 2 + 0.1, 'x', 10);
-      pb.cylinder('trim', (s * (T.width / 2 + Y.x - Y.width / 2)) / 2, baseTop + 1.72, tz0 + 0.3, 0.035, Y.x - Y.width / 2 - T.width / 2 + 0.1, 'x', 10);
+      pb.cylinder(
+        'trim',
+        (s * (T.width / 2 + Y.x - Y.width / 2)) / 2,
+        baseTop + 1.9,
+        tz0 + 0.3,
+        0.05,
+        Y.x - Y.width / 2 - T.width / 2 + 0.1,
+        'x',
+        10,
+      );
+      pb.cylinder(
+        'trim',
+        (s * (T.width / 2 + Y.x - Y.width / 2)) / 2,
+        baseTop + 1.72,
+        tz0 + 0.3,
+        0.035,
+        Y.x - Y.width / 2 - T.width / 2 + 0.1,
+        'x',
+        10,
+      );
     }
 
     // --- anvil ---
@@ -272,8 +403,24 @@ export class RiftForgeView implements RiftForgeViewApi {
     pb.box('body', 0, baseTop + N.pedestal[1] / 2, N.z, N.pedestal[0], N.pedestal[1], N.pedestal[2]);
     pb.box('trim', 0, pedTop + N.top[1] / 2, N.z, N.top[0], N.top[1], N.top[2]);
     // Horn (stepped taper to the left) and a heel block to the right.
-    pb.box('trim', -N.top[0] / 2 - N.horn / 2, pedTop + N.top[1] * 0.62, N.z, N.horn, N.top[1] * 0.5, N.top[2] * 0.55);
-    pb.box('trim', -N.top[0] / 2 - N.horn * 1.1, pedTop + N.top[1] * 0.68, N.z, N.horn * 0.3, N.top[1] * 0.3, N.top[2] * 0.3);
+    pb.box(
+      'trim',
+      -N.top[0] / 2 - N.horn / 2,
+      pedTop + N.top[1] * 0.62,
+      N.z,
+      N.horn,
+      N.top[1] * 0.5,
+      N.top[2] * 0.55,
+    );
+    pb.box(
+      'trim',
+      -N.top[0] / 2 - N.horn * 1.1,
+      pedTop + N.top[1] * 0.68,
+      N.z,
+      N.horn * 0.3,
+      N.top[1] * 0.3,
+      N.top[2] * 0.3,
+    );
     pb.box('trim', N.top[0] / 2 + 0.05, pedTop + N.top[1] * 0.5, N.z, 0.1, N.top[1] * 0.8, N.top[2] * 0.8);
     // Glowing cradle groove on the anvil face.
     const anvilTop = pedTop + N.top[1];
@@ -449,7 +596,8 @@ export class RiftForgeView implements RiftForgeViewApi {
     cu.uHeat.value = heat;
     cu.uIntensity.value = M.coreIntensity * breathe * lerp(1, B.core, heat) + flash * 0.5;
     this.coreBack.emissiveIntensity = M.coreIntensity * 0.35 * breathe * lerp(1, B.core, heat);
-    this.strips.emissiveIntensity = M.stripIntensity * breathe * lerp(1, B.strips, heat) + flash * M.stripIntensity * 0.4;
+    this.strips.emissiveIntensity =
+      M.stripIntensity * breathe * lerp(1, B.strips, heat) + flash * M.stripIntensity * 0.4;
     this.vents.emissiveIntensity = M.ventIntensity * heat * heat;
     this.pool.material.uniforms.uIntensity.value = M.glowPool.intensity * breathe * lerp(1, B.pool, heat);
     this.corona.material.uniforms.uIntensity.value =
@@ -462,7 +610,8 @@ export class RiftForgeView implements RiftForgeViewApi {
       const rest = a.rest - a.side * cock * L.arm.cockDeg * (Math.PI / 180);
       let k = 0;
       if (a.since < SEQ.strikeDown) k = smoothstep(0, 1, a.since / SEQ.strikeDown);
-      else if (a.since < SEQ.strikeDown + SEQ.strikeUp) k = 1 - smoothstep(0, 1, (a.since - SEQ.strikeDown) / SEQ.strikeUp);
+      else if (a.since < SEQ.strikeDown + SEQ.strikeUp)
+        k = 1 - smoothstep(0, 1, (a.since - SEQ.strikeDown) / SEQ.strikeUp);
       a.pivot.rotation.z = lerp(rest, a.strike, k * k);
     }
 

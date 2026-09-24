@@ -154,7 +154,12 @@ export class AttachmentLibrary {
     this.lens = lens('vm-att-lens', L.color, L.opacity);
     this.thermalLens = lens('vm-att-lens-thermal', L.thermal, L.thermalOpacity);
     this.mask = new MeshBasicMaterial({ name: 'vm-scopemask', colorWrite: false });
-    this.accent = this.glow(VIEWMODEL_ART.emissive.accent, ATTACHMENT_ART.accentIntensity, false, 'vm-att-accent');
+    this.accent = this.glow(
+      VIEWMODEL_ART.emissive.accent,
+      ATTACHMENT_ART.accentIntensity,
+      false,
+      'vm-att-accent',
+    );
   }
 
   /** The library's stand-in accent (the outfit swaps it for the host's). */
@@ -264,7 +269,11 @@ export class AttachmentLibrary {
   }
 
   /** Sockets (unused, keeps the builder quiet), build, markers, mask draw order. */
-  private finish(b: ModelBuilder, def: AttachmentDef, spec: AttachmentSpec): { root: Group; geometries: BufferGeometry[] } {
+  private finish(
+    b: ModelBuilder,
+    def: AttachmentDef,
+    spec: AttachmentSpec,
+  ): { root: Group; geometries: BufferGeometry[] } {
     b.socket('muzzle', [0, 0, 0]);
     b.socket('ejectPort', [0, 0, 0]);
     b.socket('sight', [0, 0, 0]);
@@ -310,7 +319,10 @@ export class AttachmentLibrary {
       accent: this.accent,
       reticle: this.glow(color, A.reticleIntensity, false),
       // Laser colors are linear hex (defs/attachments AttachmentLaserDef).
-      laser: laser !== undefined ? this.glow(laser, A.laserLensIntensity, true) : this.glow(color, A.laserLensIntensity, false),
+      laser:
+        laser !== undefined
+          ? this.glow(laser, A.laserLensIntensity, true)
+          : this.glow(color, A.laserLensIntensity, false),
       band: this.glow(band, A.bands.intensity, false),
       lensTint: def.optic?.reticle === 'thermal' ? this.thermalLens : this.lens,
       mask: this.mask,

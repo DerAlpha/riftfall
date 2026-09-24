@@ -17,6 +17,7 @@ import {
   Color,
   Mesh,
   PlaneGeometry,
+  SRGBColorSpace,
   type Material,
   type MeshStandardMaterial,
   type Object3D,
@@ -24,9 +25,10 @@ import {
 } from 'three';
 import { clamp01 } from '../../../core/math';
 import { FORGE_LOOKS, type ForgeCamoDef, type ForgeLookDef } from '../../../defs/forge';
+import { VIEWMODEL_ART } from '../../../defs/viewmodels';
 import { FORGE_VIEW, OUTFIT_MATERIALS } from '../../../defs/weaponOutfit';
 
-export type MaterialRole = 'body' | 'paint' | 'accent' | 'heat' | 'energy' | 'none';
+export type MaterialRole = 'body' | 'paint' | 'accent' | 'heat' | 'energy' | 'readout' | 'none';
 
 /** The role of a weapon material by its name (OUTFIT_MATERIALS). */
 export function materialRole(name: string): MaterialRole {
@@ -36,12 +38,45 @@ export function materialRole(name: string): MaterialRole {
   if (R.paint.includes(name)) return 'paint';
   if (name === R.accent || name === 'vm-att-accent') return 'accent';
   if (name === R.heat) return 'heat';
+  if (name === R.readout) return 'readout';
   if (name.startsWith(R.energyPrefix)) return 'energy';
   return 'none';
 }
 
 /** Program cache key of every camo variant (the look's values are uniforms). */
 export const CAMO_PROGRAM_KEY = 'forge-camo-1';
+/** Program cache key of the patched readouts (the tint is a uniform, 0 = the weapon's own colors). */
+export const READOUT_PROGRAM_KEY = 'forge-readout-1';
+
+/**
+ * Readout recolor: lit "on" texels (the cyan of VIEWMODEL_ART.emissive.readoutOn) take the look's
+ * readout color; low / empty (amber / red) and dark segments stay as they are.
+ */
+const READOUT_FRAGMENT_HEAD = /* glsl */ `
+uniform vec3 uReadoutTint;
+uniform float uReadoutMix;
+`;
+
+const READOUT_EMISSIVE = /* glsl */ `
+#ifdef USE_EMISSIVEMAP
+{
+  vec3 rt = texture2D(emissiveMap, vEmissiveMapUv).rgb;
+  float onMask = clamp((min(rt.g, rt.b) - rt.r) * 2.0, 0.0, 1.0) * uReadoutMix;
+  totalEmissiveRadiance = mix(totalEmissiveRadiance, emissive * uReadoutTint * max(rt.g, rt.b), onMask);
+}
+#endif
+`;
+
+/** Patch a readout material (in place) so a forge look can recolor its lit segments. */
+export function patchReadoutShader(
+  shader: Pick<WebGLProgramParametersWithUniforms, 'fragmentShader' | 'uniforms'>,
+  uniforms: Uniforms,
+): void {
+  Object.assign(shader.uniforms, uniforms);
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', `#include <common>\n${READOUT_FRAGMENT_HEAD}`)
+    .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${READOUT_EMISSIVE}`);
+}
 
 const CAMO_VERTEX_HEAD = /* glsl */ `
 varying vec3 vCamoPos;
@@ -134,7 +169,10 @@ function camoUniforms(c: ForgeCamoDef, time: { value: number }): Uniforms {
 }
 
 /** Patch a standard / physical material's shaders with the camo (in place). */
-export function patchCamoShader(shader: Pick<WebGLProgramParametersWithUniforms, 'vertexShader' | 'fragmentShader' | 'uniforms'>, uniforms: Uniforms): void {
+export function patchCamoShader(
+  shader: Pick<WebGLProgramParametersWithUniforms, 'vertexShader' | 'fragmentShader' | 'uniforms'>,
+  uniforms: Uniforms,
+): void {
   Object.assign(shader.uniforms, uniforms);
   shader.vertexShader = shader.vertexShader
     .replace('#include <common>', `#include <common>\n${CAMO_VERTEX_HEAD}`)
@@ -161,6 +199,24 @@ export class ForgeLookApplier {
   private readonly variants = new Map<Material, Map<string, Material>>();
   private readonly backups = new Map<Material, ColorBackup>();
   private warmGeometry: PlaneGeometry | null = null;
+
+  /**
+   * Patch the model's readout materials once (before the warm-up compile): a look can then recolor
+   * their lit segments through uniforms only.
+   */
+  prepare(root: Object3D): void {
+    root.traverse((o) => {
+      const mesh = o as Mesh;
+      if (!mesh.isMesh || Array.isArray(mesh.material)) return;
+      const m = mesh.material as Material;
+      if (materialRole(m.name) !== 'readout' || m.userData.readoutUniforms) return;
+      const uniforms: Uniforms = { uReadoutTint: { value: new Color(1, 1, 1) }, uReadoutMix: { value: 0 } };
+      m.userData.readoutUniforms = uniforms;
+      m.onBeforeCompile = (shader) => patchReadoutShader(shader, uniforms);
+      m.customProgramCacheKey = () => READOUT_PROGRAM_KEY;
+      m.needsUpdate = true;
+    });
+  }
 
   /**
    * Apply `look` to every mesh under `root` (null restores the weapon's own look). Returns the
@@ -193,6 +249,9 @@ export class ForgeLookApplier {
           break;
         case 'energy':
           this.tintEnergy(base, look?.accent);
+          break;
+        case 'readout':
+          this.tintReadout(base, look?.readout);
           break;
         default:
           break;
@@ -270,6 +329,21 @@ export class ForgeLookApplier {
     }
     if (hex === undefined) m.emissive.setHex(b.emissive!);
     else m.emissive.set(hex);
+  }
+
+  private tintReadout(m: Material, rgb: readonly [number, number, number] | undefined): void {
+    const u = m.userData.readoutUniforms as Uniforms | undefined;
+    if (!u) return;
+    (u.uReadoutMix as { value: number }).value = rgb ? 1 : 0;
+    if (!rgb) return;
+    const tint = u.uReadoutTint!.value as Color;
+    tint.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, SRGBColorSpace);
+    // As bright as the cyan it replaces (the readout intensities are tuned for it).
+    const on = VIEWMODEL_ART.emissive.readoutOn;
+    const ref = _c.setRGB(on[0] / 255, on[1] / 255, on[2] / 255, SRGBColorSpace);
+    const lum = (c: Color): number => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const l = lum(tint);
+    if (l > 0) tint.multiplyScalar(Math.max(1, lum(ref) / l) / Math.max(ref.g, ref.b));
   }
 
   private tintEnergy(m: Material, accentHex: number | undefined): void {

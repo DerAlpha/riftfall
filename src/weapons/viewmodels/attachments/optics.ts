@@ -10,15 +10,7 @@ import { BoxGeometry, CylinderGeometry, PlaneGeometry, TorusGeometry } from 'thr
 import { ATTACHMENT_ART } from '../../../defs/weaponOutfit';
 import { VIEWMODEL_ART } from '../../../defs/viewmodels';
 import { BODY, type ModelBuilder } from '../ModelBuilder';
-import {
-  chamferRectProfile,
-  cylinderX,
-  cylinderZ,
-  latheZHard,
-  profileZ,
-  roundedBox,
-  tubeZ,
-} from '../shapes';
+import { chamferRectProfile, cylinderX, cylinderZ, latheZHard, profileZ, roundedBox, tubeZ } from '../shapes';
 import type { AttachmentBuilder } from './types';
 
 const P = VIEWMODEL_ART.materials;
@@ -69,14 +61,20 @@ export const buildReflex: AttachmentBuilder = (b) => {
     pos: [0, 0.0025, 0],
     paint: P.darkMetal.paint,
   });
-  b.add(BODY, 'polymer', roundedBox(0.021, 0.007, 0.018, 0.0015), { pos: [0, 0.0085, 0.006], paint: P.polymer.paint });
+  b.add(BODY, 'polymer', roundedBox(0.021, 0.007, 0.018, 0.0015), {
+    pos: [0, 0.0085, 0.006],
+    paint: P.polymer.paint,
+  });
   for (const s of [-1, 1]) {
     b.add(BODY, 'darkMetal', roundedBox(0.0032, 0.022, 0.007, 0.0008), {
       pos: [s * 0.0106, 0.0155, WZ],
       paint: P.darkMetal.paint,
     });
   }
-  b.add(BODY, 'darkMetal', roundedBox(0.0244, 0.0034, 0.008, 0.0008), { pos: [0, 0.0272, WZ], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.0244, 0.0034, 0.008, 0.0008), {
+    pos: [0, 0.0272, WZ],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'accent', new BoxGeometry(0.012, 0.0008, 0.004), { pos: [0, 0.0293, WZ] });
   b.add(BODY, 'lensTint', new PlaneGeometry(0.018, 0.019), { pos: [0, SY + 0.0005, WZ], uv: 'keep' });
   // LED emitter at the back of the window.
@@ -89,9 +87,15 @@ export const buildReflex: AttachmentBuilder = (b) => {
 export const buildRedDot: AttachmentBuilder = (b) => {
   const SY = 0.027;
   const LZ = -0.0195;
-  b.add(BODY, 'darkMetal', roundedBox(0.02, 0.013, 0.03, 0.0015), { pos: [0, 0.0065, 0.002], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.02, 0.013, 0.03, 0.0015), {
+    pos: [0, 0.0065, 0.002],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'gunmetal', cylinderX(0.0026, 0.027, 10), { pos: [0, 0.0045, -0.006] });
-  b.add(BODY, 'darkMetal', tubeZ(0.0142, 0.0118, 0.046, 28), { pos: [0, SY, 0.023], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', tubeZ(0.0142, 0.0118, 0.046, 28), {
+    pos: [0, SY, 0.023],
+    paint: P.darkMetal.paint,
+  });
   const ring = latheZHard(
     [
       [0.0118, 0],
@@ -115,7 +119,10 @@ export const buildRedDot: AttachmentBuilder = (b) => {
 export const buildHolo: AttachmentBuilder = (b) => {
   const SY = 0.03;
   const WZ = -0.0238;
-  b.add(BODY, 'darkMetal', roundedBox(0.03, 0.013, 0.056, 0.002), { pos: [0, 0.0065, 0.002], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.03, 0.013, 0.056, 0.002), {
+    pos: [0, 0.0065, 0.002],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'polymer', cylinderX(0.0072, 0.031, 16), { pos: [0, 0.009, 0.019] });
   for (const s of [-1, 1]) {
     b.add(BODY, 'darkMetal', roundedBox(0.0036, 0.034, 0.037, 0.001), {
@@ -124,9 +131,15 @@ export const buildHolo: AttachmentBuilder = (b) => {
     });
     b.add(BODY, 'gunmetal', new BoxGeometry(0.004, 0.0035, 0.004), { pos: [s * 0.006, 0.0112, 0.031] });
   }
-  b.add(BODY, 'darkMetal', roundedBox(0.0372, 0.0036, 0.039, 0.001), { pos: [0, 0.0475, -0.008], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.0372, 0.0036, 0.039, 0.001), {
+    pos: [0, 0.0475, -0.008],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'accent', new BoxGeometry(0.022, 0.0008, 0.028), { pos: [0, 0.0497, -0.008] });
-  b.add(BODY, 'lensTint', new PlaneGeometry(0.0302, 0.0304), { pos: [0, SY + 0.0007, WZ - 0.0004], uv: 'keep' });
+  b.add(BODY, 'lensTint', new PlaneGeometry(0.0302, 0.0304), {
+    pos: [0, SY + 0.0007, WZ - 0.0004],
+    uv: 'keep',
+  });
   b.add(BODY, 'reticle', new TorusGeometry(0.0034, 0.00021, 4, 40), { pos: [0, SY, WZ] });
   b.add(BODY, 'reticle', cylinderZ(0.00045, 0.00045, RETICLE_DEPTH, 10), { pos: [0, SY, WZ] });
   return { sight: [0, SY, WZ] };
@@ -137,7 +150,10 @@ export const buildAcog: AttachmentBuilder = (b) => {
   const SY = 0.028;
   const OZ = 0.033;
   const OR = 0.0108;
-  b.add(BODY, 'darkMetal', roundedBox(0.02, 0.012, 0.042, 0.0015), { pos: [0, 0.006, 0], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.02, 0.012, 0.042, 0.0015), {
+    pos: [0, 0.006, 0],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'gunmetal', cylinderX(0.0045, 0.004, 12), { pos: [-0.0122, 0.006, -0.01] });
   b.add(BODY, 'gunmetal', cylinderX(0.0045, 0.004, 12), { pos: [-0.0122, 0.006, 0.012] });
   b.add(BODY, 'darkMetal', profileZ(chamferRectProfile(0.03, 0.027, 0.006), 0.036, { bevel: 0.001 }), {
@@ -188,7 +204,10 @@ export const buildScope4x: AttachmentBuilder = (b) => {
   const RZ = 0.0852;
   const OR = 0.0142;
   for (const z of [0.024, -0.03]) {
-    b.add(BODY, 'darkMetal', roundedBox(0.018, 0.01, 0.012, 0.0015), { pos: [0, 0.005, z], paint: P.darkMetal.paint });
+    b.add(BODY, 'darkMetal', roundedBox(0.018, 0.01, 0.012, 0.0015), {
+      pos: [0, 0.005, z],
+      paint: P.darkMetal.paint,
+    });
     b.add(BODY, 'darkMetal', new BoxGeometry(0.011, SY - 0.0128 - 0.009, 0.01), {
       pos: [0, 0.009 + (SY - 0.0128 - 0.009) / 2, z],
       paint: P.darkMetal.paint,
@@ -227,7 +246,10 @@ export const buildScope4x: AttachmentBuilder = (b) => {
     ),
     { pos: [0, SY, 0.08], paint: P.darkMetal.paint },
   );
-  b.add(BODY, 'grip', tubeZ(0.0172, OR, 0.0075, 32), { pos: [0, SY, 0.0875], uvDensity: VIEWMODEL_ART.knurlDensity });
+  b.add(BODY, 'grip', tubeZ(0.0172, OR, 0.0075, 32), {
+    pos: [0, SY, 0.0875],
+    uvDensity: VIEWMODEL_ART.knurlDensity,
+  });
   b.add(BODY, 'accent', tubeZ(0.0204, 0.0198, 0.0025, 32), { pos: [0, SY, -0.058] });
   // Elevation (top) and windage (right) turrets with knurled caps.
   b.add(BODY, 'darkMetal', new CylinderGeometry(0.0072, 0.0078, 0.011, 18), { pos: [0, SY + 0.0175, 0.0] });
@@ -236,7 +258,10 @@ export const buildScope4x: AttachmentBuilder = (b) => {
     uvDensity: VIEWMODEL_ART.knurlDensity,
   });
   b.add(BODY, 'darkMetal', cylinderX(0.0072, 0.011, 18), { pos: [0.0175, SY, 0] });
-  b.add(BODY, 'grip', cylinderX(0.0082, 0.006, 20), { pos: [0.025, SY, 0], uvDensity: VIEWMODEL_ART.knurlDensity });
+  b.add(BODY, 'grip', cylinderX(0.0082, 0.006, 20), {
+    pos: [0.025, SY, 0],
+    uvDensity: VIEWMODEL_ART.knurlDensity,
+  });
   ocular(b, SY, RZ, OR);
   crosshair(b, SY, RZ, 0.0038, OR - 0.0024);
   return { sight: [0, SY, RZ], eyeDistance: ATTACHMENT_ART.eyeRelief.scope4x };
@@ -247,12 +272,24 @@ export const buildThermal: AttachmentBuilder = (b) => {
   const SY = 0.03;
   const OZ = 0.0525;
   const OR = 0.0124;
-  b.add(BODY, 'darkMetal', roundedBox(0.022, 0.01, 0.05, 0.0015), { pos: [0, 0.005, 0], paint: P.darkMetal.paint });
-  b.add(BODY, 'polymer', roundedBox(0.043, 0.041, 0.076, 0.005), { pos: [0, SY, -0.004], paint: P.polymer.paint });
-  b.add(BODY, 'darkMetal', cylinderZ(0.0195, 0.0195, 0.013, 28), { pos: [0, SY, -0.047], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.022, 0.01, 0.05, 0.0015), {
+    pos: [0, 0.005, 0],
+    paint: P.darkMetal.paint,
+  });
+  b.add(BODY, 'polymer', roundedBox(0.043, 0.041, 0.076, 0.005), {
+    pos: [0, SY, -0.004],
+    paint: P.polymer.paint,
+  });
+  b.add(BODY, 'darkMetal', cylinderZ(0.0195, 0.0195, 0.013, 28), {
+    pos: [0, SY, -0.047],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'bore', cylinderZ(0.016, 0.016, 0.0004, 28), { pos: [0, SY, -0.0532] });
   b.add(BODY, 'lensTint', cylinderZ(0.0166, 0.0166, 0.0004, 28), { pos: [0, SY, -0.0538] });
-  b.add(BODY, 'grip', tubeZ(0.0152, OR, 0.022, 28), { pos: [0, SY, 0.056], uvDensity: VIEWMODEL_ART.knurlDensity });
+  b.add(BODY, 'grip', tubeZ(0.0152, OR, 0.022, 28), {
+    pos: [0, SY, 0.056],
+    uvDensity: VIEWMODEL_ART.knurlDensity,
+  });
   for (let i = 0; i < 3; i++) {
     b.add(BODY, 'gunmetal', new CylinderGeometry(0.0032, 0.0032, 0.003, 10), {
       pos: [-0.008 + i * 0.008, SY + 0.0215, 0.012],

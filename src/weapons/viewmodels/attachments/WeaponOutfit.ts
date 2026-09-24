@@ -51,6 +51,8 @@ export class WeaponOutfit {
   /** Muzzle point of a fitted device (null = the model's muzzle socket). */
   muzzle: Object3D | null = null;
   laser: OutfitLaser | null = null;
+  /** A fitted muzzle device suppresses the report (smaller viewmodel flash light). */
+  suppressed = false;
   readonly spinners: OutfitSpinner[] = [];
   private readonly fitted = new Map<string, AttachmentInstance>();
   private readonly spare = new Map<string, AttachmentInstance>();
@@ -140,6 +142,7 @@ export class WeaponOutfit {
     this.eyeDistance = null;
     this.muzzle = null;
     this.laser = null;
+    this.suppressed = false;
     this.spinners.length = 0;
     let replaceMagazine = false;
     let duplicate: readonly [number, number, number] | null = null;
@@ -149,8 +152,10 @@ export class WeaponOutfit {
         this.eyeDistance = inst.spec.eyeDistance ?? null;
       }
       if (inst.muzzle) this.muzzle = inst.muzzle;
+      if (inst.def.suppressed) this.suppressed = true;
       if (inst.emitter && inst.def.laser) this.laser = { emitter: inst.emitter, def: inst.def.laser };
-      if (inst.spinner && inst.spec.spinner) this.spinners.push({ obj: inst.spinner, axis: inst.spec.spinner.axis });
+      if (inst.spinner && inst.spec.spinner)
+        this.spinners.push({ obj: inst.spinner, axis: inst.spec.spinner.axis });
       if (inst.spec.replacesMagazine) replaceMagazine = true;
       if (inst.spec.duplicateMagazine) duplicate = inst.spec.duplicateMagazine;
     }
@@ -215,7 +220,8 @@ export class WeaponOutfit {
       if (!m.isMesh || m.name.startsWith('att-')) return;
       const geo = m.geometry;
       if (!geo.boundingBox) geo.computeBoundingBox();
-      if (geo.boundingBox) box.union(_box.copy(geo.boundingBox).applyMatrix4(m.matrixWorld).applyMatrix4(inv));
+      if (geo.boundingBox)
+        box.union(_box.copy(geo.boundingBox).applyMatrix4(m.matrixWorld).applyMatrix4(inv));
     });
     const rear = new Object3D();
     rear.name = 'mount-stock-fallback';
@@ -268,7 +274,8 @@ export class WeaponOutfit {
       this.model.root.traverse((o) => {
         const m = o as Mesh;
         if (this.hostAccent || !m.isMesh || Array.isArray(m.material)) return;
-        if ((m.material as Material).name === OUTFIT_MATERIALS.accent) this.hostAccent = m.material as Material;
+        if ((m.material as Material).name === OUTFIT_MATERIALS.accent)
+          this.hostAccent = m.material as Material;
       });
     }
     const host = this.hostAccent;

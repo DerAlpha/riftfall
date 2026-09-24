@@ -524,8 +524,8 @@ export const BEAM_STYLES = {
     stretch: 0.018,
     color: [1, 0.72, 0.34],
     colorEnd: [0.72, 0.1, 0.02],
-    intensity: 3.2,
-    intensityEnd: 1.1,
+    intensity: 2.7,
+    intensityEnd: 1,
     gravity: -0.35,
     core: { length: 1.4, width: 0.05, widthEnd: 0.3, color: FIRE_CORE, intensity: 3.5 },
     nozzleGlow: {

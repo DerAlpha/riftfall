@@ -10,7 +10,13 @@ import { RIFT_FORGE_MACHINE } from '../defs/workshop';
 import { fakeSettings } from '../player/testHelpers';
 import { FakeCamera, FakePlayer, FakeWeaponInput, fakeRenderCamera } from '../weapons/testFakes';
 import { WeaponSystem } from '../weapons/WeaponSystem';
-import { RiftForge, forgePrice, forgePrompt, type RiftForgeReadout, type RiftForgeViewApi } from './RiftForge';
+import {
+  RiftForge,
+  forgePrice,
+  forgePrompt,
+  type RiftForgeReadout,
+  type RiftForgeViewApi,
+} from './RiftForge';
 import { FakeEconomy } from './testFakes';
 
 const SEQ = RIFT_FORGE_MACHINE.sequence;

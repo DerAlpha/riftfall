@@ -595,7 +595,7 @@ export class ViewmodelRig {
 
     // --- muzzle flash light (viewmodel scene) ---
     const flash = this.animator.muzzleFlash;
-    this.muzzleLight.intensity = flash > FLASH_EPSILON ? ML.intensity * flash : 0;
+    this.muzzleLight.intensity = flash > FLASH_EPSILON ? ML.intensity * flash * this.outfitter.flashScale : 0;
 
     // --- emissive life on the placeholder (uniform updates only, no recompiles) ---
     if (this.model === this.placeholder.root) {
@@ -656,6 +656,7 @@ export class ViewmodelRig {
       return null;
     }
     prepareViewmodelObject(model.root);
+    this.outfitter.prepareModel(model);
     this.weaponModels.set(modelId, model);
     return model;
   }

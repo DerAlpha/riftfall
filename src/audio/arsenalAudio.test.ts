@@ -347,7 +347,7 @@ describe('arsenal audio – projectiles and fields', () => {
     expect(loops.map((l) => l.id)).toEqual(['field.pull.void', 'field.slow.physical']);
     expect(resolveSynthId('field.slow.physical')).toBe('field.slow.void');
     expect(loops[0]!.opts.position).toEqual({ x: 2, y: 0, z: 0 });
-    expect(loops[0]!.opts.maxDuration).toBeCloseTo(4 + AR.fields.overrun);
+    expect(loops[0]!.opts.maxDuration).toBeCloseTo(4 * AR.fields.durationScale + AR.fields.overrun);
     for (let i = 3; i < 3 + AR.fields.maxVoices + 2; i++) field(i, 'damage', 'fire', 5 + i);
     expect(audio.running().length).toBe(AR.fields.maxVoices);
     events.emit('field:ended', { id: 1 });

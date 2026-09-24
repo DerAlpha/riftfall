@@ -7,11 +7,18 @@
  * the forge, so the new look appears out of view. Reports the optic's sight point / eye relief and
  * a muzzle device's muzzle point for the rig's ADS alignment and socket anchors.
  */
-import { Color, LinearSRGBColorSpace, Vector3, type Camera, type MeshStandardMaterial, type Object3D } from 'three';
+import {
+  Color,
+  LinearSRGBColorSpace,
+  Vector3,
+  type Camera,
+  type MeshStandardMaterial,
+  type Object3D,
+} from 'three';
 import type { Vec3Like } from '../../../core/events';
 import { forgePaletteId, getForgeLook, type ForgeLookDef } from '../../../defs/forge';
 import { getWeaponDef } from '../../../defs/weapons';
-import { ATTACHMENT_ART, FORGE_VIEW, LASER_SIGHT } from '../../../defs/weaponOutfit';
+import { ATTACHMENT_ART, FORGE_VIEW, LASER_SIGHT, OUTFIT_RIG } from '../../../defs/weaponOutfit';
 import type { WeaponModState } from '../../resolveWeapon';
 import type { WeaponMaterialKit } from '../materials';
 import type { WeaponViewmodelModel } from '../WeaponModel';
@@ -51,6 +58,11 @@ export class ViewmodelOutfitter {
     worldScene: Object3D,
   ) {
     this.laserSight = new LaserSight(worldScene);
+  }
+
+  /** A weapon model was built: patch what a forge look recolors by uniforms (before any compile). */
+  prepareModel(model: WeaponViewmodelModel): void {
+    this.looks.prepare(model.root);
   }
 
   setModsSource(source: ModsSource | null): void {
@@ -137,6 +149,11 @@ export class ViewmodelOutfitter {
     if (this.accent && this.look) this.accent.emissiveIntensity *= this.look.accentIntensity;
     const spin = this.outfit?.spinners;
     if (spin) for (const s of spin) s.obj.rotation[s.axis] += ATTACHMENT_ART.gyroSpin * dt;
+  }
+
+  /** Muzzle flash light factor: a suppressor keeps the flash small. */
+  get flashScale(): number {
+    return this.outfit?.suppressed ? OUTFIT_RIG.suppressedFlash : 1;
   }
 
   /** The look's accent-light factor (1 without a look). */

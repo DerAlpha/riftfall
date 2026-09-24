@@ -2424,7 +2424,7 @@ export const VFX_EFFECTS = {
   },
   'field.poison.mist': {
     emitters: [
-      billow('smoke', [0.5, 0.8, 0.25], [1, 1], [1.1, 1.7], 2.2, [2.5, 4], [0.1, 0.4], 0.55, {
+      billow('smoke', [0.6, 0.9, 0.32], [1, 1], [1.2, 1.8], 2.2, [2.5, 4], [0.1, 0.4], 0.7, {
         minCount: 1,
         axis: 'up',
         drag: 0.8,
@@ -2443,8 +2443,8 @@ export const VFX_EFFECTS = {
         size: [1, 1.5],
         sizeEnd: 2,
         color: POISON_C,
-        intensity: 0.45,
-        intensityEnd: 0.1,
+        intensity: 1,
+        intensityEnd: 0.2,
         fadeIn: 0.3,
         fadeOut: 0.5,
         alpha: 1,

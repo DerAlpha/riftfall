@@ -71,7 +71,16 @@ function dims(f: Frame, along: number, sj: number, sk: number): [number, number,
   return [v[0]!, v[1]!, v[2]!];
 }
 
-function box(b: ModelBuilder, mat: string, f: Frame, along: number, sj: number, sk: number, pos: Vec3Tuple, paint?: number): void {
+function box(
+  b: ModelBuilder,
+  mat: string,
+  f: Frame,
+  along: number,
+  sj: number,
+  sk: number,
+  pos: Vec3Tuple,
+  paint?: number,
+): void {
   const [sx, sy, sz] = dims(f, along, sj, sk);
   const r = Math.min(sx, sy, sz) * 0.18;
   b.add(BODY, mat, r > 0.0004 ? roundedBox(sx, sy, sz, r) : new BoxGeometry(sx, sy, sz), { pos, paint });
@@ -80,7 +89,15 @@ function box(b: ModelBuilder, mat: string, f: Frame, along: number, sj: number, 
 /** A glowing band around the magazine `frac` of the way from the well. */
 function band(b: ModelBuilder, f: Frame, frac: number): void {
   const along = f.near + f.dir * f.long * frac;
-  box(b, 'band', f, A.bandWidth, f.size.getComponent(f.j) * 1.06, f.size.getComponent(f.k) * 1.04, at(f, along));
+  box(
+    b,
+    'band',
+    f,
+    A.bandWidth,
+    f.size.getComponent(f.j) * 1.06,
+    f.size.getComponent(f.k) * 1.04,
+    at(f, along),
+  );
 }
 
 export const buildExtMag: MagazineBuilder = (b, mag) => {
@@ -101,10 +118,27 @@ export const buildFastMag: MagazineBuilder = (b, mag) => {
   const sk = f.size.getComponent(f.k);
   const offset = sj + A.coupleGap;
   for (const frac of [0.3, 0.72]) {
-    box(b, 'darkMetal', f, 0.009, offset + sj * 1.15, sk * 1.06, at(f, f.near + f.dir * f.long * frac, offset / 2), P.darkMetal.paint);
+    box(
+      b,
+      'darkMetal',
+      f,
+      0.009,
+      offset + sj * 1.15,
+      sk * 1.06,
+      at(f, f.near + f.dir * f.long * frac, offset / 2),
+      P.darkMetal.paint,
+    );
   }
   box(b, 'grip', f, 0.004, sj * 0.7, sk * 0.5, at(f, f.far + f.dir * 0.004, offset / 2));
-  box(b, 'accent', f, 0.0015, offset + sj * 1.17, sk * 1.07, at(f, f.near + f.dir * f.long * 0.3, offset / 2));
+  box(
+    b,
+    'accent',
+    f,
+    0.0015,
+    offset + sj * 1.17,
+    sk * 1.07,
+    at(f, f.near + f.dir * f.long * 0.3, offset / 2),
+  );
   const dup = [0, 0, 0];
   dup[f.j] = offset;
   return { duplicateMagazine: [dup[0]!, dup[1]!, dup[2]!] };
@@ -159,7 +193,16 @@ export const buildCapacitor: MagazineBuilder = (b, mag) => {
   const sk = f.size.getComponent(f.k);
   const packJ = Math.max(0.012, sj * 0.5);
   const off = sj / 2 + packJ / 2;
-  box(b, 'darkMetal', f, f.long * 0.72, packJ, sk * 0.8, at(f, f.center.getComponent(f.i), off), P.darkMetal.paint);
+  box(
+    b,
+    'darkMetal',
+    f,
+    f.long * 0.72,
+    packJ,
+    sk * 0.8,
+    at(f, f.center.getComponent(f.i), off),
+    P.darkMetal.paint,
+  );
   for (const frac of [0.3, 0.5, 0.7]) {
     box(b, 'band', f, 0.004, packJ * 1.08, sk * 0.84, at(f, f.near + f.dir * f.long * frac, off));
   }
@@ -172,8 +215,26 @@ export const buildHeavyLoad: MagazineBuilder = (b, mag) => {
   const sj = f.size.getComponent(f.j);
   const sk = f.size.getComponent(f.k);
   const cap = clamp(f.long * 0.22, 0.014, 0.034);
-  box(b, 'darkMetal', f, cap, sj * 1.12, sk * 1.12, at(f, f.far - (f.dir * cap) / 2 + f.dir * 0.006), P.darkMetal.paint);
-  box(b, 'accentPaint', f, cap * 0.3, sj * 1.14, sk * 1.14, at(f, f.far - f.dir * cap * 0.6 + f.dir * 0.006), P.accentPaint.paint);
+  box(
+    b,
+    'darkMetal',
+    f,
+    cap,
+    sj * 1.12,
+    sk * 1.12,
+    at(f, f.far - (f.dir * cap) / 2 + f.dir * 0.006),
+    P.darkMetal.paint,
+  );
+  box(
+    b,
+    'accentPaint',
+    f,
+    cap * 0.3,
+    sj * 1.14,
+    sk * 1.14,
+    at(f, f.far - f.dir * cap * 0.6 + f.dir * 0.006),
+    P.accentPaint.paint,
+  );
   box(b, 'band', f, 0.003, sj * 1.15, sk * 1.15, at(f, f.far - f.dir * cap * 0.15 + f.dir * 0.006));
   return {};
 };

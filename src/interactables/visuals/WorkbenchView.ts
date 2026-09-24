@@ -14,7 +14,13 @@ import { WORKBENCH } from '../../defs/workshop';
 import type { WorkbenchViewApi } from '../Workbench';
 import { createCanvasSurface, redraw, type CanvasSurface } from './canvas';
 import { createGlowMaterial, type VisualContext } from './context';
-import { createHoloMaterial, createLightPool, toVolumetricLayer, type HoloMaterial, type PoolMaterial } from './holo';
+import {
+  createHoloMaterial,
+  createLightPool,
+  toVolumetricLayer,
+  type HoloMaterial,
+  type PoolMaterial,
+} from './holo';
 import { PartBuilder } from './parts';
 
 const B = WORKBENCH;
@@ -61,7 +67,15 @@ export class WorkbenchView implements WorkbenchViewApi {
 
     // --- table: top slab, legs, lower shelf, drawer cabinet (right), kick plate ---
     pb.boxMinMax('top', -w / 2, topY - T.thickness, back + 0.04, w / 2, topY, front);
-    pb.boxMinMax('trim', -w / 2 - 0.01, topY - T.thickness - 0.02, front - 0.03, w / 2 + 0.01, topY - T.thickness + 0.01, front + 0.01);
+    pb.boxMinMax(
+      'trim',
+      -w / 2 - 0.01,
+      topY - T.thickness - 0.02,
+      front - 0.03,
+      w / 2 + 0.01,
+      topY - T.thickness + 0.01,
+      front + 0.01,
+    );
     const lg = L.leg;
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
@@ -87,7 +101,16 @@ export class WorkbenchView implements WorkbenchViewApi {
     const by1 = by0 + Bd.height;
     pb.boxMinMax('board', -w / 2, topY, back, w / 2, by1, back + Bd.depth);
     pb.boxMinMax('trim', -w / 2 - 0.03, by1, back - 0.01, w / 2 + 0.03, by1 + 0.06, back + Bd.depth + 0.04);
-    for (const s of [-1, 1]) pb.boxMinMax('trim', s * w / 2 - 0.035, topY, back - 0.01, s * w / 2 + 0.035, by1, back + Bd.depth + 0.03);
+    for (const s of [-1, 1])
+      pb.boxMinMax(
+        'trim',
+        (s * w) / 2 - 0.035,
+        topY,
+        back - 0.01,
+        (s * w) / 2 + 0.035,
+        by1,
+        back + Bd.depth + 0.03,
+      );
     const tz = back + Bd.depth + 0.012;
     // Wrench, screwdriver, hammer and pliers silhouettes on the left half.
     const tools: readonly (readonly [number, number, number, number])[] = [
@@ -110,7 +133,15 @@ export class WorkbenchView implements WorkbenchViewApi {
     }
     // Lamp bar reaching over the top.
     const Lp = L.lamp;
-    pb.boxMinMax('trim', -w / 2 + 0.05, by1 - 0.02, back + Bd.depth, w / 2 - 0.05, by1 + Lp.height, back + Bd.depth + Lp.depth);
+    pb.boxMinMax(
+      'trim',
+      -w / 2 + 0.05,
+      by1 - 0.02,
+      back + Bd.depth,
+      w / 2 - 0.05,
+      by1 + Lp.height,
+      back + Bd.depth + Lp.depth,
+    );
     pb.box('lamp', 0, by1 - 0.025, back + Bd.depth + Lp.depth * 0.55, w - 0.2, 0.012, Lp.depth * 0.5);
     // Vise on the left of the top.
     const vx = -w / 2 + 0.28;
@@ -189,7 +220,9 @@ export class WorkbenchView implements WorkbenchViewApi {
     if (!weaponId) return;
     this.holo.geometry = this.ctx.holograms.get(weaponId);
     const P = L.projector;
-    this.holo.scale.setScalar(this.ctx.holograms.displayLength(weaponId, 1, P.holoLength * 0.55, P.holoLength));
+    this.holo.scale.setScalar(
+      this.ctx.holograms.displayLength(weaponId, 1, P.holoLength * 0.55, P.holoLength),
+    );
   }
 
   setOpen(open: boolean): void {

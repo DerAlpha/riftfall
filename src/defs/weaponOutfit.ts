@@ -16,6 +16,8 @@ export const OUTFIT_MATERIALS = {
   /** Per-model emissive materials: accent strips (look accent), heat vents (look heat). */
   accent: 'vm-accent',
   heat: 'vm-heat',
+  /** Ammo readouts: lit segments take the look's readout color (shader patch, uniforms only). */
+  readout: 'vm-readout',
   /** Unlit energy volumes (energyKit, uniforms uCore / uRim). */
   energyPrefix: 'vm-energy-',
   /** Never touched: the scope depth masks (sniper, marksman, magnified attachments). */
@@ -46,6 +48,8 @@ export const OUTFIT_RIG = {
   stow: { lowerTime: 0.32, raiseTime: 0.42, drop: 0.25 },
   /** The accent light follows the animator's driver boost (charge, beam, spin): intensity × (1 + boost × this). */
   accentLightBoost: 0.3,
+  /** Viewmodel muzzle flash light × this with a suppressor fitted. */
+  suppressedFlash: 0.3,
 } as const;
 
 /** Parts that are a weapon's magazine (first found wins) – magazine attachments ride on it. */
@@ -83,9 +87,12 @@ export const ATTACHMENT_ART = {
   },
   /** Glowing bands of the magazine add-ons per attachment id (emissive, sRGB hex). */
   bands: {
-    colors: { overpressure: 0xff5a1a, apround: 0x6ad8ff, capacitor: 0x40e0ff, heavyload: 0xffa020 } as Readonly<
-      Record<string, number>
-    >,
+    colors: {
+      overpressure: 0xff5a1a,
+      apround: 0x6ad8ff,
+      capacitor: 0x40e0ff,
+      heavyload: 0xffa020,
+    } as Readonly<Record<string, number>>,
     fallback: 0x36e4ff,
     intensity: 3.5,
   },

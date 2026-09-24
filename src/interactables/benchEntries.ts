@@ -6,12 +6,7 @@
  * cached prompts, so the bench never builds strings while it runs.
  */
 import { DEG2RAD } from '../core/math';
-import {
-  ATTACHMENT_SLOTS,
-  attachmentMods,
-  attachmentsFor,
-  type AttachmentDef,
-} from '../defs/attachments';
+import { ATTACHMENT_SLOTS, attachmentMods, attachmentsFor, type AttachmentDef } from '../defs/attachments';
 import { STATUS_NAMES, elementModsFor, type ElementModDef, type StatusElement } from '../defs/elements';
 import type { AttachmentSlot, WeaponDef, WeaponStatMods } from '../defs/weapons';
 import { BENCH_STAT_LABELS, WORKBENCH, WORKBENCH_MENU } from '../defs/workshop';
@@ -55,10 +50,13 @@ export function opticMagnification(zoom: number): number {
   return Math.tan(half) / Math.tan(half * zoom);
 }
 
+/** German typography: U+2212 minus, a narrow no-break space before the percent sign. */
+const MINUS = String.fromCharCode(0x2212);
+const NNBSP = String.fromCharCode(0x202f);
+
 function formatFactor(f: number): string {
   const pct = Math.round((f - 1) * PERCENT);
-  // U+2212 minus and a narrow no-break space before the percent sign (German typography).
-  return `${pct > 0 ? '+' : pct < 0 ? '−' : '±'}${Math.abs(pct)} %`;
+  return `${pct > 0 ? '+' : pct < 0 ? MINUS : '±'}${Math.abs(pct)}${NNBSP}%`;
 }
 
 function formatMagnification(m: number): string {
@@ -75,7 +73,8 @@ export function describeMods(mods: WeaponStatMods, opticZoom?: number | null): B
   for (const { key, label, higherIsBetter } of BENCH_STAT_LABELS) {
     if (out.length >= WORKBENCH_MENU.maxStats) break;
     const f = values[key];
-    if (typeof f !== 'number' || !Number.isFinite(f) || Math.abs(f - 1) < WORKBENCH_MENU.statEpsilon) continue;
+    if (typeof f !== 'number' || !Number.isFinite(f) || Math.abs(f - 1) < WORKBENCH_MENU.statEpsilon)
+      continue;
     out.push({ label, text: formatFactor(f), good: f > 1 === higherIsBetter });
   }
   return out;
@@ -148,7 +147,11 @@ export function entryEquipped(e: BenchEntry, mods: WeaponModState | null): boole
  * The mod state after using `e` on a weapon with `mods`: an equipped entry comes off; otherwise
  * it goes on (replacing whatever held its slot / the element). Tier and stat mods are kept.
  */
-export function modsAfterUse(e: BenchEntry, mods: WeaponModState | null, slotOf: (id: string) => string | null): WeaponModState {
+export function modsAfterUse(
+  e: BenchEntry,
+  mods: WeaponModState | null,
+  slotOf: (id: string) => string | null,
+): WeaponModState {
   const base: WeaponModState = mods ?? {};
   const equipped = entryEquipped(e, mods);
   if (e.kind === 'element') return { ...base, element: equipped ? null : e.element };

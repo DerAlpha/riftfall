@@ -113,7 +113,7 @@ export const RIFT_FORGE_MACHINE = {
   stripIntensity: 5,
   coreColor: [0.62, 0.2, 1.0] as Rgb,
   coreHotColor: [1.0, 0.55, 0.16] as Rgb,
-  coreIntensity: 1.6,
+  coreIntensity: 0.9,
   /** Soft additive corona around the core ring (fraction of the core intensity). */
   corona: { intensity: 0.55, forgingBoost: 2 },
   /** Heat vents on the tower flanks (dark when idle). */

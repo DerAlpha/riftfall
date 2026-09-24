@@ -543,7 +543,8 @@ export const AUDIO = {
       fadeOut: 0.1,
       /** Voices are re-ranked (nearest first) this often (s, game time). */
       checkInterval: 0.1,
-      maxSeconds: 12,
+      /** Safety stop (audio seconds) in case projectile:ended never arrives (slow motion included). */
+      maxSeconds: 40,
       /** Doppler: pitch = speedOfSound / (speedOfSound + radial speed × scale), clamped, smoothed. */
       doppler: { speedOfSound: 343, scale: 1.4, range: [0.72, 1.32] as const, response: 0.06 },
     },
@@ -557,8 +558,12 @@ export const AUDIO = {
       fadeIn: 0.35,
       fadeOut: 0.7,
       checkInterval: 0.25,
-      /** Safety stop after the field's duration (s). */
-      overrun: 1,
+      /**
+       * Safety stop (audio seconds) in case field:ended never arrives: duration × durationScale +
+       * overrun – game time runs slower than audio time in slow motion and at low frame rates.
+       */
+      durationScale: 4,
+      overrun: 2,
     },
     /**
      * Impacts: energy weapons play their impact profile (the def's vfx.impact id when it names a

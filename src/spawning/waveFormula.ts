@@ -258,7 +258,8 @@ export function planWave(
     }
     for (let r = filler - assigned; r > 0; r--) {
       let best = -1;
-      for (let i = 0; i < ids.length; i++) if (weights[i]! >= 0 && (best < 0 || weights[i]! > weights[best]!)) best = i;
+      for (let i = 0; i < ids.length; i++)
+        if (weights[i]! >= 0 && (best < 0 || weights[i]! > weights[best]!)) best = i;
       if (best < 0) break;
       counts[best]!++;
       weights[best] = -1;

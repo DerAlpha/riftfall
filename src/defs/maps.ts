@@ -138,6 +138,72 @@ export const TEST_ROOM: MapAtmosphereDef = {
   movementSandbox: true,
 };
 
+/**
+ * "Forschungslabor" (research lab, M3 wave map): clinical cold white/blue base, red emergency
+ * accents in the corridors, violet rift glow in the atrium. Cold moonlight falls through the
+ * atrium's glass lantern (the only sun opening); everything else is lit by fixtures, emissive
+ * panels and the anomaly. Low IBL: glossy lab floors pick up the fixtures, not a uniform sky.
+ */
+export const LAB: MapAtmosphereDef = {
+  id: 'lab',
+  name: 'Forschungslabor',
+  grading: {
+    exposure: 0.95,
+    contrast: 1.2,
+    saturation: 1.12,
+    lift: [-0.004, 0.0, 0.01],
+    gamma: [1.0, 1.0, 1.02],
+    gain: [0.98, 1.0, 1.03],
+    // Teal-blue shadows, cool highlights: clinical, cold, a little sick.
+    shadowTint: [0.14, 0.3, 0.6],
+    highlightTint: [0.86, 0.93, 1.0],
+    splitBalance: 0.05,
+    temperature: -0.22,
+    tint: 0.06,
+  },
+  fog: {
+    color: [0.03, 0.036, 0.055],
+    density: 0.012,
+    heightFalloff: 0.16,
+    baseHeight: 0,
+    noiseScale: 0.07,
+    noiseStrength: 0.5,
+    noiseSpeed: 0.12,
+    sunScatterG: 0.8,
+    // Unshadowed in-scattering: kept low so the enclosed rooms do not glow.
+    sunScatterStrength: 0.22,
+  },
+  environment: {
+    hdri: 'hdri.industrial',
+    // Very low IBL: light pools come from the fixtures; the glossy floors keep their reflections
+    // through a higher per-material envMapIntensity.
+    intensity: 0.11,
+    rotationDeg: 120,
+    fallback: {
+      sky: [0.18, 0.26, 0.4],
+      horizon: [0.1, 0.12, 0.16],
+      ground: [0.03, 0.03, 0.045],
+      panel: [0.8, 0.9, 1.0],
+      panelIntensity: 6,
+    },
+    background: 'color',
+    backgroundColor: [0.008, 0.011, 0.02],
+    backgroundBlurriness: 0.3,
+    backgroundIntensity: 0.3,
+  },
+  sun: {
+    // Steep cold moonlight through the atrium lantern.
+    direction: [-0.3, -0.9, 0.32],
+    color: [0.7, 0.83, 1.0],
+    intensity: 5.5,
+    castShadows: true,
+  },
+  hemi: { sky: [0.3, 0.4, 0.62], ground: [0.05, 0.04, 0.06], intensity: 0.04 },
+  reverb: 'large',
+  preload: ['hdri.industrial'],
+};
+
 export const MAPS: Record<string, MapAtmosphereDef> = {
   [TEST_ROOM.id]: TEST_ROOM,
+  [LAB.id]: LAB,
 };

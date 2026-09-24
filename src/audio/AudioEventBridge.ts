@@ -13,11 +13,23 @@
  * player's own hits get dry UI-bus feedback (hitmarker tick, headshot ding, kill punch). Casing
  * clinks come from the VFX casing callback via playCasing(). Explosions (combat:explosion) play one
  * positional blast scaled by their radius.
+ *
+ * Enemies (M3): enemy:spawned / alert / attack / staggered / died and hits on enemies
+ * (combat:damage) play the ids of defs/enemies positionally (HRTF). Every request passes a voice
+ * budget per enemy type (VoiceBudget, AUDIO.enemies): too far → dropped, all voices busy → it
+ * replaces the lowest-priority / farthest one only if it outranks it, so 60 enemies never flood
+ * the engine and the nearest are heard. An attack's blow (AUDIO.enemies.strikes) sounds when its
+ * wind-up ends (cancelled by a stagger or death). Footsteps and idle vocals are polled per frame
+ * from an EnemyAudioSource (setEnemySource) in update(dt, listener) – the listener position also
+ * feeds the distance checks. Enemy projectile impacts with their own sound (acid splash) replace
+ * the surface impact. Wave start / complete stings play on the music bus; the game over sting on
+ * the ui bus (it plays on into the paused game over screen).
  */
 import type { PlayOptions } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
 import type { FleshSurface, GameEvents, HitZone, SurfaceType, Vec3Like } from '../core/events';
-import { AUDIO } from '../defs/audio';
+import { AUDIO, type EnemyAudioBudgetDef, type EnemyAudioKind } from '../defs/audio';
+import { getEnemyAttackDef, getEnemyDef } from '../defs/enemies';
 import { MOVEMENT } from '../defs/movement';
 import { getWeaponDef, type ReloadStep } from '../defs/weapons';
 import { remapClamped } from './dsp';
@@ -40,6 +52,9 @@ export interface AudioBridgeTarget {
 const M = AUDIO.movement;
 const B = AUDIO.bridge;
 const W = AUDIO.weapons;
+const E = AUDIO.enemies;
+const ST = AUDIO.stings;
+const TAU = Math.PI * 2;
 
 // ---------------------------------------------------------------------------
 // Sound id mapping (pure, exported for tests)
@@ -141,6 +156,100 @@ export class TokenBucket {
   }
 }
 
+/**
+ * Fixed voice budget with priority + distance preemption (pure; `now` in seconds). A request
+ * takes a free voice, else replaces the busy voice of the lowest priority (farthest among equals)
+ * when it has a higher priority or is at least `margin` m nearer at the same priority.
+ */
+export class VoiceBudget {
+  private readonly ends: Float64Array;
+  private readonly dist: Float32Array;
+  private readonly prio: Int8Array;
+
+  constructor(readonly voices: number) {
+    const n = Math.max(1, Math.floor(voices));
+    this.ends = new Float64Array(n).fill(Number.NEGATIVE_INFINITY);
+    this.dist = new Float32Array(n);
+    this.prio = new Int8Array(n);
+  }
+
+  /** May the sound play? When true it occupies a voice until now + hold. */
+  admit(now: number, distance: number, priority: number, hold: number, margin = 0): boolean {
+    const ends = this.ends;
+    let slot = -1;
+    let worst = -1;
+    for (let i = 0; i < ends.length; i++) {
+      if (ends[i]! <= now) {
+        slot = i;
+        break;
+      }
+      if (
+        worst < 0 ||
+        this.prio[i]! < this.prio[worst]! ||
+        (this.prio[i] === this.prio[worst] && this.dist[i]! > this.dist[worst]!)
+      ) {
+        worst = i;
+      }
+    }
+    if (slot < 0) {
+      const p = this.prio[worst]!;
+      if (!(priority > p || (priority === p && distance + margin < this.dist[worst]!))) return false;
+      slot = worst;
+    }
+    ends[slot] = now + Math.max(0, hold);
+    this.dist[slot] = distance;
+    this.prio[slot] = priority;
+    return true;
+  }
+
+  /** Voices busy at `now`. */
+  busy(now: number): number {
+    let n = 0;
+    for (let i = 0; i < this.ends.length; i++) if (this.ends[i]! > now) n++;
+    return n;
+  }
+
+  reset(): void {
+    this.ends.fill(Number.NEGATIVE_INFINITY);
+  }
+}
+
+/** What footstep / idle polling reads of an enemy (EnemyManager's Enemy fits structurally). */
+export interface EnemyAudioView {
+  readonly id: number;
+  readonly type: string;
+  /** False while dying / dissolving. */
+  readonly alive: boolean;
+  readonly position: Vec3Like;
+  readonly pose: { readonly phase: number; readonly locomotion: number };
+}
+
+/** Living and dying enemies (EnemyManager.enemies fits structurally). */
+export interface EnemyAudioSource {
+  readonly enemies: readonly EnemyAudioView[];
+}
+
+/** Footstep index of a gait phase (radians, 2π per stride) with `steps` footfalls per cycle. */
+export function gaitStepIndex(phase: number, steps: number): number {
+  if (!Number.isFinite(phase) || !(steps > 0)) return 0;
+  const p = ((phase % TAU) + TAU) % TAU;
+  return Math.min(steps - 1, Math.floor((p / TAU) * steps));
+}
+
+interface TypeBudget {
+  readonly def: EnemyAudioBudgetDef;
+  readonly voice: VoiceBudget;
+  readonly step: VoiceBudget;
+}
+
+interface EnemyVoiceState {
+  step: number;
+  nextIdle: number;
+  seen: number;
+}
+
+const PROJECTILE_BUDGET = 'projectile';
+
 const defaultClock = (): number =>
   (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
 
@@ -161,6 +270,28 @@ export class AudioEventBridge {
   private gamePaused = false;
   /** Weapon whose raise started while nothing could sound; it racks on game:resumed unless the raise ended first. */
   private pendingRaise: string | null = null;
+
+  // --- enemies (M3) ---
+  private enemySource: EnemyAudioSource | null = null;
+  /** Listener position (update); without one every enemy sound counts as near. */
+  private readonly listener = { x: 0, y: 0, z: 0 };
+  private hasListener = false;
+  /** Game time (sum of update dt): idle schedules and strikes follow the simulation, not the wall clock. */
+  private gameTime = 0;
+  private frame = 0;
+  private readonly budgets = new Map<string, TypeBudget>();
+  private readonly typeById = new Map<number, string>();
+  private readonly voiceStates = new Map<number, EnemyVoiceState>();
+  private readonly freeStates: EnemyVoiceState[] = [];
+  /** Pending strikes (ring): enemy id, due game time (+∞ = free), position, sound, budget type. */
+  private readonly strikeId = new Int32Array(E.maxPendingStrikes);
+  private readonly strikeDue = new Float64Array(E.maxPendingStrikes).fill(Number.POSITIVE_INFINITY);
+  private readonly strikePos = new Float32Array(E.maxPendingStrikes * 3);
+  private readonly strikeSound: string[] = new Array<string>(E.maxPendingStrikes).fill('');
+  private readonly strikeType: string[] = new Array<string>(E.maxPendingStrikes).fill('');
+  private strikeNext = 0;
+  private readonly strikeAt = { x: 0, y: 0, z: 0 };
+  private readonly lastSpawn = { x: 0, y: 0, z: 0, time: Number.NEGATIVE_INFINITY };
 
   /**
    * Casing bounce hook with the VFX ClinkCallback signature (position, sound id, impact speed) –
@@ -215,11 +346,13 @@ export class AudioEventBridge {
       events.on('ui:console', (e) => this.play(e.open ? 'ui.click' : 'ui.back', B.uiGain, 0, 'ui')),
       // The ui bus keeps playing while the game is paused, so the pause menu clicks too.
       events.on('ui:menu', (e) => {
-        if (e.open) this.play('ui.click', B.uiGain, 0, 'ui');
-        else if (!B.menuSilentClose.includes(e.menu)) this.play('ui.back', B.uiGain, 0, 'ui');
+        if (e.open) {
+          if (!B.menuSilentOpen.includes(e.menu)) this.play('ui.click', B.uiGain, 0, 'ui');
+        } else if (!B.menuSilentClose.includes(e.menu)) this.play('ui.back', B.uiGain, 0, 'ui');
       }),
     );
     this.wireWeapons(events);
+    this.wireEnemies(events);
   }
 
   /**
@@ -233,10 +366,283 @@ export class AudioEventBridge {
     this.playAt(soundId, position, gain, W.casingPitchVariance);
   }
 
+  /**
+   * Enemies whose footsteps and idle vocals update() polls (EnemyManager fits); null stops the
+   * polling. Event-driven enemy sounds (spawn, alert, attacks, hits, deaths) work without it.
+   */
+  setEnemySource(source: EnemyAudioSource | null): void {
+    this.enemySource = source;
+  }
+
+  /**
+   * Per frame while the game runs (after the fixed ticks, with the frame's game dt): listener
+   * position for the distance checks, due attack strikes, enemy footsteps and idle vocals.
+   */
+  update(dt: number, listener?: Vec3Like): void {
+    if (listener) {
+      this.listener.x = listener.x;
+      this.listener.y = listener.y;
+      this.listener.z = listener.z;
+      this.hasListener = true;
+    }
+    if (!(dt > 0) || !Number.isFinite(dt)) return;
+    this.gameTime += dt;
+    this.frame++;
+    this.updateStrikes();
+    const list = this.enemySource?.enemies;
+    if (!list) return;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i]!;
+      if (e.alive) this.updateEnemy(e);
+    }
+    // Enemies removed without enemy:died (EnemyManager.clear): drop their state.
+    if (this.voiceStates.size > list.length) this.sweepStates();
+  }
+
   dispose(): void {
     for (const off of this.offs) off();
     this.offs.length = 0;
     this.stopSlide();
+    this.enemySource = null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Enemies / waves / run
+  // -------------------------------------------------------------------------
+
+  private wireEnemies(events: EventBus<GameEvents>): void {
+    this.offs.push(
+      events.on('enemy:spawned', (e) => {
+        this.trackType(e.id, e.type);
+        const def = getEnemyDef(e.type);
+        if (!def) return;
+        // One rift tear per burst: members emerge from the same rift a moment apart.
+        const now = this.now();
+        const L = this.lastSpawn;
+        const near =
+          Math.hypot(e.position.x - L.x, e.position.y - L.y, e.position.z - L.z) < E.spawnMerge.distance;
+        if (near && now - L.time < E.spawnMerge.seconds) return;
+        if (this.playEnemy('spawn', e.type, def.audio.spawn, e.position)) {
+          L.x = e.position.x;
+          L.y = e.position.y;
+          L.z = e.position.z;
+          L.time = now;
+        }
+      }),
+      events.on('enemy:alert', (e) => {
+        const def = getEnemyDef(e.type);
+        if (def) this.playEnemy('alert', e.type, def.audio.alert, e.position);
+      }),
+      events.on('enemy:attack', (e) => {
+        const a = getEnemyAttackDef(e.type, e.attack);
+        if (a) this.playEnemy('attack', e.type, a.sound, e.position);
+        const strike = E.strikes[e.type]?.[e.attack];
+        if (strike !== undefined) this.scheduleStrike(e.id, e.type, strike, e.position, e.windup);
+      }),
+      events.on('enemy:staggered', (e) => {
+        this.cancelStrikes(e.id);
+        const def = getEnemyDef(e.type);
+        if (def) this.playEnemy('stagger', e.type, def.audio.hurt, e.position);
+      }),
+      events.on('enemy:died', (e) => {
+        this.cancelStrikes(e.id);
+        this.typeById.delete(e.id);
+        this.releaseState(e.id);
+        const def = getEnemyDef(e.type);
+        if (def) this.playEnemy('death', e.type, def.audio.death, e.position);
+      }),
+      events.on('combat:damage', (e) => {
+        if (e.killed || !(e.amount > 0)) return;
+        const type = this.typeById.get(e.targetId) ?? this.lookupType(e.targetId);
+        if (type === null) return;
+        const def = getEnemyDef(type);
+        if (def) this.playEnemy('hurt', type, def.audio.hurt, e.point);
+      }),
+      events.on('wave:start', (e) => {
+        const s = ST.waveStart;
+        const special = e.kind !== undefined && e.kind !== 'normal';
+        this.play(s.id, s.gain, 0, s.bus, special ? s.specialPitch : 1);
+      }),
+      events.on('wave:complete', () => {
+        const s = ST.waveComplete;
+        this.play(s.id, s.gain, 0, s.bus);
+      }),
+      events.on('player:died', () => {
+        const s = ST.gameOver;
+        this.play(s.id, s.gain, 0, s.bus);
+      }),
+      events.on('run:restart', () => this.resetEnemyAudio()),
+    );
+  }
+
+  /**
+   * Positional enemy sound through the budget of `budgetKey` (an enemy type or 'projectile').
+   * Returns false when it was culled (too far) or lost the voice budget.
+   */
+  private playEnemy(
+    kind: EnemyAudioKind,
+    budgetKey: string,
+    id: string,
+    position: Vec3Like,
+    gainScale = 1,
+    maxDistance: number = E.kinds[kind].maxDistance,
+  ): boolean {
+    const K = E.kinds[kind];
+    const d = this.hasListener
+      ? Math.hypot(position.x - this.listener.x, position.y - this.listener.y, position.z - this.listener.z)
+      : 0;
+    if (!(d <= maxDistance)) return false;
+    const b = this.budgetFor(budgetKey);
+    const budget = kind === 'step' ? b.step : b.voice;
+    if (!budget.admit(this.now(), d, K.priority, K.hold, E.preemptMargin)) return false;
+    this.playAt(id, position, K.gain * gainScale, K.pitchVariance);
+    return true;
+  }
+
+  private budgetFor(key: string): TypeBudget {
+    let b = this.budgets.get(key);
+    if (!b) {
+      const def: EnemyAudioBudgetDef = Object.prototype.hasOwnProperty.call(E.budgets, key)
+        ? E.budgets[key]!
+        : E.defaultBudget;
+      b = { def, voice: new VoiceBudget(def.voices), step: new VoiceBudget(def.stepVoices) };
+      this.budgets.set(key, b);
+    }
+    return b;
+  }
+
+  private trackType(id: number, type: string): void {
+    // Enemies cleared without enemy:died leave entries behind: start over (lookupType refills).
+    if (this.typeById.size >= E.maxTrackedIds) this.typeById.clear();
+    this.typeById.set(id, type);
+  }
+
+  /** Type of a living enemy from the polled source (after the id table was rebuilt), else null. */
+  private lookupType(id: number): string | null {
+    const list = this.enemySource?.enemies;
+    if (!list) return null;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i]!;
+      if (e.id === id && e.alive) {
+        this.trackType(id, e.type);
+        return e.type;
+      }
+    }
+    return null;
+  }
+
+  private updateEnemy(e: EnemyAudioView): void {
+    const st = this.stateOf(e);
+    st.seen = this.frame;
+    const b = this.budgetFor(e.type);
+    const step = gaitStepIndex(e.pose.phase, b.def.stepsPerCycle);
+    if (step !== st.step) {
+      const first = st.step < 0;
+      st.step = step;
+      if (!first && e.pose.locomotion >= b.def.stepMinLocomotion) {
+        const def = getEnemyDef(e.type);
+        if (def)
+          this.playEnemy('step', e.type, def.audio.step, e.position, b.def.stepGain, b.def.stepMaxDistance);
+      }
+    }
+    if (this.gameTime >= st.nextIdle) {
+      const def = getEnemyDef(e.type);
+      if (!def) {
+        st.nextIdle = Number.POSITIVE_INFINITY;
+        return;
+      }
+      this.playEnemy('idle', e.type, def.audio.idle, e.position);
+      const [lo, hi] = def.audio.idleInterval;
+      st.nextIdle = this.gameTime + lo + (hi - lo) * this.random();
+    }
+  }
+
+  private stateOf(e: EnemyAudioView): EnemyVoiceState {
+    let st = this.voiceStates.get(e.id);
+    if (!st) {
+      st = this.freeStates.pop() ?? { step: -1, nextIdle: 0, seen: 0 };
+      st.step = -1;
+      // First idle somewhere within the interval: a fresh burst does not chitter in unison.
+      const hi = getEnemyDef(e.type)?.audio.idleInterval[1] ?? 0;
+      st.nextIdle = this.gameTime + hi * this.random();
+      this.voiceStates.set(e.id, st);
+    }
+    return st;
+  }
+
+  private releaseState(id: number): void {
+    const st = this.voiceStates.get(id);
+    if (!st) return;
+    this.voiceStates.delete(id);
+    this.freeStates.push(st);
+  }
+
+  private sweepStates(): void {
+    for (const [id, st] of this.voiceStates) {
+      if (st.seen === this.frame) continue;
+      this.voiceStates.delete(id);
+      this.freeStates.push(st);
+    }
+  }
+
+  private scheduleStrike(id: number, type: string, sound: string, position: Vec3Like, windup: number): void {
+    // The oldest pending strike is overwritten when the ring is full.
+    const i = this.strikeNext;
+    this.strikeNext = (i + 1) % this.strikeDue.length;
+    this.strikeId[i] = id;
+    this.strikeDue[i] = this.gameTime + (Number.isFinite(windup) ? Math.max(0, windup) : 0);
+    this.strikePos[i * 3] = position.x;
+    this.strikePos[i * 3 + 1] = position.y;
+    this.strikePos[i * 3 + 2] = position.z;
+    this.strikeSound[i] = sound;
+    this.strikeType[i] = type;
+  }
+
+  private cancelStrikes(id: number): void {
+    for (let i = 0; i < this.strikeDue.length; i++) {
+      if (this.strikeId[i] === id) this.strikeDue[i] = Number.POSITIVE_INFINITY;
+    }
+  }
+
+  private updateStrikes(): void {
+    for (let i = 0; i < this.strikeDue.length; i++) {
+      if (this.strikeDue[i]! > this.gameTime) continue;
+      this.strikeDue[i] = Number.POSITIVE_INFINITY;
+      const p = this.strikeAt;
+      if (!this.enemyPosition(this.strikeId[i]!, p)) {
+        p.x = this.strikePos[i * 3]!;
+        p.y = this.strikePos[i * 3 + 1]!;
+        p.z = this.strikePos[i * 3 + 2]!;
+      }
+      this.playEnemy('strike', this.strikeType[i]!, this.strikeSound[i]!, p);
+    }
+  }
+
+  /** Current position of a living enemy from the polled source (the blow lands where it is now). */
+  private enemyPosition(id: number, out: { x: number; y: number; z: number }): boolean {
+    const list = this.enemySource?.enemies;
+    if (!list) return false;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i]!;
+      if (e.id !== id || !e.alive) continue;
+      out.x = e.position.x;
+      out.y = e.position.y;
+      out.z = e.position.z;
+      return true;
+    }
+    return false;
+  }
+
+  /** Restart: forget every enemy, pending strike and busy voice. */
+  private resetEnemyAudio(): void {
+    this.typeById.clear();
+    for (const [id] of this.voiceStates) this.releaseState(id);
+    this.strikeDue.fill(Number.POSITIVE_INFINITY);
+    for (const b of this.budgets.values()) {
+      b.voice.reset();
+      b.step.reset();
+    }
+    this.lastSpawn.time = Number.NEGATIVE_INFINITY;
   }
 
   // -------------------------------------------------------------------------
@@ -312,6 +718,12 @@ export class AudioEventBridge {
         this.play(weaponSoundId(e.weaponId, 'melee', has), W.meleeGain, W.handlingPitchVariance);
       }),
       events.on('combat:impact', (e) => {
+        // Enemy projectiles with their own impact (acid splash) replace the surface sound.
+        const splash = e.kind === 'projectile' ? E.projectileImpacts[e.weaponId] : undefined;
+        if (splash !== undefined) {
+          this.playEnemy('splash', PROJECTILE_BUDGET, splash, e.point);
+          return;
+        }
         const kindGain = W.impactKindGain[e.kind] ?? 1;
         if (!(kindGain > 0) || !this.impactBucket.take(this.now())) return;
         this.playAt(impactSoundId(e.surface), e.point, W.impactGain * kindGain, W.impactPitchVariance);

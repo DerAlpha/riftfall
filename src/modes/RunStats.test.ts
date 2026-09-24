@@ -125,7 +125,9 @@ describe('score', () => {
       1000 + 2 * S.waveBonus + 60 * S.perSecond + Math.round(10 * S.accuracyPerKill * 0.5),
     );
     expect(computeScore({ ...base, accuracy: 1 })).toBeGreaterThan(computeScore(base));
-    expect(computeScore({ killPoints: Number.NaN, kills: -1, wavesCompleted: 0, timeSurvived: 0, accuracy: 2 })).toBe(0);
+    expect(
+      computeScore({ killPoints: Number.NaN, kills: -1, wavesCompleted: 0, timeSurvived: 0, accuracy: 2 }),
+    ).toBe(0);
   });
 
   it('computes accuracy and kill points safely', () => {

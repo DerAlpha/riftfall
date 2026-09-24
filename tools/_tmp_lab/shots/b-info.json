@@ -1,0 +1,31 @@
+{
+  "preset": "high",
+  "info": {
+    "position": [
+      10,
+      5.05,
+      8
+    ],
+    "velocity": [
+      0,
+      0,
+      0
+    ],
+    "state": "noclip",
+    "grounded": false,
+    "fps": 4,
+    "drawCalls": 188,
+    "triangles": 141165,
+    "resolutionScale": 1,
+    "missingAssets": []
+  },
+  "errors": [],
+  "logs": [
+    "[Save] Save backend: indexeddb",
+    "[Render] Renderer ready (GPU: ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver), timer queries: yes)",
+    "[ResearchLab] Research lab built in 10309 ms: 66 meshes, 29704 tris, 15 lights, 443 colliders",
+    "[combat] Combat world: 43 static meshes",
+    "[vfx] VFX ready (5.9 ms)",
+    "[Audio] AudioContext 44100 Hz, base latency 10.0 ms"
+  ]
+}

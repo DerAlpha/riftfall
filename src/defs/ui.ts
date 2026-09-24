@@ -207,6 +207,41 @@ export const LOADING = {
   ],
 } as const;
 
+/**
+ * Run menus (M3): map selection on the start screen and the game over screen. Player-facing texts
+ * are German; the game over stats reveal one after another (CSS delays), the buttons only react
+ * after `inputDelayMs` so a trigger or jump held through the death cannot restart by accident.
+ */
+export const RUN_MENU = {
+  start: {
+    /** Subtitle without a map list (the M1/M2 calibration build). */
+    subtitle: 'Kalibrierungshalle – Meilenstein 1',
+    /** Subtitle and card heading with a map list. */
+    subtitleMaps: 'Vertical Slice – Meilenstein 3',
+    mapsHeading: 'Einsatzgebiet wählen',
+    recommended: 'Empfohlen',
+  },
+  gameOver: {
+    title: 'DU BIST GEFALLEN',
+    waveLabel: 'Welle erreicht',
+    labels: {
+      kills: 'Abschüsse',
+      headshots: 'Kopfschüsse',
+      weakpoints: 'Kerntreffer',
+      accuracy: 'Präzision',
+      time: 'Überlebt',
+      score: 'Punkte',
+    },
+    restart: 'Neu starten',
+    mainMenu: 'Hauptmenü',
+    /** Mode ids (run:over `mode`) → label under the title; unknown modes show none. */
+    modeLabels: { classic: 'Klassisch' } as Readonly<Record<string, string>>,
+    inputDelayMs: 900,
+    /** Stagger of the stat reveal (ms per row, CSS animation-delay). */
+    revealStepMs: 110,
+  },
+} as const;
+
 export interface RangeDef {
   readonly min: number;
   readonly max: number;

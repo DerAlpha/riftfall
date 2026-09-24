@@ -131,17 +131,80 @@ describe('NavSystem (main-thread build)', () => {
     expect(nav.walkable(v(7, 2, 7), v(2, 0, 7))).toBe(false);
   });
 
+  it('rejects walkable lines that end inside walls or past ledges', () => {
+    const tol = NAV.query.walkableSnapTolerance;
+    // Wall face at z = -0.2, walkable edge at z = -0.6 (agent radius).
+    expect(nav.walkable(v(-2, 0, -4), v(-2, 0, -0.1))).toBe(false);
+    // Knockback / charge probe steps: beyond the tolerance past the edge → blocked.
+    expect(nav.walkable(v(-2, 0, -0.7), v(-2, 0, -0.6 + tol + 0.05))).toBe(false);
+    // A player hugging the wall (just inside the eroded band) is still reachable.
+    expect(nav.walkable(v(-2, 0, -4), v(-2, 0, -0.6 + tol - 0.05))).toBe(true);
+    // Off the edge of platform A (the snap pulls the end back onto the platform).
+    const a = TEST_LEVEL.platformA;
+    expect(nav.walkable(v(a.x, a.top, a.z), v(a.x - 3, a.top, a.z))).toBe(false);
+  });
+
+  it('tells navmesh layers apart (floor under a deck vs. the deck)', () => {
+    expect((nav as unknown as { query: { recordsRayPath: boolean } }).query.recordsRayPath).toBe(true);
+    const d = TEST_LEVEL.deckD;
+    const floor = v(d.x - 2, 0, d.z);
+    const deck = v(d.x + 2, d.top, d.z);
+    // 4 m apart, 2.6 m up: a plausible ramp by slope, but the lines run on different layers.
+    expect(nav.walkable(floor, deck)).toBe(false);
+    expect(nav.walkable(deck, floor)).toBe(false);
+    expect(nav.walkable(floor, v(d.x + 2, 0, d.z))).toBe(true);
+    expect(nav.walkable(v(d.x - 2, d.top, d.z), deck)).toBe(true);
+  });
+
   it('finds random points around a center on the navmesh', () => {
     const out = new THREE.Vector3();
     const snapped = new THREE.Vector3();
     const c = v(-5, 0, -5);
     for (let i = 0; i < 20; i++) {
       expect(nav.randomPointAround(c, 2, out)).toBe(true);
-      expect(Math.hypot(out.x - c.x, out.z - c.z)).toBeLessThan(2 + 3);
+      expect(Math.hypot(out.x - c.x, out.z - c.z)).toBeLessThanOrEqual(2 + 1e-3);
       expect(Math.abs(out.y)).toBeLessThan(HEIGHT_TOL);
       expect(nav.closestPoint(out, snapped)).toBe(true);
       expect(snapped.distanceTo(out)).toBeLessThan(0.05);
     }
+  });
+
+  it('keeps random points inside small circles (big polygons), clipped at walls', () => {
+    const out = new THREE.Vector3();
+    const snapped = new THREE.Vector3();
+    // Open floor: detour's polygons there are far bigger than the circle.
+    for (const r of [0, 0.5, 1]) {
+      for (let i = 0; i < 40; i++) {
+        expect(nav.randomPointAround(v(-5, 0, -3), r, out)).toBe(true);
+        expect(Math.hypot(out.x + 5, out.z + 3)).toBeLessThanOrEqual(r + 1e-3);
+        expect(Math.abs(out.y)).toBeLessThan(HEIGHT_TOL);
+      }
+    }
+    // Next to the wall: never beyond its walkable edge, never on the other side.
+    for (let i = 0; i < 60; i++) {
+      expect(nav.randomPointAround(v(-2, 0, -1), 1.5, out)).toBe(true);
+      expect(out.z).toBeLessThan(-0.55);
+      expect(nav.closestPoint(out, snapped)).toBe(true);
+      expect(Math.hypot(snapped.x - out.x, snapped.z - out.z)).toBeLessThan(0.02);
+    }
+  });
+
+  it('draws the same random points for the same seed', () => {
+    const sample = (seed: string | number): number[] => {
+      nav.setRandomSeed(seed);
+      const out = new THREE.Vector3();
+      const xs: number[] = [];
+      for (let i = 0; i < 5; i++) {
+        nav.randomPointAround(v(-5, 0, -3), 0.5, out);
+        xs.push(out.x, out.z);
+        nav.randomPointAround(v(0, 0, -4), 4, out);
+        xs.push(out.x, out.z);
+      }
+      return xs;
+    };
+    expect(sample(1234)).toEqual(sample(1234));
+    expect(sample('daily:2026-09-23')).toEqual(sample('daily:2026-09-23'));
+    expect(sample('daily:2026-09-23')).not.toEqual(sample(1234));
   });
 
   it('moves a crowd agent around the wall to its target', () => {
@@ -201,6 +264,12 @@ describe('NavSystem (main-thread build)', () => {
     nav.teleportAgent(id, v(-2, 0, 8));
     const p = nav.getAgentPosition(id, new THREE.Vector3());
     expect(Math.hypot(p.x + 2, p.z - 8)).toBeLessThan(0.1);
+    // Into the wall: lands on the walkable edge instead (agent radius off the wall face).
+    nav.teleportAgent(id, v(-2, 0, 0.1));
+    nav.getAgentPosition(id, p);
+    expect(p.x).toBeCloseTo(-2, 2);
+    expect(p.z).toBeGreaterThanOrEqual(0.2 + NAV.build.agentRadius - 0.05);
+    nav.teleportAgent(id, v(-2, 0, 8));
     // The goal survives the teleport: the agent heads back to it (around the wall).
     nav.setAgentMaxSpeed(id, AGENT.maxSpeed);
     run(nav, 600);
@@ -248,12 +317,22 @@ describe('NavSystem (main-thread build)', () => {
   it('rejects off-mesh spawns and ignores unknown ids / non-finite input', () => {
     expect(nav.addAgent(v(60, 0, 60), AGENT)).toBe(-1);
     expect(nav.addAgent(v(Number.NaN, 0, 0), AGENT)).toBe(-1);
+    expect(nav.addAgent(v(-8, 0, -3), { ...AGENT, maxSpeed: Number.NaN })).toBe(-1);
+    expect(nav.addAgent(v(-8, 0, -3), { ...AGENT, separationWeight: Number.POSITIVE_INFINITY })).toBe(-1);
+    expect(nav.stats.agents).toBe(0);
     const id = nav.addAgent(v(-8, 0, -3), AGENT);
     nav.setAgentTarget(id, v(Number.POSITIVE_INFINITY, 0, 0));
+    nav.setAgentMaxSpeed(id, Number.NaN);
     nav.teleportAgent(id, v(0, Number.NaN, 0));
     run(nav, 5);
     const p = nav.getAgentPosition(id, new THREE.Vector3());
     expect(p.distanceTo(v(-8, 0, -3))).toBeLessThan(0.05);
+    // The NaN speed was ignored: the agent still walks (finite) at its speed.
+    nav.setAgentTarget(id, v(-8, 0, -7));
+    run(nav, 60);
+    nav.getAgentPosition(id, p);
+    expect(Number.isFinite(p.x) && Number.isFinite(p.z)).toBe(true);
+    expect(p.distanceTo(v(-8, 0, -3))).toBeGreaterThan(1);
     nav.removeAgent(id);
     expect(() => {
       nav.setAgentTarget(99, v(0, 0, 0));

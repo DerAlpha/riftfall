@@ -11,6 +11,41 @@ export interface MenuInfo {
   gpuName: string;
   saveBackend: SaveBackend['name'];
   version: string;
+  /** Player-facing name of the map being played (pause menu subtitle); default: the calibration hall. */
+  mapName?: string;
+}
+
+/** A playable map on the start screen (M3 map selection). */
+export interface MapChoice {
+  readonly id: string;
+  /** Player-facing name (German). */
+  readonly name: string;
+  readonly description: string;
+  /** Preselected (the first recommended map) and marked "Empfohlen". */
+  readonly recommended?: boolean;
+}
+
+/**
+ * What the game over screen shows. modes/RunFlow's RunSummary fits as is; optional fields are
+ * derived (accuracy from the shots) or hidden when missing.
+ */
+export interface GameOverStats {
+  readonly wave: number;
+  readonly kills: number;
+  readonly headshots: number;
+  readonly shotsFired: number;
+  readonly shotsHit: number;
+  /** Seconds. */
+  readonly timeSurvived: number;
+  readonly score: number;
+  /** 0..1 (default shotsHit / shotsFired). */
+  readonly accuracy?: number;
+  readonly weakpointKills?: number;
+  /** Map id (its MapChoice name is shown) or an explicit name. */
+  readonly mapId?: string;
+  readonly mapName?: string;
+  /** Mode id (RUN_MENU.gameOver.modeLabels). */
+  readonly mode?: string;
 }
 
 /**
@@ -26,6 +61,8 @@ export type MenuInput = InputApi & {
 export interface PlayOptions {
   /** Play without pointer lock (it is unavailable or refused); mouse look uses plain movement. */
   lockless?: boolean;
+  /** onStart: the map selected on the start screen (only when `MenuDeps.maps` lists maps). */
+  mapId?: string;
 }
 
 export interface MenuDeps {
@@ -37,13 +74,24 @@ export interface MenuDeps {
   /** Resume click (user gesture): re-requests pointer lock (unless lock-less). */
   onResume(opts?: PlayOptions): void;
   getInfo(): MenuInfo;
+  /** Maps for the start screen's selection cards (none: the plain M1 start screen). */
+  maps?: readonly MapChoice[];
+  /**
+   * Game over "Neu starten" (user gesture, like onResume: request pointer lock unless lock-less).
+   * Default: onStart with the finished run's map.
+   */
+  onRestart?(opts?: PlayOptions): void;
+  /** Game over "Hauptmenü". Default: the start screen is shown. */
+  onMainMenu?(): void;
 }
 
 export type SettingsTab = 'graphics' | 'audio' | 'controls' | 'accessibility';
 
-/** UI state that survives closing/reopening the pause menu. */
+/** UI state that survives closing/reopening the menus. */
 export interface MenuMemory {
   tab: SettingsTab;
+  /** Map selected on the start screen (kept for the next visit, e.g. after a game over). */
+  mapId?: string;
 }
 
 /** Re-render on every settings change; returns the live settings object. */

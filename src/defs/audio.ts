@@ -112,8 +112,13 @@ export const AUDIO = {
     hurtMinGain: 0.45,
     hurtPitchVariance: 0.08,
     uiGain: 0.6,
-    /** Menus (ui:menu `menu` names) that close without the "back" sound – the start screen closes into gameplay. */
-    menuSilentClose: ['start'] as readonly string[],
+    /**
+     * Menus (ui:menu `menu` names) that close without the "back" sound – the start screen closes
+     * into gameplay, the game over screen into a new run or the start screen.
+     */
+    menuSilentClose: ['start', 'gameover'] as readonly string[],
+    /** Menus that open without the click – the game over screen opens under the game over sting. */
+    menuSilentOpen: ['gameover'] as readonly string[],
   },
 
   /** Procedural synthesis (audio/synth.ts). */
@@ -235,6 +240,119 @@ export const AUDIO = {
     /** Hit sounds closer together than this are merged (s). */
     hitMinInterval: 0.03,
   },
+
+  /**
+   * Enemy sounds (M3, AudioEventBridge; recipes in audio/enemySynth.ts, ids in defs/enemies
+   * `audio` / attack `sound`). Every enemy sound is positional (HRTF) and passes a voice budget
+   * per enemy type: a request farther than its kind's `maxDistance` from the listener is dropped;
+   * with every voice busy, it replaces the busy voice of the lowest priority / farthest from the
+   * listener if it outranks it (higher priority, or the same priority and `preemptMargin` m
+   * nearer), else it is dropped – 60 enemies never flood the engine, the nearest are heard.
+   * `hold` is how long a request occupies its budget voice (s, about the audible length).
+   */
+  enemies: {
+    kinds: {
+      spawn: { gain: 0.7, pitchVariance: 0.06, maxDistance: 55, priority: 2, hold: 1 },
+      alert: { gain: 0.85, pitchVariance: 0.08, maxDistance: 70, priority: 3, hold: 0.9 },
+      /** Attack wind-up (enemy:attack, the attack def's `sound`). */
+      attack: { gain: 0.75, pitchVariance: 0.07, maxDistance: 45, priority: 3, hold: 0.5 },
+      /** The blow itself at the end of the wind-up (`strikes` below). */
+      strike: { gain: 0.95, pitchVariance: 0.05, maxDistance: 60, priority: 4, hold: 0.35 },
+      /** Enemy projectile impacts (`projectileImpacts` below). */
+      splash: { gain: 0.8, pitchVariance: 0.08, maxDistance: 45, priority: 3, hold: 0.5 },
+      /** Hit reactions (combat:damage on an enemy) and staggers (enemy:staggered). */
+      hurt: { gain: 0.5, pitchVariance: 0.1, maxDistance: 35, priority: 1, hold: 0.25 },
+      stagger: { gain: 0.7, pitchVariance: 0.08, maxDistance: 50, priority: 2, hold: 0.4 },
+      death: { gain: 0.85, pitchVariance: 0.08, maxDistance: 60, priority: 4, hold: 0.6 },
+      /** Idle vocals every defs/enemies `audio.idleInterval` seconds (game time) per enemy. */
+      idle: { gain: 0.38, pitchVariance: 0.12, maxDistance: 24, priority: 0, hold: 1 },
+      /** Footsteps: per-type budgets, gains and distances below. */
+      step: { gain: 0.42, pitchVariance: 0.1, maxDistance: 22, priority: 0, hold: 0.15 },
+    },
+    /**
+     * Voices for vocals/actions and, separately, for footsteps per enemy type (`defaultBudget` for
+     * types without an entry and for enemy projectiles). Footsteps fall `stepsPerCycle` times per
+     * gait cycle (EnemyPose.phase, 2π per stride) while pose.locomotion ≥ stepMinLocomotion.
+     */
+    defaultBudget: {
+      voices: 4,
+      stepVoices: 2,
+      stepsPerCycle: 2,
+      stepMinLocomotion: 0.35,
+      stepGain: 1,
+      stepMaxDistance: 22,
+    } satisfies EnemyAudioBudgetDef,
+    budgets: {
+      swarmer: {
+        voices: 6,
+        stepVoices: 3,
+        stepsPerCycle: 2,
+        stepMinLocomotion: 0.35,
+        stepGain: 0.8,
+        stepMaxDistance: 18,
+      },
+      spitter: {
+        voices: 4,
+        stepVoices: 2,
+        stepsPerCycle: 2,
+        stepMinLocomotion: 0.35,
+        stepGain: 0.9,
+        stepMaxDistance: 20,
+      },
+      tank: {
+        voices: 3,
+        stepVoices: 2,
+        stepsPerCycle: 2,
+        stepMinLocomotion: 0.2,
+        stepGain: 1.6,
+        stepMaxDistance: 45,
+      },
+    } as Readonly<Record<string, EnemyAudioBudgetDef>>,
+    /** A nearer request must be at least this much nearer (m) to replace a busy voice of equal priority. */
+    preemptMargin: 2,
+    /** Rift tears of one burst merge: a spawn within this time (s) and distance (m) of the last spawn sound is silent. */
+    spawnMerge: { seconds: 0.9, distance: 6 },
+    /**
+     * The blow of an attack, played when its wind-up ends (enemy:attack `windup`, game time) at the
+     * attacker's then position; a stagger or death during the wind-up cancels it. type → attack → id.
+     */
+    strikes: {
+      swarmer: { bite: 'enemy.swarmer.snap' },
+      spitter: { spit: 'enemy.spitter.spit.launch', swipe: 'enemy.claw.swipe' },
+      tank: { slam: 'enemy.tank.slam.impact', swipe: 'enemy.claw.swipe.heavy' },
+    } as Readonly<Record<string, Readonly<Record<string, string>>>>,
+    /** Pending strikes (preallocated ring; more overlapping wind-ups drop the oldest). */
+    maxPendingStrikes: 24,
+    /** Projectile impacts (combat:impact kind 'projectile', by weaponId) with their own sound instead of the surface impact. */
+    projectileImpacts: { 'spitter.acid': 'enemy.acid.splash' } as Readonly<Record<string, string>>,
+    /** Enemy ids remembered for hit sounds (enemy:spawned → type); beyond this the table is rebuilt. */
+    maxTrackedIds: 512,
+  },
+
+  /**
+   * Musical stings (wave / run flow). The game over sting starts at the player's death and rides
+   * the ui bus: the game pauses under the game over screen and the music bus fades with it.
+   * `specialPitch`: wave starts of special kinds (swarm / tank waves) play lower.
+   */
+  stings: {
+    waveStart: { id: 'sting.wave.start', gain: 0.8, bus: 'music', specialPitch: 0.89 },
+    waveComplete: { id: 'sting.wave.complete', gain: 0.65, bus: 'music' },
+    gameOver: { id: 'sting.gameover', gain: 0.9, bus: 'ui' },
+  },
 } as const;
+
+export interface EnemyAudioBudgetDef {
+  /** Simultaneous vocal/action sounds of this type. */
+  readonly voices: number;
+  /** Simultaneous footsteps of this type. */
+  readonly stepVoices: number;
+  readonly stepsPerCycle: number;
+  readonly stepMinLocomotion: number;
+  /** Footstep gain multiplier (on AUDIO.enemies.kinds.step.gain) and audible distance (m). */
+  readonly stepGain: number;
+  readonly stepMaxDistance: number;
+}
+
+export type EnemyAudioKind = keyof typeof AUDIO.enemies.kinds;
 
 export type ReverbZone = keyof typeof AUDIO.reverbZones;

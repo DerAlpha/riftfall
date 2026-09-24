@@ -7,8 +7,9 @@
  *   console, kill plane) starts the same sequence without a second emission.
  * - Death sequence: the time scale drops to RUN.death.slowScale and eases to endScale over
  *   easeSeconds (update(realDt) per frame; without it the slow scale simply holds), the camera
- *   callback animates the drop, and after gameOverDelay REAL seconds (scheduled, so slow motion
- *   does not stretch it) `run:over` is emitted and the game over screen is shown.
+ *   callback starts the drop (or the root applies modes/deathCamera.ts with `deathTime` per
+ *   frame), and after gameOverDelay REAL seconds (scheduled, so slow motion does not stretch it)
+ *   `run:over` is emitted and the game over screen is shown.
  * - restart(): time scale back to 1, stats reset, `run:restart` (the composition root resets the
  *   player, enemies, waves, weapons in response), running again on the same map/mode.
  * - abandon(): back to idle (main menu), time scale back to 1.
@@ -37,6 +38,15 @@ export interface RunDeathDef {
   readonly scaleEpsilon: number;
   readonly cameraDropSeconds: number;
   readonly gameOverDelay: number;
+}
+
+/** Death camera curve (modes/deathCamera.ts). */
+export interface DeathCameraDef {
+  readonly drop: number;
+  readonly rollDeg: number;
+  readonly pitchDeg: number;
+  readonly fallFraction: number;
+  readonly bounce: number;
 }
 
 export interface RunScheduler {
@@ -113,6 +123,10 @@ export class RunFlow {
   }
   get mode(): string {
     return this._mode;
+  }
+  /** Real seconds since the death (0 outside the death sequence; frozen once the game is over). */
+  get deathTime(): number {
+    return this._state === 'dying' || this._state === 'over' ? this.dyingTime : 0;
   }
   /** Summary of the last finished run (null before the first game over). */
   get summary(): RunSummary | null {

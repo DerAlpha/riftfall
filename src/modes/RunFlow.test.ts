@@ -12,7 +12,8 @@ function setup() {
   const cameraDrops: number[] = [];
   const shown: RunSummary[] = [];
   const log: string[] = [];
-  for (const type of ['player:died', 'run:over', 'run:restart'] as const) events.on(type, () => log.push(type));
+  for (const type of ['player:died', 'run:over', 'run:restart'] as const)
+    events.on(type, () => log.push(type));
   const overs: GameEvents['run:over'][] = [];
   events.on('run:over', (e) => overs.push({ ...e }));
   const flow = new RunFlow({
@@ -66,7 +67,9 @@ describe('RunFlow', () => {
     expect(log).toEqual(['player:died']);
 
     // The slow motion eases towards the end scale (real time).
+    expect(flow.deathTime).toBe(0);
     for (let i = 0; i < 120; i++) flow.update(1 / 60);
+    expect(flow.deathTime).toBeCloseTo(2);
     expect(scales[scales.length - 1]).toBeCloseTo(D.endScale, 2);
     expect(scales.every((s) => s >= D.endScale - 1e-9 && s <= 1)).toBe(true);
 

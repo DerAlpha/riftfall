@@ -76,6 +76,16 @@ function finite(p: Vec3Like): boolean {
   return Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z);
 }
 
+function validParams(p: NavAgentParams): boolean {
+  return (
+    Number.isFinite(p.radius) &&
+    Number.isFinite(p.height) &&
+    Number.isFinite(p.maxSpeed) &&
+    Number.isFinite(p.maxAcceleration) &&
+    (p.separationWeight === undefined || Number.isFinite(p.separationWeight))
+  );
+}
+
 // Per-slot agent params layout (slotParams).
 const P_RADIUS = 0;
 const P_HEIGHT = 1;
@@ -103,9 +113,13 @@ export class NavSystem implements NavApi {
   private readonly groundProbe: GroundProbe | null;
   private readonly createWorker: (() => Worker | null) | null;
   private buildId = 0;
+  /** Ends the running worker build (a newer build or dispose supersedes it). */
+  private cancelWorker: (() => void) | null = null;
   private disposed = false;
   private rng = new Rng('nav');
   private seed: number | null = null;
+  /** Fallback / disk-sample randomness (follows setRandomSeed). */
+  private readonly random = (): number => this.rng.next();
 
   // Slots: stable agent ids → backend indices + what a backend swap needs.
   private readonly slotActive: Uint8Array;
@@ -158,6 +172,7 @@ export class NavSystem implements NavApi {
     if (this.disposed) return false;
     const id = ++this.buildId;
     const t0 = performance.now();
+    this.cancelWorker?.();
     try {
       this.releaseNavMesh();
       const geo = gatherNavGeometry(sources);
@@ -204,10 +219,13 @@ export class NavSystem implements NavApi {
     }
   }
 
-  /** Seed detour's random point queries and the fallback (daily challenge determinism). */
-  setRandomSeed(seed: number): void {
-    this.seed = seed >>> 0;
-    this.rng = new Rng(this.seed);
+  /**
+   * Seed detour's random point queries and the fallback / disk samples (daily challenge
+   * determinism). Takes the same seeds as Rng (strings are hashed).
+   */
+  setRandomSeed(seed: string | number): void {
+    this.rng = new Rng(seed);
+    this.seed = typeof seed === 'number' && Number.isFinite(seed) ? seed >>> 0 : new Rng(seed).nextUint32();
     if (this.navMesh) setRandomSeed(this.seed);
   }
 
@@ -231,6 +249,7 @@ export class NavSystem implements NavApi {
       const finish = (data: Uint8Array | null): void => {
         if (done) return;
         done = true;
+        if (this.cancelWorker === cancel) this.cancelWorker = null;
         clearTimeout(timer);
         w.onmessage = null;
         w.onerror = null;
@@ -238,6 +257,8 @@ export class NavSystem implements NavApi {
         w.terminate();
         resolve(data);
       };
+      const cancel = (): void => finish(null);
+      this.cancelWorker = cancel;
       const timer = setTimeout(() => {
         log.warn('Navmesh worker timed out – building on the main thread');
         finish(null);
@@ -286,7 +307,7 @@ export class NavSystem implements NavApi {
   }
 
   private activate(navMesh: NavMesh): void {
-    const query = new NavQuery(navMesh);
+    const query = new NavQuery(navMesh, this.random);
     const crowd = new NavCrowd(navMesh, query, this.capacity);
     this.navMesh = navMesh;
     this.query = query;
@@ -346,7 +367,7 @@ export class NavSystem implements NavApi {
   randomPointAround(center: Vec3Like, radius: number, out: Vector3): boolean {
     if (this.query) return this.query.randomPointAround(center, radius, out);
     const a = this.rng.next() * TWO_PI;
-    const r = Math.max(0, radius) * Math.sqrt(this.rng.next());
+    const r = (Number.isFinite(radius) ? Math.max(0, radius) : 0) * Math.sqrt(this.rng.next());
     return this.fallbackPoint(center.x + Math.cos(a) * r, center.y, center.z + Math.sin(a) * r, out);
   }
 
@@ -376,7 +397,7 @@ export class NavSystem implements NavApi {
   // -------------------------------------------------------------------------
 
   addAgent(position: Vec3Like, params: NavAgentParams): number {
-    if (this.disposed || !finite(position)) return -1;
+    if (this.disposed || !finite(position) || !validParams(params)) return -1;
     let slot = -1;
     for (let s = 0; s < this.capacity; s++) {
       if (!this.slotActive[s]) {
@@ -425,7 +446,7 @@ export class NavSystem implements NavApi {
 
   setAgentMaxSpeed(id: number, speed: number): void {
     const idx = this.index(id);
-    if (idx === -2) return;
+    if (idx === -2 || !Number.isFinite(speed)) return;
     this.slotParams[id * PARAM_COUNT + P_MAX_SPEED] = speed;
     if (idx >= 0) this.backend.setAgentMaxSpeed(idx, speed);
   }
@@ -446,7 +467,8 @@ export class NavSystem implements NavApi {
   }
 
   update(dt: number): void {
-    if (this.disposed) return;
+    // NaN / non-positive steps would poison detour's agent state.
+    if (this.disposed || !(dt > 0) || !Number.isFinite(dt)) return;
     const t0 = performance.now();
     this.backend.update(dt);
     if (this.backend instanceof NavCrowd) this.stats.pendingTargets = this.backend.pendingCount;
@@ -556,6 +578,7 @@ export class NavSystem implements NavApi {
   dispose(): void {
     if (this.disposed) return;
     this.buildId++;
+    this.cancelWorker?.();
     this.releaseNavMesh();
     this.disposed = true;
     this.backend.dispose();

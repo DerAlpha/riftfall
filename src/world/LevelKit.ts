@@ -17,7 +17,7 @@ import type { SurfaceType, Vec3Like } from '../core/events';
 import { createLogger } from '../core/log';
 import { QUALITY_LEVELS } from '../defs/graphics';
 import { LEVEL_KIT, type Facing } from '../defs/level';
-import { getMaterialDef } from '../defs/materials';
+import { getMaterialDef as getBaseMaterialDef, type MaterialDef } from '../defs/materials';
 import type { QualityLevel } from '../save/settingsSchema';
 import { allocateShadowBudget, boxFaceUV, pipeWrapRepeats, staggeredSlot, type UV } from './kitMath';
 
@@ -96,6 +96,20 @@ const _uv: UV = { x: 0, y: 0 };
 const _up = new THREE.Vector3(0, 1, 0);
 const IDENTITY = new THREE.Quaternion();
 const DECAL = LEVEL_KIT.decal;
+
+/**
+ * Material ids may carry a variant suffix (`wall_panel#white`): the kit buckets each variant
+ * separately and asks the material library for the full id (a map's own library wrapper resolves
+ * it), while shadows, surfaces, UV scale and the `level:<id>` mesh name use the base def.
+ */
+export function baseMaterialId(id: string): string {
+  const i = id.indexOf('#');
+  return i < 0 ? id : id.slice(0, i);
+}
+
+function getMaterialDef(id: string): MaterialDef | undefined {
+  return getBaseMaterialDef(baseMaterialId(id));
+}
 
 /** Right-hand direction (looking at the face from outside) and outward normal per facing. */
 export function facingBasis(f: Facing): { right: Vec3Like; normal: Vec3Like } {
@@ -977,7 +991,7 @@ export class LevelKit {
       this.ownedGeometries.push(geo);
     }
     const mesh = new THREE.Mesh(geo, this.opts.materials.get(opts.material));
-    mesh.name = `crate:${opts.material}`;
+    mesh.name = `crate:${baseMaterialId(opts.material)}`;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.root.add(mesh);
@@ -1173,7 +1187,9 @@ export class LevelKit {
       merged.computeBoundsTree();
       this.ownedGeometries.push(merged);
       const mesh = new THREE.Mesh(merged, this.opts.materials.get(bucket.materialId));
-      mesh.name = `level:${bucket.materialId}${bucket.castShadow ? '' : ':noshadow'}`;
+      mesh.name = `level:${baseMaterialId(bucket.materialId)}${bucket.castShadow ? '' : ':noshadow'}`;
+      // Full (variant) id: builders flag buckets afterwards (e.g. navIgnore on ceilings).
+      mesh.userData.kitMaterialId = bucket.materialId;
       mesh.castShadow = bucket.castShadow;
       mesh.receiveShadow = bucket.receiveShadow;
       mesh.matrixAutoUpdate = false;
@@ -1250,7 +1266,8 @@ export class LevelKit {
     const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
     this.ownedGeometries.push(geo);
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.name = `panel:${materialId}`;
+    mesh.name = `panel:${baseMaterialId(materialId)}`;
+    mesh.userData.kitMaterialId = materialId;
     mesh.position.set(center.x, center.y, center.z);
     mesh.castShadow = false;
     mesh.receiveShadow = false;

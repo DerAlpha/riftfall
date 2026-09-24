@@ -30,7 +30,13 @@ import { createLogger } from '../core/log';
 import type { Rng } from '../core/Rng';
 import { getEnemyDef } from '../defs/enemies';
 import { SPAWN_POINTS, WAVES, type SpawnPointRules, type WaveModeDef } from '../defs/waves';
-import { selectSpawnPoint, type SpawnSelectContext } from './spawnPoints';
+import {
+  bandMiss,
+  inSpawnBand,
+  selectSpawnPoint,
+  spawnDistance,
+  type SpawnSelectContext,
+} from './spawnPoints';
 import { buildSpawnOrder, createWavePlan, maxOrderLength, planWave, type WavePlan } from './waveFormula';
 
 const log = createLogger('waves');
@@ -72,6 +78,9 @@ const _viewProj = new Matrix4();
 const _viewInv = new Matrix4();
 const _sphere = new Sphere();
 const _pos = new Vector3();
+const _cand = new Vector3();
+/** Fallback candidates outside the distance band always rank behind those inside it. */
+const FALLBACK_OUT_OF_BAND = 1e6;
 
 export class WaveDirector implements WaveDirectorApi {
   readonly mode: WaveModeDef;
@@ -331,7 +340,11 @@ export class WaveDirector implements WaveDirectorApi {
     const room = plan.maxAlive - this.enemies.alive;
     // Full: the timer stays expired, the burst starts as soon as someone dies.
     if (room <= 0) return;
-    const size = Math.min(this.rng.int(plan.burstMin, plan.burstMax), room, this.orderLength - this.nextIndex);
+    const size = Math.min(
+      this.rng.int(plan.burstMin, plan.burstMax),
+      room,
+      this.orderLength - this.nextIndex,
+    );
     this.chooseBurstOrigin();
     this.burstLeft = size;
     this.burstMember = 0;
@@ -411,10 +424,23 @@ export class WaveDirector implements WaveDirectorApi {
     }
     this.burstPoint = null;
     const t = this.target.position;
-    const radius = this.rules.fallbackRadius;
-    if (this.randomPoint?.(t, radius, this.burstCenter)) return;
+    const R = this.rules;
+    // A random nav point may land next to the player: sample a few, keep the best placed one.
+    let best = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < R.fallbackTries && this.randomPoint; i++) {
+      if (!this.randomPoint(t, R.fallbackRadius, _cand)) break;
+      const d = spawnDistance(_cand, t);
+      const miss = inSpawnBand(d, R)
+        ? Math.abs(d - R.preferredDistance)
+        : FALLBACK_OUT_OF_BAND + bandMiss(d, R);
+      if (miss < best) {
+        best = miss;
+        this.burstCenter.copy(_cand);
+      }
+    }
+    if (best < Number.POSITIVE_INFINITY) return;
     const a = this.rng.next() * TAU;
-    this.burstCenter.set(t.x + Math.cos(a) * radius, t.y, t.z + Math.sin(a) * radius);
+    this.burstCenter.set(t.x + Math.cos(a) * R.fallbackRadius, t.y, t.z + Math.sin(a) * R.fallbackRadius);
   }
 
   private updateFrustum(): void {

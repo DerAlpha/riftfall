@@ -76,7 +76,12 @@ export interface WaveCadenceDef {
   /** Seconds between bursts: max(min, base · decay^(w−1)). */
   readonly interval: { readonly base: number; readonly decay: number; readonly min: number };
   /** Burst size rng.int(min, maxOf(w)), maxOf(w) = min(cap, max + floor(perWave·(w−1))). */
-  readonly burst: { readonly min: number; readonly max: number; readonly perWave: number; readonly cap: number };
+  readonly burst: {
+    readonly min: number;
+    readonly max: number;
+    readonly perWave: number;
+    readonly cap: number;
+  };
   /** Seconds between the members of one burst (emergence staggered, spawn cost spread). */
   readonly memberGap: number;
   /** A failed spawn (pool / nav agent exhausted) ends the burst; the next try comes after this (s). */
@@ -128,7 +133,7 @@ export const WAVES = {
     },
     types: [
       { id: 'swarmer', unlockWave: 1, weight: { base: 1, perWave: 0, max: 1 } },
-      { id: 'spitter', unlockWave: 3, weight: { base: 0.18, perWave: 0.025, max: 0.45 } },
+      { id: 'spitter', unlockWave: 3, weight: { base: 0.18, perWave: 0.02, max: 0.38 } },
     ],
     specials: [
       {
@@ -144,8 +149,8 @@ export const WAVES = {
       firstWave: 6,
       every: 6,
       types: ['swarmer'],
-      totalMultiplier: 1.6,
-      maxAliveMultiplier: 1.25,
+      totalMultiplier: 1.5,
+      maxAliveMultiplier: 1.2,
       intervalMultiplier: 0.5,
       burstMultiplier: 2,
       healthMultiplier: 0.75,
@@ -186,8 +191,12 @@ export interface SpawnPointRules {
    * than a meter too far (a rift next to the player is unfair, a far one only slow).
    */
   readonly tooCloseWeight: number;
-  /** Without spawn points (or none in an active zone): random nav point this far from the player. */
+  /**
+   * Without spawn points (or none in an active zone): random nav points within this radius of
+   * the player; of `fallbackTries` samples the one best placed in the distance band wins.
+   */
   readonly fallbackRadius: number;
+  readonly fallbackTries: number;
 }
 
 export const SPAWN_POINTS: SpawnPointRules = {
@@ -202,6 +211,7 @@ export const SPAWN_POINTS: SpawnPointRules = {
   maxLosChecks: 8,
   tooCloseWeight: 4,
   fallbackRadius: 22,
+  fallbackTries: 4,
 };
 
 /** Run flow (src/modes): death sequence, score. */
@@ -217,6 +227,11 @@ export const RUN = {
     scaleEpsilon: 0.005,
     /** Camera drop duration handed to the camera callback (real seconds). */
     cameraDropSeconds: 1.3,
+    /**
+     * Death camera (modes/deathCamera.ts): the eye sinks `drop` m and rolls / tilts over, falling
+     * (accelerating) for `fallFraction` of the drop, then a small `bounce` (fraction) on impact.
+     */
+    camera: { drop: 1.2, rollDeg: 32, pitchDeg: 14, fallFraction: 0.78, bounce: 0.05 },
     /** Real seconds from death to run:over + the game over screen. */
     gameOverDelay: 2.4,
   },

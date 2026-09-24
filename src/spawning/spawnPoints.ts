@@ -1,7 +1,8 @@
 /**
  * Spawn point scoring and selection (pure; the director supplies visibility and zone checks).
  *
- * In the distance band (SPAWN_POINTS.minDistance..maxDistance from the player's feet) a point
+ * In the distance band (SPAWN_POINTS.minDistance..maxDistance from the player's feet, 3D: a rift on
+ * the floor below the player is not "next to" them) a point
  * scores −|d − preferred|·distanceWeight − visiblePenalty (if the player can see it) + seeded
  * jitter; the best one wins and the previous point is skipped whenever another one qualifies.
  * Nothing in the band: the active point closest to the band wins (too close weighs more than too
@@ -22,8 +23,8 @@ export interface SpawnSelectContext {
   isVisible(point: SpawnPointDef, index: number): boolean;
 }
 
-export function horizontalDistance(a: Vec3Like, b: Vec3Like): number {
-  return Math.hypot(a.x - b.x, a.z - b.z);
+export function spawnDistance(a: Vec3Like, b: Vec3Like): number {
+  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
 export function inSpawnBand(distance: number, rules: SpawnPointRules): boolean {
@@ -65,7 +66,7 @@ export function selectSpawnPoint(
     const p = points[i]!;
     if (!ctx.isZoneActive(p.zone)) continue;
     active++;
-    if (inSpawnBand(horizontalDistance(p.position, ctx.target), rules)) inBand++;
+    if (inSpawnBand(spawnDistance(p.position, ctx.target), rules)) inBand++;
   }
   if (active === 0) return -1;
 
@@ -75,7 +76,7 @@ export function selectSpawnPoint(
     for (let i = 0; i < points.length; i++) {
       const p = points[i]!;
       if (!ctx.isZoneActive(p.zone)) continue;
-      const d = horizontalDistance(p.position, ctx.target);
+      const d = spawnDistance(p.position, ctx.target);
       if (!inSpawnBand(d, rules)) continue;
       if (i === ctx.lastIndex && inBand > 1) continue;
       const score = spawnPointScore(d, ctx.isVisible(p, i), rules, rng.next());
@@ -93,7 +94,7 @@ export function selectSpawnPoint(
     const p = points[i]!;
     if (!ctx.isZoneActive(p.zone)) continue;
     if (i === ctx.lastIndex && active > 1) continue;
-    const miss = bandMiss(horizontalDistance(p.position, ctx.target), rules);
+    const miss = bandMiss(spawnDistance(p.position, ctx.target), rules);
     if (miss < bestMiss) {
       bestMiss = miss;
       best = i;

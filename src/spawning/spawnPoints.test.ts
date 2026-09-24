@@ -11,7 +11,9 @@ function point(id: string, x: number, z: number, zone = 'main'): SpawnPointDef {
   return { id, position: new Vector3(x, 0, z), yaw: 0, zone, kind: 'rift' };
 }
 
-function ctx(over: Partial<SpawnSelectContext> & { visible?: readonly string[]; inactive?: readonly string[] }) {
+function ctx(
+  over: Partial<SpawnSelectContext> & { visible?: readonly string[]; inactive?: readonly string[] },
+) {
   const visible = over.visible ?? [];
   const inactive = over.inactive ?? [];
   return {
@@ -29,7 +31,9 @@ describe('spawn point scoring', () => {
     expect(spawnPointScore(R.minDistance - 0.1, false, R, 0)).toBe(Number.NEGATIVE_INFINITY);
     expect(spawnPointScore(R.maxDistance + 0.1, false, R, 0)).toBe(Number.NEGATIVE_INFINITY);
     expect(spawnPointScore(R.preferredDistance, true, R, 0)).toBe(-R.visiblePenalty);
-    expect(spawnPointScore(R.preferredDistance, false, SPAWN_POINTS, 0.5)).toBeCloseTo(SPAWN_POINTS.jitter / 2);
+    expect(spawnPointScore(R.preferredDistance, false, SPAWN_POINTS, 0.5)).toBeCloseTo(
+      SPAWN_POINTS.jitter / 2,
+    );
   });
 
   it('weighs "too close" more than "too far" outside the band', () => {

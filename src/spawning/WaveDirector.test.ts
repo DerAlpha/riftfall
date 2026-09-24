@@ -1,11 +1,6 @@
 import { PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import type {
-  EnemyManagerApi,
-  EnemySpawnOptions,
-  EnemyTargetApi,
-  SpawnPointDef,
-} from '../core/contracts';
+import type { EnemyManagerApi, EnemySpawnOptions, EnemyTargetApi, SpawnPointDef } from '../core/contracts';
 import { EventBus } from '../core/EventBus';
 import type { GameEvents, Vec3Like } from '../core/events';
 import { Rng } from '../core/Rng';
@@ -219,7 +214,7 @@ describe('WaveDirector', () => {
   });
 
   it('announces tank waves and queues the tank', () => {
-    const { waves, enemies, tick, last } = setup();
+    const { waves, enemies, last } = setup();
     waves.setWave(5);
     expect(enemies.cleared).toBe(1);
     expect(last('wave:start').kind).toBe('tank');
@@ -300,6 +295,27 @@ describe('WaveDirector', () => {
     for (const s of enemies.spawned) {
       expect(s.point).toBeNull();
       expect(Math.hypot(s.position.x, s.position.z)).toBeGreaterThan(SPAWN_POINTS.fallbackRadius - 2);
+    }
+  });
+
+  it('samples the fallback nav points and keeps one in the distance band', () => {
+    let n = 0;
+    const { waves, enemies, tick } = setup({
+      spawnPoints: [],
+      // Alternates between a point next to the player and one at a fair distance.
+      randomPoint: (c, _r, out) => {
+        const d = n++ % 2 === 0 ? 2 : SPAWN_POINTS.preferredDistance;
+        out.set(c.x + d, c.y, c.z);
+        return true;
+      },
+    });
+    waves.setWave(1);
+    tick(10);
+    expect(enemies.spawned.length).toBeGreaterThan(0);
+    for (const s of enemies.spawned) {
+      expect(Math.hypot(s.position.x, s.position.z)).toBeGreaterThan(
+        SPAWN_POINTS.minDistance - M.cadence.spread,
+      );
     }
   });
 

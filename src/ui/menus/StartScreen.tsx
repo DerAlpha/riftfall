@@ -1,7 +1,16 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { FIXED_KEYS, type Action, type BindingMap } from '../../defs/input';
+import { RUN_MENU } from '../../defs/ui';
 import { bindingLabel, familyBindings, sanitizeBindings, type KeyboardLayout } from '../../input/bindings';
-import { useInputDevice, useKeyboardLayout, useSettings, type MenuDeps } from './context';
+import {
+  useInputDevice,
+  useKeyboardLayout,
+  useSettings,
+  type MapChoice,
+  type MenuDeps,
+  type MenuMemory,
+} from './context';
+import './menus-run.css';
 
 interface CheatRow {
   label: string;
@@ -48,29 +57,128 @@ function keysFor(
   return labels.every((l) => l.length === 1) ? labels.join(' ') : labels.join(' / ');
 }
 
-export function StartScreen({ deps }: { deps: MenuDeps }) {
+/** Map preselected on the start screen: the remembered one, else the first recommended, else the first. */
+export function initialMapId(maps: readonly MapChoice[], remembered?: string): string | null {
+  if (remembered !== undefined && maps.some((m) => m.id === remembered)) return remembered;
+  return (maps.find((m) => m.recommended) ?? maps[0])?.id ?? null;
+}
+
+/**
+ * Map selection cards: a radio group with a roving tab stop (arrow keys / D-pad left-right pick a
+ * map, like the settings tabs). Activating the already selected card starts the game.
+ */
+function MapCards({
+  maps,
+  selected,
+  onSelect,
+  onStart,
+}: {
+  maps: readonly MapChoice[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+  onStart: () => void;
+}) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const onKey = (e: KeyboardEvent): void => {
+    const step =
+      e.key === 'ArrowRight' || e.key === 'ArrowDown'
+        ? 1
+        : e.key === 'ArrowLeft' || e.key === 'ArrowUp'
+          ? -1
+          : 0;
+    if (step === 0) return;
+    e.preventDefault();
+    const i = maps.findIndex((m) => m.id === selected);
+    const next = Math.min(maps.length - 1, Math.max(0, i + step));
+    if (next === i) return;
+    onSelect(maps[next]!.id);
+    refs.current[next]?.focus({ preventScroll: true });
+  };
+  return (
+    <div class="start__maps">
+      <div class="start__mapshead">{RUN_MENU.start.mapsHeading}</div>
+      <div
+        class="start__maplist"
+        role="radiogroup"
+        aria-label={RUN_MENU.start.mapsHeading}
+        onKeyDown={onKey}
+        // Clicks between the cards must not start the game (the screen starts on any click).
+        onClick={(e) => e.stopPropagation()}
+      >
+        {maps.map((m, i) => {
+          const on = m.id === selected;
+          return (
+            <button
+              key={m.id}
+              ref={(el) => {
+                refs.current[i] = el;
+              }}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              tabIndex={on ? 0 : -1}
+              data-map={m.id}
+              class={`start__map${on ? ' is-selected' : ''}${m.recommended ? ' start__map--recommended' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (on) onStart();
+                else onSelect(m.id);
+              }}
+            >
+              <span class="start__mapname">{m.name}</span>
+              {m.recommended ? <span class="start__mapbadge">{RUN_MENU.start.recommended}</span> : null}
+              <span class="start__mapdesc">{m.description}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function StartScreen({ deps, memory }: { deps: MenuDeps; memory?: MenuMemory }) {
   const s = useSettings(deps);
   const layout = useKeyboardLayout() ?? undefined;
   const map = sanitizeBindings(s.controls.bindings);
   const cta = useRef<HTMLButtonElement>(null);
   const info = deps.getInfo();
   const pad = useInputDevice(deps) === 'gamepad';
+  const maps = deps.maps ?? [];
+  const [mapId, setMapId] = useState<string | null>(() => initialMapId(maps, memory?.mapId));
   // Without the Pointer Lock API a lock request can only fail: start lock-less right away.
   const noLockApi = deps.input.pointerLockSupported === false;
-  const start = (): void => deps.onStart(noLockApi ? { lockless: true } : undefined);
+  const start = (): void => {
+    if (mapId === null) {
+      deps.onStart(noLockApi ? { lockless: true } : undefined);
+      return;
+    }
+    deps.onStart(noLockApi ? { lockless: true, mapId } : { mapId });
+  };
+  const selectMap = (id: string): void => {
+    setMapId(id);
+    if (memory) memory.mapId = id;
+  };
 
   useEffect(() => {
     cta.current?.focus({ preventScroll: true });
   }, []);
 
   return (
-    <div class={`start${s.accessibility.reduceFlashing ? ' start--calm' : ''}`} onClick={start}>
+    <div
+      class={`start${s.accessibility.reduceFlashing ? ' start--calm' : ''}${maps.length > 0 ? ' start--maps' : ''}`}
+      onClick={start}
+    >
       <div class="start__scan" aria-hidden="true" />
       <div class="start__inner">
         <h1 class="rf-title" data-text="RIFTFALL">
           RIFTFALL
         </h1>
-        <div class="start__sub">Kalibrierungshalle – Meilenstein 1</div>
+        <div class="start__sub">
+          {maps.length > 0 ? RUN_MENU.start.subtitleMaps : RUN_MENU.start.subtitle}
+        </div>
+        {maps.length > 0 ? (
+          <MapCards maps={maps} selected={mapId} onSelect={selectMap} onStart={start} />
+        ) : null}
         <button
           ref={cta}
           type="button"

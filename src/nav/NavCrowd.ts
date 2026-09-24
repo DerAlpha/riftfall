@@ -185,10 +185,17 @@ export class NavCrowd implements SteeringBackend {
   teleportAgent(index: number, position: Vec3Like): void {
     if (!this.isActive(index)) return;
     const e = NAV.query.halfExtents;
+    // agentTeleport keeps the destination as given (a point inside a wall stays there, walking):
+    // hand it the snapped point. Nothing in reach: the agent parks off-mesh (invalid) until the
+    // next teleport, like a forced add.
+    const q = this.query;
+    const onMesh = q.nearest(position) !== 0;
     Raw.CrowdUtils.agentTeleport(
       this.raw,
       index,
-      set3(this._p, position.x, position.y + this.bias, position.z),
+      onMesh
+        ? set3(this._p, q.nx, q.ny, q.nz)
+        : set3(this._p, position.x, position.y + this.bias, position.z),
       set3(this._ext, e.x, e.y, e.z),
       this.query.filter,
     );
@@ -218,7 +225,10 @@ export class NavCrowd implements SteeringBackend {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    // Crowd.destroy frees the dtCrowd (and its query) but not the filter its wrapper allocated.
+    const wrapperFilter = this.crowd.navMeshQuery.defaultFilter.raw;
     this.crowd.destroy();
+    Raw.destroy(wrapperFilter);
     Raw.destroy(this.addParams);
     this.count = 0;
     this.active.fill(0);

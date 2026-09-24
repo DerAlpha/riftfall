@@ -5,6 +5,8 @@
  * - platform A (top y = 2, x ∈ [5, 9], z ∈ [5, 9]) reached by a ramp along x = 7 (z 0 → 5, ~22°),
  * - platform B (top y = 1, x ∈ [-9, -5], z ∈ [5, 9]) reached by 5 stairs of 0.2 m rise,
  * - block C (top y = 1.2, x ∈ [5.5, 8.5], z ∈ [-8.5, -5.5]): too high to climb, an island,
+ * - deck D (top y = 2.6, x ∈ [-3, 3], z ∈ [-9.6, -6.6]): an island overhead, the floor below stays
+ *   walkable (2.4 m clearance) – two navmesh layers on the same XZ,
  * - a floating slab flagged navIgnore (would otherwise be a walkable island at y ≈ 3.1).
  */
 import { BoxGeometry, Mesh } from 'three';
@@ -14,6 +16,7 @@ export const TEST_LEVEL = {
   platformA: { x: 7, z: 7, top: 2 },
   platformB: { x: -7, z: 7, top: 1 },
   blockC: { x: 7, z: -7, top: 1.2 },
+  deckD: { x: 0, z: -8.1, halfX: 3, halfZ: 1.5, top: 2.6, thickness: 0.2 },
   ignored: { x: -7, y: 3.1, z: -7 },
 } as const;
 
@@ -47,6 +50,8 @@ export function buildTestLevelMeshes(): Mesh[] {
     meshes.push(box(3, top, 0.5, -7, top / 2, 2.5 + 0.5 * i + 0.25));
   }
   meshes.push(box(3, TEST_LEVEL.blockC.top, 3, 7, TEST_LEVEL.blockC.top / 2, -7));
+  const d = TEST_LEVEL.deckD;
+  meshes.push(box(d.halfX * 2, d.thickness, d.halfZ * 2, d.x, d.top - d.thickness / 2, d.z));
   const ignored = box(4, 0.2, 4, TEST_LEVEL.ignored.x, TEST_LEVEL.ignored.y - 0.1, TEST_LEVEL.ignored.z);
   ignored.userData.navIgnore = true;
   meshes.push(ignored);

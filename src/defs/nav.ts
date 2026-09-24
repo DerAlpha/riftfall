@@ -92,6 +92,23 @@ export const NAV = {
     /** findPath writes at most this many corners. */
     maxStraightPathPoints: 32,
     /**
+     * walkable(): an endpoint whose navmesh snap moved it further than this on XZ is off the
+     * walkable area (inside a wall, past a ledge) → not walkable. Covers the player hugging a wall
+     * (radius 0.38 < agentRadius) plus the contour simplification error (1.3 cells = 0.26 m);
+     * knockback / charge probes therefore stop at most this far past the eroded edge.
+     */
+    walkableSnapTolerance: 0.3,
+    /**
+     * Polygons a navmesh raycast records (walkable / randomPointAround): the last one tells which
+     * layer the ray ended on (floor under a deck vs. the deck). Longer rays fall back to a
+     * reverse ray.
+     */
+    maxRaycastPolys: 64,
+    /** randomPointAround: detour samples (a random polygon touching the circle) until one lies inside. */
+    randomPointAttempts: 4,
+    /** ...then a disk sample clipped at walls, pulled back this far from the wall (m). */
+    randomPointWallMargin: 0.05,
+    /**
      * Lowers every point handed out (closest / random / path / agent positions) by this much (m).
      * 0: grid-aligned floors are exact (measured on the calibration hall: median error 0, p90
      * 0.05 m on slopes and polygon corners beside steps).
@@ -179,7 +196,7 @@ export const NAV = {
     probeInterval: 3,
   },
   debug: {
-    /** Linear RGB hex. */
+    /** sRGB hex (MeshBasicMaterial colors are converted to the working space). */
     fillColor: 0x19c2ff,
     fillOpacity: 0.28,
     wireColor: 0x7df9ff,

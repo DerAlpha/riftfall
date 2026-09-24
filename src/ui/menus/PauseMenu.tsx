@@ -161,7 +161,7 @@ export function PauseMenu({ deps, memory }: { deps: MenuDeps; memory: MenuMemory
       {view === 'main' ? (
         <div class="menu-panel menu-panel--pause" role="dialog" aria-label="Pausenmenü">
           <h2 class="menu-title menu-title--big">Pausiert</h2>
-          <div class="pause__sub">Kalibrierungshalle</div>
+          <div class="pause__sub">{info.mapName ?? 'Kalibrierungshalle'}</div>
           <nav class="pause__nav">
             <button
               ref={resumeRef}

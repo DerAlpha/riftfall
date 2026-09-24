@@ -68,7 +68,11 @@ export class WaveHud {
     this.display = h('div', 'hud-wave__display', this.counter);
     this.tally = h('div', 'hud-wave__tally', this.display);
     for (let i = 0; i < W.tallyMax; i++) {
-      const mark = h('span', `hud-wave__mark${i === W.tallyMax - 1 ? ' hud-wave__mark--strike' : ''}`, this.tally);
+      const mark = h(
+        'span',
+        `hud-wave__mark${i === W.tallyMax - 1 ? ' hud-wave__mark--strike' : ''}`,
+        this.tally,
+      );
       mark.style.setProperty('--i', String(i));
       this.marks.push(mark);
     }

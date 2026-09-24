@@ -1,0 +1,386 @@
+/* ------------------------------------------------------------------------------------------ */
+/* Run menus (M3): start screen map selection cards and the game over screen. Tokens, the      */
+/* menu buttons and the glitch keyframes come from src/ui/styles.css.                          */
+/* ------------------------------------------------------------------------------------------ */
+
+/* --- start screen: map cards --- */
+.start__maps {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 26px;
+}
+.start__mapshead {
+  font-size: 11px;
+  letter-spacing: 0.42em;
+  padding-left: 0.42em;
+  text-transform: uppercase;
+  color: var(--rf-text-dim);
+}
+.start__maplist {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  cursor: default;
+}
+.start__map {
+  --map-cut: 12px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: min(320px, 44vw);
+  min-height: 118px;
+  padding: 16px 18px 14px 20px;
+  border: 1px solid var(--rf-line-soft);
+  background: rgba(4, 10, 15, 0.72);
+  text-align: left;
+  cursor: pointer;
+  clip-path: polygon(
+    var(--map-cut) 0,
+    100% 0,
+    100% calc(100% - var(--map-cut)),
+    calc(100% - var(--map-cut)) 100%,
+    0 100%,
+    0 var(--map-cut)
+  );
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    transform 0.15s;
+}
+/* The rift seam on the left edge: dim until selected. */
+.start__map::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14%;
+  bottom: 14%;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, var(--rf-line), transparent);
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+}
+.start__map:hover,
+.start__map:focus-visible {
+  outline: none;
+  border-color: var(--rf-line);
+  background: rgba(0, 229, 255, 0.05);
+}
+.start__map.is-selected {
+  border-color: var(--rf-cyan);
+  background:
+    linear-gradient(90deg, rgba(0, 229, 255, 0.12), rgba(0, 229, 255, 0.03) 60%), rgba(4, 10, 15, 0.8);
+  transform: translateY(-2px);
+}
+.start__map.is-selected::before {
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--rf-cyan) 30%,
+    #fff 50%,
+    var(--rf-orange) 70%,
+    transparent
+  );
+  box-shadow: 0 0 12px 1px rgba(0, 229, 255, 0.6);
+}
+.start__map.is-selected:focus-visible {
+  background:
+    linear-gradient(90deg, rgba(0, 229, 255, 0.2), rgba(0, 229, 255, 0.05) 60%), rgba(4, 10, 15, 0.8);
+}
+.start__mapname {
+  font-family: var(--rf-font-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rf-text-bright);
+}
+/* Above the name (in flow: long names never run into it). */
+.start__mapbadge {
+  order: -1;
+  margin-bottom: -2px;
+  padding: 2px 7px;
+  border: 1px solid var(--rf-orange-soft);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--rf-orange);
+}
+.start__mapdesc {
+  font-size: 12px;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  color: var(--rf-text-dim);
+}
+.start__map.is-selected .start__mapdesc {
+  color: var(--rf-text);
+}
+.start--maps .start__cta {
+  margin-top: 22px;
+}
+.start--maps .start__sheet {
+  margin-top: 24px;
+}
+
+/* --- game over --- */
+/* The glitch slices stay hidden most of the time (red text must not be tinted by the screen blend). */
+.gameover {
+  --go-blood: #d8261b;
+  --go-blood-glow: rgba(216, 38, 27, 0.55);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+.gameover__backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 45%, rgba(46, 2, 4, 0.35), rgba(8, 1, 2, 0.92) 78%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 3px);
+  backdrop-filter: blur(4px) saturate(0.45);
+  -webkit-backdrop-filter: blur(4px) saturate(0.45);
+  animation: rf-fade-in 0.9s ease-out both;
+}
+.gameover__inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(680px, 94vw);
+  text-align: center;
+}
+.gameover__title {
+  position: relative;
+  margin: 0;
+  padding-left: 0.16em;
+  white-space: nowrap;
+  font-family: var(--rf-font-display);
+  font-size: clamp(30px, 5.2vw, 84px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: 0.16em;
+  color: var(--go-blood);
+  text-shadow:
+    0 0 28px var(--go-blood-glow),
+    0 3px 0 rgba(0, 0, 0, 0.85);
+  animation: rf-gameover-title 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.gameover__title::before,
+.gameover__title::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  padding-left: 0.16em;
+  pointer-events: none;
+  text-shadow: none;
+  mix-blend-mode: screen;
+}
+.gameover__title::before {
+  color: rgba(0, 229, 255, 0.7);
+  clip-path: inset(0 0 100% 0);
+  animation: rf-gameover-glitch-a 3.4s 1.2s infinite steps(1);
+}
+.gameover__title::after {
+  color: rgba(255, 60, 40, 0.85);
+  clip-path: inset(0 0 100% 0);
+  animation: rf-gameover-glitch-b 2.9s 1.6s infinite steps(1);
+}
+.gameover__sub {
+  font-size: 11px;
+  letter-spacing: 0.42em;
+  padding-left: 0.42em;
+  text-transform: uppercase;
+  color: var(--rf-text-dim);
+}
+.gameover__wave,
+.gameover__stat,
+.gameover__score {
+  animation: rf-gameover-reveal 0.45s ease-out both;
+  animation-delay: calc(0.7s + var(--reveal, 0ms));
+}
+.gameover__wave {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 14px;
+}
+.gameover__wavelabel,
+.gameover__scorelabel {
+  font-size: 11px;
+  letter-spacing: 0.42em;
+  padding-left: 0.42em;
+  text-transform: uppercase;
+  color: var(--rf-text-dim);
+}
+.gameover__wavevalue {
+  font-family: var(--rf-font-display);
+  font-size: clamp(56px, 8vw, 96px);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--rf-text-bright);
+  text-shadow: 0 0 26px var(--go-blood-glow);
+}
+.gameover__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 2px;
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 2px 0;
+  border-top: 1px solid rgba(216, 38, 27, 0.4);
+  border-bottom: 1px solid rgba(216, 38, 27, 0.18);
+}
+.gameover__stat {
+  padding: 12px 8px 10px;
+  background: rgba(14, 4, 6, 0.62);
+}
+.gameover__stat dt {
+  font-size: 10px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--rf-text-dim);
+}
+.gameover__stat dd {
+  margin: 5px 0 0;
+  font-family: var(--rf-font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--rf-text-bright);
+}
+.gameover__score {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 6px;
+}
+.gameover__scorevalue {
+  font-family: var(--rf-font-mono);
+  font-size: 40px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--rf-orange);
+  text-shadow: 0 0 18px var(--rf-orange-soft);
+}
+.gameover__nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+  opacity: 0.35;
+  transition: opacity 0.3s;
+}
+.gameover__nav.is-ready {
+  opacity: 1;
+}
+.gameover__nav .menu-btn {
+  min-width: 190px;
+}
+.gameover__nav .menu-btn:disabled {
+  cursor: default;
+}
+
+.gameover--calm .gameover__title {
+  animation-name: rf-fade-in;
+}
+.gameover--calm .gameover__title::before,
+.gameover--calm .gameover__title::after {
+  display: none;
+}
+
+@keyframes rf-gameover-title {
+  0% {
+    opacity: 0;
+    transform: scale(1.35);
+    filter: blur(6px);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(0.97);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes rf-gameover-glitch-a {
+  0%,
+  88%,
+  100% {
+    clip-path: inset(0 0 100% 0);
+    transform: none;
+  }
+  89% {
+    clip-path: inset(10% 0 62% 0);
+    transform: translate(-8px, 0);
+  }
+  91% {
+    clip-path: inset(48% 0 30% 0);
+    transform: translate(6px, 1px);
+  }
+  93% {
+    clip-path: inset(72% 0 6% 0);
+    transform: translate(-4px, 0);
+  }
+}
+@keyframes rf-gameover-glitch-b {
+  0%,
+  80%,
+  100% {
+    clip-path: inset(0 0 100% 0);
+    transform: none;
+  }
+  81% {
+    clip-path: inset(58% 0 14% 0);
+    transform: translate(7px, 0);
+  }
+  84% {
+    clip-path: inset(22% 0 52% 0);
+    transform: translate(-5px, -1px);
+  }
+}
+@keyframes rf-gameover-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-height: 760px) {
+  .start--maps .start__sheet {
+    display: none;
+  }
+  .gameover__wave {
+    margin-top: 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gameover__title,
+  .gameover__title::before,
+  .gameover__title::after,
+  .gameover__wave,
+  .gameover__stat,
+  .gameover__score {
+    animation: none;
+  }
+  .start__map {
+    transition: none;
+  }
+}

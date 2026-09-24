@@ -9,7 +9,8 @@
  * traces that shot's bullets (same tick, same call chain), so shot-kind impacts of that weapon
  * travel from the fired `origin` to the impact point (ricochet sparks, splatter behind bodies).
  *
- * M5: tracers take the event's effective colour (forge tier, crit shots); ricochet segments are
+ * M5: beam weapons (a weapon:fired per damage tick) get no per-shot muzzle burst – the beam visual
+ * carries a continuous muzzle glow. Tracers take the event's effective colour (forge tier, crit shots); ricochet segments are
  * world tracers; weapons whose muzzle preset names a `tracer` style draw an arsenal ray instead
  * (railgun slug, void shots). Explosions pass their ExplosionDef's preset (plasma splash …).
  */
@@ -67,6 +68,9 @@ export class VfxBridge {
         this.shotOrigin.z = e.origin.z;
         const def = getWeaponDef(e.weaponId);
         if (!def) return;
+        // Beam weapons report every damage tick as a shot: their continuous muzzle glow, sparks and
+        // light come with the beam visual (ArsenalVfx), a per-tick flash burst would strobe.
+        if (def.kind === 'beam') return;
         vfx.muzzle(def.vfx.muzzle, def.vfx.muzzleLightColor, def.vfx.casing, e.ads, e.muzzle, e.direction);
       }),
       events.on('combat:impact', (e) => {

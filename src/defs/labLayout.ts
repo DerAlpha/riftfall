@@ -805,11 +805,6 @@ export const LAB_LAYOUT = {
     depth: 0.22,
     lintelHeight: 0.3,
     hazardWidth: 0.1,
-    /** Status light above M4 door slots (size x/y/z). */
-    statusLight: [0.6, 0.1, 0.06] as Vec3Tuple,
-    statusGap: 0.08,
-    /** Threshold plate in the passage (hazard stripes on blast doors). */
-    thresholdInset: 0.05,
   },
 
   themes: {
@@ -1013,6 +1008,8 @@ export const LAB_LAYOUT = {
       ringInset: 0.6,
       ringWidth: 0.12,
       hazardWidth: 0.25,
+      /** Violet strip around the dais sides: drop below the top edge, height (m). */
+      edgeStrip: { drop: 0.08, height: 0.04 },
     },
     pylons: {
       positions: [
@@ -1058,8 +1055,11 @@ export const LAB_LAYOUT = {
       { minX: 9.4, maxX: 10.6, minZ: 1.6, maxZ: 4.6, height: 1.0 },
       { minX: -8.6, maxX: -5.6, minZ: -5.6, maxZ: -4.4, height: 1.0 },
     ] as readonly LabBoxDef[],
-    /** Vertical emissive lines on the upper walls (y range, spacing along the wall, width). */
-    wallLines: { y0: 5.8, y1: 14.2, spacing: 7, width: 0.14, margin: 3 },
+    /**
+     * Vertical emissive lines on the upper walls (y range, spacing along the wall, width); no line
+     * within `screenGap` (m) beside a wall screen.
+     */
+    wallLines: { y0: 5.8, y1: 14.2, spacing: 7, width: 0.14, margin: 3, screenGap: 0.56 },
     screens: [
       { position: [-7, 7.2, -14], facing: 'pz', width: 4, height: 2.2 },
       { position: [7, 7.2, 12], facing: 'nz', width: 4, height: 2.2 },
@@ -1111,9 +1111,6 @@ export const LAB_LAYOUT = {
       fluidTopGap: 0.25,
       /** Fluid starts this far above the base (no z-fighting with the base cap). */
       fluidLift: 0.02,
-      /** Dark specimen silhouette inside (fraction of the radius / fluid height). */
-      specimenRadius: 0.38,
-      specimenHeight: 0.55,
       pipeRadius: 0.07,
     },
     benches: [
@@ -1175,7 +1172,16 @@ export const LAB_LAYOUT = {
   // --- dock -----------------------------------------------------------------------------------
   dock: {
     /** Raised loading platform along the north wall (mantle-able), with a ramp for enemies. */
-    platform: { minX: -12, maxX: 12, minZ: -30, maxZ: -26.5, height: 1.2, hazardDepth: 0.3 },
+    platform: {
+      minX: -12,
+      maxX: 12,
+      minZ: -30,
+      maxZ: -26.5,
+      height: 1.2,
+      hazardDepth: 0.3,
+      /** Amber strip along the platform front: drop below the top edge, height (m). */
+      edgeStrip: { drop: 0.06, height: 0.05 },
+    },
     ramp: { minX: 9, maxX: 12, slopeDeg: 20 },
     shutter: {
       minX: -5,
@@ -1278,6 +1284,8 @@ export const LAB_LAYOUT = {
     trimGap: 0.25,
     /** Vent grate: center height, width, slit layout. */
     vent: { y: 0.55, width: 1.3, slits: 4, slitHeight: 0.1, spacing: 0.2 },
+    /** Scorched glowing sill under every wall tear (width as a fraction of the tear width). */
+    scorchWidth: 0.8,
   },
 
   lights: {

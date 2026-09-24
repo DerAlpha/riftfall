@@ -601,7 +601,7 @@ function buildVents(kit: LevelKit): void {
     kit.box(
       'emissive_red#violet',
       f.point(0, S.bottom / 2, LEVEL_KIT.decal.offset),
-      f.size(S.width * 0.8, LEVEL_KIT.decal.thickness * 2, LEVEL_KIT.decal.thickness),
+      f.size(S.width * L.spawnTears.scorchWidth, LEVEL_KIT.decal.thickness * 2, LEVEL_KIT.decal.thickness),
       { collider: false, castShadow: false },
     );
   }

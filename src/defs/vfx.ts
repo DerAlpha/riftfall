@@ -1854,7 +1854,7 @@ export const VFX_EFFECTS = {
   },
   'impact.fire': {
     emitters: [
-      tongues([2, 3], [0.1, 0.16], [0.2, 0.4], [1.2, 2.6], 3.4, { axis: 'normal', spread: 30 }),
+      tongues([2, 3], [0.16, 0.26], [0.2, 0.4], [1.2, 2.4], 3.4, { axis: 'normal', spread: 30, stretch: 0.16 }),
       flames([1, 2], [0.14, 0.24], [0.25, 0.45], [0.6, 1.6], 3, { axis: 'normal', spread: 30 }),
       motes([1, 0.55, 0.18], [2, 4], [1, 3.5], [0.4, 0.9], 9, { axis: 'normal', spread: 60, gravity: 0.2 }),
       billow('smoke', SOOT, [0, 1], [0.12, 0.2], 4, [0.8, 1.4], [0.3, 0.8], 0.4),
@@ -2174,7 +2174,7 @@ export const VFX_EFFECTS = {
   },
   'beam.flame.hit': {
     emitters: [
-      tongues([1, 2], [0.14, 0.24], [0.3, 0.5], [1.4, 2.8], 3.2, { spread: 25 }),
+      tongues([1, 2], [0.24, 0.38], [0.3, 0.5], [1.2, 2.4], 3.2, { spread: 25, stretch: 0.16 }),
       flames([1, 1], [0.2, 0.34], [0.3, 0.5], [0.8, 1.8], 2.6, { spread: 35 }),
       motes([1, 0.55, 0.18], [1, 2], [1, 3], [0.4, 0.9], 9, { spread: 90 }),
       billow('smoke', SOOT, [0, 1], [0.2, 0.3], 4, [1.2, 2], [0.4, 1], 0.4, { axis: 'up' }),
@@ -2205,7 +2205,7 @@ export const VFX_EFFECTS = {
   },
   'field.fire.flames': {
     emitters: [
-      tongues([1, 1], [0.12, 0.22], [0.3, 0.55], [1.4, 2.8], 3.4, { minCount: 1 }),
+      tongues([1, 1], [0.26, 0.42], [0.3, 0.55], [1.2, 2.4], 3.4, { minCount: 1, stretch: 0.16 }),
       flames([0, 1], [0.2, 0.32], [0.3, 0.5], [0.6, 1.4], 2.4, { spread: 15, sizeEnd: 1.6 }),
       motes([1, 0.55, 0.16], [0, 1], [0.8, 2.5], [0.6, 1.2], 9, { axis: 'up', spread: 40, gravity: -0.3 }),
     ],
@@ -2222,13 +2222,34 @@ export const VFX_EFFECTS = {
   },
   'field.poison.mist': {
     emitters: [
-      billow('smoke', POISON_MIST, [1, 1], [0.8, 1.3], 2.2, [2.5, 4], [0.1, 0.4], 0.42, {
+      billow('smoke', POISON_MIST, [1, 1], [0.8, 1.3], 2.2, [2.5, 4], [0.1, 0.4], 0.55, {
         minCount: 1,
         axis: 'up',
         drag: 0.8,
         gravity: -0.02,
         fadeIn: 0.3,
       }),
+      // A faint sickly glow inside the cloud (lit smoke alone reads as plain dust).
+      {
+        blend: 'add',
+        sprite: 'mist',
+        count: [0, 1],
+        life: [2, 3.5],
+        speed: [0.05, 0.3],
+        axis: 'up',
+        spread: 60,
+        size: [0.9, 1.4],
+        sizeEnd: 2,
+        color: POISON_C,
+        intensity: 0.14,
+        intensityEnd: 0.05,
+        fadeIn: 0.3,
+        fadeOut: 0.5,
+        alpha: 1,
+        alphaEnd: 1,
+        drag: 0.8,
+        spin: [-0.4, 0.4],
+      },
     ],
   },
   'field.poison.bubbles': {
@@ -2283,7 +2304,7 @@ export const VFX_EFFECTS = {
   // --- M5 status visuals on enemies (package B spawns them at small rates; no bouncing = no probes) ---
   'status.burn': {
     emitters: [
-      tongues([1, 2], [0.1, 0.18], [0.25, 0.45], [1.2, 2.4], 3.2, { minCount: 1, spread: 18 }),
+      tongues([1, 2], [0.18, 0.3], [0.25, 0.45], [1.2, 2.2], 3.2, { minCount: 1, spread: 18, stretch: 0.16 }),
       flames([0, 1], [0.14, 0.24], [0.2, 0.35], [0.6, 1.2], 2.6, { spread: 20, sizeEnd: 1.6 }),
       motes([1, 0.55, 0.16], [1, 2], [0.8, 2], [0.4, 0.9], 9, { axis: 'up', spread: 50, gravity: -0.25 }),
       billow('smoke', SOOT, [0, 1], [0.12, 0.2], 4, [0.8, 1.3], [0.4, 0.9], 0.35, { axis: 'up', spread: 25 }),

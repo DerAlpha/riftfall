@@ -6,7 +6,7 @@
  * Parts: barrels (the whole spinning cluster: six barrels – one marked so the rotation always
  * reads –, the mid clamp and the toothed "saw" clamp at the front; its heat stripes glow under
  * sustained fire; spun by the `spin` driver), magazine (ammo box) with the chute (child), motor
- * lever, trigger.
+ * lever, trigger and the tube sight (`sight`, replaceable by an optic on the handle mount).
  */
 import { BoxGeometry, PlaneGeometry } from 'three';
 import { VIEWMODEL_ART } from '../../../defs/viewmodels';

@@ -240,19 +240,8 @@ function buildDoorway(kit: LevelKit, d: LabDoorwayDef): void {
         collider: true,
       },
     );
-    if (d.slot) {
-      // M4 door slot marker: amber status light over the frame.
-      const s = F.statusLight;
-      kit.box(
-        'emissive_orange',
-        f.point(0, h + F.lintelHeight + F.statusGap + s[1] / 2, s[2] / 2),
-        f.size(s[0], s[1], s[2]),
-        {
-          collider: false,
-          castShadow: false,
-        },
-      );
-    }
+    // No status light of our own over a door slot: the M4 door (DoorView) shows locked / open
+    // itself, a static amber lamp here would still say "locked" over an opened door.
   }
 }
 

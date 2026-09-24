@@ -118,13 +118,16 @@ function basis(
   w.z = fx * uy - fy * ux;
 }
 
+/** Stamp of a channel that has not been drawn for ages (free). */
+const NEVER = -1e9;
+
 class BeamChannel {
   visual = '';
   style: BeamStyleDef = DEFAULT_BEAM_STYLE;
   /** Epoch of the last beam() call (drawn while it equals the current epoch). */
-  stamp = -1;
+  stamp = NEVER;
   /** Epoch in which this channel was taken (one call per channel and frame). */
-  used = -1;
+  used = NEVER;
   readonly from = { x: 0, y: 0, z: 0 };
   readonly to = { x: 0, y: 0, z: 0 };
   readonly arcs = new Float32Array(ARSENAL_VFX.beams.maxArcs * 6);
@@ -134,6 +137,7 @@ class BeamChannel {
   hitAcc = 0;
   arcAcc = 0;
   emitAcc = 0;
+  muzzleAcc = 0;
   age = 0;
   seed = 0;
   readonly light: SustainState = createSustainState();
@@ -258,8 +262,8 @@ export class ArsenalBeams {
 
   clear(): void {
     for (const ch of this.channels) {
-      ch.stamp = -1;
-      ch.used = -1;
+      ch.stamp = NEVER;
+      ch.used = NEVER;
       ch.visual = '';
       ch.light.handle = 0;
     }
@@ -285,6 +289,7 @@ export class ArsenalBeams {
     free.hitAcc = 0;
     free.arcAcc = 0;
     free.emitAcc = 0;
+    free.muzzleAcc = 0;
     free.age = 0;
     free.seed = this.ctx.rand();
     free.light.timer = 0;
@@ -346,6 +351,7 @@ export class ArsenalBeams {
     _n.y *= inv;
     _n.z *= inv;
     pushGlow(ctx, s.muzzleGlow, f.x, f.y, f.z, -_n.x, -_n.y, -_n.z, 0, ch.age, ch.seed, 1, flicker);
+    this.muzzleSparks(ch, s.muzzleEffect, s.muzzleRate, f, dt);
     pushGlow(ctx, s.hitGlow, t.x, t.y, t.z, _n.x, _n.y, _n.z, 0, ch.age, ch.seed, 1, flicker);
     // Chain arcs.
     const a = s.arc;
@@ -382,6 +388,18 @@ export class ArsenalBeams {
       }
     }
     sustainLight(ctx, ch.light, s.light, 1, dt, t, _n, ctx.flashScale);
+  }
+
+  /** Continuous muzzle emission along _n (set by the caller) at `rate` spawns per second. */
+  private muzzleSparks(ch: BeamChannel, effect: string, rate: number, at: Vec3Like, dt: number): void {
+    if (!(rate > 0) || !(this.ctx.budget > 0)) return;
+    ch.muzzleAcc += dt * rate;
+    let n = 0;
+    while (ch.muzzleAcc >= 1 && n++ < 3) {
+      ch.muzzleAcc -= 1;
+      this.ctx.spawn(effect, at, _n, 1);
+    }
+    if (ch.muzzleAcc > 1) ch.muzzleAcc = 1;
   }
 
   /** Halo + core strips over a bolt polyline (n segments). `tipAlpha`: opacity at the far end. */
@@ -436,7 +454,7 @@ export class ArsenalBeams {
         const r = ctx.rand;
         sampleCone(dx, dy, dz, cosMax, r(), r(), _dir);
         const life = lerpRange(s.life, r());
-        const reach = len * (0.8 + 0.2 * r());
+        const reach = len * lerpRange(s.reach, Math.sqrt(r()));
         const drag = s.drag;
         const speed = (reach * drag) / (1 - Math.exp(-drag * life));
         const lead = r() * 0.15;
@@ -489,6 +507,10 @@ export class ArsenalBeams {
     }
     strips.endStrip();
     pushGlow(ctx, s.nozzleGlow, f.x, f.y, f.z, -dx, -dy, -dz, 10, ch.age, ch.seed, 1, 1);
+    _n.x = dx;
+    _n.y = dy;
+    _n.z = dz;
+    this.muzzleSparks(ch, s.muzzleEffect, s.muzzleRate, f, dt);
     _n.x = -dx;
     _n.y = -dy;
     _n.z = -dz;

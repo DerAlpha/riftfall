@@ -289,7 +289,7 @@ function buildDais(kit: LevelKit): void {
     top: D.height,
     side: 'wall_panel_dark#clinical',
     topMaterial: 'floor_panel#gloss',
-    edgeStrip: { material: 'emissive_red#violet', faces: ['px', 'nx', 'pz', 'nz'], drop: 0.08, height: 0.04 },
+    edgeStrip: { material: 'emissive_red#violet', faces: ['px', 'nx', 'pz', 'nz'], ...D.edgeStrip },
   });
   // Hazard border and the glowing containment ring on the dais.
   const y = D.height;
@@ -453,7 +453,7 @@ function buildAtriumWallLines(kit: LevelKit): void {
     for (const sc of L.atrium.screens) {
       if (sc.facing !== s.facing) continue;
       const c = s.along === 'x' ? sc.position[0] : sc.position[2];
-      blocked.push([c - sc.width / 2 - W.width * 4, c + sc.width / 2 + W.width * 4]);
+      blocked.push([c - sc.width / 2 - W.screenGap, c + sc.width / 2 + W.screenGap]);
     }
     for (let t = s.from + W.margin; t <= s.to - W.margin + 1e-6; t += W.spacing) {
       if (blocked.some(([b0, b1]) => t > b0 && t < b1)) continue;
@@ -714,7 +714,7 @@ export function buildDock(kit: LevelKit): void {
     top: P.height,
     side: 'wall_panel_dark',
     topMaterial: 'diamond_plate',
-    edgeStrip: { material: 'emissive_orange', faces: ['pz'], drop: 0.06, height: 0.05 },
+    edgeStrip: { material: 'emissive_orange', faces: ['pz'], ...P.edgeStrip },
   });
   kit.marking('painted_hazard', P.minX, P.maxZ, D.ramp.minX, P.maxZ + P.hazardDepth, 0);
   const run = dockRampRun();

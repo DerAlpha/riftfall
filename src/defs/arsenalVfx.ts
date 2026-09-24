@@ -396,6 +396,9 @@ export interface LightningBeamDef {
   readonly branches: { readonly count: number; readonly length: Range; readonly segments: number };
   readonly muzzleGlow: GlowLayerDef;
   readonly hitGlow: GlowLayerDef;
+  /** Continuous muzzle emission (the per-tick weapon:fired draws no muzzle burst for beams). */
+  readonly muzzleEffect: string;
+  readonly muzzleRate: number;
   /** Particle preset at the beam end / arc ends, spawns per second. */
   readonly hitEffect: string;
   readonly hitRate: number;
@@ -408,6 +411,8 @@ export interface FlameBeamDef {
   /** Flame particles per second (× particle budget), their life and cone half-angle (deg). */
   readonly rate: number;
   readonly life: Range;
+  /** Where along the beam a particle burns out (fraction of its length): the cone is filled. */
+  readonly reach: Range;
   readonly spreadDeg: number;
   /** Linear drag (1/s): the launch speed is solved so a particle reaches the beam end at its death. */
   readonly drag: number;
@@ -428,6 +433,9 @@ export interface FlameBeamDef {
     readonly intensity: number;
   };
   readonly nozzleGlow: GlowLayerDef;
+  /** Continuous nozzle emission (drips, embers), spawns per second. */
+  readonly muzzleEffect: string;
+  readonly muzzleRate: number;
   /** Preset spawned where the flame ends (surface licks, smoke), spawns per second. */
   readonly hitEffect: string;
   readonly hitRate: number;
@@ -468,9 +476,9 @@ export const BEAM_STYLES = {
       jitterMin: 0.05,
       width: 0.035,
       color: SHOCK_CORE,
-      intensity: 10,
-      haloWidth: 7,
-      haloIntensity: 0.7,
+      intensity: 9,
+      haloWidth: 8,
+      haloIntensity: 1.1,
     },
     arc: {
       segmentLength: 0.45,
@@ -483,11 +491,13 @@ export const BEAM_STYLES = {
       haloWidth: 6,
       haloIntensity: 0.6,
     },
-    haloColor: [0.3, 0.5, 1],
+    haloColor: [0.25, 0.45, 1],
     rerollRate: 22,
     branches: { count: 3, length: [0.12, 0.3], segments: 5 },
     muzzleGlow: { shape: 'electric', size: 0.11, color: SHOCK, intensity: 3, spin: 4 },
     hitGlow: { shape: 'electric', size: 0.7, color: SHOCK, intensity: 2.4, spin: -3 },
+    muzzleEffect: 'beam.lightning.muzzle',
+    muzzleRate: 9,
     hitEffect: 'beam.lightning.hit',
     hitRate: 18,
     arcRate: 8,
@@ -496,19 +506,22 @@ export const BEAM_STYLES = {
   /** FW-4 Inferno: a roaring particle cone, white-yellow at the nozzle, dark red at the tips. */
   'beam.flame': {
     kind: 'flame',
-    rate: 110,
-    life: [0.32, 0.46],
-    spreadDeg: 7,
+    rate: 130,
+    life: [0.28, 0.46],
+    reach: [0.35, 1],
+    spreadDeg: 9,
     drag: 3.2,
-    size: [0.1, 0.16],
-    sizeEnd: 9,
-    color: [1, 0.72, 0.36],
-    colorEnd: [0.75, 0.12, 0.02],
-    intensity: 5,
-    intensityEnd: 0.35,
+    size: [0.06, 0.1],
+    sizeEnd: 7,
+    color: [1, 0.7, 0.32],
+    colorEnd: [0.7, 0.1, 0.02],
+    intensity: 3.2,
+    intensityEnd: 0.25,
     gravity: -0.35,
     core: { length: 1.4, width: 0.05, widthEnd: 0.3, color: FIRE_CORE, intensity: 3.5 },
     nozzleGlow: { shape: 'flame', size: 0.08, color: [1, 0.62, 0.25], intensity: 3.5, stretch: 0.01, maxStretch: 0.1 },
+    muzzleEffect: 'beam.flame.muzzle',
+    muzzleRate: 6,
     hitEffect: 'beam.flame.hit',
     hitRate: 14,
     light: { color: [1, 0.5, 0.18], intensity: 70, range: 8, interval: 0.06 },
@@ -518,12 +531,12 @@ export const BEAM_STYLES = {
   'beam.void': {
     kind: 'ray',
     style: 'void',
-    width: 0.16,
+    width: 0.18,
     color: VOID,
-    intensity: 5,
-    haloWidth: 0.7,
+    intensity: 3,
+    haloWidth: 0.6,
     haloColor: VOID_DEEP,
-    haloIntensity: 0.9,
+    haloIntensity: 0.6,
     startGlow: { shape: 'void', size: 0.14, color: VOID, intensity: 3, spin: 6 },
     endGlow: { shape: 'void', size: 0.8, color: VOID, intensity: 2.6, spin: -5 },
     fade: 0.35,
@@ -642,17 +655,17 @@ export const FIELD_VISUALS = {
     disc: {
       style: 'accretion',
       color: VOID,
-      intensity: 2,
-      radiusScale: 0.55,
-      maxRadius: 2.6,
+      intensity: 1.1,
+      radiusScale: 0.42,
+      maxRadius: 2.1,
       ground: false,
       tilt: 0.45,
     },
     glows: [
       { shape: 'disc', size: 1.05, color: [0, 0, 0], intensity: 1, blend: 'dark' },
-      { shape: 'ring', size: 1.42, color: [0.85, 0.6, 1], intensity: 2 },
-      { shape: 'void', size: 2, color: VOID, intensity: 1.6, spin: 2.5 },
-      { shape: 'halo', size: 3.4, color: VOID_DEEP, intensity: 0.8 },
+      { shape: 'ring', size: 1.42, color: [0.85, 0.6, 1], intensity: 1.5 },
+      { shape: 'void', size: 2, color: VOID, intensity: 0.9, spin: 2.5 },
+      { shape: 'halo', size: 3.4, color: VOID_DEEP, intensity: 0.45 },
     ],
     coreHeight: 1.2,
     ambient: [{ effect: 'field.void.motes', rate: 14, area: 'disc', height: [0, 1.6], scale: 1 }],
@@ -666,7 +679,7 @@ export const FIELD_VISUALS = {
       intensity: 7,
     },
     lens: { strength: 1, radiusScale: 0.4, maxRadius: 2.2 },
-    light: { color: [0.55, 0.25, 1], intensity: 40, range: 9, interval: 0.09 },
+    light: { color: [0.55, 0.25, 1], intensity: 30, range: 9, interval: 0.09 },
     fadeIn: 0.25,
     fadeOut: 0.35,
   },
@@ -687,12 +700,12 @@ export const FIELD_VISUALS = {
   },
   /** Toxic cloud: a bubbling puddle under a slow, murky green fog. */
   'field.damage.poison': {
-    disc: { style: 'poison', color: POISON, intensity: 1.4, radiusScale: 1, maxRadius: 6, ground: true },
+    disc: { style: 'poison', color: POISON, intensity: 0.8, radiusScale: 1, maxRadius: 6, ground: true },
     glows: [],
     coreHeight: 0,
     ambient: [
-      { effect: 'field.poison.mist', rate: 9, area: 'disc', height: [0.1, 0.8], scale: 1 },
-      { effect: 'field.poison.bubbles', rate: 10, area: 'disc', height: [0, 0.05], scale: 1 },
+      { effect: 'field.poison.mist', rate: 20, area: 'disc', height: [0.1, 0.9], scale: 1 },
+      { effect: 'field.poison.bubbles', rate: 8, area: 'disc', height: [0, 0.05], scale: 1 },
     ],
     infall: null,
     lens: null,
@@ -702,11 +715,11 @@ export const FIELD_VISUALS = {
   },
   /** Frost field: rime crystals racing out over the floor, cold mist, glittering ice dust. */
   'field.slow.ice': {
-    disc: { style: 'frost', color: FROST, intensity: 2.2, radiusScale: 1, maxRadius: 7, ground: true },
+    disc: { style: 'frost', color: FROST, intensity: 1.2, radiusScale: 1, maxRadius: 7, ground: true },
     glows: [],
     coreHeight: 0,
     ambient: [
-      { effect: 'field.frost.mist', rate: 7, area: 'disc', height: [0, 0.3], scale: 1 },
+      { effect: 'field.frost.mist', rate: 12, area: 'disc', height: [0, 0.3], scale: 1 },
       { effect: 'field.frost.glitter', rate: 16, area: 'disc', height: [0.05, 1.2], scale: 1 },
     ],
     infall: null,

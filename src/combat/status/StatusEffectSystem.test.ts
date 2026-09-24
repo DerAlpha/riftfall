@@ -383,6 +383,18 @@ describe('StatusEffectSystem – statuses', () => {
     expect(h.status.slots).toBe(0);
   });
 
+  it('a dying horde leaves at most maxActive clouds at once', () => {
+    const h = setup();
+    const ds: Dummy[] = [];
+    for (let i = 0; i < ELEMENTS.poisoned.cloud.maxActive + 4; i++) ds.push(new Dummy(i + 1, i * 10, 0));
+    h.add(...ds);
+    for (const d of ds) h.status.applyElement(d, 'poison', T.poison * 3, 'player');
+    h.tick(3);
+    for (const d of ds) d.alive = false;
+    h.tick();
+    expect(h.clouds).toHaveLength(ELEMENTS.poisoned.cloud.maxActive);
+  });
+
   it('no cloud below the minimum stacks', () => {
     const h = setup();
     const d = new Dummy(1);

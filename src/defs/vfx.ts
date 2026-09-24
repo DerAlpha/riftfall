@@ -2329,7 +2329,7 @@ export const VFX_EFFECTS = {
   'status.voidMark': {
     emitters: [
       motes(VOID_C, [2, 3], [-0.7, -0.35], [0.5, 0.8], 9, { minCount: 1, shell: 0.35, drag: 0, gravity: 0 }),
-      { ...flashGlow(VOID_C, 0.28, 0.3, 2.2), flash: false, sizeEnd: 1.2, count: [0, 1], minCount: 0 },
+      { ...flashGlow(VOID_C, 0.28, 0.3, 3.5), flash: false, sizeEnd: 1.2, count: [0, 1], minCount: 0 },
       billow('mist', VOID_SMOKE, [0, 1], [0.14, 0.22], 2.5, [0.6, 1], [0.1, 0.4], 0.4, { spread: 180 }),
     ],
   },

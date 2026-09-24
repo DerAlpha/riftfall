@@ -36,7 +36,7 @@ const P = VIEWMODEL_ART.materials;
 
 const BORE_Y = 0.048;
 /** Sight line: rear aperture center = front post tip. */
-const SIGHT_Y = 0.112;
+const SIGHT_Y = 0.122;
 const GRIP_TILT = -17;
 const GRIP_TOP = { y: 0.004, z: 0.012 } as const;
 const LEDS = 10;
@@ -114,8 +114,9 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     'gunmetal',
     profileX(
       [
-        [-0.095, 0.074],
-        [-0.02, 0.087],
+        [-0.095, 0.062],
+        [-0.03, 0.084],
+        [0.0, 0.087],
         [0.145, 0.087],
         [ROTOR.back * -1 + 0.002, 0.078],
         [-ROTOR.back + 0.002, 0.016],
@@ -129,8 +130,8 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     { paint: P.gunmetal.paint },
   );
   // Top deck + rail and the LED strip on the left top chamfer.
-  b.add(BODY, 'darkMetal', roundedBox(0.03, 0.005, 0.2, 0.0015), {
-    pos: [0, 0.088, -0.045],
+  b.add(BODY, 'darkMetal', roundedBox(0.03, 0.005, 0.165, 0.0015), {
+    pos: [0, 0.088, -0.0625],
     paint: P.darkMetal.paint,
   });
   b.add(BODY, 'darkMetal', roundedBox(0.012, 0.004, 0.14, 0.001), {
@@ -464,7 +465,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
 
   // --- rear aperture sight ---
   b.add('sight', 'gunmetal', roundedBox(0.016, SIGHT_Y - 0.094, 0.01, 0.0015), {
-    pos: [0, (SIGHT_Y + 0.082) / 2 - 0.009, -0.018],
+    pos: [0, (SIGHT_Y + 0.082) / 2, -0.018],
     paint: P.darkMetal.paint,
   });
   b.add('sight', 'gunmetal', tubeZ(0.0074, 0.0032, 0.005, 24), {

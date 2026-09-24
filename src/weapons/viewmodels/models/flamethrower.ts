@@ -21,7 +21,7 @@ const P = VIEWMODEL_ART.materials;
 
 const BORE_Y = 0.05;
 /** Sight line: rear notch floor = front post top. */
-const SIGHT_Y = 0.104;
+const SIGHT_Y = 0.113;
 const GRIP_TILT = -17;
 const GRIP_TOP = { y: 0.004, z: 0.012 } as const;
 const LEDS = 8;
@@ -101,7 +101,8 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     'gunmetal',
     profileX(
       [
-        [-0.085, 0.072],
+        [-0.085, 0.06],
+        [-0.02, 0.08],
         [0.0, 0.083],
         [0.118, 0.083],
         [-WAND.back + 0.004, 0.074],
@@ -181,8 +182,8 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     ),
     { paint: P.darkMetal.paint },
   );
-  b.add(BODY, 'sight', new BoxGeometry(0.003, 0.003, 0.003), {
-    pos: [0, SIGHT_Y - 0.0015, WAND.front + 0.015],
+  b.add(BODY, 'sight', new BoxGeometry(0.0042, 0.0042, 0.0042), {
+    pos: [0, SIGHT_Y - 0.0021, WAND.front + 0.015],
   });
   // Tank brackets (hanging from the wand) and the front handle.
   for (const z of [TANK.back - 0.03, TANK.front + 0.03]) {

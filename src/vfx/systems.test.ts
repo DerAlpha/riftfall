@@ -1005,6 +1005,7 @@ describe('vfx dev commands', () => {
     expect(cmds.find((c) => c.name === 'vfx')!.complete!(['impact.s'])).toEqual([
       'impact.slime',
       'impact.shield',
+      'impact.shock',
     ]);
   });
 });

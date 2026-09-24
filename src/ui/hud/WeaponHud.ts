@@ -40,6 +40,8 @@ export class WeaponHud {
   private readonly promptEl: HTMLDivElement;
 
   private weaponId: string | null = null;
+  /** M5: effective names (forge tiers); null = the def name. */
+  private nameOf: ((weaponId: string) => string | null | undefined) | null = null;
   private currentSlot = -1;
   private mag: number | null = null;
   private reserve: number | null = null;
@@ -139,13 +141,27 @@ export class WeaponHud {
     this.setCurrentSlot(slot);
     if (weaponId === this.weaponId) return;
     this.weaponId = weaponId;
-    const def = weaponId ? getWeaponDef(weaponId) : undefined;
-    setText(this.nameEl, weaponId ? (def?.name ?? weaponId) : '');
+    setText(this.nameEl, weaponId ? this.displayName(weaponId) : '');
     this.weaponEl.hidden = weaponId === null && this.chips.every((c) => !c.weaponId);
     if (weaponId) {
       this.switchTimer = HUD.weapon.switchFlashSeconds;
       this.weaponEl.classList.add('is-switching');
     }
+  }
+
+  /** M5: where effective weapon names come from (WeaponSystem.effectiveDef). */
+  setNameSource(nameOf: ((weaponId: string) => string | null | undefined) | null): void {
+    this.nameOf = nameOf;
+    if (this.weaponId) setText(this.nameEl, this.displayName(this.weaponId));
+  }
+
+  /** The weapon's name changed (Rift Forge tier): refresh it if it is the one in hand. */
+  refreshName(weaponId: string): void {
+    if (weaponId === this.weaponId) setText(this.nameEl, this.displayName(weaponId));
+  }
+
+  private displayName(weaponId: string): string {
+    return this.nameOf?.(weaponId) ?? getWeaponDef(weaponId)?.name ?? weaponId;
   }
 
   setReloading(reloading: boolean): void {

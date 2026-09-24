@@ -266,6 +266,8 @@ export class Hud {
       events.on('weapon:reloadStart', () => this.weapon.setReloading(true)),
       events.on('weapon:reloadEnd', () => this.weapon.setReloading(false)),
       events.on('weapon:dryFire', () => this.weapon.onDryFire()),
+      // M5: a Rift Forge tier renames the weapon (setWeaponNameSource supplies the effective name).
+      events.on('forge:upgraded', (e) => this.weapon.refreshName(e.weaponId)),
     );
     if (typeof window !== 'undefined') window.addEventListener('resize', this.onResize);
     this.measureViewport();
@@ -389,6 +391,11 @@ export class Hud {
   /** Power-up timer clock (PowerUpSystem: remaining / duration per type); null counts frame time. */
   setPowerUpSource(source: PowerUpTimerSource | null): void {
     this.economy.setPowerUpSource(source);
+  }
+
+  /** M5: effective weapon names (Rift Forge tier names); null = the def names. */
+  setWeaponNameSource(nameOf: ((weaponId: string) => string | null | undefined) | null): void {
+    this.weapon.setNameSource(nameOf);
   }
 
   /** Zone display names for the zone unlock banner (map zones). */

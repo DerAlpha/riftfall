@@ -71,11 +71,14 @@ export const buildBurstrifle: ViewmodelBuilder = (kit) => {
       paint: P.darkMetal.paint,
     });
   }
-  b.add(BODY, 'polymer', roundedBox(0.04, 0.012, 0.13, 0.004, 2), {
-    pos: [0, UPPER_TOP + 0.002, 0.18],
-    paint: P.polymer.paint,
-  });
-  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.25), { pos: [-0.0243, 0.052, 0.1] });
+  // Cheek pads on the flanks (flush: nothing rises under the aimed eye).
+  for (const side of [-1, 1]) {
+    b.add(BODY, 'grip', roundedBox(0.0022, 0.022, 0.12, 0.001), {
+      pos: [side * 0.0242, 0.064, 0.18],
+      uvDensity: VIEWMODEL_ART.knurlDensity,
+    });
+  }
+  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.1), { pos: [-0.0243, 0.05, 0.03] });
 
   // --- lower shell: magwell behind the grip, butt ---
   b.add(

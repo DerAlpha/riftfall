@@ -130,9 +130,9 @@ export const buildMinigun: ViewmodelBuilder = (kit) => {
     paint: P.darkMetal.paint,
   });
   for (let i = 0; i < 9; i++) {
-    b.add(BODY, 'gunmetal', ring(0.033, 0.0395, 0.004, 28), {
+    b.add(BODY, 'darkMetal', ring(0.033, 0.0395, 0.004, 28), {
       pos: [0, AXIS_Y, HOUSING_REAR + 0.012 + i * 0.013],
-      paint: 0.6,
+      paint: P.darkMetal.paint,
     });
   }
   for (let i = 0; i < 3; i++) {
@@ -362,8 +362,8 @@ export const buildMinigun: ViewmodelBuilder = (kit) => {
       profileZ(
         [
           [0.0, 0.0],
-          [0.009, 0.0],
-          [0.0, 0.012],
+          [0.013, 0.0],
+          [0.0, 0.017],
         ],
         0.012,
         { bevel: 0.0008 },

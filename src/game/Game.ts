@@ -9,7 +9,7 @@ import { EventBus } from '../core/EventBus';
 import type { GameEvents, PauseReason } from '../core/events';
 import { GameLoop } from '../core/GameLoop';
 import { createLogger } from '../core/log';
-import type { LevelInstance, SaveData } from '../core/contracts';
+import type { ArsenalVfxApi, LevelInstance, SaveData } from '../core/contracts';
 import { BOOT_PROGRESS, ENGINE } from '../defs/engine';
 import { MOVEMENT } from '../defs/movement';
 import { POWERUPS } from '../defs/powerups';
@@ -51,6 +51,7 @@ import { VFX } from '../defs/vfx';
 import { VfxSystem } from '../vfx/VfxSystem';
 import { VfxBridge } from '../vfx/VfxBridge';
 import { createVfxCommands } from '../vfx/vfxCommands';
+import { createArsenalCommands } from '../vfx/arsenal/arsenalCommands';
 import { TrainingTargets } from '../world/TrainingTargets';
 import { registerDevCommands } from './devCommands';
 import { runFixedTick } from './fixedTick';
@@ -156,6 +157,8 @@ export interface GameSystems {
   weapons: WeaponSystem;
   vfx: VfxSystem;
   vfxBridge: VfxBridge;
+  /** M5 arsenal visuals (projectiles, trails, beams, fields, charge glow) – part of the VFX system. */
+  arsenalVfx: ArsenalVfxApi;
   targets: TrainingTargets | null;
   // M3
   map: MapEntry;
@@ -578,6 +581,8 @@ export class Game {
     hud.setWaveCountdownSource(() => waves.intermissionLeft);
     // M4: power-up timers read the system's clock; zone names for the unlock banner; prompt key cap.
     hud.setPowerUpSource(powerUps);
+    // M5: the HUD names a forged weapon by its tier.
+    hud.setWeaponNameSource((id) => weapons.effectiveDef(id)?.name);
     hud.setZoneNames(isMapLevel(level) ? level.zones : []);
     hud.setInputDevice(input.device);
     health.announce();
@@ -628,6 +633,7 @@ export class Game {
       weapons,
       vfx,
       vfxBridge,
+      arsenalVfx: vfx.arsenal,
       targets,
       map,
       nav,
@@ -820,6 +826,16 @@ export class Game {
       movementSandbox: this.movementSandbox,
     });
     for (const c of createVfxCommands({ vfx, events: this.sys.events, physics, camera: render.camera }))
+      devConsole.register(c);
+    // `fx`: arsenal visual previews (projectiles, beams, fields, charge) without a weapon.
+    const sockets = this.sys.viewmodel;
+    for (const c of createArsenalCommands({
+      arsenal: vfx.arsenal,
+      vfx,
+      physics,
+      camera: render.camera,
+      sockets: () => sockets,
+    }))
       devConsole.register(c);
     const { nav, level, enemies, waves, runFlow, player } = this.sys;
     const commands = [

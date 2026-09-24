@@ -13,6 +13,7 @@
  * RENDER.volumetricLayer and preallocated at their capacity here. Grenade bodies are lit instanced
  * meshes in the world pass. Unknown ids fall back to DEFAULT_* styles (drawn, never crash).
  */
+import type { DamageElement } from '../core/events';
 import type { Range, Rgb } from './vfx';
 
 // ---------------------------------------------------------------------------
@@ -796,17 +797,58 @@ export const ARSENAL_VFX = {
   reducedFlashingScale: 0.6,
   /** Screen-space lenses at once (singularity fields + void orbs). */
   lenses: 4,
-  /** Dev preview (`fx` console command). */
+  /** Dev preview (`fx` console command, vfx/arsenal/arsenalCommands.ts). */
   preview: {
-    /** Seconds a previewed beam fires, a field lasts (0 = its own duration), a charge takes. */
+    /** Seconds a previewed beam fires, a field lasts, a charge takes (then it fires a rail shot). */
     beamSeconds: 3,
     fieldSeconds: 6,
     fieldRadius: 4,
-    chargeSeconds: 1.6,
-    projectileSpeed: 24,
-    projectileSeconds: 2.5,
-    /** Spawn ahead of the camera (m) and fake chain-arc spread for previewed lightning. */
+    chargeSeconds: 1.4,
+    chargeHold: 0.5,
+    /** Max beam / aim reach (m), projectile life (s), spawn ahead of the camera (m). */
+    range: 18,
+    projectileSeconds: 3,
     ahead: 0.6,
+    /** Fake chain arcs of a previewed lightning beam: hops, spread (m), re-pick interval (s). */
+    arcHops: 3,
     arcSpread: 3,
+    arcInterval: 0.3,
+    /** What a previewed projectile does on impact (dev stand-in for the weapon data). */
+    projectiles: {
+      'projectile.plasma': { speed: 60, gravity: 0, effect: 'impact.plasma' },
+      'projectile.grenade': { speed: 22, gravity: 9.8, explosion: 'physical', radius: 4.5 },
+      'projectile.frag': { speed: 16, gravity: 9.8, explosion: 'physical', radius: 4 },
+      'projectile.incendiary': {
+        speed: 16,
+        gravity: 9.8,
+        explosion: 'fire',
+        radius: 3.5,
+        field: 'field.damage.fire',
+        fieldRadius: 3,
+      },
+      'projectile.cryo': { speed: 16, gravity: 9.8, explosion: 'ice', radius: 4, field: 'field.slow.ice', fieldRadius: 4 },
+      'projectile.singularity': {
+        speed: 16,
+        gravity: 9.8,
+        explosion: 'void',
+        radius: 2.5,
+        field: 'field.pull.void',
+        fieldRadius: 5,
+      },
+      'projectile.voidorb': { speed: 14, gravity: 0, explosion: 'void', radius: 2.2, field: 'field.pull.void', fieldRadius: 5 },
+      'projectile.shockorb': { speed: 32, gravity: 0, explosion: 'shock', radius: 1.6 },
+      'projectile.cryoorb': { speed: 26, gravity: 2, explosion: 'ice', radius: 5, field: 'field.slow.ice', fieldRadius: 6 },
+    } as Record<string, PreviewProjectileDef>,
   },
 } as const;
+
+/** Dev preview of a projectile visual: flight and what it leaves behind. */
+export interface PreviewProjectileDef {
+  readonly speed: number;
+  readonly gravity: number;
+  readonly effect?: string;
+  readonly explosion?: DamageElement;
+  readonly radius?: number;
+  readonly field?: string;
+  readonly fieldRadius?: number;
+}

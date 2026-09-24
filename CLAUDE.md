@@ -212,12 +212,12 @@ RenderPass(world)                                 (incl. decals, casings, traini
 | 1   | Setup, renderer, post-FX, test room, FPS controller (full movement)         | done   |
 | 2   | Weapons (3), viewmodel, recoil, hit feedback, decals, particles             | done   |
 | 3   | Enemy AI + navmesh, 3 enemy types, wave spawner, game over → vertical slice | done   |
-| 4   | Economy: points, wall buys, doors, mystery box, perks, power-ups            | –      |
+| 4   | Economy: points, wall buys, doors, mystery box, perks, power-ups            | done   |
 | 5   | All weapons, attachments, Rift Forge, elemental mods                        | –      |
 | 6   | All enemies, elite affixes, spawn director, bosses                          | –      |
 | 7   | Remaining maps, traps, events, easter eggs                                  | –      |
 | 8   | All modes incl. roguelite cards + daily challenge                           | –      |
-| 9   | Meta progression, skill tree, achievements, cosmetics, stats                | –      |
+| 9   | Meta progression, skill tree, achievements, cosmetics, stats                | core   |
 | 10  | Audio polish, dynamic music                                                 | –      |
 | 11  | UI polish, settings, accessibility                                          | –      |
 | 12  | Performance pass, balancing, bugfixing, production build                    | –      |
@@ -322,6 +322,14 @@ RenderPass(world)                                 (incl. decals, casings, traini
   blocker far below the world. Interactable props live in their own scene group, never under level.root.
 - **Pad X** is shared by reload and interact: WeaponSystem skips reload presses while an interaction is
   offered and the gamepad is the active device (`setReloadSuppressor`).
+
+- **Economy HUD (M4):** HUD timing runs on game time (banners, popups, timers); the slow-motion tint is a CSS colour-blend
+  overlay in #app; perk machine hums play only at the nearest 2 machines, jingles are composed from the perk id. Only discrete hits
+  (bullet/pellet/projectile/melee) pay per-hit points; beam/blast/field/status ticks pay at the kill.
+- **Meta progression (M9 core):** save v2 holds it (migration 1→2). Gameplay events become progress signals (metric + tags) and
+  achievements, challenges and lifetime stats are conditions over them, keyed by id (new content only adds defs). Challenge sets are
+  regenerated from their key (tamper-proof). Skill nodes are StatModifiers with source `skill:<id>`, re-applied after `stats.reset()`
+  in the run reset. A fresh lab profile gets dash / double jump from the Taktik branch.
 
 ## Known limitations / next steps
 

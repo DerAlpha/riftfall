@@ -249,7 +249,11 @@ export class MapEventDirector implements MapEventApi {
       g.update(dt, this.time, focused === g && holdProgress > 0, reduced);
       this.alarmLoops[i]!.update(g.alarm, listener);
     }
-    const a = this.runners.find((r) => r.def.kind === 'gravityAnomaly') as AnomalyRunner | undefined;
+    let a: AnomalyRunner | undefined;
+    for (let i = 0; i < this.runners.length; i++) {
+      const r = this.runners[i]!;
+      if (r.def.kind === 'gravityAnomaly') a = r as AnomalyRunner;
+    }
     if (this.anomaly) {
       const strength = a ? this.anomalyStrength(a) : 0;
       this.anomaly.update(dt, strength);

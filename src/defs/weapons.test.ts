@@ -86,7 +86,8 @@ describe('weapon defs', () => {
     expect(WEAPONS.rifle.damage.base).toBe(28);
     expect(WEAPONS.shotgun.fireMode).toBe('pump');
     expect(WEAPONS.shotgun.pellets).toBe(9);
-    expect(WEAPONS.shotgun.damage.base).toBe(14);
+    // M5 retune (was 14): the pump kept pace with the arsenal's shotguns.
+    expect(WEAPONS.shotgun.damage.base).toBe(17);
     expect(Math.abs(WEAPONS.shotgun.rpm - 70)).toBeLessThanOrEqual(5);
     // The pistol is the most precise hip weapon, the shotgun kicks hardest.
     expect(WEAPONS.pistol.spread.hip).toBeLessThan(WEAPONS.rifle.spread.hip);

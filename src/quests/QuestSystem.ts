@@ -190,6 +190,7 @@ export class QuestSystem implements QuestApi {
   /** Where the carried core sits after feeding (socket cradle) – shown during the defend step. */
   private fed: Vector3 | null = null;
   private disposed = false;
+  private readonly loopUpdate = { pitch: 1, volume: 1 };
   /** Target registration changed inside a damage call: re-synced on the next tick / frame. */
   private dirty = false;
 
@@ -551,10 +552,10 @@ export class QuestSystem implements QuestApi {
         this.defendLoop = audio.startLoop(V.audio.defend, { volume: V.audio.defendGain, bus: 'sfx' });
       const [p0, p1] = V.defend.pitch;
       const inside = m.defending(player);
-      audio.updateLoop?.(this.defendLoop, {
-        pitch: p0 + (p1 - p0) * m.progress,
-        volume: V.audio.defendGain * (inside ? 1 : 0.5),
-      });
+      const u = this.loopUpdate;
+      u.pitch = p0 + (p1 - p0) * m.progress;
+      u.volume = V.audio.defendGain * (inside ? 1 : V.audio.outsideGain);
+      audio.updateLoop?.(this.defendLoop, u);
     } else {
       this.stopLoop('defend');
     }

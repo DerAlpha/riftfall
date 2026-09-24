@@ -478,6 +478,11 @@ describe('weapon roster (M5 arsenal)', () => {
     }
     // The sniper one-shots a wave-10 Spucker (110 HP × 1.9) with a headshot, the revolver a
     // wave-10 Schwärmer (60 × 1.9) in the head.
+    // Shotguns are the close-range class: held down (pump / auto) or doubled up, inside their
+    // falloff start they reach at least ¾ of the automatics' floor (and one pull hits far harder).
+    for (const d of defs.filter((w) => w.kind === 'hitscan' && w.category === 'shotgun')) {
+      expect(bodyDps(d), d.id).toBeGreaterThan(250 * 0.75);
+    }
     const sniper = byId('sniper');
     expect(sniper.damage.base * sniper.damage.headMultiplier).toBeGreaterThan(110 * 1.9);
     const revolver = byId('revolver');

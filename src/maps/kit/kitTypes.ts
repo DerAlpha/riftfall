@@ -84,6 +84,7 @@ export interface KitBanner {
  */
 export class PositionalLoop {
   private handle = 0;
+  private readonly retune = { volume: 1, pitch: 1 };
   constructor(
     private readonly audio: KitAudio | null,
     private readonly id: string,
@@ -117,7 +118,10 @@ export class PositionalLoop {
 
   /** Retune the running loop (volume multiplier on the base gain, pitch). */
   set(volume: number, pitch = 1): void {
-    if (this.handle > 0) this.audio?.updateLoop?.(this.handle, { volume: this.gain * volume, pitch });
+    if (this.handle <= 0) return;
+    this.retune.volume = this.gain * volume;
+    this.retune.pitch = pitch;
+    this.audio?.updateLoop?.(this.handle, this.retune);
   }
 
   stop(fade?: number): void {

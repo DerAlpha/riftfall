@@ -3,8 +3,9 @@
  * pellet (aggregated to one damage event per target and zone).
  *
  * Feel targets:
- * - SG-12 „Brecher“ (M2, tuning unchanged): 9 × 14 dmg pump shotgun (~70 rpm) that deletes things
- *   up close.
+ * - SG-12 „Brecher“ (M2 feel): 9 × 17 dmg pump shotgun (75 rpm) that deletes things up close – one
+ *   pull drops a Schwärmer up to wave 15. (M5 retune from 9 × 14 at 72 rpm: 150 body DPS left it
+ *   far behind every other shotgun and the automatics.)
  *   Forge: Drachenatem (burning pellets) → Höllenschlund (pellets ricochet) → Weltenbrecher
  *   (dragon's-breath fire pellets; kills leave burning pools).
  * - AS-20 „Mahlstrom“: drum-fed automatic, 300 rpm, 8 × 11 dmg (~440 DPS inside 6 m). Every shot
@@ -31,7 +32,7 @@ export const SHOTGUNS = {
     fireMode: 'pump',
     burst: null,
     damage: {
-      base: 14,
+      base: 17,
       headMultiplier: 1.5,
       limbMultiplier: 0.8,
       weakpointMultiplier: 1.8,
@@ -43,7 +44,7 @@ export const SHOTGUNS = {
       propImpulse: 40,
     },
     pellets: 9,
-    rpm: 72,
+    rpm: 75,
     magazine: 8,
     reserve: 40,
     chambered: false,

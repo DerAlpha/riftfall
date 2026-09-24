@@ -208,6 +208,8 @@ export const QUEST_VISUALS = {
     hitGain: 0.8,
     stepGain: 0.7,
     defendGain: 0.5,
+    /** The defend drone while the player is outside the radius (× defendGain). */
+    outsideGain: 0.5,
     completeGain: 1,
     /** Positional hums start within this distance (m). */
     humDistance: 14,

@@ -375,7 +375,7 @@ export const TRAP_SLOTS: Readonly<Record<string, readonly TrapSlotDef[]>> = {
       position: [-22, 0, 3],
       mount: 'floor',
       yawDeg: 90,
-      panel: { position: [-30, 1.35, 3.6], facing: 'px' },
+      panel: { position: [-30, 1.35, 4.5], facing: 'px' },
     },
     {
       id: 'trap_test_fan',
@@ -383,7 +383,7 @@ export const TRAP_SLOTS: Readonly<Record<string, readonly TrapSlotDef[]>> = {
       zone: 'hall',
       position: [-30, 1.5, -6],
       facing: 'px',
-      panel: { position: [-30, 1.35, -9], facing: 'px' },
+      panel: { position: [-30, 1.35, -10.2], facing: 'px' },
     },
     {
       id: 'trap_test_flame',

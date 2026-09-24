@@ -247,7 +247,9 @@ describe('every special of the roster is live in play', () => {
           const amounts =
             def.kind === 'projectile'
               ? t.spawnedDamage
-              : target!.received.filter((d) => d.kind === 'bullet' || d.kind === 'pellet').map((d) => d.amount);
+              : target!.received
+                  .filter((d) => d.kind === 'bullet' || d.kind === 'pellet')
+                  .map((d) => d.amount);
           expect(amounts.length).toBeGreaterThan(n);
           const plain = Math.min(...amounts);
           expect(Math.max(...amounts) / plain).toBeCloseTo(special.multiplier, 3);
@@ -281,4 +283,3 @@ describe('every special of the roster is live in play', () => {
     });
   }
 });
-

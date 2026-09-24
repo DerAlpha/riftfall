@@ -32,7 +32,7 @@ describe('damage', () => {
 
   it('M2 feel targets: shotgun devastating close, weak far; rifle ~28', () => {
     const close = S.base * WEAPONS.shotgun.pellets;
-    expect(close).toBe(126);
+    expect(close).toBe(153);
     expect(hitDamage(S, 'body', 30) * WEAPONS.shotgun.pellets).toBeLessThan(close * 0.3);
     expect(R.base).toBe(28);
     expect(WEAPONS.rifle.rpm).toBe(650);

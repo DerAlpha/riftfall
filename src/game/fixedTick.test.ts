@@ -22,6 +22,8 @@ function recorder(calls: string[]): FixedTickSystems {
     targets: step('targets'),
     waves: step('waves'),
     enemies: step('enemies'),
+    projectiles: step('projectiles'),
+    fields: step('fields'),
     runFlow: step('runFlow'),
     interaction: step('interaction'),
     interactables: step('interactables'),
@@ -66,7 +68,7 @@ function box(d: Damageable, zone: HitZone): Hitbox {
 }
 
 describe('runFixedTick', () => {
-  it('steps player → interaction → weapons → targets → waves → enemies → interactables → powerUps → physics → health → perks → level → runFlow', () => {
+  it('steps player → interaction → weapons → targets → waves → enemies → projectiles → fields → interactables → powerUps → physics → health → perks → level → runFlow', () => {
     const calls: string[] = [];
     runFixedTick(recorder(calls), DT);
     expect(calls).toEqual([
@@ -76,6 +78,8 @@ describe('runFixedTick', () => {
       'targets',
       'waves',
       'enemies',
+      'projectiles',
+      'fields',
       'interactables',
       'powerUps',
       'physics',
@@ -97,6 +101,8 @@ describe('runFixedTick', () => {
     s.interactables = null;
     s.powerUps = null;
     s.perks = null;
+    s.projectiles = null;
+    s.fields = null;
     s.player.position.y = PHYSICS.killPlaneY - 1;
     runFixedTick(s, DT);
     expect(calls).toEqual(['player', 'weapons', 'teleport', 'physics', 'health', 'level']);

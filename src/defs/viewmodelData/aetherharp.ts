@@ -121,8 +121,8 @@ export const AETHERHARP_VIEWMODEL: WeaponViewmodelDef | null = {
       {
         part: 'resonator',
         type: 'tween',
-        from: { rot: V(0, 0, 0) },
-        pose: { rot: V(0, 0, 180) },
+        from: { rot: V(0, 0, -180) },
+        pose: {},
         duration: 0.35,
         ease: 'inOut',
       },

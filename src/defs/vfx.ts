@@ -8,8 +8,12 @@
  * intensities are candela (physically based point lights, decay 2) like the level lights.
  *
  * Extension points: new effects are new entries in VFX_EFFECTS; weapons reference them by id
- * (WeaponVfxDef.muzzle / impact / casing), unknown ids are ignored at runtime. Elemental
- * explosions reuse a base preset tinted by ELEMENT_TINTS (M5 elemental mods).
+ * (WeaponVfxDef.muzzle / impact / casing), unknown ids are ignored at runtime. Every element has
+ * its own explosion preset (EXPLOSION_PRESET); an element without one tints the frag blast by
+ * ELEMENT_TINTS. M5 arsenal presets (muzzle.* / impact.* families, element explosions, trail
+ * puffs, beam hits, field ambience, status.* and combo.* bursts) follow the naming conventions of
+ * defs/weaponData/common.ts; the arsenal's projectile / trail / beam / field STYLES live in
+ * defs/arsenalVfx.ts.
  */
 import type { DamageElement, FleshSurface, ImpactKind, SurfaceType } from '../core/events';
 import type { QualityLevel } from '../save/settingsSchema';
@@ -110,6 +114,11 @@ export interface EmitterDef {
   /** Spawn offset along the axis (m) and random spawn sphere radius (m), both scaled. */
   readonly offset?: number;
   readonly jitter?: number;
+  /**
+   * Spawn on a shell of this radius (m, scaled) along each particle's OWN direction; with a
+   * negative `speed` the particles fall back into the center (implosions, converging motes).
+   */
+  readonly shell?: number;
   /** Tinted by the explosion element (ELEMENT_TINTS). */
   readonly elemental?: boolean;
   /** A bright flash (dimmed by the reduce-flashing accessibility option). */
@@ -169,6 +178,11 @@ export interface EffectPreset {
   readonly groundDecal?: { readonly kind: DecalKind; readonly sizePerScale: number; readonly probe: number };
   /** Explosions: radius at which the preset is authored (scale = radius / referenceRadius). */
   readonly referenceRadius?: number;
+  /**
+   * Muzzle presets (M5): hitscan shots of weapons with this muzzle draw this arsenal ray style
+   * (defs/arsenalVfx BEAM_STYLES, e.g. the railgun slug) instead of a thin tracer.
+   */
+  readonly tracer?: string;
 }
 
 // Shared colors (linear).
@@ -308,6 +322,189 @@ const MUZZLE_SPARKS: EmitterDef = {
   gravity: 0.5,
   stretch: 0.01,
 };
+
+// --- M5 arsenal: element palette and emitter building blocks ---
+const PLASMA_C: Rgb = [0.3, 0.78, 1];
+const PLASMA_HOT: Rgb = [0.75, 0.95, 1];
+const SHOCK_C: Rgb = [0.5, 0.7, 1];
+const SHOCK_HOT: Rgb = [0.85, 0.92, 1];
+const VOID_C: Rgb = [0.62, 0.22, 1];
+const VOID_DEEP: Rgb = [0.34, 0.06, 0.8];
+const VOID_SMOKE: Rgb = [0.05, 0.02, 0.08];
+const FROST_C: Rgb = [0.55, 0.85, 1];
+const FROST_HOT: Rgb = [0.85, 0.97, 1];
+const FROST_MIST: Rgb = [0.72, 0.84, 0.94];
+const FIRE_C: Rgb = [1, 0.5, 0.14];
+const FIRE_END: Rgb = [0.75, 0.13, 0.02];
+const POISON_C: Rgb = [0.35, 1, 0.22];
+const POISON_MIST: Rgb = [0.16, 0.32, 0.08];
+const SOOT: Rgb = [0.12, 0.11, 0.1];
+
+/** One bright camera-facing flash (explosion / impact / muzzle core). */
+function flashGlow(color: Rgb, size: number, life: number, intensity: number, offset = 0): EmitterDef {
+  return {
+    blend: 'add',
+    sprite: 'glow',
+    count: [1, 1],
+    minCount: 1,
+    life: [life * 0.85, life],
+    speed: [0, 0],
+    spread: 0,
+    size: [size, size],
+    sizeEnd: 0.5,
+    color,
+    intensity,
+    intensityEnd: 0,
+    offset,
+    flash: true,
+  };
+}
+
+/** An expanding shock ring (camera-facing). */
+function shockRing(color: Rgb, size: number, sizeEnd: number, life: number, intensity: number, offset = 0): EmitterDef {
+  return {
+    blend: 'add',
+    sprite: 'ring',
+    count: [1, 1],
+    minCount: 1,
+    life: [life * 0.9, life],
+    speed: [0, 0],
+    spread: 0,
+    size: [size, size],
+    sizeEnd,
+    color,
+    intensity,
+    intensityEnd: 0,
+    alpha: 0.85,
+    offset,
+  };
+}
+
+/** Velocity-stretched spark streaks (no bounce: cheap, no floor probe). */
+function streaks(
+  color: Rgb,
+  count: Range,
+  speed: Range,
+  life: Range,
+  intensity: number,
+  spread = 180,
+  extra: Partial<EmitterDef> = {},
+): EmitterDef {
+  return {
+    blend: 'add',
+    sprite: 'streak',
+    count,
+    life,
+    speed,
+    spread,
+    size: [0.012, 0.022],
+    sizeEnd: 0.5,
+    color,
+    intensity,
+    intensityEnd: intensity * 0.2,
+    gravity: 0.5,
+    drag: 1.5,
+    stretch: 0.02,
+    ...extra,
+  };
+}
+
+/** Drifting glowing motes (embers, void motes, toxic spores). */
+function motes(color: Rgb, count: Range, speed: Range, life: Range, intensity: number, extra: Partial<EmitterDef> = {}): EmitterDef {
+  return {
+    blend: 'add',
+    sprite: 'ember',
+    count,
+    life,
+    speed,
+    spread: 180,
+    size: [0.02, 0.04],
+    sizeEnd: 0.3,
+    color,
+    intensity,
+    intensityEnd: intensity * 0.2,
+    gravity: -0.15,
+    drag: 1.5,
+    ...extra,
+  };
+}
+
+/** Lit, alpha-blended billowing smoke / mist / steam. */
+function billow(
+  sprite: 'smoke' | 'smokeB' | 'mist' | 'dust',
+  color: Rgb,
+  count: Range,
+  size: Range,
+  sizeEnd: number,
+  life: Range,
+  speed: Range,
+  alpha: number,
+  extra: Partial<EmitterDef> = {},
+): EmitterDef {
+  return {
+    blend: 'alpha',
+    sprite,
+    count,
+    life,
+    speed,
+    spread: 60,
+    size,
+    sizeEnd,
+    color,
+    alpha,
+    alphaEnd: alpha * 0.8,
+    fadeIn: 0.12,
+    fadeOut: 0.5,
+    gravity: -0.08,
+    drag: 2,
+    spin: [-0.8, 0.8],
+    ...extra,
+  };
+}
+
+/** Rising flame tongues. */
+function flames(count: Range, size: Range, life: Range, speed: Range, intensity: number, extra: Partial<EmitterDef> = {}): EmitterDef {
+  return {
+    blend: 'add',
+    sprite: 'flame',
+    count,
+    life,
+    speed,
+    axis: 'up',
+    spread: 22,
+    size,
+    sizeEnd: 2.2,
+    color: FIRE_C,
+    intensity,
+    colorEnd: FIRE_END,
+    intensityEnd: intensity * 0.2,
+    alpha: 0.9,
+    drag: 2,
+    gravity: -0.45,
+    spin: [-2, 2],
+    ...extra,
+  };
+}
+
+/** Energy-weapon muzzle light (no viewmodel light: the rig has its own muzzle light). */
+function muzzleLight(color: Rgb, intensity: number, range: number, duration = 0.05): LightFlashDef {
+  return { color, intensity, range, duration, offset: MUZZLE_LIGHT_OFFSET, priority: 1, viewmodel: false };
+}
+
+/** Impact flash light (low priority, capped per frame). */
+function impactLight(color: Rgb, intensity = 2.5): LightFlashDef {
+  return { ...IMPACT_LIGHT, color, intensity };
+}
+
+/** Element explosion light (priority 2 like the frag blast). */
+function blastLight(color: Rgb, intensity: number, duration: number, flicker: number): LightFlashDef {
+  return { color, intensity, range: 16, duration, flicker, offset: 0.5, priority: 2 };
+}
+
+/** Status / combo light on an enemy. */
+function bodyLight(color: Rgb, intensity: number, duration: number): LightFlashDef {
+  return { color, intensity, range: 6, duration, offset: 0.3, priority: 1, flicker: 0.3 };
+}
 
 export const VFX_EFFECTS = {
   // --- impacts: world surfaces ---
@@ -1513,6 +1710,737 @@ export const VFX_EFFECTS = {
       },
     ],
   },
+  // --- M5 muzzles (world part: light + smoke / sparks; `flash`: the viewmodel sprite) ---
+  'muzzle.smg': {
+    emitters: [{ ...MUZZLE_SMOKE, count: [0, 1], size: [0.025, 0.04] }, { ...MUZZLE_SPARKS, count: [0, 1] }],
+    light: muzzleLight([1, 0.7, 0.4], 22, 6, 0.045),
+    flash: { size: 0.085, length: 0.14, color: [1, 0.76, 0.46], intensity: 14, duration: 0.035, adsScale: 0.55 },
+  },
+  'muzzle.lmg': {
+    emitters: [
+      { ...MUZZLE_SMOKE, count: [1, 2], size: [0.04, 0.06], alpha: 0.26 },
+      { ...MUZZLE_SPARKS, count: [1, 3] },
+    ],
+    light: muzzleLight([1, 0.66, 0.34], 34, 8),
+    flash: { size: 0.12, length: 0.24, color: [1, 0.72, 0.42], intensity: 17, duration: 0.04, adsScale: 0.6 },
+  },
+  /** HX-50: brake blast – a heavy forward flash, side smoke jets and a lingering puff. */
+  'muzzle.sniper': {
+    emitters: [
+      { ...MUZZLE_SMOKE, count: [3, 5], size: [0.06, 0.1], speed: [1, 2.6], spread: 70, alpha: 0.32, life: [0.9, 1.5] },
+      { ...MUZZLE_SPARKS, count: [3, 6], speed: [8, 16] },
+      { ...MUZZLE_SMOKE, count: [1, 2], size: [0.1, 0.14], sizeEnd: 7, speed: [0.3, 0.8], alpha: 0.2, life: [1.4, 2.2] },
+    ],
+    light: muzzleLight([1, 0.7, 0.4], 60, 11, 0.06),
+    flash: { size: 0.17, length: 0.34, color: [1, 0.76, 0.48], intensity: 20, duration: 0.05, adsScale: 0.45 },
+  },
+  /** PL-2: a cyan plasma spit – sparks and a glow puff, no smoke. */
+  'muzzle.plasma': {
+    emitters: [
+      streaks(PLASMA_C, [2, 4], [3, 8], [0.08, 0.18], 12, 28, { gravity: 0.3 }),
+      { ...flashGlow(PLASMA_C, 0.22, 0.07, 4, 0.05), flash: true },
+      motes(PLASMA_HOT, [0, 2], [0.5, 2], [0.2, 0.4], 6, { spread: 40 }),
+    ],
+    light: muzzleLight([0.35, 0.75, 1], 30, 7),
+    flash: { size: 0.1, length: 0.07, color: [0.55, 0.88, 1], intensity: 16, duration: 0.04, adsScale: 0.6 },
+  },
+  /** RG-9 railgun discharge: a blinding ring, radial sparks, ionised smoke. */
+  'muzzle.energy': {
+    emitters: [
+      shockRing([0.5, 0.85, 1], 0.08, 7, 0.16, 6, 0.05),
+      streaks(PLASMA_HOT, [8, 12], [6, 15], [0.1, 0.22], 14, 40, { gravity: 0.2 }),
+      billow('mist', [0.62, 0.72, 0.82], [2, 3], [0.06, 0.1], 6, [0.8, 1.3], [0.4, 1.2], 0.3, { spread: 30 }),
+      flashGlow(PLASMA_HOT, 0.45, 0.08, 5, 0.1),
+    ],
+    light: muzzleLight([0.5, 0.8, 1], 90, 12, 0.07),
+    flash: { size: 0.22, length: 0.45, color: [0.7, 0.92, 1], intensity: 22, duration: 0.05, adsScale: 0.5 },
+    tracer: 'beam.rail',
+  },
+  /** FW-4 pilot burst (beam weapons fire it when the stream starts). */
+  'muzzle.flame': {
+    emitters: [
+      motes([1, 0.55, 0.18], [1, 2], [1.5, 4], [0.3, 0.6], 8, { spread: 25, gravity: -0.3 }),
+      flames([0, 1], [0.08, 0.12], [0.12, 0.2], [1, 2.5], 4, { axis: 'normal', spread: 12 }),
+    ],
+    light: muzzleLight([1, 0.55, 0.2], 22, 5),
+    flash: { size: 0.07, length: 0.1, color: [1, 0.62, 0.3], intensity: 12, duration: 0.05, adsScale: 0.7 },
+  },
+  /** GL-6: a thump of smoke with a short orange flash. */
+  'muzzle.launcher': {
+    emitters: [
+      { ...MUZZLE_SMOKE, count: [4, 6], size: [0.07, 0.11], speed: [0.8, 2.2], spread: 24, alpha: 0.36, life: [0.9, 1.6] },
+      { ...MUZZLE_SPARKS, count: [2, 4] },
+      motes([1, 0.55, 0.2], [2, 3], [2, 5], [0.3, 0.6], 8, { spread: 20, gravity: 0.5 }),
+    ],
+    light: muzzleLight([1, 0.62, 0.3], 42, 8, 0.06),
+    flash: { size: 0.16, length: 0.16, color: [1, 0.66, 0.36], intensity: 14, duration: 0.05, adsScale: 0.7 },
+  },
+  /** SX-0 / Riss-Zerreißer: violet flash, dark wisps and motes torn out of the barrel. */
+  'muzzle.void': {
+    emitters: [
+      motes(VOID_C, [3, 5], [1, 3.5], [0.4, 0.8], 9, { spread: 55 }),
+      billow('mist', VOID_SMOKE, [1, 2], [0.06, 0.1], 5, [0.6, 1], [0.3, 1], 0.45, { spread: 30 }),
+      shockRing(VOID_C, 0.06, 5, 0.14, 5, 0.05),
+    ],
+    light: muzzleLight([0.62, 0.3, 1], 36, 7),
+    flash: { size: 0.14, length: 0.08, color: [0.72, 0.4, 1], intensity: 16, duration: 0.045, adsScale: 0.6 },
+    tracer: 'beam.void',
+  },
+  /** EX-1 / Äther-Harfe: a spray of blue-white arcs. */
+  'muzzle.shock': {
+    emitters: [
+      streaks(SHOCK_HOT, [5, 8], [4, 10], [0.05, 0.12], 16, 50, { drag: 5, stretch: 0.035 }),
+      { ...IMPACT_STAR, color: SHOCK_HOT, intensity: 12, size: [0.08, 0.12] },
+    ],
+    light: muzzleLight([0.5, 0.65, 1], 30, 7),
+    flash: { size: 0.11, length: 0.1, color: [0.62, 0.78, 1], intensity: 18, duration: 0.04, adsScale: 0.6 },
+  },
+  /** Kryo-Nova: a frost puff and ice glitter. */
+  'muzzle.ice': {
+    emitters: [
+      billow('mist', FROST_MIST, [2, 3], [0.06, 0.1], 5, [0.6, 1.1], [0.4, 1.4], 0.3, { spread: 35, gravity: 0.05 }),
+      motes(FROST_HOT, [2, 4], [1, 3], [0.3, 0.7], 8, { sprite: 'star', spread: 45, gravity: 0.4 }),
+    ],
+    light: muzzleLight([0.6, 0.85, 1], 26, 6),
+    flash: { size: 0.12, length: 0.08, color: [0.72, 0.92, 1], intensity: 14, duration: 0.045, adsScale: 0.6 },
+  },
+
+  // --- M5 element impacts (played on top of the surface effect by the weapon's impact profile) ---
+  'impact.plasma': {
+    emitters: [
+      flashGlow(PLASMA_C, 0.35, 0.1, 5, 0.03),
+      { ...IMPACT_STAR, color: PLASMA_HOT, intensity: 14 },
+      streaks(PLASMA_HOT, [6, 10], [3, 8], [0.15, 0.35], 14, 65, { axis: 'reflect', gravity: 0.8 }),
+      shockRing(PLASMA_C, 0.08, 4, 0.14, 4, 0.03),
+      motes(PLASMA_C, [2, 4], [0.5, 1.5], [0.4, 0.8], 5, { gravity: -0.2 }),
+    ],
+    light: impactLight([0.4, 0.8, 1], 3),
+  },
+  'impact.shock': {
+    emitters: [
+      { ...IMPACT_STAR, color: SHOCK_HOT, intensity: 16, size: [0.18, 0.26] },
+      streaks(SHOCK_HOT, [6, 10], [3, 9], [0.05, 0.14], 16, 80, { drag: 6, stretch: 0.04 }),
+      { ...METAL_SPARKS, color: SHOCK_HOT, colorEnd: SHOCK_C, count: [3, 6], intensity: 12 },
+      flashGlow(SHOCK_C, 0.3, 0.08, 4, 0.03),
+    ],
+    light: impactLight([0.5, 0.65, 1], 3),
+  },
+  'impact.fire': {
+    emitters: [
+      flames([2, 3], [0.14, 0.24], [0.25, 0.45], [0.6, 1.6], 3.5, { axis: 'normal', spread: 30 }),
+      motes([1, 0.55, 0.18], [2, 4], [1, 3.5], [0.4, 0.9], 9, { axis: 'normal', spread: 60, gravity: 0.2 }),
+      billow('smoke', SOOT, [0, 1], [0.12, 0.2], 4, [0.8, 1.4], [0.3, 0.8], 0.4),
+    ],
+    light: impactLight([1, 0.5, 0.2], 2.5),
+  },
+  'impact.ice': {
+    emitters: [
+      {
+        blend: 'alpha',
+        sprite: 'shard',
+        count: [5, 8],
+        minCount: 2,
+        life: [0.5, 1],
+        speed: [1.5, 5],
+        axis: 'reflect',
+        spread: 55,
+        size: [0.02, 0.045],
+        color: [0.75, 0.9, 1],
+        alpha: 0.9,
+        alphaEnd: 0.2,
+        gravity: 1.2,
+        drag: 0.3,
+        spin: [-20, 20],
+        bounce: 0.3,
+      },
+      billow('mist', FROST_MIST, [1, 2], [0.1, 0.16], 3.5, [0.5, 0.9], [0.3, 0.9], 0.35, { gravity: 0.05 }),
+      motes(FROST_HOT, [2, 3], [0.8, 2.5], [0.3, 0.6], 8, { sprite: 'star', gravity: 0.5 }),
+      flashGlow(FROST_C, 0.26, 0.08, 3.5, 0.03),
+    ],
+    light: impactLight([0.6, 0.85, 1], 2.5),
+  },
+  'impact.poison': {
+    emitters: [
+      { ...IMPACT_GLOW, color: POISON_C, intensity: 3, size: [0.16, 0.22] },
+      {
+        blend: 'add',
+        sprite: 'droplet',
+        count: [6, 10],
+        minCount: 2,
+        life: [0.4, 0.8],
+        speed: [1.5, 4],
+        spread: 50,
+        size: [0.014, 0.026],
+        color: POISON_C,
+        intensity: 3.5,
+        intensityEnd: 1.2,
+        gravity: 1.1,
+        drag: 0.4,
+        stretch: 0.012,
+      },
+      billow('mist', POISON_MIST, [1, 2], [0.12, 0.2], 3, [0.6, 1.1], [0.3, 1], 0.55),
+    ],
+    light: impactLight([0.35, 1, 0.25], 2),
+  },
+  'impact.void': {
+    emitters: [
+      flashGlow(VOID_C, 0.34, 0.12, 5, 0.04),
+      motes(VOID_C, [6, 9], [-3, -1.6], [0.14, 0.24], 9, { shell: 0.35, drag: 0, gravity: 0 }),
+      shockRing(VOID_C, 0.08, 4.5, 0.18, 4.5, 0.04),
+      billow('mist', VOID_SMOKE, [1, 2], [0.1, 0.16], 3, [0.5, 0.9], [0.2, 0.6], 0.5),
+      motes(VOID_DEEP, [2, 4], [0.4, 1.4], [0.5, 1], 12),
+    ],
+    light: impactLight([0.62, 0.3, 1], 3),
+  },
+
+  // --- M5 element explosions (EXPLOSION_PRESET; authored at referenceRadius) ---
+  /** Fire: a rolling fireball, thrown burning globs, a storm of embers, black smoke. */
+  'explosion.fire': {
+    referenceRadius: 4,
+    emitters: [
+      flashGlow([1, 0.7, 0.4], 2.8, 0.1, 4),
+      flames([22, 30], [1, 1.7], [0.5, 0.95], [2, 6], 2.6, { spread: 180, drag: 4, gravity: -0.55, jitter: 0.5, sizeEnd: 2.6 }),
+      flames([6, 8], [0.8, 1.2], [0.25, 0.4], [1, 3], 4.5, { spread: 180, color: [1, 0.8, 0.45], jitter: 0.3 }),
+      billow('smoke', [0.1, 0.09, 0.08], [16, 22], [0.8, 1.3], 3.4, [2.6, 4.6], [0.6, 2.6], 0.85, {
+        axis: 'up',
+        spread: 70,
+        alphaEnd: 0.7,
+        gravity: -0.14,
+        drag: 1.1,
+        jitter: 0.6,
+      }),
+      flames([8, 12], [0.12, 0.2], [0.6, 1], [6, 12], 3.5, {
+        axis: 'up',
+        spread: 75,
+        sizeEnd: 0.6,
+        gravity: 1,
+        drag: 0.8,
+        bounce: 0.2,
+      }),
+      motes([1, 0.55, 0.16], [40, 60], [3, 11], [1.5, 3.5], 10, {
+        axis: 'up',
+        spread: 120,
+        gravity: 0.25,
+        drag: 1.2,
+        bounce: 0.25,
+        jitter: 0.6,
+      }),
+      shockRing([1, 0.62, 0.3], 0.8, 6.5, 0.3, 3, 0.3),
+    ],
+    light: blastLight([1, 0.5, 0.18], 380, 0.65, 0.4),
+    shake: { trauma: 0.9, range: 20 },
+    hitPulse: { strength: 0.5, range: 14 },
+    shockwave: { strength: 0.9, radiusScale: 2.2 },
+    groundDecal: { kind: 'scorch', sizePerScale: 2.8, probe: 4.5 },
+  },
+  /** Ice: a white flash, a cold mist burst, a hail of shards, glitter and a frost ring. */
+  'explosion.ice': {
+    referenceRadius: 4,
+    emitters: [
+      flashGlow([0.8, 0.95, 1], 2.5, 0.09, 4),
+      billow('mist', FROST_MIST, [14, 20], [0.7, 1.2], 3, [1.2, 2.2], [2, 6], 0.5, {
+        axis: 'up',
+        spread: 180,
+        alphaEnd: 0.4,
+        gravity: 0.05,
+        drag: 2.5,
+        jitter: 0.5,
+      }),
+      {
+        blend: 'alpha',
+        sprite: 'shard',
+        count: [26, 40],
+        minCount: 6,
+        life: [0.9, 1.6],
+        speed: [7, 18],
+        axis: 'up',
+        spread: 180,
+        size: [0.04, 0.12],
+        color: [0.7, 0.88, 1],
+        alpha: 0.95,
+        alphaEnd: 0.3,
+        gravity: 1.2,
+        drag: 0.4,
+        spin: [-18, 18],
+        bounce: 0.35,
+      },
+      motes(FROST_HOT, [12, 18], [4, 10], [0.4, 0.9], 8, { sprite: 'star', size: [0.04, 0.08], gravity: 0.6 }),
+      streaks(FROST_HOT, [16, 24], [10, 22], [0.2, 0.45], 10, 180, { gravity: 0.6, drag: 1 }),
+      billow('dust', [0.85, 0.9, 0.95], [10, 16], [0.04, 0.08], 1.5, [1.5, 3], [1, 4], 0.6, {
+        spread: 180,
+        gravity: 0.15,
+        drag: 2,
+      }),
+      shockRing([0.6, 0.9, 1], 0.8, 7, 0.35, 3.5, 0.2),
+    ],
+    light: blastLight([0.5, 0.8, 1], 300, 0.45, 0.2),
+    shake: { trauma: 0.8, range: 18 },
+    hitPulse: { strength: 0.4, range: 12 },
+    shockwave: { strength: 0.8, radiusScale: 2 },
+    groundDecal: { kind: 'frost', sizePerScale: 3, probe: 4.5 },
+  },
+  /** Shock: a strobing blast of crackling arcs, bouncing sparks, a lingering plasma ball. */
+  'explosion.shock': {
+    referenceRadius: 4,
+    emitters: [
+      flashGlow([0.75, 0.85, 1], 2.3, 0.07, 5),
+      streaks(SHOCK_HOT, [24, 36], [14, 30], [0.1, 0.25], 16, 180, { drag: 6, stretch: 0.045, gravity: 0 }),
+      {
+        blend: 'add',
+        sprite: 'spark',
+        count: [20, 30],
+        minCount: 6,
+        life: [0.4, 1],
+        speed: [4, 12],
+        axis: 'up',
+        spread: 150,
+        size: [0.03, 0.05],
+        sizeEnd: 0.3,
+        color: SHOCK_HOT,
+        intensity: 10,
+        intensityEnd: 2,
+        gravity: 1,
+        drag: 0.8,
+        bounce: 0.5,
+      },
+      { ...IMPACT_STAR, count: [4, 6], minCount: 2, color: SHOCK_HOT, intensity: 14, size: [0.5, 0.9], speed: [0, 3], spread: 180, jitter: 0.8 },
+      billow('smoke', [0.3, 0.33, 0.38], [6, 8], [0.6, 1], 3, [1.2, 2.2], [0.8, 2.2], 0.45, { axis: 'up', spread: 80 }),
+      { ...flashGlow(SHOCK_C, 1.4, 0.35, 2.5), sizeEnd: 0.2, flash: false },
+      shockRing(SHOCK_C, 0.6, 6, 0.22, 4.5, 0.2),
+      shockRing(SHOCK_HOT, 0.3, 4, 0.12, 5, 0.2),
+    ],
+    light: blastLight([0.5, 0.65, 1], 420, 0.35, 0.8),
+    shake: { trauma: 0.7, range: 18 },
+    hitPulse: { strength: 0.7, range: 14 },
+    shockwave: { strength: 0.7, radiusScale: 2 },
+    groundDecal: { kind: 'scorch', sizePerScale: 2.2, probe: 4.5 },
+  },
+  /** Poison: a toxic green burst, a slow murky cloud, spattering acid. */
+  'explosion.poison': {
+    referenceRadius: 4,
+    emitters: [
+      flashGlow([0.55, 1, 0.35], 2.3, 0.08, 3.5),
+      billow('smoke', POISON_MIST, [16, 22], [0.9, 1.4], 3.4, [2.5, 4.5], [0.6, 2.6], 0.7, {
+        axis: 'up',
+        spread: 90,
+        alphaEnd: 0.55,
+        gravity: -0.04,
+        drag: 1.2,
+        jitter: 0.6,
+      }),
+      { ...flashGlow(POISON_C, 1.2, 0.45, 2), count: [3, 4], sizeEnd: 1.5, flash: false, jitter: 0.6 },
+      {
+        blend: 'add',
+        sprite: 'droplet',
+        count: [30, 44],
+        minCount: 8,
+        life: [0.6, 1.2],
+        speed: [4, 11],
+        axis: 'up',
+        spread: 150,
+        size: [0.02, 0.045],
+        color: POISON_C,
+        intensity: 3.5,
+        intensityEnd: 1.2,
+        gravity: 1.1,
+        drag: 0.4,
+        stretch: 0.014,
+        bounce: 0.1,
+      },
+      motes(POISON_C, [14, 20], [1, 4], [1, 2.5], 5, { gravity: -0.2 }),
+      shockRing(POISON_C, 0.8, 6, 0.3, 2.5, 0.2),
+    ],
+    light: blastLight([0.35, 1, 0.25], 260, 0.6, 0.25),
+    shake: { trauma: 0.6, range: 16 },
+    hitPulse: { strength: 0.35, range: 12 },
+    shockwave: { strength: 0.6, radiusScale: 2 },
+    groundDecal: { kind: 'slime', sizePerScale: 2.8, probe: 4.5 },
+  },
+  /** Void: light falls in, a dark core collapses, then a violet shock ring and drifting motes. */
+  'explosion.void': {
+    referenceRadius: 4,
+    emitters: [
+      streaks(VOID_C, [30, 40], [-14, -8], [0.2, 0.3], 10, 180, { shell: 3, drag: 0, gravity: 0, stretch: 0.03 }),
+      billow('mist', VOID_SMOKE, [4, 6], [0.9, 1.3], 0.15, [0.35, 0.5], [0, 0.2], 0.9, {
+        spread: 180,
+        fadeIn: 0,
+        fadeOut: 0.2,
+        alphaEnd: 0.9,
+        gravity: 0,
+      }),
+      flashGlow([0.72, 0.42, 1], 2.5, 0.12, 4),
+      shockRing(VOID_C, 0.6, 8.5, 0.42, 4, 0.2),
+      shockRing([0.85, 0.6, 1], 0.3, 5, 0.2, 5, 0.2),
+      motes(VOID_C, [24, 36], [2, 8], [1, 2.2], 8, { jitter: 0.5 }),
+      {
+        blend: 'add',
+        sprite: 'spark',
+        count: [16, 24],
+        minCount: 4,
+        life: [0.4, 0.9],
+        speed: [6, 14],
+        axis: 'up',
+        spread: 160,
+        size: [0.02, 0.035],
+        sizeEnd: 0.3,
+        color: [0.85, 0.6, 1],
+        intensity: 10,
+        intensityEnd: 2,
+        gravity: 0.8,
+        drag: 0.9,
+        stretch: 0.015,
+        bounce: 0.3,
+      },
+      billow('smoke', VOID_SMOKE, [8, 12], [0.6, 1], 3, [1.5, 2.5], [0.8, 2.4], 0.6, { axis: 'up', spread: 90 }),
+    ],
+    light: blastLight([0.6, 0.3, 1], 360, 0.55, 0.3),
+    shake: { trauma: 1, range: 20 },
+    hitPulse: { strength: 0.7, range: 14 },
+    shockwave: { strength: 1.2, radiusScale: 2.6 },
+    groundDecal: { kind: 'voidburn', sizePerScale: 2.6, probe: 4.5 },
+  },
+
+  // --- M5 trail puffs (defs/arsenalVfx TRAIL_STYLES; normal = back along the flight) ---
+  'trail.plasma.sparks': {
+    emitters: [streaks(PLASMA_HOT, [1, 2], [0.5, 2], [0.15, 0.3], 8, 180, { gravity: 0.3 })],
+  },
+  'trail.smoke.puff': {
+    emitters: [
+      billow('smoke', [0.4, 0.39, 0.37], [1, 1], [0.1, 0.16], 4.5, [0.9, 1.5], [0.1, 0.4], 0.42, {
+        minCount: 1,
+        gravity: -0.05,
+      }),
+      motes([1, 0.55, 0.18], [0, 1], [0.2, 0.8], [0.2, 0.4], 8),
+    ],
+  },
+  'trail.void.motes': {
+    emitters: [
+      motes(VOID_C, [1, 2], [0.2, 0.8], [0.5, 1], 7, { gravity: -0.1, drag: 1 }),
+      billow('mist', VOID_SMOKE, [0, 1], [0.1, 0.16], 3, [0.5, 0.9], [0.1, 0.3], 0.4, { spread: 180 }),
+    ],
+  },
+  'trail.frost.mist': {
+    emitters: [
+      billow('mist', FROST_MIST, [1, 1], [0.12, 0.2], 3, [0.6, 1.1], [0.1, 0.3], 0.3, { gravity: 0.03 }),
+      motes(FROST_HOT, [1, 2], [0.1, 0.5], [0.4, 0.8], 7, { sprite: 'star', size: [0.02, 0.035], gravity: 0.4 }),
+    ],
+  },
+  'trail.shock.sparks': {
+    emitters: [streaks(SHOCK_HOT, [2, 3], [2, 6], [0.06, 0.14], 14, 180, { drag: 6, stretch: 0.035, gravity: 0 })],
+  },
+  'trail.fire.embers': {
+    emitters: [
+      motes([1, 0.55, 0.16], [1, 2], [0.3, 1.2], [0.4, 0.9], 9, { gravity: -0.2 }),
+      flames([0, 1], [0.08, 0.14], [0.15, 0.3], [0.3, 0.8], 3.5, { spread: 60 }),
+      billow('smoke', SOOT, [0, 1], [0.1, 0.16], 4, [0.8, 1.3], [0.1, 0.4], 0.35),
+    ],
+  },
+
+  // --- M5 beam hits / ray trails (defs/arsenalVfx BEAM_STYLES) ---
+  'beam.lightning.hit': {
+    emitters: [
+      streaks(SHOCK_HOT, [3, 5], [3, 9], [0.06, 0.16], 16, 90, { drag: 5, stretch: 0.035 }),
+      { ...IMPACT_STAR, color: SHOCK_HOT, intensity: 10, size: [0.12, 0.2] },
+      { ...METAL_SPARKS, color: SHOCK_HOT, colorEnd: SHOCK_C, count: [1, 2], minCount: 0, intensity: 10 },
+    ],
+  },
+  'beam.flame.hit': {
+    emitters: [
+      flames([1, 2], [0.2, 0.34], [0.3, 0.5], [0.8, 1.8], 3, { spread: 35 }),
+      motes([1, 0.55, 0.18], [1, 2], [1, 3], [0.4, 0.9], 9, { spread: 90 }),
+      billow('smoke', SOOT, [0, 1], [0.2, 0.3], 4, [1.2, 2], [0.4, 1], 0.4, { axis: 'up' }),
+    ],
+  },
+  'beam.void.motes': {
+    emitters: [motes(VOID_C, [1, 2], [0.2, 0.9], [0.5, 1], 8, { gravity: -0.05 })],
+  },
+  /** Railgun slug path: ionised vapour that lingers, and sparks spun off the helix. */
+  'beam.rail.sparks': {
+    emitters: [
+      billow('mist', [0.7, 0.8, 0.9], [1, 1], [0.12, 0.2], 3.5, [0.9, 1.6], [0.05, 0.25], 0.22, {
+        minCount: 1,
+        spread: 180,
+        gravity: -0.02,
+        drag: 1,
+      }),
+      streaks(PLASMA_HOT, [1, 2], [1, 4], [0.1, 0.3], 10, 180, { gravity: 0.3 }),
+    ],
+  },
+
+  // --- M5 field ambience (defs/arsenalVfx FIELD_VISUALS) ---
+  'field.void.motes': {
+    emitters: [
+      motes(VOID_C, [1, 1], [0.1, 0.5], [0.8, 1.6], 8, { minCount: 1, gravity: -0.05, drag: 0.5 }),
+      billow('mist', VOID_SMOKE, [0, 1], [0.2, 0.3], 2.5, [1, 1.6], [0.1, 0.3], 0.35, { spread: 180 }),
+    ],
+  },
+  'field.fire.flames': {
+    emitters: [
+      flames([1, 2], [0.25, 0.45], [0.35, 0.6], [0.8, 2], 3, { minCount: 1, spread: 15, sizeEnd: 1.6 }),
+      motes([1, 0.55, 0.16], [0, 1], [0.8, 2.5], [0.6, 1.2], 9, { axis: 'up', spread: 40, gravity: -0.3 }),
+    ],
+  },
+  'field.fire.smoke': {
+    emitters: [
+      billow('smoke', SOOT, [1, 1], [0.4, 0.6], 3, [2, 3], [0.6, 1.2], 0.4, {
+        minCount: 1,
+        axis: 'up',
+        spread: 20,
+        gravity: -0.1,
+      }),
+    ],
+  },
+  'field.poison.mist': {
+    emitters: [
+      billow('smoke', POISON_MIST, [1, 1], [0.8, 1.3], 2.2, [2.5, 4], [0.1, 0.4], 0.42, {
+        minCount: 1,
+        axis: 'up',
+        drag: 0.8,
+        gravity: -0.02,
+        fadeIn: 0.3,
+      }),
+    ],
+  },
+  'field.poison.bubbles': {
+    emitters: [
+      {
+        blend: 'add',
+        sprite: 'ring',
+        count: [1, 1],
+        minCount: 1,
+        life: [0.4, 0.7],
+        speed: [0.1, 0.3],
+        axis: 'up',
+        spread: 10,
+        size: [0.05, 0.1],
+        sizeEnd: 1.6,
+        color: POISON_C,
+        intensity: 2.5,
+        intensityEnd: 0,
+      },
+      {
+        blend: 'add',
+        sprite: 'droplet',
+        count: [0, 1],
+        life: [0.3, 0.5],
+        speed: [0.8, 1.6],
+        axis: 'up',
+        spread: 25,
+        size: [0.012, 0.02],
+        color: POISON_C,
+        intensity: 3,
+        intensityEnd: 1,
+        gravity: 1,
+        stretch: 0.012,
+      },
+    ],
+  },
+  'field.frost.mist': {
+    emitters: [
+      billow('mist', FROST_MIST, [1, 1], [0.6, 1], 2.2, [2, 3.2], [0.1, 0.3], 0.3, {
+        minCount: 1,
+        axis: 'up',
+        spread: 80,
+        gravity: 0.02,
+        drag: 1,
+      }),
+    ],
+  },
+  'field.frost.glitter': {
+    emitters: [motes(FROST_HOT, [1, 1], [0.05, 0.3], [0.5, 1], 8, { minCount: 1, sprite: 'star', size: [0.03, 0.06], gravity: 0.1 })],
+  },
+
+  // --- M5 status visuals on enemies (package B spawns them at small rates; no bouncing = no probes) ---
+  'status.burn': {
+    emitters: [
+      flames([1, 2], [0.18, 0.3], [0.25, 0.45], [0.8, 1.6], 3, { minCount: 1, spread: 20, sizeEnd: 1.6 }),
+      motes([1, 0.55, 0.16], [1, 2], [0.8, 2], [0.4, 0.9], 9, { axis: 'up', spread: 50, gravity: -0.25 }),
+      billow('smoke', SOOT, [0, 1], [0.12, 0.2], 4, [0.8, 1.3], [0.4, 0.9], 0.35, { axis: 'up', spread: 25 }),
+    ],
+  },
+  'status.chill': {
+    emitters: [
+      billow('mist', FROST_MIST, [1, 1], [0.15, 0.25], 2.5, [0.6, 1], [0.1, 0.4], 0.28, { minCount: 1, gravity: 0.05 }),
+      motes(FROST_HOT, [1, 1], [0.1, 0.4], [0.5, 0.9], 6, { sprite: 'star', size: [0.02, 0.035], gravity: 0.35 }),
+    ],
+  },
+  'status.frozen': {
+    emitters: [
+      motes(FROST_HOT, [2, 3], [0.05, 0.3], [0.3, 0.6], 10, { minCount: 1, sprite: 'star', size: [0.04, 0.07], gravity: 0 }),
+      {
+        blend: 'alpha',
+        sprite: 'shard',
+        count: [0, 2],
+        life: [0.6, 1],
+        speed: [0.2, 0.8],
+        spread: 180,
+        size: [0.015, 0.03],
+        color: [0.75, 0.9, 1],
+        alpha: 0.9,
+        alphaEnd: 0.2,
+        gravity: 0.8,
+        spin: [-12, 12],
+      },
+      billow('mist', FROST_MIST, [0, 1], [0.2, 0.3], 2, [0.8, 1.2], [0.05, 0.2], 0.25, { gravity: 0.05 }),
+    ],
+  },
+  'status.shocked': {
+    emitters: [
+      streaks(SHOCK_HOT, [3, 5], [3, 7], [0.06, 0.14], 14, 180, { minCount: 2, drag: 6, stretch: 0.04, gravity: 0 }),
+      { ...IMPACT_STAR, color: SHOCK_HOT, intensity: 9, size: [0.1, 0.16], minCount: 0, count: [0, 1] },
+      motes(SHOCK_HOT, [0, 2], [1, 3], [0.2, 0.4], 10, { sprite: 'spark', gravity: 1 }),
+    ],
+  },
+  'status.poisoned': {
+    emitters: [
+      {
+        blend: 'add',
+        sprite: 'droplet',
+        count: [1, 2],
+        minCount: 1,
+        life: [0.35, 0.6],
+        speed: [0.3, 0.9],
+        axis: 'down',
+        spread: 30,
+        size: [0.014, 0.024],
+        color: POISON_C,
+        intensity: 3.2,
+        intensityEnd: 1,
+        gravity: 1,
+        stretch: 0.014,
+      },
+      {
+        blend: 'add',
+        sprite: 'ring',
+        count: [0, 1],
+        life: [0.3, 0.5],
+        speed: [0.2, 0.5],
+        axis: 'up',
+        spread: 40,
+        size: [0.03, 0.05],
+        sizeEnd: 1.8,
+        color: POISON_C,
+        intensity: 2.5,
+        intensityEnd: 0,
+      },
+      billow('mist', POISON_MIST, [0, 1], [0.15, 0.25], 2.5, [0.7, 1.1], [0.1, 0.4], 0.45),
+    ],
+  },
+  'status.voidMark': {
+    emitters: [
+      motes(VOID_C, [2, 3], [-0.7, -0.35], [0.5, 0.8], 9, { minCount: 1, shell: 0.35, drag: 0, gravity: 0 }),
+      { ...flashGlow(VOID_C, 0.28, 0.3, 2.2), flash: false, sizeEnd: 1.2, count: [0, 1], minCount: 0 },
+      billow('mist', VOID_SMOKE, [0, 1], [0.14, 0.22], 2.5, [0.6, 1], [0.1, 0.4], 0.4, { spread: 180 }),
+    ],
+  },
+
+  // --- M5 element combos (defs/elements.ts ids): a readable burst on the enemy ---
+  /** Fire + ice: a scalding steam burst, shattering ice, hot sparks. */
+  'combo.thermoshock': {
+    emitters: [
+      flashGlow([1, 0.95, 0.9], 1.5, 0.08, 4),
+      billow('mist', [0.78, 0.8, 0.82], [8, 12], [0.5, 0.8], 3, [1, 1.8], [2, 5], 0.55, {
+        axis: 'up',
+        spread: 70,
+        gravity: -0.12,
+        drag: 2.2,
+      }),
+      {
+        blend: 'alpha',
+        sprite: 'shard',
+        count: [10, 16],
+        minCount: 4,
+        life: [0.6, 1.2],
+        speed: [4, 10],
+        spread: 180,
+        size: [0.03, 0.07],
+        color: [0.75, 0.9, 1],
+        alpha: 0.95,
+        alphaEnd: 0.3,
+        gravity: 1.2,
+        drag: 0.4,
+        spin: [-18, 18],
+      },
+      streaks([1, 0.62, 0.28], [10, 14], [5, 12], [0.2, 0.45], 12, 180, { gravity: 0.8, drag: 1 }),
+      shockRing([0.9, 0.95, 1], 0.3, 5, 0.22, 4),
+    ],
+    light: bodyLight([1, 0.85, 0.7], 90, 0.3),
+    shake: { trauma: 0.2, range: 10 },
+  },
+  /** Shock + poison: toxic green lightning bursting out of a sickly cloud. */
+  'combo.neurotoxin': {
+    emitters: [
+      flashGlow([0.7, 1, 0.4], 1.4, 0.08, 4),
+      streaks([0.65, 1, 0.35], [14, 20], [6, 16], [0.08, 0.2], 14, 180, { drag: 6, stretch: 0.045, gravity: 0 }),
+      billow('smoke', POISON_MIST, [4, 6], [0.4, 0.7], 3, [1.4, 2.4], [0.8, 2], 0.6, { axis: 'up', spread: 90 }),
+      motes(POISON_C, [8, 12], [1, 4], [0.6, 1.4], 6),
+      shockRing([0.6, 1, 0.4], 0.3, 5, 0.2, 4),
+    ],
+    light: bodyLight([0.5, 1, 0.35], 80, 0.3),
+    shake: { trauma: 0.2, range: 10 },
+  },
+  /** Fire + poison: a green-cored toxic fireball and oily smoke. */
+  'combo.toxicblaze': {
+    emitters: [
+      flashGlow([0.8, 1, 0.4], 1.5, 0.09, 3.5),
+      flames([8, 12], [0.4, 0.7], [0.4, 0.7], [1.5, 4], 3.5, {
+        spread: 180,
+        color: [0.6, 1, 0.2],
+        colorEnd: [1, 0.35, 0.05],
+        drag: 3,
+        jitter: 0.25,
+      }),
+      billow('smoke', [0.08, 0.12, 0.05], [5, 7], [0.5, 0.8], 3, [1.6, 2.6], [0.8, 2], 0.7, { axis: 'up', spread: 80 }),
+      motes([0.7, 1, 0.25], [10, 14], [1.5, 5], [0.6, 1.4], 8, { gravity: -0.2 }),
+    ],
+    light: bodyLight([0.8, 1, 0.3], 90, 0.35),
+    shake: { trauma: 0.25, range: 10 },
+  },
+  /** Ice + shock: a white-blue starburst of arcs and splintering ice. */
+  'combo.superconductor': {
+    emitters: [
+      { ...IMPACT_STAR, count: [6, 8], minCount: 3, color: [0.85, 0.95, 1], intensity: 14, size: [0.4, 0.7], speed: [0, 2], spread: 180, jitter: 0.4 },
+      streaks([0.75, 0.9, 1], [16, 24], [8, 18], [0.08, 0.2], 16, 180, { drag: 6, stretch: 0.045, gravity: 0 }),
+      {
+        blend: 'alpha',
+        sprite: 'shard',
+        count: [8, 12],
+        minCount: 3,
+        life: [0.6, 1.1],
+        speed: [3, 9],
+        spread: 180,
+        size: [0.03, 0.06],
+        color: [0.75, 0.9, 1],
+        alpha: 0.95,
+        alphaEnd: 0.3,
+        gravity: 1.2,
+        drag: 0.4,
+        spin: [-18, 18],
+      },
+      shockRing(SHOCK_HOT, 0.3, 6, 0.2, 5),
+      shockRing(FROST_C, 0.2, 3.5, 0.14, 5),
+    ],
+    light: bodyLight([0.6, 0.8, 1], 110, 0.3),
+    shake: { trauma: 0.25, range: 10 },
+  },
+  /** Void amplifies any status: light falls into the mark, then it ruptures. */
+  'combo.voidrupture': {
+    emitters: [
+      streaks(VOID_C, [18, 26], [-8, -5], [0.18, 0.26], 10, 180, { shell: 1.4, drag: 0, gravity: 0, stretch: 0.03 }),
+      billow('mist', VOID_SMOKE, [2, 3], [0.5, 0.7], 0.2, [0.3, 0.4], [0, 0.1], 0.9, {
+        spread: 180,
+        fadeIn: 0,
+        fadeOut: 0.2,
+        alphaEnd: 0.9,
+        gravity: 0,
+      }),
+      flashGlow([0.75, 0.45, 1], 1.6, 0.1, 4),
+      shockRing(VOID_C, 0.3, 6, 0.3, 4.5),
+      motes(VOID_C, [12, 18], [1.5, 5], [0.7, 1.5], 8),
+    ],
+    light: bodyLight([0.6, 0.3, 1], 110, 0.4),
+    shake: { trauma: 0.3, range: 10 },
+  },
 } as const satisfies Record<string, EffectPreset>;
 
 export type VfxEffectId = keyof typeof VFX_EFFECTS;
@@ -1566,12 +2494,61 @@ export interface ImpactProfileDef {
   readonly decalScale: number;
   /** Skip the decal entirely (melee). */
   readonly decals: boolean;
+  /** M5 energy / elemental shots: an extra effect preset at the hit (along the normal), × scale. */
+  readonly effect?: string;
+  /** The surface's own effect (dust, sparks) × this on top of `scale`; 0 = only `effect`. Default 1. */
+  readonly surfaceScale?: number;
+  /** World decal replacing the surface's own (plasma scorch, acid); null = none. */
+  readonly decal?: DecalKind | null;
 }
 
 export const IMPACT_PROFILES = {
   'impact.bullet': { scale: 1, decalScale: 1, decals: true },
   'impact.pellet': { scale: 0.6, decalScale: 0.75, decals: true },
   'impact.melee': { scale: 0.5, decalScale: 1, decals: false },
+  // M5 energy / element shots: the element's own burst on top of a toned-down surface effect.
+  'impact.plasma': {
+    scale: 0.8,
+    decalScale: 0.26,
+    decals: true,
+    effect: 'impact.plasma',
+    surfaceScale: 0.6,
+    decal: 'scorch',
+  },
+  'impact.shock': {
+    scale: 0.7,
+    decalScale: 0.2,
+    decals: true,
+    effect: 'impact.shock',
+    surfaceScale: 0.5,
+    decal: 'scorch',
+  },
+  // Flame beams hit many times a second: no decal spam, only the fire licks.
+  'impact.fire': { scale: 0.6, decalScale: 0.3, decals: false, effect: 'impact.fire', surfaceScale: 0 },
+  'impact.ice': {
+    scale: 0.8,
+    decalScale: 0.22,
+    decals: true,
+    effect: 'impact.ice',
+    surfaceScale: 0.6,
+    decal: 'frost',
+  },
+  'impact.poison': {
+    scale: 0.7,
+    decalScale: 0.3,
+    decals: true,
+    effect: 'impact.poison',
+    surfaceScale: 0.5,
+    decal: 'slime',
+  },
+  'impact.void': {
+    scale: 0.8,
+    decalScale: 0.24,
+    decals: true,
+    effect: 'impact.void',
+    surfaceScale: 0.5,
+    decal: 'voidburn',
+  },
 } as const satisfies Record<string, ImpactProfileDef>;
 
 /** Profile when the weapon has none (or an unknown id), by impact kind. */
@@ -1619,14 +2596,17 @@ export const ELEMENT_TINTS: Record<DamageElement, { readonly tint: Rgb; readonly
     void: { tint: [0.9, 0.3, 1.6], strength: 0.85 },
   };
 
-/** Explosion preset per element (all tint the frag preset for now). */
+/**
+ * Explosion preset per element (M5: each element has its own). A blast whose element preset is
+ * missing falls back to the physical one tinted by ELEMENT_TINTS.
+ */
 export const EXPLOSION_PRESET: Record<DamageElement, string> = {
   physical: 'explosion.frag',
-  fire: 'explosion.frag',
-  ice: 'explosion.frag',
-  shock: 'explosion.frag',
-  poison: 'explosion.frag',
-  void: 'explosion.frag',
+  fire: 'explosion.fire',
+  ice: 'explosion.ice',
+  shock: 'explosion.shock',
+  poison: 'explosion.poison',
+  void: 'explosion.void',
 };
 
 // ---------------------------------------------------------------------------
@@ -1643,12 +2623,15 @@ export const DECAL_CELLS = [
   'slime',
   'scuff',
   'bullet.generic',
+  // M5 element blasts / impacts
+  'frost',
+  'voidburn',
 ] as const;
 export type DecalKind = (typeof DECAL_CELLS)[number];
 
 export const DECAL_ATLAS = {
   cols: 4,
-  rows: 2,
+  rows: 3,
   /** 128 px per cell: bullet holes cover < 100 px on screen; big splats/scorches are soft anyway. */
   cellSize: 128,
   seed: 4242,
@@ -1675,6 +2658,8 @@ export const DECAL_KINDS: Record<DecalKind, DecalKindDef> = {
   slime: { size: [0.8, 1.1], glow: { color: [0.25, 1, 0.3], intensity: 0.9, decay: 0 } },
   scuff: { size: [0.05, 0.07], glow: { color: [1, 0.4, 0.1], intensity: 4, decay: 3 } },
   'bullet.generic': { size: [0.14, 0.18] },
+  frost: { size: [0.9, 1.1], glow: { color: [0.45, 0.75, 1], intensity: 0.9, decay: 0.3 } },
+  voidburn: { size: [0.9, 1.1], glow: { color: [0.55, 0.2, 1], intensity: 3, decay: 0.5 } },
 };
 
 // ---------------------------------------------------------------------------

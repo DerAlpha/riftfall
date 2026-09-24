@@ -7,7 +7,14 @@
  * flank. Parts: canister (the magazine), fins (slam back per shot), core (the crystal star),
  * trigger, sight (hexagonal reflex with a snowflake reticle). Six LEDs on the left top.
  */
-import { BoxGeometry, CylinderGeometry, IcosahedronGeometry, PlaneGeometry, SphereGeometry, TorusGeometry } from 'three';
+import {
+  BoxGeometry,
+  CylinderGeometry,
+  IcosahedronGeometry,
+  PlaneGeometry,
+  SphereGeometry,
+  TorusGeometry,
+} from 'three';
 import { CRYONOVA_VIEWMODEL } from '../../../defs/viewmodelData/cryonova';
 import { VIEWMODEL_ART } from '../../../defs/viewmodels';
 import { BODY, ModelBuilder } from '../ModelBuilder';
@@ -131,11 +138,17 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     ),
     { paint: 0.8 },
   );
-  b.add(BODY, 'darkMetal', roundedBox(0.062, 0.016, 0.24, 0.004), { pos: [0, 0.03, -0.05], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.062, 0.016, 0.24, 0.004), {
+    pos: [0, 0.03, -0.05],
+    paint: P.darkMetal.paint,
+  });
   for (const side of [-1, 1]) {
     b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.22), { pos: [side * 0.0302, 0.0395, -0.05] });
   }
-  b.add(BODY, 'darkMetal', new BoxGeometry(0.024, 0.004, 0.16), { pos: [0, 0.089, -0.04], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', new BoxGeometry(0.024, 0.004, 0.16), {
+    pos: [0, 0.089, -0.04],
+    paint: P.darkMetal.paint,
+  });
   for (let i = 0; i < 11; i++) {
     b.add(BODY, 'darkMetal', new BoxGeometry(0.026, 0.0035, 0.0065), {
       pos: [0, 0.0925, 0.03 - i * 0.0135],
@@ -165,7 +178,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     [0.03, 0.024, -0.1, 0.7],
   ] as const) {
     b.add(BODY, 'ice', new IcosahedronGeometry(0.009 * s, 0), { pos: [x, y, z], scale: [0.6, 0.8, 1.6] });
-    b.add(BODY, 'ice', crystalZ(0.0034 * s, 0.018 * s, 5), { pos: [x, y + 0.004, z + 0.004], rot: [-40, x > 0 ? -30 : 30, 0] });
+    b.add(BODY, 'ice', crystalZ(0.0034 * s, 0.018 * s, 5), {
+      pos: [x, y + 0.004, z + 0.004],
+      rot: [-40, x > 0 ? -30 : 30, 0],
+    });
   }
 
   // --- canister cradle (left flank) ---
@@ -236,8 +252,23 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     ),
     { pos: [0, BORE_Y, EMITTER.back], paint: P.gunmetal.paint },
   );
-  b.add(BODY, 'star', new TorusGeometry(0.03, 0.0018, 8, 36), { pos: [0, BORE_Y, EMITTER.front - 0.001], uv: 'keep' });
-  b.add(BODY, 'aura', latheZHard([[0.014, 0.03], [0.02, 0.07], [0.036, 0.106]], 28), { pos: [0, BORE_Y, EMITTER.back], uv: 'keep' });
+  b.add(BODY, 'star', new TorusGeometry(0.03, 0.0018, 8, 36), {
+    pos: [0, BORE_Y, EMITTER.front - 0.001],
+    uv: 'keep',
+  });
+  b.add(
+    BODY,
+    'aura',
+    latheZHard(
+      [
+        [0.014, 0.03],
+        [0.02, 0.07],
+        [0.036, 0.106],
+      ],
+      28,
+    ),
+    { pos: [0, BORE_Y, EMITTER.back], uv: 'keep' },
+  );
   b.add(BODY, 'darkMetal', profileZ(regularPolygonProfile(0.036, 8, 22.5), 0.012, { bevel: 0.002 }), {
     pos: [0, BORE_Y, EMITTER.back + 0.004],
     paint: P.darkMetal.paint,
@@ -262,7 +293,11 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
         0.0032,
         { bevel: 0.0008 },
       ),
-      { pos: [c * (FIN_R - 0.012), BORE_Y + s * (FIN_R - 0.012), EMITTER.back + 0.004], rot: [0, 0, deg - 90], paint: 0.8 },
+      {
+        pos: [c * (FIN_R - 0.012), BORE_Y + s * (FIN_R - 0.012), EMITTER.back + 0.004],
+        rot: [0, 0, deg - 90],
+        paint: 0.8,
+      },
     );
     b.add('fins', 'star', new BoxGeometry(0.0014, 0.0014, 0.06), {
       pos: [c * (FIN_R + 0.0065), BORE_Y + s * (FIN_R + 0.0065), EMITTER.back - 0.045],
@@ -280,11 +315,17 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
 
   // --- the nova: a star of ice crystals (free, spins; shatters and re-grows per shot) ---
   for (const [yaw, pitch, len] of STAR) {
-    b.add('star', 'star', crystalZ(0.0055, len, 6), { local: true, rot: [pitch * Math.cos((yaw * Math.PI) / 180), pitch * Math.sin((yaw * Math.PI) / 180), 0] });
+    b.add('star', 'star', crystalZ(0.0055, len, 6), {
+      local: true,
+      rot: [pitch * Math.cos((yaw * Math.PI) / 180), pitch * Math.sin((yaw * Math.PI) / 180), 0],
+    });
   }
   b.add('star', 'star', new IcosahedronGeometry(0.008, 0), { local: true });
   b.add('star', 'aura', new SphereGeometry(0.03, 20, 14), { local: true, uv: 'keep' });
-  b.add('core', 'darkMetal', cylinderZ(0.004, 0.004, 0.04, 8), { pos: [0, BORE_Y, CORE_Z + 0.035], paint: 0.4 });
+  b.add('core', 'darkMetal', cylinderZ(0.004, 0.004, 0.04, 8), {
+    pos: [0, BORE_Y, CORE_Z + 0.035],
+    paint: 0.4,
+  });
 
   // --- magwell block, trigger guard, trigger, grip ---
   b.add(
@@ -377,11 +418,25 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
         [-0.08, 0.02],
       ],
       0.04,
-      { bevel: 0.004, holes: [[[-0.13, 0.052], [-0.28, 0.05], [-0.28, -0.02], [-0.2, 0.002], [-0.13, 0.026]]] },
+      {
+        bevel: 0.004,
+        holes: [
+          [
+            [-0.13, 0.052],
+            [-0.28, 0.05],
+            [-0.28, -0.02],
+            [-0.2, 0.002],
+            [-0.13, 0.026],
+          ],
+        ],
+      },
     ),
     { paint: 0.8 },
   );
-  b.add(BODY, 'grip', roundedBox(0.044, 0.112, 0.016, 0.005), { pos: [0, 0.01, 0.318], uvDensity: VIEWMODEL_ART.knurlDensity });
+  b.add(BODY, 'grip', roundedBox(0.044, 0.112, 0.016, 0.005), {
+    pos: [0, 0.01, 0.318],
+    uvDensity: VIEWMODEL_ART.knurlDensity,
+  });
 
   // --- hexagonal reflex sight, snowflake reticle ---
   b.add('sight', 'darkMetal', roundedBox(0.024, 0.02, 0.046, 0.002), { pos: [0, 0.1, -0.03], paint: 0.4 });
@@ -394,7 +449,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     }),
     { pos: [0, SIGHT_Y, -0.036], paint: 0.8 },
   );
-  b.add('sight', 'ice', crystalZ(0.003, 0.016, 5), { pos: [-0.018, SIGHT_Y + 0.014, -0.03], rot: [-60, 20, 0] });
+  b.add('sight', 'ice', crystalZ(0.003, 0.016, 5), {
+    pos: [-0.018, SIGHT_Y + 0.014, -0.03],
+    rot: [-60, 20, 0],
+  });
   b.add('sight', 'lens', new PlaneGeometry(0.034, 0.03), { pos: [0, SIGHT_Y, -0.05], uv: 'keep' });
   for (let i = 0; i < 6; i++) {
     const a = (i * Math.PI) / 3 + Math.PI / 2;
@@ -403,7 +461,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       rot: [0, 0, (a * 180) / Math.PI],
     });
   }
-  b.add('sight', 'sight', new CylinderGeometry(0.0007, 0.0007, 0.0003, 10), { pos: [0, SIGHT_Y, -0.0503], rot: [90, 0, 0] });
+  b.add('sight', 'sight', new CylinderGeometry(0.0007, 0.0007, 0.0003, 10), {
+    pos: [0, SIGHT_Y, -0.0503],
+    rot: [90, 0, 0],
+  });
 
   // --- sockets & mounts ---
   b.socket('muzzle', [0, BORE_Y, CORE_Z - 0.03]);

@@ -24,7 +24,13 @@ import {
 } from '../shapes';
 import { createReadout, ledUv, type ReadoutSpec, type WeaponViewmodelModel } from '../WeaponModel';
 import type { ViewmodelBuilder } from '../index';
-import { EnergyWeaponModel, bentTube, createCeramicMaterial, createEnergyMaterial, helixZ } from './energyKit';
+import {
+  EnergyWeaponModel,
+  bentTube,
+  createCeramicMaterial,
+  createEnergyMaterial,
+  helixZ,
+} from './energyKit';
 
 const P = VIEWMODEL_ART.materials;
 
@@ -123,7 +129,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     { paint: P.gunmetal.paint },
   );
   // Top deck + rail and the LED strip on the left top chamfer.
-  b.add(BODY, 'darkMetal', roundedBox(0.03, 0.005, 0.2, 0.0015), { pos: [0, 0.088, -0.045], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.03, 0.005, 0.2, 0.0015), {
+    pos: [0, 0.088, -0.045],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'darkMetal', roundedBox(0.012, 0.004, 0.14, 0.001), {
     pos: [-0.0245, 0.083, -0.04],
     rot: [0, 0, 40],
@@ -137,7 +146,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     });
   }
   // Conductor through glazed insulators along the left flank.
-  b.add(BODY, 'darkMetal', roundedBox(0.004, 0.03, 0.2, 0.0015), { pos: [-0.029, 0.05, -0.05], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.004, 0.03, 0.2, 0.0015), {
+    pos: [-0.029, 0.05, -0.05],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'brass', helixZ(0.0048, 0.0014, 0.19, 22), { pos: [-0.0368, 0.05, -0.05], paint: 0.8 });
   b.add(BODY, 'arc', cylinderZ(0.0022, 0.0022, 0.19, 8), { pos: [-0.0368, 0.05, -0.05] });
   for (let i = 0; i < 4; i++) {
@@ -206,8 +218,14 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   // --- rotor: core, copper windings, four ceramic fins with glowing edges ---
   const rotorLen = ROTOR.back - ROTOR.front;
   const rotorZ = (ROTOR.back + ROTOR.front) / 2;
-  b.add('coils', 'darkMetal', cylinderZ(0.012, 0.012, rotorLen + 0.02, 16), { pos: [0, BORE_Y, rotorZ], paint: 0.4 });
-  b.add('coils', 'brass', helixZ(0.0148, 0.0024, rotorLen - 0.012, 13), { pos: [0, BORE_Y, rotorZ], paint: 0.85 });
+  b.add('coils', 'darkMetal', cylinderZ(0.012, 0.012, rotorLen + 0.02, 16), {
+    pos: [0, BORE_Y, rotorZ],
+    paint: 0.4,
+  });
+  b.add('coils', 'brass', helixZ(0.0148, 0.0024, rotorLen - 0.012, 13), {
+    pos: [0, BORE_Y, rotorZ],
+    paint: 0.85,
+  });
   for (let i = 0; i < 4; i++) {
     const a = 45 + i * 90;
     const r = (a * Math.PI) / 180;
@@ -233,10 +251,18 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     }),
     { pos: [0, BORE_Y, HEAD_Z + 0.006], paint: P.gunmetal.paint },
   );
-  b.add(BODY, 'arc', new TorusGeometry(0.0095, 0.0018, 8, 20), { pos: [0, BORE_Y, HEAD_Z - 0.002], uv: 'keep' });
-  b.add(BODY, 'accent', profileZ(regularPolygonProfile(0.039, 6, 30), 0.003, {
-    holes: [regularPolygonProfile(0.036, 6, 30)],
-  }), { pos: [0, BORE_Y, HEAD_Z + 0.014] });
+  b.add(BODY, 'arc', new TorusGeometry(0.0095, 0.0018, 8, 20), {
+    pos: [0, BORE_Y, HEAD_Z - 0.002],
+    uv: 'keep',
+  });
+  b.add(
+    BODY,
+    'accent',
+    profileZ(regularPolygonProfile(0.039, 6, 30), 0.003, {
+      holes: [regularPolygonProfile(0.036, 6, 30)],
+    }),
+    { pos: [0, BORE_Y, HEAD_Z + 0.014] },
+  );
 
   // --- claw prongs (each in its own part, curving out and back in) ---
   for (const [name, deg] of PRONGS) {
@@ -265,9 +291,22 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       [0.0405, HEAD_Z - 0.03],
       [0.0442, HEAD_Z - 0.055],
     ] as const) {
-      b.add(name, 'ceramic', latheZHard([[0.004, 0], [0.0072, 0.003], [0.0072, 0.011], [0.004, 0.014]], 12), {
-        pos: pt(r, z + 0.007),
-      });
+      b.add(
+        name,
+        'ceramic',
+        latheZHard(
+          [
+            [0.004, 0],
+            [0.0072, 0.003],
+            [0.0072, 0.011],
+            [0.004, 0.014],
+          ],
+          12,
+        ),
+        {
+          pos: pt(r, z + 0.007),
+        },
+      );
     }
     b.add(name, 'arc', new SphereGeometry(0.0042, 12, 8), { pos: pt(0.013, ARC_Z + 0.002) });
   }
@@ -349,12 +388,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   });
 
   // --- power pack stock with heat fins ---
-  b.add(
-    BODY,
-    'gunmetal',
-    profileZ(chamferRectProfile(0.04, 0.046, 0.01, 0.006), 0.13, { bevel: 0.003 }),
-    { pos: [0, 0.035, 0.155], paint: P.gunmetal.paint },
-  );
+  b.add(BODY, 'gunmetal', profileZ(chamferRectProfile(0.04, 0.046, 0.01, 0.006), 0.13, { bevel: 0.003 }), {
+    pos: [0, 0.035, 0.155],
+    paint: P.gunmetal.paint,
+  });
   // Flank heat fins with the glowing sinks between them.
   for (const side of [-1, 1]) {
     for (let i = 0; i < 6; i++) {
@@ -380,16 +417,40 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
         [-0.2, 0.022],
       ],
       0.042,
-      { bevel: 0.004, holes: [[[-0.23, 0.044], [-0.28, 0.046], [-0.28, -0.018], [-0.23, 0.008]]] },
+      {
+        bevel: 0.004,
+        holes: [
+          [
+            [-0.23, 0.044],
+            [-0.28, 0.046],
+            [-0.28, -0.018],
+            [-0.23, 0.008],
+          ],
+        ],
+      },
     ),
     { paint: P.polymer.paint },
   );
-  b.add(BODY, 'grip', roundedBox(0.044, 0.116, 0.014, 0.004), { pos: [0, 0.014, 0.315], uvDensity: VIEWMODEL_ART.knurlDensity });
-  
+  b.add(BODY, 'grip', roundedBox(0.044, 0.116, 0.014, 0.004), {
+    pos: [0, 0.014, 0.315],
+    uvDensity: VIEWMODEL_ART.knurlDensity,
+  });
+
   // --- Leyden-jar cell: glass, crawling sparks, caps (local frame: −Y down the well) ---
-  b.add('cell', 'jar', new CylinderGeometry(CELL.r - 0.003, CELL.r - 0.003, CELL.len - 0.026, 18), { local: true, pos: [0, -CELL.len / 2, 0] });
-  b.add('cell', 'lens', new CylinderGeometry(CELL.r, CELL.r, CELL.len - 0.026, 18), { local: true, pos: [0, -CELL.len / 2, 0], uv: 'keep' });
-  b.add('cell', 'gunmetal', new CylinderGeometry(CELL.r + 0.0016, CELL.r + 0.0016, 0.014, 18), { local: true, pos: [0, -0.007, 0], paint: 0.25 });
+  b.add('cell', 'jar', new CylinderGeometry(CELL.r - 0.003, CELL.r - 0.003, CELL.len - 0.026, 18), {
+    local: true,
+    pos: [0, -CELL.len / 2, 0],
+  });
+  b.add('cell', 'lens', new CylinderGeometry(CELL.r, CELL.r, CELL.len - 0.026, 18), {
+    local: true,
+    pos: [0, -CELL.len / 2, 0],
+    uv: 'keep',
+  });
+  b.add('cell', 'gunmetal', new CylinderGeometry(CELL.r + 0.0016, CELL.r + 0.0016, 0.014, 18), {
+    local: true,
+    pos: [0, -0.007, 0],
+    paint: 0.25,
+  });
   b.add('cell', 'gunmetal', new CylinderGeometry(CELL.r + 0.0022, CELL.r + 0.0022, 0.013, 18), {
     local: true,
     pos: [0, -CELL.len + 0.0065, 0],
@@ -406,7 +467,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     pos: [0, (SIGHT_Y + 0.082) / 2 - 0.009, -0.018],
     paint: P.darkMetal.paint,
   });
-  b.add('sight', 'gunmetal', tubeZ(0.0074, 0.0032, 0.005, 24), { pos: [0, SIGHT_Y, -0.0155], paint: P.gunmetal.paint });
+  b.add('sight', 'gunmetal', tubeZ(0.0074, 0.0032, 0.005, 24), {
+    pos: [0, SIGHT_Y, -0.0155],
+    paint: P.gunmetal.paint,
+  });
   b.add('sight', 'accent', new TorusGeometry(0.0053, 0.0005, 4, 28), { pos: [0, SIGHT_Y, -0.0152] });
 
   // --- sockets & mounts ---
@@ -426,9 +490,35 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     readoutSpec,
     readout,
     [
-      { material: arc, intensity: 2.6, pulseRate: 3.1, pulseDepth: 0.2, flash: 5, boost: 7, flickerRate: 37, flickerDepth: 0.35 },
-      { material: halo, intensity: 0.5, pulseRate: 2.3, pulseDepth: 0.3, flash: 1.5, boost: 3, flickerRate: 53, flickerDepth: 0.6 },
-      { material: jar, intensity: 1.3, pulseRate: 1.4, pulseDepth: 0.25, boost: 1.5, flickerRate: 29, flickerDepth: 0.25 },
+      {
+        material: arc,
+        intensity: 2.6,
+        pulseRate: 3.1,
+        pulseDepth: 0.2,
+        flash: 5,
+        boost: 7,
+        flickerRate: 37,
+        flickerDepth: 0.35,
+      },
+      {
+        material: halo,
+        intensity: 0.5,
+        pulseRate: 2.3,
+        pulseDepth: 0.3,
+        flash: 1.5,
+        boost: 3,
+        flickerRate: 53,
+        flickerDepth: 0.6,
+      },
+      {
+        material: jar,
+        intensity: 1.3,
+        pulseRate: 1.4,
+        pulseDepth: 0.25,
+        boost: 1.5,
+        flickerRate: 29,
+        flickerDepth: 0.25,
+      },
     ],
     { owned: [ceramic] },
   );

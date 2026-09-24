@@ -10,7 +10,7 @@ import type { WeaponViewmodelDef } from '../viewmodels';
 import { LONG_GUN_LOWERED, TRIGGER_PULL, V } from '../viewmodelParts';
 
 export const BLACKHOLE_VIEWMODEL: WeaponViewmodelDef | null = {
-  hip: { pos: V(0.135, -0.145, -0.34), rot: V(0, 2, 0) },
+  hip: { pos: V(0.135, -0.158, -0.34), rot: V(0, 2, 0) },
   adsEyeDistance: 0.21,
   sprint: { pos: V(-0.035, -0.04, 0.03), rot: V(-14, 32, -24) },
   lowered: LONG_GUN_LOWERED,
@@ -112,8 +112,8 @@ export const BLACKHOLE_VIEWMODEL: WeaponViewmodelDef | null = {
       {
         part: 'ring',
         type: 'tween',
-        from: { rot: V(0, 0, 0) },
-        pose: { rot: V(0, 0, 120) },
+        from: { rot: V(0, 0, -120) },
+        pose: {},
         duration: 0.3,
         ease: 'outBack',
       },

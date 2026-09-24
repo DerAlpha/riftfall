@@ -8,11 +8,15 @@
  * Shot direction: combat:impact carries none, but a weapon emits weapon:fired right before it
  * traces that shot's bullets (same tick, same call chain), so shot-kind impacts of that weapon
  * travel from the fired `origin` to the impact point (ricochet sparks, splatter behind bodies).
+ *
+ * M5: tracers take the event's effective colour (forge tier, crit shots); ricochet segments are
+ * world tracers; weapons whose muzzle preset names a `tracer` style draw an arsenal ray instead
+ * (railgun slug, void shots). Explosions pass their ExplosionDef's preset (plasma splash …).
  */
 import type { EventBus } from '../core/EventBus';
-import type { GameEvents } from '../core/events';
+import type { GameEvents, Vec3Like } from '../core/events';
 import { getWeaponDef } from '../defs/weapons';
-import { IMPACT_USES_WEAPON_PROFILE, VFX } from '../defs/vfx';
+import { IMPACT_USES_WEAPON_PROFILE, VFX, getEffectPreset } from '../defs/vfx';
 import type { VfxWeaponApi } from '../core/contracts';
 
 const UP = { x: 0, y: 1, z: 0 };
@@ -24,12 +28,16 @@ export type VfxBridgeTarget = Pick<
   | 'muzzle'
   | 'impact'
   | 'muzzleTracer'
+  | 'tracer'
   | 'explosion'
   | 'spawn'
   | 'applyGraphics'
   | 'applyAccessibility'
   | 'hideMuzzleFlash'
->;
+> & {
+  /** Arsenal ray for a hitscan shot (VfxSystem.beamShot). */
+  beamShot(style: string, to: Vec3Like, from: Vec3Like): void;
+};
 
 export interface VfxBridgeDeps {
   events: EventBus<GameEvents>;
@@ -67,10 +75,18 @@ export class VfxBridge {
       }),
       // combat:tracer comes from the player's weapon: its start follows the displayed muzzle.
       events.on('combat:tracer', (e) => {
-        const color = getWeaponDef(e.weaponId)?.tracer.color;
-        vfx.muzzleTracer(e.to, color ?? VFX.tracers.defaultColor, e.from);
+        const def = getWeaponDef(e.weaponId);
+        const color = e.color ?? def?.tracer.color ?? VFX.tracers.defaultColor;
+        // Ricochet legs are world segments (they do not start at the muzzle).
+        if (e.segment) {
+          vfx.tracer(e.from, e.to, color);
+          return;
+        }
+        const style = def ? getEffectPreset(def.vfx.muzzle)?.tracer : undefined;
+        if (style) vfx.beamShot(style, e.to, e.from);
+        else vfx.muzzleTracer(e.to, color, e.from);
       }),
-      events.on('combat:explosion', (e) => vfx.explosion(e.position, e.radius, e.element)),
+      events.on('combat:explosion', (e) => vfx.explosion(e.position, e.radius, e.element, e.vfx)),
       events.on('player:land', (e) => {
         if (e.heavy) vfx.spawn(VFX.landing.effect, e.position, UP, landingScale(e.impactSpeed));
       }),

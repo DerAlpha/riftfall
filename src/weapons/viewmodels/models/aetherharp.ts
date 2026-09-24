@@ -33,7 +33,7 @@ const GRIP_TILT = -18;
 const GRIP_TOP = { y: 0.004, z: 0.012 } as const;
 const LEDS = 8;
 /** Harp: soundboard edge (x, y), frame span (z), apex height, lean outwards (deg). */
-const HARP = { x: -0.029, y: 0.074, back: 0.012, front: -0.29, height: 0.064, lean: 34 } as const;
+const HARP = { x: -0.029, y: 0.074, back: 0.012, front: -0.29, height: 0.076, lean: 32 } as const;
 const STRINGS = 6;
 const RES = { z: -0.33, r: 0.013 } as const;
 const MOTION = { crystal: 1.6, orbitA: 0.9, orbitB: -1.3, bobAmp: 0.0012, bobRate: 2.1 } as const;
@@ -60,7 +60,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   const readout = createReadout(readoutSpec);
   const glow = createGlowMaterials(AETHER.sight, readout?.texture ?? null, def.glow);
   glow.accent.emissive.set(AETHER.gold);
-  const ivory = createCeramicMaterial('aetherharp', 0xe8e0cc);
+  const ivory = createCeramicMaterial('aetherharp', 0xc9bea2);
   const light = createEnergyMaterial('aether-strings', {
     core: AETHER.light,
     rim: 0xffb84a,
@@ -128,10 +128,23 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     { paint: 0.85 },
   );
   for (const z of [0.03, -0.08, -0.2]) {
-    b.add(BODY, 'brass', tubeZ(0.028, 0.02, 0.006, 32), { pos: [0, 0.047, z + 0.003], scale: [0.96, 1.25, 1], paint: 0.9 });
+    b.add(BODY, 'brass', tubeZ(0.028, 0.02, 0.006, 32), {
+      pos: [0, 0.047, z + 0.003],
+      scale: [0.96, 1.25, 1],
+      paint: 0.9,
+    });
   }
   b.add(BODY, 'darkMetal', roundedBox(0.03, 0.004, 0.13, 0.0015), { pos: [0, 0.082, -0.03], paint: 0.4 });
   b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0016, 0.24), { pos: [0.0252, 0.062, -0.09] });
+  // Gold filigree waving along both flanks.
+  for (const side of [-1, 1]) {
+    const wave: [number, number, number][] = [];
+    for (let i = 0; i <= 24; i++) {
+      const z = 0.06 - i * 0.0125;
+      wave.push([side * 0.0256, 0.044 + 0.009 * Math.sin(i * 0.9), z]);
+    }
+    b.add(BODY, 'brass', bentTube(wave, 0.0011, 72, 5), { paint: 0.9 });
+  }
 
   // --- harp: soundboard, golden frame, pillars, strings of light ---
   const boardLen = HARP.back - HARP.front;
@@ -151,9 +164,19 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   const frame: [number, number, number][] = [];
   for (let i = 0; i <= 16; i++) frame.push(harpPoint(HARP.back - (i / 16) * boardLen));
   b.add(BODY, 'brass', bentTube(frame, 0.0045, 48, 10), { paint: 0.9 });
-  b.add(BODY, 'brass', bentTube(frame.map(([x, y, z]) => [x + 0.004, y - 0.004, z] as [number, number, number]), 0.0018, 48, 6), {
-    paint: 0.9,
-  });
+  b.add(
+    BODY,
+    'brass',
+    bentTube(
+      frame.map(([x, y, z]) => [x + 0.004, y - 0.004, z] as [number, number, number]),
+      0.0018,
+      48,
+      6,
+    ),
+    {
+      paint: 0.9,
+    },
+  );
   // Scroll finials where the frame meets the body.
   for (const z of [HARP.back, HARP.front]) {
     b.add(BODY, 'brass', new TorusGeometry(0.008, 0.0024, 8, 20, Math.PI * 1.5), {
@@ -173,7 +196,11 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       rot: [0, 0, HARP.lean],
       uv: 'keep',
     });
-    b.add(BODY, 'darkMetal', cylinderZ(0.0022, 0.0022, 0.004, 10), { pos: base, rot: [90 - 0, 0, 0], paint: 0.4 });
+    b.add(BODY, 'darkMetal', cylinderZ(0.0022, 0.0022, 0.004, 10), {
+      pos: base,
+      rot: [90 - 0, 0, 0],
+      paint: 0.4,
+    });
   }
 
   // --- resonator: gold fork, crystal, orbit rings ---
@@ -194,9 +221,14 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       ),
       { paint: 0.9 },
     );
-    b.add('resonator', 'crystal', new SphereGeometry(0.0032, 10, 8), { pos: [side * 0.018, BORE_Y, RES.z - 0.021] });
+    b.add('resonator', 'crystal', new SphereGeometry(0.0032, 10, 8), {
+      pos: [side * 0.018, BORE_Y, RES.z - 0.021],
+    });
   }
-  b.add('resonator', 'brass', cylinderZ(0.011, 0.014, 0.03, 20), { pos: [0, BORE_Y, RES.z + 0.078], paint: 0.9 });
+  b.add('resonator', 'brass', cylinderZ(0.011, 0.014, 0.03, 20), {
+    pos: [0, BORE_Y, RES.z + 0.078],
+    paint: 0.9,
+  });
   b.add('crystal', 'crystal', new OctahedronGeometry(RES.r, 0), { local: true, scale: [0.8, 0.8, 1.5] });
   b.add('crystal', 'aura', new SphereGeometry(RES.r * 1.6, 20, 14), { local: true, uv: 'keep' });
   b.add('orbitA', 'brass', new TorusGeometry(0.021, 0.0012, 6, 40), { local: true, paint: 0.9 });
@@ -227,11 +259,18 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   b.add('cell', 'brass', roundedBox(0.0335, 0.006, 0.06, 0.002), { pos: [0, -0.094, -0.112], paint: 0.9 });
   b.add('cell', 'crystal', roundedBox(0.0012, 0.04, 0.028, 0.0005), { pos: [-0.0163, -0.062, -0.112] });
   for (const z of [-0.104, -0.12]) {
-    b.add('cell', 'brass', cylinderZ(0.0022, 0.0022, 0.004, 8), { pos: [-0.0168, -0.084, z], rot: [0, 90, 0], paint: 0.9 });
+    b.add('cell', 'brass', cylinderZ(0.0022, 0.0022, 0.004, 8), {
+      pos: [-0.0168, -0.084, z],
+      rot: [0, 90, 0],
+      paint: 0.9,
+    });
   }
 
   // --- grip, trigger guard, trigger ---
-  b.add(BODY, 'ivory', roundedBox(0.031, 0.104, 0.043, 0.011, 3), { pos: gripAxis(0.05), rot: [GRIP_TILT, 0, 0] });
+  b.add(BODY, 'ivory', roundedBox(0.031, 0.104, 0.043, 0.011, 3), {
+    pos: gripAxis(0.05),
+    rot: [GRIP_TILT, 0, 0],
+  });
   for (let i = 0; i < 2; i++) {
     b.add(BODY, 'brass', roundedBox(0.0325, 0.005, 0.0445, 0.0018), {
       pos: gripAxis(0.03 + i * 0.05),
@@ -289,10 +328,16 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   );
 
   // --- gold ring sight with a floating diamond ---
-  b.add('sight', 'brass', roundedBox(0.008, SIGHT_Y - 0.1, 0.01, 0.002), { pos: [0, (SIGHT_Y + 0.078) / 2 - 0.006, -0.02], paint: 0.9 });
+  b.add('sight', 'brass', roundedBox(0.008, SIGHT_Y - 0.1, 0.01, 0.002), {
+    pos: [0, (SIGHT_Y + 0.078) / 2 - 0.006, -0.02],
+    paint: 0.9,
+  });
   b.add('sight', 'brass', new TorusGeometry(0.0118, 0.0018, 8, 40), { pos: [0, SIGHT_Y, -0.02], paint: 0.9 });
   b.add('sight', 'accent', new TorusGeometry(0.0098, 0.00035, 4, 40), { pos: [0, SIGHT_Y, -0.0205] });
-  b.add('sight', 'sight', new OctahedronGeometry(0.0011, 0), { pos: [0, SIGHT_Y, -0.024], scale: [1, 1.5, 0.4] });
+  b.add('sight', 'sight', new OctahedronGeometry(0.0011, 0), {
+    pos: [0, SIGHT_Y, -0.024],
+    scale: [1, 1.5, 0.4],
+  });
 
   // --- sockets & mounts ---
   b.socket('muzzle', [0, BORE_Y, RES.z - 0.02]);
@@ -310,7 +355,8 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     spinner(free.crystal, 'z', MOTION.crystal),
     spinner(free.orbitA, 'z', MOTION.orbitA),
     spinner(free.orbitB, 'z', MOTION.orbitB),
-    (fx) => cr.position.set(crRest.x, crRest.y + Math.sin(fx.time * MOTION.bobRate) * MOTION.bobAmp, crRest.z),
+    (fx) =>
+      cr.position.set(crRest.x, crRest.y + Math.sin(fx.time * MOTION.bobRate) * MOTION.bobAmp, crRest.z),
   ];
   return new EnergyWeaponModel(
     'aetherharp',
@@ -320,7 +366,15 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     readoutSpec,
     readout,
     [
-      { material: light, intensity: 2.2, pulseRate: 2.7, pulseDepth: 0.2, flash: 4, wave: 0.00015, waveFlash: 0.0016 },
+      {
+        material: light,
+        intensity: 2.2,
+        pulseRate: 2.7,
+        pulseDepth: 0.2,
+        flash: 4,
+        wave: 0.00015,
+        waveFlash: 0.0016,
+      },
       { material: crystal, intensity: 2.6, pulseRate: 1.9, pulseDepth: 0.2, flash: 4 },
       { material: aura, intensity: 0.9, pulseRate: 1.3, pulseDepth: 0.3, flash: 2.5 },
     ],

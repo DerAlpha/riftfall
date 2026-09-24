@@ -1,7 +1,8 @@
 /**
- * The roster driven through the real WeaponSystem (hitscan kinds; the other kinds are refused
- * until the fire-kinds engine lands): fire cadence per fire mode, magazines, reload choreography
- * and timing come out of the data as designed.
+ * The roster driven through the real WeaponSystem (trigger-per-round kinds: hitscan and projectile
+ * weapons without spin-up; beams, charge and spin-up cadences are covered by
+ * weapons/fire/fireKinds.test.ts): fire cadence per fire mode, magazines, reload choreography and
+ * timing come out of the data as designed.
  */
 import { describe, expect, it } from 'vitest';
 import { EventBus } from '../../core/EventBus';
@@ -10,7 +11,7 @@ import { CombatWorld } from '../../combat/CombatWorld';
 import { fakeSettings } from '../../player/testHelpers';
 import { FakeCamera, FakePlayer, FakeWeaponInput, fakeRenderCamera } from '../../weapons/testFakes';
 import { WeaponSystem } from '../../weapons/WeaponSystem';
-import { IMPLEMENTED_WEAPON_KINDS, WEAPONS, WEAPON_IDS, type WeaponDef } from '../weapons';
+import { WEAPONS, WEAPON_IDS, type WeaponDef } from '../weapons';
 
 const DT = 1 / 60;
 
@@ -62,12 +63,12 @@ function setup(id: string) {
   };
 }
 
-const hitscan: WeaponDef[] = WEAPON_IDS.map((id) => WEAPONS[id] as WeaponDef).filter((d) =>
-  IMPLEMENTED_WEAPON_KINDS.includes(d.kind),
+const hitscan: WeaponDef[] = WEAPON_IDS.map((id) => WEAPONS[id] as WeaponDef).filter(
+  (d) => (d.kind === 'hitscan' || d.kind === 'projectile') && !d.spinUp,
 );
 
 describe('roster through the weapon system', () => {
-  it('covers every hitscan weapon of the roster', () => {
+  it('covers every trigger-per-round weapon of the roster', () => {
     expect(hitscan.length).toBeGreaterThanOrEqual(17);
   });
 

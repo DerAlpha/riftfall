@@ -133,6 +133,9 @@
 .gameover {
   --go-blood: #d8261b;
   --go-blood-glow: rgba(216, 38, 27, 0.55);
+  /* The HUD points counter's gold (hud-economy.css --eco-gold): the same currency. */
+  --go-gold: #ffd76b;
+  --go-gold-glow: rgba(255, 190, 60, 0.45);
   position: absolute;
   inset: 0;
   display: grid;
@@ -204,7 +207,7 @@
 }
 .gameover__wave,
 .gameover__stat,
-.gameover__score {
+.gameover__total {
   animation: rf-gameover-reveal 0.45s ease-out both;
   animation-delay: calc(0.7s + var(--reveal, 0ms));
 }
@@ -258,19 +261,30 @@
   font-variant-numeric: tabular-nums;
   color: var(--rf-text-bright);
 }
-.gameover__score {
+.gameover__totals {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 44px;
+  margin-top: 6px;
+}
+.gameover__total {
   display: flex;
   align-items: baseline;
   gap: 16px;
-  margin-top: 6px;
 }
-.gameover__scorevalue {
+.gameover__scorevalue,
+.gameover__pointsvalue {
   font-family: var(--rf-font-mono);
   font-size: 40px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--rf-orange);
   text-shadow: 0 0 18px var(--rf-orange-soft);
+}
+.gameover__pointsvalue {
+  color: var(--go-gold);
+  text-shadow: 0 0 18px var(--go-gold-glow);
 }
 .gameover__nav {
   display: flex;
@@ -377,7 +391,7 @@
   .gameover__title::after,
   .gameover__wave,
   .gameover__stat,
-  .gameover__score {
+  .gameover__total {
     animation: none;
   }
   .start__map {

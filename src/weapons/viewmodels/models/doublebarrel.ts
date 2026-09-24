@@ -193,8 +193,9 @@ export const buildDoublebarrel: ViewmodelBuilder = (kit) => {
     pos: [0, 0.0, 0.314],
     uvDensity: VIEWMODEL_ART.knurlDensity,
   });
-  b.add(BODY, 'darkMetal', roundedBox(0.03, 0.01, 0.13, 0.003), {
-    pos: [0, 0.068, 0.2],
+  // Cheek plate behind the aimed eye (it would fill the sight picture further forward).
+  b.add(BODY, 'darkMetal', roundedBox(0.03, 0.01, 0.09, 0.003), {
+    pos: [0, 0.068, 0.25],
     paint: P.darkMetal.paint,
   });
   b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0022, 0.14), { pos: [0.0193, 0.04, 0.19] });
@@ -320,7 +321,7 @@ export const buildDoublebarrel: ViewmodelBuilder = (kit) => {
   }
 
   // --- external hammers (cocked back at rest) + top lever ---
-  // Sidelock hammers on the flanks of the action; the spurs stand clear of the sight line.
+  // Sidelock hammers on the flanks of the action; the spurs stay below the sight line.
   for (const x of [-0.0232, 0.0232]) {
     b.add(
       'hammers',
@@ -329,12 +330,12 @@ export const buildDoublebarrel: ViewmodelBuilder = (kit) => {
         [
           [0.006, 0.052],
           [-0.012, 0.05],
-          [-0.02, 0.058],
-          [-0.03, 0.074],
-          [-0.036, 0.082],
-          [-0.028, 0.084],
-          [-0.018, 0.074],
-          [-0.006, 0.066],
+          [-0.02, 0.056],
+          [-0.028, 0.066],
+          [-0.035, 0.073],
+          [-0.028, 0.0755],
+          [-0.018, 0.068],
+          [-0.006, 0.064],
           [0.006, 0.062],
         ],
         0.0065,
@@ -344,8 +345,8 @@ export const buildDoublebarrel: ViewmodelBuilder = (kit) => {
     );
   }
   b.add('lever', 'accentPaint', roundedBox(0.012, 0.004, 0.034, 0.0015), {
-    pos: [0.004, 0.0715, 0.036],
-    rot: [0, -12, 0],
+    pos: [0.003, 0.0656, 0.03],
+    rot: [9, -12, 0],
     paint: P.accentPaint.paint,
   });
 

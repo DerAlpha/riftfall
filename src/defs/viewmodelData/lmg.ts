@@ -9,7 +9,7 @@ import type { ReloadTrackDef, WeaponViewmodelDef } from '../viewmodels';
 import { LONG_GUN_LOWERED, TRIGGER_PULL, V } from '../viewmodelParts';
 
 /** Feed cover opening angle around its rear hinge (deg). */
-const COVER_OPEN = 74;
+const COVER_OPEN = 62;
 /** One belt link: the belt jumps back by this and is pulled in again per shot (m). */
 const LINK = V(-0.0095, -0.0035, 0);
 
@@ -21,8 +21,8 @@ const RELOAD_TRACK: ReloadTrackDef = {
     { t: 0.22, pos: V(-0.036, 0.034, 0.035), rot: V(11, 16, -23) },
     { t: 0.42, pos: V(-0.045, 0.02, 0.03), rot: V(6, 18, -25) },
     { t: 0.55, pos: V(-0.05, 0.028, 0.03), rot: V(9, 18, -21) },
-    { t: 0.67, pos: V(-0.055, 0.04, 0.02), rot: V(11, 20, 10) },
-    { t: 0.8, pos: V(-0.055, 0.044, 0.02), rot: V(13, 20, 14) },
+    { t: 0.67, pos: V(-0.055, 0.036, -0.01), rot: V(10, 20, 10) },
+    { t: 0.8, pos: V(-0.055, 0.04, -0.01), rot: V(12, 20, 14) },
     { t: 0.93, pos: V(-0.015, 0.008, 0.005), rot: V(3, 6, 3) },
   ],
 };

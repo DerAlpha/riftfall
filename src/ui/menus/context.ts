@@ -46,6 +46,8 @@ export interface GameOverStats {
   /** 0..1 (default shotsHit / shotsFired). */
   readonly accuracy?: number;
   readonly weakpointKills?: number;
+  /** Economy points credited during the run (M4); hidden when missing. */
+  readonly pointsEarned?: number;
   /** Map id (its MapChoice name is shown) or an explicit name. */
   readonly mapId?: string;
   readonly mapName?: string;

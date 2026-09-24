@@ -35,15 +35,15 @@ const SIGHT_FRONT = -0.05;
 const GRIP_TILT = -18;
 const MUZZLE_Z = -0.546;
 /** Drum: axis along X under the magwell. */
-const DRUM_C: readonly [number, number, number] = [0, -0.07, -0.098];
-const DRUM_R = 0.062;
-const DRUM_W = 0.056;
-const WINDOW_R = 0.038;
+const DRUM_C: readonly [number, number, number] = [0, -0.07, -0.11];
+const DRUM_R = 0.068;
+const DRUM_W = 0.06;
+const WINDOW_R = 0.042;
 const LEDS = 8;
 const ROTOR_BLADES = 16;
 /** Swirl of the rotor blades off the radial direction (deg). */
 const BLADE_SWIRL = 24;
-const SHROUD_R = 0.0215;
+const SHROUD_R = 0.025;
 
 const grip = (s: number): [number, number, number] => tiltedAxisPoint(GRIP_TILT, 0.004, 0.012, s);
 
@@ -59,7 +59,7 @@ export const buildAutoshotgun: ViewmodelBuilder = (kit) => {
   b.part('bolt', [0.028, 0.06, -0.05]);
   b.part('chargingHandle', [-0.029, 0.071, -0.125]);
   b.part('trigger', [0, 0.004, -0.034]);
-  b.part('magazine', [0, 0.012, -0.098]);
+  b.part('magazine', [0, 0.012, -0.11]);
   b.part('drum', [cx, cy, cz], { parent: 'magazine' });
   b.part('sight', [0, RAIL_TOP, -0.036]);
 
@@ -243,16 +243,16 @@ export const buildAutoshotgun: ViewmodelBuilder = (kit) => {
     'polymer',
     profileZ(
       [
-        [0.026, 0.05],
-        [0.026, 0.034],
-        [0.02, 0.025],
-        [-0.02, 0.025],
-        [-0.026, 0.034],
-        [-0.026, 0.05],
-        [-0.019, 0.05],
-        [-0.019, 0.036],
-        [0.019, 0.036],
-        [0.019, 0.05],
+        [0.029, 0.052],
+        [0.029, 0.034],
+        [0.022, 0.024],
+        [-0.022, 0.024],
+        [-0.029, 0.034],
+        [-0.029, 0.052],
+        [-0.023, 0.052],
+        [-0.023, 0.031],
+        [0.023, 0.031],
+        [0.023, 0.052],
       ],
       0.2,
       { bevel: 0.002 },
@@ -261,13 +261,13 @@ export const buildAutoshotgun: ViewmodelBuilder = (kit) => {
   );
   for (const side of [-1, 1]) {
     b.add(BODY, 'grip', roundedBox(0.002, 0.013, 0.13, 0.001), {
-      pos: [side * 0.0262, 0.038, -0.3],
+      pos: [side * 0.0292, 0.041, -0.3],
       uvDensity: VIEWMODEL_ART.knurlDensity,
     });
   }
-  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0016, 0.17), { pos: [-0.0266, 0.0475, -0.3] });
+  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0016, 0.17), { pos: [-0.0296, 0.0495, -0.3] });
   b.add(BODY, 'darkMetal', new BoxGeometry(0.018, 0.005, 0.09), {
-    pos: [0, 0.0225, -0.33],
+    pos: [0, 0.0215, -0.33],
     paint: P.darkMetal.paint,
   });
   b.add(
@@ -276,23 +276,23 @@ export const buildAutoshotgun: ViewmodelBuilder = (kit) => {
     latheZHard(
       [
         [0.012, 0],
-        [0.019, 0.004],
-        [0.021, 0.03],
-        [0.0245, 0.04],
-        [0.0215, 0.046],
-        [0.0115, 0.046],
+        [0.021, 0.004],
+        [0.023, 0.03],
+        [0.027, 0.04],
+        [0.0235, 0.046],
+        [0.0125, 0.046],
       ],
       24,
     ),
     { pos: [0, BARREL_Y, MUZZLE_Z + 0.046], paint: P.darkMetal.paint },
   );
   for (let i = 0; i < 4; i++) {
-    b.add(BODY, 'bore', new BoxGeometry(0.004, 0.049, 0.018), {
+    b.add(BODY, 'bore', new BoxGeometry(0.0045, 0.0555, 0.018), {
       pos: [0, BARREL_Y, MUZZLE_Z + 0.024],
       rot: [0, 0, 45 * i],
     });
   }
-  b.add(BODY, 'bore', cylinderZ(0.0112, 0.0112, 0.001, 18), { pos: [0, BARREL_Y, MUZZLE_Z + 0.0006] });
+  b.add(BODY, 'bore', cylinderZ(0.0122, 0.0122, 0.001, 18), { pos: [0, BARREL_Y, MUZZLE_Z + 0.0006] });
 
   // --- charging handle (left) + bolt face (right port) ---
   b.add('chargingHandle', 'darkMetal', cylinderX(0.0034, 0.016, 10), {
@@ -310,7 +310,7 @@ export const buildAutoshotgun: ViewmodelBuilder = (kit) => {
 
   // --- drum magazine: feed tower, body (axis X), rims, left face with LED ring + window ---
   b.add('magazine', 'polymer', roundedBox(0.032, 0.034, 0.062, 0.004), {
-    pos: [0, -0.004, -0.098],
+    pos: [0, -0.004, -0.11],
     paint: P.polymer.paint,
   });
   b.add(
@@ -415,8 +415,8 @@ export const buildAutoshotgun: ViewmodelBuilder = (kit) => {
   b.socket('sight', [0, SIGHT_Y, SIGHT_REAR + 0.002]);
   b.mount('optic', [0, RAIL_TOP, -0.036]);
   b.mount('muzzleDevice', [0, BARREL_Y, MUZZLE_Z]);
-  b.mount('underbarrel', [0, 0.02, -0.33]);
-  b.mount('laser', [-0.0272, 0.04, -0.37], [0, 0, 90]);
+  b.mount('underbarrel', [0, 0.019, -0.33]);
+  b.mount('laser', [-0.0302, 0.041, -0.37], [0, 0, 90]);
   b.mount('stock', [0, 0.05, 0.095]);
 
   const built = b.build({ ...kit.materials, ...glow });

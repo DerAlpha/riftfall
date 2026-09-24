@@ -1,7 +1,8 @@
 /**
  * GL-6 „Donnerkeil“ – viewmodel poses and part choreography (M5). A six-shot revolver grenade
- * launcher: every shot indexes the drum one chamber (60°, a tween from 0 → 60 – the drum is
- * six-fold symmetric, so the jump back is invisible). Reload is shell by shell: the launcher is
+ * launcher: every shot indexes the drum one chamber (60°: a tween that jumps to −60 and turns
+ * back to rest – the drum is six-fold symmetric, so the jump is invisible and the drum always
+ * ends at rest, nothing to settle after a reload). Reload is shell by shell: the launcher is
  * lifted and rolled so the loading gate at the drum's rear-left faces the eye, each grenade is
  * pushed into the gate chamber ON its shellIn marker and the drum indexes to the next chamber.
  * Import runtime helpers from '../viewmodelParts' and only TYPES from '../viewmodels'.
@@ -9,18 +10,18 @@
 import type { PartMotionDef, WeaponViewmodelDef } from '../viewmodels';
 import { LONG_GUN_LOWERED, TRIGGER_PULL, V } from '../viewmodelParts';
 
-/** One chamber of drum indexing (the drum's local +Z roll). */
+/** One chamber of drum indexing (+60° about the drum's local Z, ending at rest). */
 const DRUM_INDEX: PartMotionDef = {
   part: 'drum',
   type: 'tween',
-  from: { rot: V(0, 0, 0) },
-  pose: { rot: V(0, 0, 60) },
+  from: { rot: V(0, 0, -60) },
+  pose: {},
   duration: 0.13,
   ease: 'outBack',
 };
 
 export const GRENADELAUNCHER_VIEWMODEL: WeaponViewmodelDef | null = {
-  hip: { pos: V(0.135, -0.14, -0.33), rot: V(0, 2, 0) },
+  hip: { pos: V(0.135, -0.152, -0.33), rot: V(0, 2, 0) },
   adsEyeDistance: 0.21,
   sprint: { pos: V(-0.035, -0.04, 0.03), rot: V(-14, 32, -24) },
   lowered: LONG_GUN_LOWERED,
@@ -32,7 +33,10 @@ export const GRENADELAUNCHER_VIEWMODEL: WeaponViewmodelDef | null = {
   heat: { perShot: 0.22, decay: 0.3 },
   fire: [TRIGGER_PULL, { ...DRUM_INDEX, delay: 0.1 }],
   fireLast: [TRIGGER_PULL, { ...DRUM_INDEX, delay: 0.1 }],
-  dryFire: [{ ...TRIGGER_PULL, pose: { rot: V(-26, 0, 0) }, release: 0.05 }, { ...DRUM_INDEX, duration: 0.1 }],
+  dryFire: [
+    { ...TRIGGER_PULL, pose: { rot: V(-26, 0, 0) }, release: 0.05 },
+    { ...DRUM_INDEX, duration: 0.1 },
+  ],
   fireImpulses: [{ delay: 0.1, pose: { pos: V(0, 0, -0.004), rot: V(0, 0, -1.5) } }],
   lockParts: [],
   reload: {

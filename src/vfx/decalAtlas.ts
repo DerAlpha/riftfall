@@ -186,6 +186,44 @@ const GENERATORS: Record<DecalKind, DecalFn> = {
     s.metalness = 1;
     s.emissive = clamp01((1 - smooth(0.1, 0.6, e)) * 0.8);
   },
+  frost(u, v, s, seed) {
+    // Rime left by an ice blast: feathery crystal spines over a thin frosted film.
+    const r = radial(u, v);
+    const a01 = angle01(u, v);
+    const n = fbm(u * 4 + 7, v * 4 - 2, 4, seed);
+    const cover = 1 - smooth(0.2, 0.9, r + (n - 0.5) * 0.5);
+    const rays = 16;
+    const k = a01 * rays + (valueNoise(r * 5, a01 * 4, seed + 3) - 0.5) * 0.8;
+    const rayDist = (Math.abs(k - Math.round(k)) / rays) * TAU * Math.max(r, 0.05);
+    const rayLen = 0.45 + 0.5 * hashRay(((Math.round(k) % rays) + rays) % rays, seed);
+    const spine = Math.exp(-((rayDist / 0.01) ** 2)) * (1 - smooth(rayLen - 0.12, rayLen, r));
+    const barbs = Math.pow(1 - Math.abs(valueNoise(u * 22, v * 22, seed + 5) * 2 - 1), 10) * cover;
+    const crystals = smooth(0.58, 0.78, fbm(u * 14, v * 14, 3, seed + 11)) * cover;
+    s.height = spine * 0.5 + crystals * 0.35 + barbs * 0.2 + cover * 0.1;
+    s.r = clamp01(0.68 + 0.2 * n);
+    s.g = clamp01(0.82 + 0.12 * n);
+    s.b = 0.95;
+    s.a = clamp01(Math.max(cover * 0.4 * (0.6 + 0.4 * n), spine * 0.9, crystals * 0.75, barbs * 0.5));
+    s.roughness = 0.12 + (1 - cover) * 0.3;
+    s.metalness = 0;
+    s.emissive = clamp01(spine * 0.6 + crystals * 0.35);
+  },
+  voidburn(u, v, s, seed) {
+    // Void blast: a black burn crazed with glowing violet cracks.
+    const r = radial(u, v);
+    const a01 = angle01(u, v);
+    const n = fbm(u * 2.5 - 4, v * 2.5 + 2, 5, seed);
+    const body = 1 - smooth(0.12, 0.9, r + (n - 0.5) * 0.5);
+    const crack = Math.pow(1 - Math.abs(valueNoise(a01 * 13, r * 3.2, seed + 9) * 2 - 1), 16);
+    const web = Math.pow(1 - Math.abs(fbm(u * 7, v * 7, 3, seed + 2) * 2 - 1), 12);
+    const cracks = clamp01(crack + web * 0.7) * (1 - smooth(0.2, 0.78, r));
+    s.height = -body * 0.2 - cracks * 0.3;
+    grey(s, 0.01 + 0.03 * n);
+    s.a = clamp01(Math.max(body * (0.8 + 0.3 * n), cracks));
+    s.roughness = 0.92;
+    s.metalness = 0;
+    s.emissive = clamp01(cracks * 1.2 + (1 - smooth(0, 0.22, r)) * 0.5);
+  },
   'bullet.generic'(u, v, s, seed) {
     const r = radial(u, v);
     const n = fbm(u * 5, v * 5, 3, seed);

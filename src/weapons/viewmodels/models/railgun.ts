@@ -98,7 +98,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.22), { pos: [-0.0264, 0.0735, -0.08] });
   b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.22), { pos: [0.0264, 0.0735, -0.08] });
   // Top rail + teeth.
-  b.add(BODY, 'darkMetal', new BoxGeometry(0.022, 0.004, 0.22), { pos: [0, 0.087, -0.06], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', new BoxGeometry(0.022, 0.004, 0.22), {
+    pos: [0, 0.087, -0.06],
+    paint: P.darkMetal.paint,
+  });
   for (let i = 0; i < 15; i++) {
     b.add(BODY, 'darkMetal', new BoxGeometry(0.024, 0.004, 0.0065), {
       pos: [0, 0.0905, 0.04 - i * 0.0135],
@@ -106,10 +109,16 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     });
   }
   // Priming-lever slot (right flank).
-  b.add(BODY, 'darkMetal', new BoxGeometry(0.0012, 0.007, 0.068), { pos: [0.0263, 0.064, 0.006], paint: 0.05 });
+  b.add(BODY, 'darkMetal', new BoxGeometry(0.0012, 0.007, 0.068), {
+    pos: [0.0263, 0.064, 0.006],
+    paint: 0.05,
+  });
 
   // Capacitor tube on the left flank, facing the shooter behind a slotted cage.
-  b.add(BODY, 'darkMetal', new BoxGeometry(0.0014, 0.024, 0.13), { pos: [-0.0262, 0.047, -0.08], paint: 0.05 });
+  b.add(BODY, 'darkMetal', new BoxGeometry(0.0014, 0.024, 0.13), {
+    pos: [-0.0262, 0.047, -0.08],
+    paint: 0.05,
+  });
   b.add(BODY, 'cap', cylinderZ(0.0085, 0.0085, 0.124, 16), { pos: [-0.0236, 0.047, -0.08] });
   for (const cz of [-0.017, -0.143]) {
     b.add(BODY, 'darkMetal', cylinderZ(0.0105, 0.0105, 0.008, 16), { pos: [-0.0236, 0.047, cz], paint: 0.4 });
@@ -136,7 +145,9 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
         pos: [side * 0.0266, BORE_Y, z],
         paint: P.darkMetal.paint,
       });
-      b.add(BODY, 'heat', new BoxGeometry(0.0012, 0.026, 0.004), { pos: [side * 0.0268, BORE_Y, z - 0.0055] });
+      b.add(BODY, 'heat', new BoxGeometry(0.0012, 0.026, 0.004), {
+        pos: [side * 0.0268, BORE_Y, z - 0.0055],
+      });
     }
   }
 
@@ -155,12 +166,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   }
 
   // --- collar: armoured block the rails grow out of ---
-  b.add(
-    BODY,
-    'gunmetal',
-    profileZ(chamferRectProfile(0.092, 0.088, 0.022, 0.012), 0.062, { bevel: 0.003 }),
-    { pos: [0, BORE_Y, -0.225], paint: P.gunmetal.paint },
-  );
+  b.add(BODY, 'gunmetal', profileZ(chamferRectProfile(0.092, 0.088, 0.022, 0.012), 0.062, { bevel: 0.003 }), {
+    pos: [0, BORE_Y, -0.225],
+    paint: P.gunmetal.paint,
+  });
   b.add(BODY, 'darkMetal', profileZ(chamferRectProfile(0.078, 0.074, 0.016, 0.01), 0.008, { bevel: 0.001 }), {
     pos: [0, BORE_Y, -0.259],
     paint: P.darkMetal.paint,
@@ -189,7 +198,11 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   b.add(BODY, 'field', new TorusGeometry(0.0085, 0.0013, 8, 24), { pos: [0, BORE_Y, -0.6435], uv: 'keep' });
   // Slug channel: a thread of light down the bore, and the field sheet between the bare rails.
   b.add(BODY, 'slug', cylinderZ(0.0021, 0.0021, 0.385, 10), { pos: [0, BORE_Y, -0.4475] });
-  b.add(BODY, 'sheet', new PlaneGeometry(0.2, 0.03), { pos: [0, BORE_Y, -0.535], rot: [0, 90, 0], uv: 'keep' });
+  b.add(BODY, 'sheet', new PlaneGeometry(0.2, 0.03), {
+    pos: [0, BORE_Y, -0.535],
+    rot: [0, 90, 0],
+    uv: 'keep',
+  });
 
   // --- rails: tapered lance blades, glowing conductor faces towards the bore ---
   const railProfile: [number, number][] = [
@@ -220,8 +233,12 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       pos: [side * (RAIL_X - 0.0062), BORE_Y, -0.44],
       paint: 0.12,
     });
-    b.add(part, 'accent', new BoxGeometry(0.0008, 0.007, 0.38), { pos: [side * (RAIL_X - 0.0072), BORE_Y, -0.445] });
-    b.add(part, 'accent', new BoxGeometry(0.0008, 0.0016, 0.36), { pos: [side * (RAIL_X + 0.0062), 0.064, -0.43] });
+    b.add(part, 'accent', new BoxGeometry(0.0008, 0.007, 0.38), {
+      pos: [side * (RAIL_X - 0.0072), BORE_Y, -0.445],
+    });
+    b.add(part, 'accent', new BoxGeometry(0.0008, 0.0016, 0.36), {
+      pos: [side * (RAIL_X + 0.0062), 0.064, -0.43],
+    });
   }
 
   // --- accelerator rings: frame, glowing inner edge, clamp blocks and cable stubs ---
@@ -248,7 +265,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
         pos: [side * 0.052, BORE_Y, z],
         paint: P.darkMetal.paint,
       });
-      b.add('coils', 'brass', cylinderX(0.0034, 0.004, 10), { pos: [side * 0.059, BORE_Y + 0.008, z], paint: 0.8 });
+      b.add('coils', 'brass', cylinderX(0.0034, 0.004, 10), {
+        pos: [side * 0.059, BORE_Y + 0.008, z],
+        paint: 0.8,
+      });
     }
   }
 
@@ -364,7 +384,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     ),
     { paint: P.polymer.paint },
   );
-  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0016, 0.16), { pos: [-0.0185, 0.083, 0.2], rot: [-3, 0, 0] });
+  b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0016, 0.16), {
+    pos: [-0.0185, 0.083, 0.2],
+    rot: [-3, 0, 0],
+  });
   b.add(BODY, 'grip', roundedBox(0.04, 0.126, 0.016, 0.004), {
     pos: [0, 0.015, 0.338],
     uvDensity: VIEWMODEL_ART.knurlDensity,
@@ -381,7 +404,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       paint: P.gunmetal.paint,
     });
   }
-  b.add('cell', 'darkMetal', new BoxGeometry(0.0006, 0.05, 0.036), { pos: [-0.0172, -0.064, -0.113], paint: 0.05 });
+  b.add('cell', 'darkMetal', new BoxGeometry(0.0006, 0.05, 0.036), {
+    pos: [-0.0172, -0.064, -0.113],
+    paint: 0.05,
+  });
   b.add('cell', 'cap', new BoxGeometry(0.0012, 0.04, 0.026), { pos: [-0.0176, -0.064, -0.113] });
   b.add('cell', 'accentPaint', roundedBox(0.04, 0.01, 0.078, 0.003), {
     pos: [0, -0.108, -0.113],

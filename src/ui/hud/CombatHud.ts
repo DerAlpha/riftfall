@@ -131,6 +131,19 @@ export class CombatHud {
     for (const v of this.views) v.shownScale = NaN;
   }
 
+  /**
+   * New run: hitmarker, damage numbers, kill confirmation and streak of the last run gone (the next
+   * update() writes the hidden state). The death sequence runs little game time and the game over
+   * screen freezes the HUD, so they would otherwise still be up when the next run starts.
+   */
+  reset(): void {
+    this.marker.age = Number.POSITIVE_INFINITY;
+    this.numbers.clear();
+    this.streak.count = 0;
+    this.streak.sinceKill = Number.POSITIVE_INFINITY;
+    this.killAge = Number.POSITIVE_INFINITY;
+  }
+
   /** The player's damage landed (combat:damage from source 'player'). */
   onDamage(targetId: number, amount: number, zone: HitZone, killed: boolean, point: Vec3Like): void {
     // A hit that did nothing (immune zone, already dead) must not read as a hit.

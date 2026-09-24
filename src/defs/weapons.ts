@@ -50,8 +50,11 @@ export type FireMode = 'semi' | 'auto' | 'burst' | 'pump';
  */
 export type WeaponKind = 'hitscan' | 'projectile' | 'beam' | 'charge';
 
-/** Kinds the weapon system can fire; defs of any other kind are refused (never fired as hitscan). */
-export const IMPLEMENTED_WEAPON_KINDS: readonly WeaponKind[] = ['hitscan'];
+/**
+ * Kinds the weapon system can fire; defs of any other kind are refused (never fired as hitscan).
+ * M5: all four (weapons/fire – projectiles, beams, charge).
+ */
+export const IMPLEMENTED_WEAPON_KINDS: readonly WeaponKind[] = ['hitscan', 'projectile', 'beam', 'charge'];
 
 /** Attachment slots (M5). */
 export type AttachmentSlot = 'optic' | 'muzzle' | 'underbarrel' | 'magazine' | 'stock' | 'laser';

@@ -16,9 +16,9 @@ const HAMMER_FALL = -48;
 const RELOAD_KEYS: readonly PoseKeyDef[] = [
   { t: 0.08, pos: V(-0.03, 0.03, 0.02), rot: V(-6, 12, -20) },
   // Broken open: the stock rises, the open chambers turn towards the eye.
-  { t: 0.2, pos: V(-0.045, 0.05, 0.03), rot: V(-12, 18, -30) },
-  { t: 0.42, pos: V(-0.048, 0.056, 0.036), rot: V(-15, 20, -32) },
-  { t: 0.58, pos: V(-0.05, 0.058, 0.034), rot: V(-13, 20, -33) },
+  { t: 0.2, pos: V(-0.045, 0.046, 0.0), rot: V(-12, 18, -26) },
+  { t: 0.42, pos: V(-0.048, 0.05, 0.004), rot: V(-15, 20, -28) },
+  { t: 0.58, pos: V(-0.05, 0.052, 0.002), rot: V(-13, 20, -29) },
   // Snap shut: the muzzle flicks up.
   { t: 0.74, pos: V(-0.03, 0.03, 0.018), rot: V(-4, 12, -18) },
   { t: 0.8, pos: V(-0.024, 0.026, 0.012), rot: V(5, 9, -12) },
@@ -33,7 +33,7 @@ const RELOAD_TRACK: ReloadTrackDef = {
 
 export const DOUBLEBARREL_VIEWMODEL: WeaponViewmodelDef = {
   hip: { pos: V(0.14, -0.16, -0.345), rot: V(0, 2, 0) },
-  adsEyeDistance: 0.16,
+  adsEyeDistance: 0.26,
   sprint: { pos: V(-0.035, -0.04, 0.03), rot: V(-14, 34, -26) },
   lowered: LONG_GUN_LOWERED,
   pivot: V(0, 0.035, -0.1),

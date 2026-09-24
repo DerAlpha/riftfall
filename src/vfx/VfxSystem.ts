@@ -16,6 +16,11 @@
  * the world materials for the final count only once – attach the viewmodel sockets (setSockets)
  * once the rig exists, then call warmup() after the atmosphere: it renders one frame with every
  * VFX draw call active (invisible) so no program compiles at the first shot.
+ *
+ * M5: the arsenal visuals (projectiles, trails, beams, fields, charge glow – vfx/arsenal) are
+ * constructed here too (`arsenal`): they share the particles, flash lights and preset spawning,
+ * warm up, clear and follow the particle budget with the rest. Their per-frame update is separate
+ * (Game calls arsenal.update() after the arsenal simulation's frame update).
  */
 import * as THREE from 'three';
 import type {
@@ -37,6 +42,7 @@ import type {
   Vec3Like,
 } from '../core/events';
 import { createLogger } from '../core/log';
+import { ARSENAL_VFX } from '../defs/arsenalVfx';
 import { QUALITY_LEVELS } from '../defs/graphics';
 import { interactionGroups } from '../defs/physics';
 import {
@@ -59,6 +65,7 @@ import {
   type Rgb,
 } from '../defs/vfx';
 import type { AccessibilitySettings, GraphicsSettings, QualityLevel } from '../save/settingsSchema';
+import { ArsenalVfx, type LensSink } from './arsenal/ArsenalVfx';
 import { CasingSystem, type ClinkCallback } from './CasingSystem';
 import {
   createDecalAtlas,
@@ -89,6 +96,8 @@ export interface VfxDeps {
   sockets?: VfxSocketSource | null;
   /** Screen-space shockwave trigger (RenderSystem.addShockwave). */
   shockwave?: ((position: Vec3Like, radius: number, strength: number) => void) | null;
+  /** Screen-space lens slots (RenderSystem.setLens): singularities bend the image around them. */
+  lens?: LensSink | null;
   /** Casing bounce sound hook (position, sound id, impact speed m/s) → AudioEventBridge.playCasing. */
   onClink?: ClinkCallback | null;
   /** Cosmetic randomness (default Math.random). */
@@ -183,6 +192,8 @@ export class VfxSystem implements VfxWeaponApi {
   readonly casings: CasingSystem;
   readonly lights: LightPool;
   readonly muzzleFlash: MuzzleFlash;
+  /** M5 arsenal visuals (ArsenalVfxApi): projectiles, trails, beams, fields, charge glow. */
+  readonly arsenal: ArsenalVfx;
 
   private readonly render: RenderApi;
   private readonly physics: PhysicsApi | null;
@@ -256,8 +267,21 @@ export class VfxSystem implements VfxWeaponApi {
     this.lights = new LightPool(this.render.scene, this.rand, this.render.viewmodelScene);
     this.muzzleFlash = new MuzzleFlash(this.spriteAtlas, this.rand);
 
+    const lens = deps.lens ?? null;
+    this.arsenal = new ArsenalVfx({
+      render: this.render,
+      particles: this.particles,
+      lights: this.lights,
+      spawn: (effect, position, normal, scale) => this.spawn(effect, position, normal, scale),
+      physics: this.physics,
+      sockets: () => this.sockets,
+      // Lens distortion follows the screen-shake accessibility option like the shockwave.
+      lens: lens ? (slot, p, radius, strength) => lens(slot, p, radius, strength * this.shockwaveScale) : null,
+      random: this.rand,
+    });
+
     const scene = this.render.scene;
-    scene.add(this.particles.object, this.tracers.mesh, this.decals.mesh, this.casings.object);
+    scene.add(this.particles.object, this.tracers.mesh, this.decals.mesh, this.casings.object, this.arsenal.object);
     this.setSockets(deps.sockets ?? null);
 
     for (let i = 0; i < VFX.queue.shots; i++) {
@@ -319,13 +343,28 @@ export class VfxSystem implements VfxWeaponApi {
     t.color = color;
   }
 
-  explosion(position: Vec3Like, radius: number, element: DamageElement = 'physical'): void {
+  /**
+   * An explosion of `radius` m. `presetId` (M5 ExplosionDef.vfx, via combat:explosion): the blast's
+   * own preset – element blasts, small splashes that name an impact preset; unknown or absent: the
+   * element's preset (EXPLOSION_PRESET), or the physical one tinted by ELEMENT_TINTS.
+   */
+  explosion(position: Vec3Like, radius: number, element: DamageElement = 'physical', presetId?: string): void {
     if (!finite(position) || !(radius > 0)) return;
-    const preset = this.preset(EXPLOSION_PRESET[element] ?? EXPLOSION_PRESET.physical);
+    let preset = presetId ? getEffectPreset(presetId) : undefined;
+    if (presetId && !preset) this.warnUnknown(`effect:${presetId}`);
+    let tinted = false;
+    if (!preset) {
+      preset = getEffectPreset(EXPLOSION_PRESET[element] ?? EXPLOSION_PRESET.physical);
+      if (!preset) {
+        preset = this.preset(EXPLOSION_PRESET.physical);
+        tinted = true;
+      }
+    }
     if (!preset) return;
     const [minScale, maxScale] = VFX.explosionScale;
     const scale = Math.min(maxScale, Math.max(minScale, radius / (preset.referenceRadius ?? radius)));
-    const tint = ELEMENT_TINTS[element] ?? null;
+    // Element presets are authored in their colours; only a fallback frag blast is tinted.
+    const tint = tinted ? (ELEMENT_TINTS[element] ?? null) : null;
     this.play(preset, position, UP, scale, false, tint?.tint ?? null, tint?.strength ?? 0);
     if (preset.shockwave && this.shockwave && this.shockwaveScale > 0) {
       this.shockwave(
@@ -355,7 +394,9 @@ export class VfxSystem implements VfxWeaponApi {
    * warm-up frame): the post chain skips that layer's pass otherwise when level volumetrics are off.
    */
   get hasVolumetricContent(): boolean {
-    return this.warming || this.particles.count > 0 || this.tracers.count > 0;
+    return (
+      this.warming || this.particles.count > 0 || this.tracers.count > 0 || this.arsenal.hasVolumetricContent
+    );
   }
 
   update(dt: number): void {
@@ -394,7 +435,7 @@ export class VfxSystem implements VfxWeaponApi {
    */
   warmup(): void {
     if (this.disposed) return;
-    const parts = [this.particles, this.tracers, this.decals, this.casings, this.muzzleFlash];
+    const parts = [this.particles, this.tracers, this.decals, this.casings, this.muzzleFlash, this.arsenal];
     for (const p of parts) p.setWarmup(true);
     this.warming = true;
     try {
@@ -416,6 +457,7 @@ export class VfxSystem implements VfxWeaponApi {
     this.casings.dispose();
     this.lights.dispose();
     this.muzzleFlash.dispose();
+    this.arsenal.dispose();
     this.spriteAtlas.dispose();
     this.decalAtlas.dispose();
   }
@@ -471,10 +513,16 @@ export class VfxSystem implements VfxWeaponApi {
     const prof = this.resolveProfile(profile, kind);
     if (!prof) return;
     const entry = SURFACE_IMPACTS[surface] ?? SURFACE_IMPACTS.default;
-    const preset = this.preset(entry.effect);
-    if (preset) this.play(preset, point, normal, prof.scale, true, null, 0, 0, direction);
-    if (decal && prof.decals && entry.decal && !this.onDynamicProp(point, normal)) {
-      this.decals.add(entry.decal, point, normal, prof.decalScale, this.rand() * Math.PI * 2, this.rand());
+    const surfaceScale = prof.scale * (prof.surfaceScale ?? 1);
+    const preset = surfaceScale > 0 ? this.preset(entry.effect) : undefined;
+    if (preset) this.play(preset, point, normal, surfaceScale, true, null, 0, 0, direction);
+    // Energy / element shots add their own burst (plasma splash, arcs, frost ...).
+    const extra = prof.effect ? this.preset(prof.effect) : undefined;
+    if (extra) this.play(extra, point, normal, prof.scale, true, null, 0, 0, direction);
+    // Bodies keep their surface's decal rule (none on flesh); world hits may take the profile's.
+    const decalKind = entry.decal && prof.decal !== undefined ? prof.decal : entry.decal;
+    if (decal && prof.decals && decalKind && !this.onDynamicProp(point, normal)) {
+      this.decals.add(decalKind, point, normal, prof.decalScale, this.rand() * Math.PI * 2, this.rand());
     }
     const splatter = entry.splatter;
     if (splatter && this.physics && this.rand() < splatter.chance) {
@@ -508,9 +556,20 @@ export class VfxSystem implements VfxWeaponApi {
     this.muzzleFlash.hide();
   }
 
+  /**
+   * A hitscan shot drawn as an arsenal ray (`style`: defs/arsenalVfx BEAM_STYLES; muzzle presets
+   * with a `tracer`, e.g. the railgun slug) instead of a thin tracer; starts at the displayed muzzle.
+   */
+  beamShot(style: string, to: Vec3Like, from: Vec3Like): void {
+    if (!finite(to) || !finite(from)) return;
+    this.arsenal.shot(style, to, from);
+  }
+
   applyGraphics(g: Readonly<GraphicsSettings>): void {
     const level = g.particles;
-    this.particles.setBudget(QUALITY_LEVELS.particles[level]?.budgetMultiplier ?? 1);
+    const budget = QUALITY_LEVELS.particles[level]?.budgetMultiplier ?? 1;
+    this.particles.setBudget(budget);
+    this.arsenal.setBudget(budget);
     if (level !== this.particleLevel || this.decals.capacity !== decalCapacity(level)) {
       this.decals.setCapacity(decalCapacity(level));
     }
@@ -521,6 +580,7 @@ export class VfxSystem implements VfxWeaponApi {
   applyAccessibility(a: Readonly<AccessibilitySettings>): void {
     this.flashScale = a.reduceFlashing ? VFX.lights.reducedFlashingScale : 1;
     this.lights.setIntensityScale(this.flashScale);
+    this.arsenal.setFlashScale(a.reduceFlashing ? ARSENAL_VFX.reducedFlashingScale : 1);
     const shake = a.screenShake;
     this.shockwaveScale = Number.isFinite(shake) ? Math.min(1, Math.max(0, shake)) : 1;
   }
@@ -533,6 +593,7 @@ export class VfxSystem implements VfxWeaponApi {
     this.casings.clear();
     this.lights.clear();
     this.muzzleFlash.hide();
+    this.arsenal.clear();
     this.pendingShotCount = 0;
     this.pendingCasingCount = 0;
     this.pendingTracerCount = 0;

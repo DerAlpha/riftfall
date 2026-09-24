@@ -841,7 +841,9 @@ describe('VfxBridge', () => {
       muzzle: (preset, color, casing) => calls.push(`muzzle ${preset} ${color} ${casing}`),
       impact: (surface, profile, kind) => calls.push(`impact ${surface} ${profile} ${kind}`),
       muzzleTracer: (_t, color) => calls.push(`tracer ${color}`),
-      explosion: (_p, r, el) => calls.push(`explosion ${r} ${el}`),
+      tracer: (_f, _t, color) => calls.push(`segment ${color}`),
+      beamShot: (style) => calls.push(`beam ${style}`),
+      explosion: (_p, r, el, preset) => calls.push(`explosion ${r} ${el} ${preset}`),
       spawn: (id, _p, _n, scale) => calls.push(`spawn ${id} ${scale}`),
       applyGraphics: (g) => calls.push(`graphics ${g.particles}`),
       applyAccessibility: (a) => calls.push(`access ${a.reduceFlashing}`),
@@ -885,7 +887,12 @@ describe('VfxBridge', () => {
       decal: true,
     });
     events.emit('combat:tracer', { from: v, to: v, weaponId: 'rifle' });
+    // M5: effective colour, ricochet segments, ray-style muzzles (railgun), ExplosionDef presets.
+    events.emit('combat:tracer', { from: v, to: v, weaponId: 'rifle', color: 0x123456 });
+    events.emit('combat:tracer', { from: v, to: v, weaponId: 'rifle', segment: true });
+    events.emit('combat:tracer', { from: v, to: v, weaponId: 'railgun' });
     events.emit('combat:explosion', { position: v, radius: 5, element: 'shock' });
+    events.emit('combat:explosion', { position: v, radius: 1.4, element: 'physical', vfx: 'impact.plasma' });
     events.emit('player:land', { impactSpeed: 20, heavy: true, position: v, surface: 'metal' });
     events.emit('player:land', { impactSpeed: 5, heavy: false, position: v, surface: 'metal' });
     events.emit('weapon:holsterStart', { weaponId: 'pistol', slot: 0, duration: 0.2, next: 'rifle' });
@@ -896,7 +903,11 @@ describe('VfxBridge', () => {
       `impact glass ${getWeaponDef('shotgun')!.vfx.impact} pellet`,
       'impact metal null bullet',
       `tracer ${getWeaponDef('rifle')!.tracer.color}`,
-      'explosion 5 shock',
+      `tracer ${0x123456}`,
+      `segment ${getWeaponDef('rifle')!.tracer.color}`,
+      'beam beam.rail',
+      'explosion 5 shock undefined',
+      'explosion 1.4 physical impact.plasma',
       `spawn land.heavy ${landingScale(20)}`,
       'hide',
       `graphics ${s.graphics.particles}`,
@@ -904,7 +915,7 @@ describe('VfxBridge', () => {
     ]);
     bridge.dispose();
     events.emit('combat:explosion', { position: v, radius: 5, element: 'shock' });
-    expect(calls).toHaveLength(9);
+    expect(calls).toHaveLength(13);
   });
 
   it('gives shot impacts of the last fired weapon their travel direction', () => {
@@ -915,6 +926,8 @@ describe('VfxBridge', () => {
       muzzle: noop,
       impact: (_s, _p, _k, _pt, _n, _d, direction) => dirs.push(direction ? { ...direction } : null),
       muzzleTracer: noop,
+      tracer: noop,
+      beamShot: noop,
       explosion: noop,
       spawn: noop,
       applyGraphics: noop,

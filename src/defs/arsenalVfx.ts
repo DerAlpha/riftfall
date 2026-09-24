@@ -792,6 +792,8 @@ export const ARSENAL_VFX = {
     maxSpawnsPerFrame: 6,
   },
   charge: { renderOrder: 51 },
+  /** Glow / beam / charge brightness with the reduce-flashing option (lights: VFX.lights). */
+  reducedFlashingScale: 0.6,
   /** Screen-space lenses at once (singularity fields + void orbs). */
   lenses: 4,
   /** Dev preview (`fx` console command). */

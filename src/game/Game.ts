@@ -41,6 +41,11 @@ import type { LoadingScreen } from '../ui/LoadingScreen';
 import { mountMenus, type MenuController } from '../ui/menus';
 import { CombatWorld } from '../combat/CombatWorld';
 import { WeaponSystem } from '../weapons/WeaponSystem';
+import { Arsenal } from '../weapons/fire/Arsenal';
+import { createFireCommands } from '../weapons/fire/fireCommands';
+import type { ProjectileSystem } from '../weapons/fire/ProjectileSystem';
+import type { FieldSystem } from '../combat/FieldSystem';
+import type { Explosions } from '../combat/Explosions';
 import { getLoadout } from '../defs/weapons';
 import { VFX } from '../defs/vfx';
 import { VfxSystem } from '../vfx/VfxSystem';
@@ -49,6 +54,7 @@ import { createVfxCommands } from '../vfx/vfxCommands';
 import { TrainingTargets } from '../world/TrainingTargets';
 import { registerDevCommands } from './devCommands';
 import { runFixedTick } from './fixedTick';
+import { resetRunSystems } from './runReset';
 import { Rng } from '../core/Rng';
 import type { EnemyTargetApi } from '../core/contracts';
 import { getMap, listMaps, type MapEntry } from '../maps/registry';
@@ -169,6 +175,11 @@ export interface GameSystems {
   /** Rift seals at the spawn points (wave maps only). */
   seals: SealSystem | null;
   powerUps: PowerUpSystem;
+  // M5 fire kinds (weapons/fire Arsenal): the parts are exposed for grenades, abilities, elements.
+  arsenal: Arsenal;
+  projectiles: ProjectileSystem;
+  fields: FieldSystem;
+  explosions: Explosions;
 }
 
 export class Game {
@@ -356,6 +367,17 @@ export class Game {
     });
     vfx.setSockets(viewmodel);
     const health = new PlayerHealth({ events, player });
+    // M5 fire kinds: projectiles, explosions, fields and weapon specials, shared with grenades and
+    // abilities, drawn by the VFX system's arsenal visuals; the player hook (self damage, blast
+    // shake) is attached once the enemy target exists.
+    const arsenal = new Arsenal({
+      events,
+      combat,
+      physics,
+      vfx: vfx.arsenal,
+      heal: (amount) => health.heal(amount),
+      seed: `arsenal:${level.id}:${Date.now()}`,
+    });
     const weapons = new WeaponSystem({
       events,
       input,
@@ -366,6 +388,7 @@ export class Game {
       combat,
       physics,
       getMuzzleWorld: (out) => viewmodel.getSocketWorldPosition('muzzle', out),
+      arsenal,
     });
     viewmodel.setAdsSource(weapons);
 
@@ -419,6 +442,7 @@ export class Game {
       },
       damage: (amount, direction, kind) => health.damage(amount, direction, kind),
     };
+    arsenal.setPlayer(enemyTarget);
     const enemies = new EnemyManager({
       events,
       combat,
@@ -620,6 +644,10 @@ export class Game {
       interactables,
       seals,
       powerUps,
+      arsenal,
+      projectiles: arsenal.projectiles,
+      fields: arsenal.fields,
+      explosions: arsenal.explosions,
     });
     gameRef = game;
     game.registerCommands();
@@ -702,6 +730,7 @@ export class Game {
       interactables,
       seals,
       powerUps,
+      arsenal,
     } = this.sys;
     this.time += dt;
     player.update(dt, alpha);
@@ -720,6 +749,11 @@ export class Game {
     viewmodel.update(dt);
     // VFX after the viewmodel: muzzle flashes and casings use this frame's socket positions.
     vfx.update(dt);
+    // Arsenal visuals too: projectiles converge from the muzzle as shown, beams start there; the
+    // arsenal VFX rebuild their draw batches after the simulation's frame update (every frame).
+    arsenal.update(dt, alpha);
+    weapons.updateVisuals(dt);
+    vfx.arsenal.update(dt);
     interactables.update(dt, alpha);
     seals?.update(dt);
     powerUps.update(dt);
@@ -816,6 +850,7 @@ export class Game {
         seals: this.sys.seals,
         player: () => ({ position: player.position, yaw: player.yaw }),
       }),
+      ...createFireCommands({ weapons, arsenal: this.sys.arsenal }),
     ];
     for (const c of commands) devConsole.register(c);
   }
@@ -906,8 +941,8 @@ export class Game {
     if (this.runDirty) this.resetRunSystems(false);
     this.runDirty = true;
     runFlow.begin(level.id);
-    // Fresh gameplay randomness per run (daily challenge runs pass a fixed seed in M8).
-    this.sys.nav.setRandomSeed(`run:${level.id}:${++this.runSeq}:${Date.now()}`);
+    // Fresh gameplay randomness per run (a reset reseeds the box and the drops as well).
+    this.sys.nav.setRandomSeed(this.nextRunSeed());
     if (map.waves) this.sys.waves.start(1);
     this.pauseState.start(lockless || this.padNav.activating);
     void this.maybeRunBenchmark();
@@ -935,38 +970,18 @@ export class Game {
   }
 
   /**
-   * Back to a clean run state on the current map; `startWaves` restarts the wave director (the
-   * run goes on: restart). Also the HUD and enemy audio: main menu → start emits no run:restart.
+   * Back to a clean run state on the current map (game/runReset.ts: order and coverage);
+   * `startWaves` restarts the wave director (the run goes on: restart). Also the HUD and enemy
+   * audio: main menu → start emits no run:restart.
    */
   private resetRunSystems(startWaves = true): void {
-    const { enemies, waves, health, player, level, weapons, viewmodel, vfx, map, hud, audioBridge } =
-      this.sys;
-    const { powerUps, perks, stats, economy, pointsRules, zones, interactables, interaction, seals } =
-      this.sys;
-    enemies.clear();
-    waves.reset();
-    vfx.clear();
-    // Timed power-ups first (they remove their stat sources), then perks, then the stat table.
-    powerUps.clear();
-    perks.clear();
-    stats.reset();
-    economy.reset();
-    pointsRules.reset();
-    health.reset();
-    player.teleport(level.spawn.position, level.spawn.yaw);
-    zones.reset();
-    interactables.reset(`box:${level.id}:${this.runSeq}:${Date.now()}`);
-    interaction.reset();
-    seals?.reset();
-    const loadout = getLoadout(level.id);
-    weapons.setLoadout(loadout.weapons, loadout.slots);
-    weapons.refillAmmo(true);
-    viewmodel.setVisible(true);
-    hud.resetRun();
-    audioBridge.resetRun();
-    this.loop.timeScale = 1;
+    resetRunSystems({ ...this.sys, loop: this.loop }, { seed: this.nextRunSeed(), startWaves });
     this.runDirty = startWaves;
-    if (startWaves && map.waves) waves.start(1);
+  }
+
+  /** Seed of a new run's gameplay randomness (daily challenge runs pass a fixed one in M8). */
+  private nextRunSeed(): string {
+    return `run:${this.sys.level.id}:${++this.runSeq}:${Date.now()}`;
   }
 
   private switchMap(mapId: string): void {

@@ -169,6 +169,7 @@ export function emitPreset(
     const cosMax = Math.cos(Math.min(180, Math.max(0, def.spread)) * DEG2RAD);
     const offset = (def.offset ?? 0) * scale;
     const jitter = (def.jitter ?? 0) * scale;
+    const shell = (def.shell ?? 0) * scale;
     const flashK = def.flash === true ? ctx.flashScale : 1;
     const intensity = (def.intensity ?? 1) * flashK;
     const intensityEnd = (def.intensityEnd ?? def.intensity ?? 1) * flashK;
@@ -192,9 +193,9 @@ export function emitPreset(
         jy = _jit.y * r;
         jz = _jit.z * r;
       }
-      spawn.x = ctx.x + ax * offset + jx;
-      spawn.y = ctx.y + ay * offset + jy;
-      spawn.z = ctx.z + az * offset + jz;
+      spawn.x = ctx.x + ax * offset + jx + _dir.x * shell;
+      spawn.y = ctx.y + ay * offset + jy + _dir.y * shell;
+      spawn.z = ctx.z + az * offset + jz + _dir.z * shell;
       spawn.vx = _dir.x * speed;
       spawn.vy = _dir.y * speed;
       spawn.vz = _dir.z * speed;

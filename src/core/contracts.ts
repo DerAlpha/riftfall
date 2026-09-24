@@ -629,7 +629,8 @@ export interface VfxApi {
   /** Spawn a named effect preset (see defs/vfx.ts) at a world position oriented along `normal`. */
   spawn(effect: string, position: Vec3Like, normal?: Vec3Like, scale?: number): void;
   tracer(from: Vec3Like, to: Vec3Like, color?: number): void;
-  explosion(position: Vec3Like, radius: number, element?: DamageElement): void;
+  /** `preset` (M5 ExplosionDef.vfx): the blast's own effect preset; absent = by element. */
+  explosion(position: Vec3Like, radius: number, element?: DamageElement, preset?: string): void;
   decal(kind: string, position: Vec3Like, normal: Vec3Like, size?: number): void;
   update(dt: number): void;
   readonly stats: { particles: number; decals: number; lights: number };

@@ -23,7 +23,15 @@ export const FLAMETHROWER_VIEWMODEL: WeaponViewmodelDef | null = {
   // The tank ran dry: the pilot flame gutters out until the empty reload re-ignites it.
   fireLast: [
     { ...TRIGGER_PULL, pose: { rot: V(-18, 0, 0) } },
-    { part: 'pilot', type: 'tween', pose: { pos: V(0, 0, 0.012) }, delay: 0.12, duration: 0.2, ease: 'in', hideAtEnd: true },
+    {
+      part: 'pilot',
+      type: 'tween',
+      pose: { pos: V(0, 0, 0.012) },
+      delay: 0.12,
+      duration: 0.2,
+      ease: 'in',
+      hideAtEnd: true,
+    },
   ],
   dryFire: [{ ...TRIGGER_PULL, pose: { rot: V(-22, 0, 0) }, release: 0.05 }],
   fireImpulses: [],
@@ -60,7 +68,14 @@ export const FLAMETHROWER_VIEWMODEL: WeaponViewmodelDef | null = {
   },
   reloadSteps: {
     magOut: [
-      { part: 'pilot', type: 'tween', pose: { pos: V(0, 0, 0.012) }, duration: 0.18, ease: 'in', hideAtEnd: true },
+      {
+        part: 'pilot',
+        type: 'tween',
+        pose: { pos: V(0, 0, 0.012) },
+        duration: 0.18,
+        ease: 'in',
+        hideAtEnd: true,
+      },
       {
         part: 'tank',
         type: 'tween',
@@ -83,7 +98,15 @@ export const FLAMETHROWER_VIEWMODEL: WeaponViewmodelDef | null = {
       },
     ],
     boltRelease: [
-      { part: 'pilot', type: 'tween', from: { pos: V(0, 0, 0.01) }, pose: {}, duration: 0.12, ease: 'outBack', show: true },
+      {
+        part: 'pilot',
+        type: 'tween',
+        from: { pos: V(0, 0, 0.01) },
+        pose: {},
+        duration: 0.12,
+        ease: 'outBack',
+        show: true,
+      },
       {
         part: 'flare',
         type: 'pulse',

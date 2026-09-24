@@ -108,7 +108,11 @@ export const RIFTRIPPER_VIEWMODEL: WeaponViewmodelDef | null = {
         show: true,
       },
     ],
-    boltRelease: JAW_OPEN.map((m) => ({ ...m, pose: { rot: V(0, (m.pose.rot?.y ?? 0) * 1.6, 0) }, hold: 0.08 })),
+    boltRelease: JAW_OPEN.map((m) => ({
+      ...m,
+      pose: { rot: V(0, (m.pose.rot?.y ?? 0) * 1.6, 0) },
+      hold: 0.08,
+    })),
   },
   reloadImpulses: {
     magOut: [{ delay: 0.02, pose: { pos: V(0.004, 0.006, 0), rot: V(2, 0, 3) } }],

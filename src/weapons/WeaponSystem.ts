@@ -58,6 +58,7 @@ import type {
   DamageSource,
   Damageable,
   InputApi,
+  ProjectileSpawnOptions,
   LookOut,
   PhysicsApi,
   RenderApi,
@@ -66,7 +67,7 @@ import type {
   WeaponSystemApi,
 } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
-import type { DamageElement, FleshSurface, GameEvents, ImpactKind, SurfaceType, Vec3Like } from '../core/events';
+import type { FleshSurface, GameEvents, ImpactKind, SurfaceType, Vec3Like } from '../core/events';
 import { createLogger } from '../core/log';
 import { DEG2RAD, RAD2DEG, clamp01, lerp } from '../core/math';
 import { Rng } from '../core/Rng';
@@ -264,6 +265,8 @@ const _rico = new Vector3();
 const _camFwd = new Vector3();
 const _beamFrom = new Vector3();
 const _beamTo = new Vector3();
+const _segFrom = new Vector3();
+const _segDir = new Vector3();
 
 export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier {
   /** Dev: shots never consume ammo. */
@@ -394,6 +397,15 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     areaScale: 1,
   };
   private readonly specialHit = createSpecialHit();
+  /** Charge glow shown last frame (hide it once). */
+  private chargeShown = false;
+  // Bullet segment state (ricochets) and query scratch.
+  private segWorldHit = false;
+  private segKeep = 1;
+  private readonly ricochetCandidates: Damageable[] = [];
+  private readonly coneCandidates: Damageable[] = [];
+  /** Reused spawn options (created with the first projectile shot). */
+  private spawnOpts: ProjectileSpawnOptions | null = null;
 
   // --- shot scratch ---
   private readonly acc = new HitAccumulator<Damageable>();
@@ -612,6 +624,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     this.baseSlots = slots ?? WEAPON_RULES.inventory.defaultSlots;
     const n = this.slotTotal();
     if (this._state === 'reloading') this.finishReload(false);
+    this.endFireKinds();
     this.slots = [];
     for (let i = 0; i < n; i++) this.slots.push(null);
     this.currentSlot = -1;
@@ -857,7 +870,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
 
     // --- firing ---
     const current = this.current;
-    if (current) this.tickFire(current, firePressed);
+    if (current) this.tickFire(current, firePressed, dt);
 
     // --- spread + recoil recovery ---
     if (current) {
@@ -886,6 +899,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
 
   dispose(): void {
     if (this.disposed) return;
+    this.endFireKinds();
     this.disposed = true;
     if (this.player.adsProvider === this) this.player.adsProvider = null;
     if (this.camera.lookModifier === this) this.camera.lookModifier = null;
@@ -1100,6 +1114,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       return;
     }
     if (state === 'reloading') this.finishReload(false);
+    this.stopBeam();
+    this.cancelCharge();
     let duration = w.def.holsterTime;
     if (state === 'equipping') duration *= this.stateProgress * WEAPON_RULES.holsterDuringEquipScale;
     this.pendingSlot = slot;
@@ -1148,6 +1164,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       this._state = 'idle';
       return;
     }
+    // Beam, charge and spin belong to the weapon going down.
+    this.endFireKinds();
     this.currentSlot = slot;
     this.pendingSlot = -1;
     const d = duration ?? w.def.equipTime;
@@ -1185,11 +1203,25 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   // Firing
   // -------------------------------------------------------------------------
 
-  private tickFire(w: WeaponInstance, firePressed: boolean): void {
+  private tickFire(w: WeaponInstance, firePressed: boolean, dt: number): void {
     const def = w.def;
     const state = this._state;
     const ready =
       (state === 'idle' || state === 'firing') && this.sprintRecovery <= 0 && !this.player.sprinting;
+    if (def.kind === 'beam') {
+      this.tickBeam(w, ready, firePressed, dt);
+      return;
+    }
+    if (def.kind === 'charge') {
+      this.tickCharge(w, ready, firePressed, dt);
+      return;
+    }
+    const spinDef = def.spinUp ?? null;
+    if (spinDef) {
+      this.spinWeapon = def.id;
+      this.spin = spinStep(this.spin, ready && this.fireHeld, dt, spinDef);
+      this.announceSpin();
+    }
     const pressWanted = this.pressBuffer > 0 || this.fireQueued;
     let wants: boolean;
     switch (def.fireMode) {
@@ -1221,10 +1253,16 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
         this.burstLeft = 0;
         break;
       }
+      // Spin-up: no shot until the barrels turn fast enough, then the rate follows the spin.
+      const rate = spinDef ? spinRateFactor(this.spin, spinDef) : 1;
+      if (!(rate > 0)) {
+        this.fireCooldown = 0;
+        break;
+      }
       if (def.fireMode === 'burst' && this.burstLeft <= 0) this.burstLeft = def.burst?.count ?? 1;
       this.fireShot(w);
       shots++;
-      let interval = 60 / def.rpm;
+      let interval = 60 / (def.rpm * rate);
       if (def.fireMode === 'burst') {
         this.burstLeft--;
         if (this.burstLeft > 0 && def.burst) interval = 60 / def.burst.rpm;
@@ -1239,32 +1277,65 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       this._state = 'firing';
       w.readyAt = this.simTime + Math.max(0, this.fireCooldown);
     } else if (this._state === 'firing' && this.fireCooldown <= 0 && !wants) this._state = 'idle';
+    this.autoReload(w);
+  }
 
-    // Empty magazine: reload once the last shot's cycle finished.
+  /** Empty magazine: reload once the last shot's cycle finished. */
+  private autoReload(w: WeaponInstance): void {
     if (
       w.mag <= 0 &&
       w.reserve > 0 &&
       WEAPON_RULES.autoReloadOnEmpty &&
       this.fireCooldown <= 0 &&
+      !this.beamActive &&
+      !this.charging &&
       (this._state === 'idle' || this._state === 'firing')
     ) {
       this.tryReload();
     }
   }
 
-  private fireShot(w: WeaponInstance): void {
+  /**
+   * One trigger pull that leaves the barrel: ammo, critBurst, weapon:fired, the rays or
+   * projectiles (+ splitShot extras), feel. `chargeFactor` scales the damage (charge kind).
+   */
+  private fireShot(w: WeaponInstance, chargeFactor = 1): void {
     const def = w.def;
-    const player = this.player;
     if (!this.infiniteAmmo) w.mag--;
     this.stats.shots++;
+    w.shotCount++;
+    const special = def.special ?? null;
+    const crit =
+      special !== null &&
+      special.kind === 'critBurst' &&
+      special.everyNth > 0 &&
+      w.shotCount % Math.floor(special.everyNth) === 0;
+    this.shotDamageScale = chargeFactor * (crit && special.kind === 'critBurst' ? special.multiplier : 1);
+    this.shotTracerColor = crit ? ARSENAL.specials.critTracerColor : -1;
     this.eyePosition(_eye);
-    aimBasis(player.yaw, this.aimPitch, _fwd, _right, _up);
+    aimBasis(this.player.yaw, this.aimPitch, _fwd, _right, _up);
     const spreadRad = this.currentSpreadDeg(def) * DEG2RAD;
+    this.readMuzzle();
+    const shotIndex = this.emitFired(w);
+
+    if (def.kind === 'projectile' && def.projectile) this.launchProjectiles(w, spreadRad);
+    else this.fireRays(w, spreadRad, shotIndex, crit);
+    this.shotFeel(w);
+    this.shotDamageScale = 1;
+    this.shotTracerColor = -1;
+  }
+
+  /** The world muzzle as shown (tracer / projectile visual start) into _muzzle; the eye if unknown. */
+  private readMuzzle(): void {
     this.getMuzzleWorld(_muzzle);
     if (!Number.isFinite(_muzzle.x) || !Number.isFinite(_muzzle.y) || !Number.isFinite(_muzzle.z)) {
       _muzzle.copy(_eye);
     }
+  }
 
+  /** weapon:fired from _eye / _fwd / _muzzle; returns the shot's index within the current burst. */
+  private emitFired(w: WeaponInstance): number {
+    const def = w.def;
     const fired = this.firedPayload;
     fired.weaponId = def.id;
     copyVec(_eye, fired.origin);
@@ -1276,11 +1347,15 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     fired.ammoInMag = w.mag;
     fired.ads = this._adsAmount >= WEAPON_RULES.adsFiredThreshold;
     this.events.emit('weapon:fired', fired);
+    return shotIndex;
+  }
 
-    // --- bullets / pellets ---
+  /** Hitscan bullets / pellets (+ splitShot rays) from _eye around _fwd. */
+  private fireRays(w: WeaponInstance, spreadRad: number, shotIndex: number, crit: boolean): void {
+    const def = w.def;
     // Every Nth shot of a burst traces, starting with the first (a tap always shows one).
     if (shotIndex === 0) w.tracerCounter = 0;
-    const tracerShot = def.tracer.everyNth > 0 && w.tracerCounter % def.tracer.everyNth === 0;
+    const tracerShot = crit || (def.tracer.everyNth > 0 && w.tracerCounter % def.tracer.everyNth === 0);
     w.tracerCounter++;
     const pellets = Math.max(1, Math.floor(def.pellets));
     const kind: ImpactKind = pellets > 1 ? 'pellet' : 'bullet';
@@ -1303,10 +1378,63 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       coneDirection(_fwd, _right, _up, _off.x, _off.y, spreadRad, _dir);
       this.traceBullet(w, _eye, _dir, kind, tracerShot && i < def.tracer.pellets);
     }
-    this.stats.pellets += pellets;
+    let extra = 0;
+    const special = def.special ?? null;
+    if (special && special.kind === 'splitShot') {
+      extra = Math.max(0, Math.floor(special.count));
+      for (let k = 1; k <= extra; k++) {
+        yawAround(_fwd, _up, splitYawOffset(k, special.angleDeg * DEG2RAD), _aim);
+        diskSample(this.rng.next(), this.rng.next(), _off);
+        coneDirection(_aim, _right, _up, _off.x, _off.y, spreadRad, _dir);
+        this.traceBullet(w, _eye, _dir, kind, tracerShot);
+      }
+    }
+    this.stats.pellets += pellets + extra;
     this.flushDamage(def, kind);
+  }
 
-    // --- feel: bloom, recoil, punch, shake, rumble ---
+  /** Projectiles (+ splitShot extras): simulated from the eye, drawn from the muzzle. */
+  private launchProjectiles(w: WeaponInstance, spreadRad: number): void {
+    const def = w.def;
+    const p = def.projectile!;
+    const src = this.damageSource;
+    const scale = this.damageScale * this.shotDamageScale;
+    src.weaponId = def.id;
+    src.source = 'player';
+    src.damage = def.damage.base * scale;
+    src.element = def.damage.element;
+    src.headMultiplier = def.damage.headMultiplier * this.statFactors.headshot;
+    src.weakpointMultiplier = def.damage.weakpointMultiplier * this.statFactors.headshot;
+    src.statusBuildup = statusBuildupFor(def.damage.element);
+    src.special = def.special ?? null;
+    src.areaScale = scale;
+    const opts = (this.spawnOpts ??= { origin: _eye, direction: _dir, visualFrom: _muzzle, def: p, damage: src });
+    opts.def = p;
+    opts.damage = src;
+    const pellets = Math.max(1, Math.floor(def.pellets));
+    for (let i = 0; i < pellets; i++) {
+      diskSample(this.rng.next(), this.rng.next(), _off);
+      coneDirection(_fwd, _right, _up, _off.x, _off.y, spreadRad, _dir);
+      this.arsenal.projectiles.spawn(opts);
+    }
+    const special = def.special ?? null;
+    let extra = 0;
+    if (special && special.kind === 'splitShot') {
+      extra = Math.max(0, Math.floor(special.count));
+      for (let k = 1; k <= extra; k++) {
+        yawAround(_fwd, _up, splitYawOffset(k, special.angleDeg * DEG2RAD), _aim);
+        diskSample(this.rng.next(), this.rng.next(), _off);
+        coneDirection(_aim, _right, _up, _off.x, _off.y, spreadRad, _dir);
+        this.arsenal.projectiles.spawn(opts);
+      }
+    }
+    this.stats.pellets += pellets + extra;
+  }
+
+  /** Feel of a shot: bloom, recoil, view punch, shake, rumble, ammo event. */
+  private shotFeel(w: WeaponInstance): void {
+    const def = w.def;
+    const player = this.player;
     const ads = this._adsAmount;
     this.bloom = addBloom(this.bloom, def.spread);
     this.bloomSince = 0;
@@ -1328,7 +1456,11 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     this.emitAmmo();
   }
 
-  /** One bullet/pellet: nearest hit, penetration through thin surfaces/bodies while budget remains. */
+  /**
+   * One bullet/pellet: nearest hit, penetration through thin surfaces/bodies while budget remains;
+   * ricochet specials bounce it off the world towards the nearest enemy (world-space tracer
+   * segments). The first segment's tracer starts at the muzzle as shown.
+   */
   private traceBullet(
     w: WeaponInstance,
     origin: Vector3,
@@ -1337,18 +1469,61 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     tracer: boolean,
   ): void {
     const def = w.def;
-    const combat = this.combat;
-    let power = def.penetration.power;
+    const special = def.special ?? null;
+    const ric = special && special.kind === 'ricochet' ? special : null;
+    let bounces = ric ? Math.max(0, Math.floor(ric.bounces)) : 0;
     let keep = 1;
     let traveled = 0;
-    let skipProp = false;
-    _from.copy(origin);
-    _end.copy(origin).addScaledVector(dir, def.range);
+    let reach = def.range;
+    _segFrom.copy(origin);
+    _segDir.copy(dir);
     this.ignoreList.length = 0;
+    for (let segment = 0; ; segment++) {
+      traveled += this.traceSegment(w, _segFrom, _segDir, reach, kind, keep, traveled);
+      keep = this.segKeep;
+      if (segment === 0) {
+        if (tracer) this.emitTracer(def, _muzzle, _end, false);
+      } else {
+        this.emitTracer(def, _segFrom, _end, true);
+      }
+      if (!ric || !this.segWorldHit || bounces <= 0) break;
+      bounces--;
+      keep *= ric.damageKeep;
+      _segFrom.copy(_end).addScaledVector(_hitNormal, COMBAT.penetrationStep);
+      this.ricochetDirection(_segFrom, _hitNormal, _segDir);
+      reach = ARSENAL.specials.ricochetRange;
+    }
+    this.ignoreList.length = 0;
+  }
+
+  /**
+   * One straight part of a bullet from `origin` along `dir` over `reach` (penetrating while the
+   * budget lasts). Leaves the end point in _end, whether it stopped on the world (segWorldHit,
+   * normal in _hitNormal) and the damage keep (segKeep); returns the distance covered.
+   */
+  private traceSegment(
+    w: WeaponInstance,
+    origin: Vector3,
+    dir: Vector3,
+    reach: number,
+    kind: ImpactKind,
+    keep0: number,
+    traveled0: number,
+  ): number {
+    const def = w.def;
+    const combat = this.combat;
+    let power = def.penetration.power;
+    let keep = keep0;
+    let traveled = 0;
+    let skipProp = false;
+    this.segWorldHit = false;
+    _from.copy(origin);
+    _end.copy(origin).addScaledVector(dir, reach);
     const opts = this.rayOpts;
     opts.ignoreMany = this.ignoreList;
+    const scale = this.damageScale * this.shotDamageScale;
     for (let pen = 0; pen <= COMBAT.maxPenetrations; pen++) {
-      const remaining = def.range - traveled;
+      const remaining = reach - traveled;
       if (remaining <= 0) break;
       opts.skipLastProp = skipProp;
       const hit = combat.raycast(_from, dir, remaining, opts);
@@ -1367,9 +1542,9 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
           hitDamage(
             def.damage,
             zone,
-            distance,
+            traveled0 + distance,
             keep,
-            this.damageScale * precisionScale(zone, this.statFactors.headshot),
+            scale * precisionScale(zone, this.statFactors.headshot),
           ),
           zone,
           hit.point.x,
@@ -1386,26 +1561,66 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
         const decal = !combat.hitsDynamicProp(hit);
         const penetrable = hit.penetrable;
         const surface = hit.surface;
+        _hitNormal.copy(hit.normal);
         combat.pushProp(hit, dir, def.damage.propImpulse * keep);
-        this.emitImpact(hit.point, hit.normal, surface, kind, def.id, decal);
-        if (!penetrable) break;
+        this.emitImpact(_end, _hitNormal, surface, kind, def.id, decal);
+        if (!penetrable) {
+          this.segWorldHit = true;
+          break;
+        }
         cost = COMBAT.penetrationCost[surface];
         skipProp = true;
       }
-      if (!(power >= cost)) break;
+      if (!(power >= cost)) {
+        if (!target) this.segWorldHit = true;
+        break;
+      }
       power -= cost;
       keep *= def.penetration.damageKeep;
       _from.copy(_end).addScaledVector(dir, COMBAT.penetrationStep);
       traveled = distance + COMBAT.penetrationStep;
     }
-    this.ignoreList.length = 0;
-    if (tracer) {
-      const t = this.tracerPayload;
-      copyVec(_muzzle, t.from);
-      copyVec(_end, t.to);
-      t.weaponId = def.id;
-      this.events.emit('combat:tracer', t);
+    this.segKeep = keep;
+    return _end.distanceTo(origin);
+  }
+
+  /**
+   * Ricochet: towards the nearest living enemy in front of the surface (normal hemisphere) within
+   * ARSENAL.specials.ricochetRange with line of sight – never one this bullet already hit – else
+   * the mirror direction. `dir` holds the incoming direction and receives the new one.
+   */
+  private ricochetDirection(from: Vector3, normal: Vector3, dir: Vector3): void {
+    const range: number = ARSENAL.specials.ricochetRange;
+    const list = this.combat.queryRadius(from, range, this.ricochetCandidates);
+    let best: Damageable | null = null;
+    let bestD = range;
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i]!;
+      if (!t.alive || t.team !== 'enemy' || this.ignoreList.includes(t)) continue;
+      _rico.subVectors(t.aimPoint, from);
+      const d = _rico.length();
+      if (!(d > 1e-6) || d >= bestD || _rico.dot(normal) <= 0) continue;
+      if (!this.combat.lineOfSight(from, t.aimPoint)) continue;
+      best = t;
+      bestD = d;
     }
+    list.length = 0;
+    if (best) {
+      dir.subVectors(best.aimPoint, from).normalize();
+      return;
+    }
+    const dn = dir.dot(normal);
+    dir.addScaledVector(normal, -2 * dn).normalize();
+  }
+
+  private emitTracer(def: WeaponDef, from: Vec3Like, to: Vec3Like, segment: boolean): void {
+    const t = this.tracerPayload;
+    copyVec(from, t.from);
+    copyVec(to, t.to);
+    t.weaponId = def.id;
+    t.color = this.shotTracerColor >= 0 ? this.shotTracerColor : def.tracer.color;
+    t.segment = segment;
+    this.events.emit('combat:tracer', t);
   }
 
   /**
@@ -1433,11 +1648,418 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       info.source = 'player';
       info.kind = kind;
       info.impulse = def.damage.impulse * acc.hits[i]!;
+      info.statusBuildup = statusBuildupFor(def.damage.element);
       const res = this.combat.dealDamage(target, info);
+      const applied = res.applied;
+      const killed = res.killed;
       if (firstGroup) this.stats.hits++;
-      if (res.killed) this.stats.kills++;
+      if (killed) this.stats.kills++;
+      this.reportSpecial(def, 'direct', target, p, applied, killed, firstGroup);
     }
     acc.reset();
+  }
+
+  /** Hand a damage event of the weapon's special to the arsenal's specials interpreter. */
+  private reportSpecial(
+    def: WeaponDef,
+    via: HitVia,
+    target: Damageable,
+    point: Vec3Like,
+    applied: number,
+    killed: boolean,
+    primary: boolean,
+  ): void {
+    const special = def.special ?? null;
+    if (!special) return;
+    const h = this.specialHit;
+    h.special = special;
+    h.via = via;
+    h.weaponId = def.id;
+    h.source = 'player';
+    h.target = target;
+    copyVec(point, h.point);
+    h.applied = applied;
+    h.killed = killed;
+    h.primary = primary;
+    this.arsenal.specials.onHit(h);
+  }
+
+  // -------------------------------------------------------------------------
+  // Beams (M5)
+  // -------------------------------------------------------------------------
+
+  /** Beam kind: fires while held and loaded; ticks at the beam's rate, drains per second. */
+  private tickBeam(w: WeaponInstance, ready: boolean, firePressed: boolean, dt: number): void {
+    const def = w.def;
+    const b = def.beam!;
+    if (!ready || !this.fireHeld || w.mag <= 0) {
+      if (this.beamActive) this.stopBeam();
+      if (ready && firePressed && w.mag <= 0 && this.dryFireTimer <= 0) {
+        this.dryFireTimer = WEAPON_RULES.dryFireInterval;
+        this.events.emit('weapon:dryFire', { weaponId: def.id });
+      }
+      this.pressBuffer = 0;
+      if (this.fireCooldown < 0) this.fireCooldown = 0;
+      if (this._state === 'firing') this._state = 'idle';
+      this.autoReload(w);
+      return;
+    }
+    const interval = 1 / b.tickRate;
+    if (!this.beamActive) {
+      this.beamActive = true;
+      this.beamWeapon = def.id;
+      // The first tick lands at once: the beam answers the trigger.
+      this.beamTickTimer = interval;
+      this.events.emit('weapon:beam', { weaponId: def.id, active: true });
+    }
+    this._state = 'firing';
+    this.pressBuffer = 0;
+    let drained = false;
+    if (!this.infiniteAmmo) {
+      const take = beamAmmoStep(w.drain, b.ammoPerSecond, dt);
+      if (take > 0) {
+        w.mag = Math.max(0, w.mag - take);
+        drained = true;
+      }
+    }
+    this.beamTickTimer += dt;
+    let ticks = 0;
+    while (this.beamTickTimer >= interval && ticks < ARSENAL.beam.maxTicksPerStep) {
+      this.beamTickTimer -= interval;
+      this.beamTick(w);
+      ticks++;
+    }
+    if (this.beamTickTimer > interval) this.beamTickTimer = interval;
+    w.readyAt = this.simTime;
+    if (drained && ticks === 0) this.emitAmmo();
+    if (w.mag <= 0) this.stopBeam();
+  }
+
+  /** One beam tick: a shot (weapon:fired, feel) whose damage is a ray + chain or a cone. */
+  private beamTick(w: WeaponInstance): void {
+    const def = w.def;
+    const b = def.beam!;
+    this.stats.shots++;
+    w.shotCount++;
+    this.beamImpacts = 0;
+    this.eyePosition(_eye);
+    aimBasis(this.player.yaw, this.aimPitch, _fwd, _right, _up);
+    this.readMuzzle();
+    const spreadRad = this.currentSpreadDeg(def) * DEG2RAD;
+    diskSample(this.rng.next(), this.rng.next(), _off);
+    coneDirection(_fwd, _right, _up, _off.x, _off.y, spreadRad, _dir);
+    this.emitFired(w);
+    if (b.coneDeg > 0) this.coneTick(w, _dir);
+    else this.rayTick(w, _dir);
+    this.shotFeel(w);
+  }
+
+  /** Ray beam: the first thing along the aim; a body hit chains to `beam.chain.count` more. */
+  private rayTick(w: WeaponInstance, dir: Vector3): void {
+    const def = w.def;
+    const b = def.beam!;
+    this.beamPrimary = null;
+    this.beamChain.length = 0;
+    this.ignoreList.length = 0;
+    const opts = this.rayOpts;
+    opts.ignoreMany = this.ignoreList;
+    opts.skipLastProp = false;
+    const hit = this.combat.raycast(_eye, dir, b.range, opts);
+    if (!hit) {
+      this.beamDistance = b.range;
+      return;
+    }
+    const distance = hit.distance;
+    this.beamDistance = distance;
+    _hitPoint.copy(hit.point);
+    _hitNormal.copy(hit.normal);
+    this.beamHitPoint.copy(_hitPoint);
+    const target = hit.target;
+    const surface = hit.surface;
+    if (!target) {
+      // No decals: a beam would paint a scorch mark per tick.
+      this.combat.pushProp(hit, dir, def.damage.propImpulse);
+      this.beamImpact(_hitPoint, _hitNormal, surface, def.id, false);
+      return;
+    }
+    const zone = hit.zone ?? 'body';
+    this.beamImpact(_hitPoint, _hitNormal, surface, def.id, false);
+    if (!target.alive || target.team === 'player') return;
+    const scale = this.damageScale * precisionScale(zone, this.statFactors.headshot);
+    const amount = hitDamage(def.damage, zone, distance, 1, scale);
+    this.dealBeam(def, target, amount, zone, _hitPoint, dir, def.damage.impulse, true);
+    this.beamPrimary = target;
+    const chain = b.chain;
+    if (!chain || !(chain.count > 0)) return;
+    const links = this.arsenal.specials.selectChain(target, chain.count, chain.range, this.beamChain);
+    let keep = 1;
+    _rico.copy(target.aimPoint);
+    for (let i = 0; i < links.length; i++) {
+      const t = links[i]!;
+      keep *= chain.damageKeep;
+      if (!t.alive) continue;
+      _dir.subVectors(t.aimPoint, _rico);
+      const len = _dir.length();
+      if (len > 1e-6) _dir.multiplyScalar(1 / len);
+      _rico.copy(t.aimPoint);
+      this.dealBeam(def, t, def.damage.base * keep * this.damageScale, 'body', t.aimPoint, _dir, 0, true);
+    }
+  }
+
+  /** Cone beam: everything inside the cone up to the wall ahead (line of sight each). */
+  private coneTick(w: WeaponInstance, dir: Vector3): void {
+    const def = w.def;
+    const b = def.beam!;
+    this.beamPrimary = null;
+    this.beamChain.length = 0;
+    // The wall ahead ends the stream (bodies do not: the flames roll around them).
+    this.ignoreList.length = 0;
+    const opts = this.rayOpts;
+    opts.ignoreMany = this.ignoreList;
+    opts.skipLastProp = false;
+    let reach = b.range;
+    for (let pass = 0; pass <= ARSENAL.beam.maxConeTargets; pass++) {
+      const hit = this.combat.raycast(_eye, dir, b.range, opts);
+      if (!hit) break;
+      if (hit.target) {
+        this.ignoreList.push(hit.target);
+        continue;
+      }
+      reach = hit.distance;
+      _hitPoint.copy(hit.point);
+      _hitNormal.copy(hit.normal);
+      const surface = hit.surface;
+      this.beamImpact(_hitPoint, _hitNormal, surface, def.id, false);
+      break;
+    }
+    this.ignoreList.length = 0;
+    this.beamDistance = reach;
+    const tanHalf = Math.tan(b.coneDeg * DEG2RAD);
+    const list = this.combat.queryRadius(_eye, reach, this.coneCandidates);
+    let hits = 0;
+    for (let i = 0; i < list.length && hits < ARSENAL.beam.maxConeTargets; i++) {
+      const t = list[i]!;
+      if (!t.alive || t.team === 'player') continue;
+      const along = coneReach(_eye, dir, tanHalf, reach, t.boundsCenter, t.boundsRadius, ARSENAL.beam.coneBoundsFactor);
+      if (along < 0) continue;
+      if (!this.combat.lineOfSight(_eye, t.aimPoint) && !this.combat.lineOfSight(_eye, t.boundsCenter)) continue;
+      const amount = hitDamage(def.damage, 'body', along, 1, this.damageScale);
+      _aim.subVectors(t.boundsCenter, _eye).normalize();
+      this.dealBeam(def, t, amount, 'body', t.aimPoint, _aim, def.damage.impulse, true);
+      hits++;
+    }
+    list.length = 0;
+  }
+
+  private dealBeam(
+    def: WeaponDef,
+    target: Damageable,
+    amount: number,
+    zone: DamageInfo['zone'],
+    point: Vec3Like,
+    dir: Vec3Like,
+    impulse: number,
+    primary: boolean,
+  ): void {
+    if (!(amount > 0) || !target.alive) return;
+    const info = this.damageInfo;
+    info.amount = amount;
+    info.zone = zone;
+    copyVec(point, info.point);
+    copyVec(dir, info.direction);
+    info.weaponId = def.id;
+    info.element = def.damage.element;
+    info.source = 'player';
+    info.kind = 'beam';
+    info.impulse = impulse;
+    info.statusBuildup = statusBuildupFor(def.damage.element);
+    // Copy the point first: the specials read it after dealDamage's handlers ran.
+    _beamTo.set(point.x, point.y, point.z);
+    const res = this.combat.dealDamage(target, info);
+    const applied = res.applied;
+    const killed = res.killed;
+    this.stats.hits++;
+    if (killed) this.stats.kills++;
+    this.reportSpecial(def, 'tick', target, _beamTo, applied, killed, primary);
+  }
+
+  /** combat:impact of a beam tick, capped per tick (ARSENAL.beam.maxImpactsPerTick). */
+  private beamImpact(
+    point: Vec3Like,
+    normal: Vec3Like,
+    surface: SurfaceType | FleshSurface,
+    weaponId: string,
+    decal: boolean,
+  ): void {
+    if (this.beamImpacts >= ARSENAL.beam.maxImpactsPerTick) return;
+    this.beamImpacts++;
+    this.emitImpact(point, normal, surface, 'beam', weaponId, decal);
+  }
+
+  private stopBeam(): void {
+    if (!this.beamActive) return;
+    this.beamActive = false;
+    this.beamPrimary = null;
+    this.beamChain.length = 0;
+    this.events.emit('weapon:beam', { weaponId: this.beamWeapon, active: false });
+  }
+
+  // -------------------------------------------------------------------------
+  // Charge (M5)
+  // -------------------------------------------------------------------------
+
+  /** Charge kind: hold to charge, release (or auto-release) fires; below minCharge it fizzles. */
+  private tickCharge(w: WeaponInstance, ready: boolean, firePressed: boolean, dt: number): void {
+    const def = w.def;
+    const c = def.charge!;
+    this.chargeWeapon = def.id;
+    if (this.chargeNeedsRelease && !this.fireHeld) this.chargeNeedsRelease = false;
+    this.pressBuffer = 0;
+    if (this.charging) {
+      if (!ready || w.mag <= 0) {
+        this.cancelCharge();
+        return;
+      }
+      if (this.fireHeld) {
+        this.chargeAmount = chargeStep(this.chargeAmount, dt, c.time);
+        this._state = 'firing';
+        if (this.chargeAmount >= 1) {
+          this.chargeFullTime += dt;
+          if (c.autoReleaseAfter > 0 && this.chargeFullTime >= c.autoReleaseAfter) {
+            this.releaseCharge(w);
+            this.chargeNeedsRelease = true;
+            return;
+          }
+        }
+        this.emitCharge(this.chargeAmount);
+        return;
+      }
+      this.releaseCharge(w);
+      return;
+    }
+    if (ready && this.fireHeld && !this.chargeNeedsRelease && this.fireCooldown <= 0) {
+      if (w.mag > 0) {
+        this.charging = true;
+        this.chargeFullTime = 0;
+        this.chargeAmount = chargeStep(0, dt, c.time);
+        this._state = 'firing';
+        this.emitCharge(this.chargeAmount);
+        return;
+      }
+      if (firePressed && this.dryFireTimer <= 0) {
+        this.dryFireTimer = WEAPON_RULES.dryFireInterval;
+        this.events.emit('weapon:dryFire', { weaponId: def.id });
+      }
+    }
+    if (this.fireCooldown < 0) this.fireCooldown = 0;
+    if (this._state === 'firing' && this.fireCooldown <= 0) this._state = 'idle';
+    this.autoReload(w);
+  }
+
+  /** Fire at the current charge (or fizzle below minCharge: no shot, no ammo). */
+  private releaseCharge(w: WeaponInstance): void {
+    const def = w.def;
+    const factor = chargeDamageFactor(this.chargeAmount, def.charge!);
+    this.charging = false;
+    this.chargeAmount = 0;
+    this.chargeFullTime = 0;
+    if (factor > 0) {
+      this.fireShot(w, factor);
+      this.fireCooldown += 60 / def.rpm;
+      w.readyAt = this.simTime + Math.max(0, this.fireCooldown);
+      this._state = 'firing';
+    }
+    this.emitCharge(0);
+  }
+
+  private cancelCharge(): void {
+    if (!this.charging && this.chargeAmount === 0) return;
+    this.charging = false;
+    this.chargeAmount = 0;
+    this.chargeFullTime = 0;
+    this.emitCharge(0);
+  }
+
+  private emitCharge(amount: number): void {
+    const p = this.chargePayload;
+    p.weaponId = this.chargeWeapon;
+    p.amount = amount;
+    this.events.emit('weapon:charge', p);
+  }
+
+  // -------------------------------------------------------------------------
+  // Spin-up (M5)
+  // -------------------------------------------------------------------------
+
+  /** weapon:spin while the spin changes (every tick of a ramp, once when it settles). */
+  private announceSpin(): void {
+    if (this.spin === this.spinSent) return;
+    this.spinSent = this.spin;
+    const p = this.spinPayload;
+    p.weaponId = this.spinWeapon;
+    p.amount = this.spin;
+    this.events.emit('weapon:spin', p);
+  }
+
+  private resetSpin(): void {
+    this.spin = 0;
+    this.announceSpin();
+  }
+
+  /** Stop beam, charge and spin of the weapon in hand (switch, loadout, dispose). */
+  private endFireKinds(): void {
+    this.stopBeam();
+    this.cancelCharge();
+    this.resetSpin();
+  }
+
+  // -------------------------------------------------------------------------
+  // Fire-kind visuals (per frame, after the viewmodel and VFX)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Beam and charge visuals at this frame's muzzle socket (ArsenalVfxApi): the beam runs from the
+   * muzzle as shown to the last tick's reach along this frame's aim, with its chain arcs.
+   */
+  updateVisuals(_dt: number): void {
+    if (this.disposed) return;
+    const vfx = this.arsenal.vfx;
+    const w = this.current;
+    const beam = w?.def.beam;
+    if (this.beamActive && w && beam) {
+      this.getMuzzleWorld(_beamFrom);
+      const cam = this.render.camera;
+      if (!Number.isFinite(_beamFrom.x) || !Number.isFinite(_beamFrom.y) || !Number.isFinite(_beamFrom.z)) {
+        _beamFrom.copy(cam.position);
+      }
+      cam.getWorldDirection(_camFwd);
+      _beamTo.copy(cam.position).addScaledVector(_camFwd, this.beamDistance);
+      let arcs = 0;
+      if (this.beamPrimary) {
+        _rico.copy(_beamTo);
+        for (let i = 0; i < this.beamChain.length && arcs < ARSENAL.specials.maxChain; i++) {
+          const t = this.beamChain[i]!;
+          this.beamArcs[arcs * 2]!.copy(_rico);
+          this.beamArcs[arcs * 2 + 1]!.copy(t.aimPoint);
+          _rico.copy(t.aimPoint);
+          arcs++;
+        }
+      }
+      vfx.beam(beam.visual, _beamFrom, _beamTo, this.beamArcs, arcs);
+    }
+    const charge = w?.def.charge;
+    if (charge) {
+      if (this.chargeAmount > 0) {
+        vfx.charge(charge.visual, this.chargeAmount);
+        this.chargeShown = true;
+      } else if (this.chargeShown) {
+        vfx.charge(charge.visual, 0);
+        this.chargeShown = false;
+      }
+    } else if (this.chargeShown) {
+      vfx.charge('', 0);
+      this.chargeShown = false;
+    }
   }
 
   private emitImpact(
@@ -1498,6 +2120,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
 
   private startReload(w: WeaponInstance, empty: boolean): void {
     const def = w.def;
+    this.stopBeam();
+    this.cancelCharge();
     const ps = def.reload.perShell;
     this.reloadEmpty = empty;
     this.reloadCommitted = false;
@@ -1624,6 +2248,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     const s = this._state;
     if (s === 'holstering' || s === 'equipping' || s === 'meleeing') return;
     if (s === 'reloading') this.finishReload(false);
+    this.stopBeam();
+    this.cancelCharge();
     const m = w.def.melee;
     this.burstLeft = 0;
     this.fireQueued = false;

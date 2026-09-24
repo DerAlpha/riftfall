@@ -16,10 +16,16 @@ describe('run console commands', () => {
     const log: string[] = [];
     for (const t of ['player:died', 'run:over', 'run:restart'] as const) events.on(t, () => log.push(t));
     expect(await cmd!.run(['kill'])).toContain('Kein laufender Lauf');
+    // Start screen (no run begun, or back in the main menu): nothing to restart behind it.
+    expect(await cmd!.run(['restart'])).toContain('Kein Lauf');
+    expect(flow.state).toBe('idle');
+    expect(log).toEqual([]);
     flow.begin('lab');
     flow.fixedUpdate(125);
+    events.emit('economy:points', { delta: 1250, total: 1750, reason: 'kill' });
     expect(await cmd!.run([])).toContain('Karte lab');
     expect(runStatus({ run: flow })).toContain('Zeit 2:05');
+    expect(runStatus({ run: flow })).toContain('Punkte verdient 1250');
     expect(await cmd!.run(['kill'])).toBe('Spieler gefallen');
     vi.advanceTimersByTime(RUN.death.gameOverDelay * 1000);
     expect(await cmd!.run(['restart'])).toBe('Lauf neu gestartet');

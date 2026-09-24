@@ -238,8 +238,14 @@ describe('C3 energy + wonder weapon viewmodels', () => {
           }
         }
         // The magazine part leaves on magOut and comes back on magIn.
-        expect(d.reloadSteps.magOut?.some((mo) => mo.hideAtEnd), id).toBe(true);
-        expect(d.reloadSteps.magIn?.some((mo) => mo.show && (mo.lead ?? 0) > 0), id).toBe(true);
+        expect(
+          d.reloadSteps.magOut?.some((mo) => mo.hideAtEnd),
+          id,
+        ).toBe(true);
+        expect(
+          d.reloadSteps.magIn?.some((mo) => mo.show && (mo.lead ?? 0) > 0),
+          id,
+        ).toBe(true);
       });
 
       it('kit glows and readouts clear the bloom threshold + smoothing (all readout states, pulse minimum)', () => {
@@ -254,11 +260,13 @@ describe('C3 energy + wonder weapon viewmodels', () => {
         };
         const lum = (mat: MeshStandardMaterial, rgb?: readonly number[]): number => {
           const c = mat.emissive.clone();
-          if (rgb) c.multiply(new Color().setRGB(rgb[0]! / 255, rgb[1]! / 255, rgb[2]! / 255, SRGBColorSpace));
+          if (rgb)
+            c.multiply(new Color().setRGB(rgb[0]! / 255, rgb[1]! / 255, rgb[2]! / 255, SRGBColorSpace));
           return lumOf(c) * mat.emissiveIntensity;
         };
         const A = VIEWMODEL_ANIM;
-        for (const v of [d.glow.accent, d.glow.readout, d.glow.sight, d.glow.heat]) expect(v).toBeGreaterThan(1);
+        for (const v of [d.glow.accent, d.glow.readout, d.glow.sight, d.glow.heat])
+          expect(v).toBeGreaterThan(1);
         m.animate({ time: (1.5 * Math.PI) / A.accentPulse.rate, heat: 1, flash: 0 });
         expect(lum(glowOf('vm-accent')), 'accent').toBeGreaterThanOrEqual(BLOOM_FLOOR);
         expect(lum(glowOf('vm-sight')), 'sight').toBeGreaterThanOrEqual(BLOOM_FLOOR);
@@ -273,7 +281,9 @@ describe('C3 energy + wonder weapon viewmodels', () => {
           let best = 0;
           let rgb: number[] = [0, 0, 0];
           for (let i = 0; i + 2 < data.length; i += 4) {
-            const l = lumOf(new Color().setRGB(data[i]! / 255, data[i + 1]! / 255, data[i + 2]! / 255, SRGBColorSpace));
+            const l = lumOf(
+              new Color().setRGB(data[i]! / 255, data[i + 1]! / 255, data[i + 2]! / 255, SRGBColorSpace),
+            );
             if (l > best) {
               best = l;
               rgb = [data[i]!, data[i + 1]!, data[i + 2]!];
@@ -292,7 +302,8 @@ describe('C3 energy + wonder weapon viewmodels', () => {
         m.animate({ time: 10, heat: 0, flash: 0 });
         m.animate({ time: 10.016, heat: 0, flash: 0 });
         const peak = (mat: EnergyMaterial): number =>
-          Math.max(lumOf(mat.uniforms.uCore.value), lumOf(mat.uniforms.uRim.value)) * mat.uniforms.uIntensity.value;
+          Math.max(lumOf(mat.uniforms.uCore.value), lumOf(mat.uniforms.uRim.value)) *
+          mat.uniforms.uIntensity.value;
         const rest = mats.map(peak);
         expect(Math.max(...rest), `${id} brightest energy`).toBeGreaterThanOrEqual(BLOOM_FLOOR);
         m.animate({ time: 10.032, heat: 0, flash: 1 });
@@ -448,7 +459,8 @@ describe('C3 energy + wonder weapon viewmodels', () => {
     const on = VIEWMODEL_ART.emissive.readoutOn;
     m.setAmmo(8, 8);
     let cyan = 0;
-    for (let i = 0; i + 2 < data.length; i += 4) if (data[i] === on[0] && data[i + 1] === on[1] && data[i + 2] === on[2]) cyan++;
+    for (let i = 0; i + 2 < data.length; i += 4)
+      if (data[i] === on[0] && data[i + 1] === on[1] && data[i + 2] === on[2]) cyan++;
     expect(cyan).toBe(0);
     expect([data[0], data[1], data[2]]).toEqual([255, 80, 220]);
   });
@@ -472,7 +484,11 @@ describe('C3 energy + wonder weapon viewmodels', () => {
     const owned = new Set<Material>();
     for (const mesh of meshes(m.root)) {
       const mat = mesh.material as Material;
-      if (mat.name.startsWith('vm-energy-') || mat.name.startsWith('vm-chitin') || mat.name.startsWith('vm-ice'))
+      if (
+        mat.name.startsWith('vm-energy-') ||
+        mat.name.startsWith('vm-chitin') ||
+        mat.name.startsWith('vm-ice')
+      )
         owned.add(mat);
     }
     expect(owned.size).toBeGreaterThan(2);

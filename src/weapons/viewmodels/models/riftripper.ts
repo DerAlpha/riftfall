@@ -38,7 +38,13 @@ const CELL = { x: -0.043, y: 0.05, z: -0.1 } as const;
 /** Rift breathing and its flare when fired (model content). */
 const MOTION = { breatheRate: 2.3, breathe: 0.12, flare: 1.8, flareTime: 0.35 } as const;
 
-const RIFT_COLOR = { core: 0xffe0f8, rim: 0xff2fd0, accent: 0xff3ad8, sight: 0xff7ae6, deep: 0x8a10ff } as const;
+const RIFT_COLOR = {
+  core: 0xffe0f8,
+  rim: 0xff2fd0,
+  accent: 0xff3ad8,
+  sight: 0xff7ae6,
+  deep: 0x8a10ff,
+} as const;
 
 function gripAxis(s: number): [number, number, number] {
   const a = (GRIP_TILT * Math.PI) / 180;
@@ -130,11 +136,16 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     const top = 0.088 - Math.max(0, i - 4) * 0.006;
     b.add(BODY, 'chitin', new TorusGeometry(0.03, 0.0062, 8, 20, Math.PI), { pos: [0, top - 0.03, z] });
     if (i % 2 === 0) {
-      b.add(BODY, 'brass', new TorusGeometry(0.03, 0.0018, 6, 20, Math.PI), { pos: [0, top - 0.03, z - 0.0055], paint: 0.9 });
+      b.add(BODY, 'brass', new TorusGeometry(0.03, 0.0018, 6, 20, Math.PI), {
+        pos: [0, top - 0.03, z - 0.0055],
+        paint: 0.9,
+      });
     }
     if (i < 6) {
       b.add(BODY, 'veins', roundedBox(0.03, 0.002, 0.012, 0.0008), { pos: [0, top + 0.0005, z - 0.013] });
-      b.add(BODY, 'veins', roundedBox(0.002, 0.018, 0.012, 0.0008), { pos: [-0.0275, top - 0.024, z - 0.013] });
+      b.add(BODY, 'veins', roundedBox(0.002, 0.018, 0.012, 0.0008), {
+        pos: [-0.0275, top - 0.024, z - 0.013],
+      });
     }
   }
   // Membrane windows on the left flank: void fluid glowing behind translucent chitin.
@@ -142,8 +153,15 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     [0.03, 0.05],
     [-0.035, 0.04],
   ] as const) {
-    b.add(BODY, 'veins', new SphereGeometry(0.012, 16, 10), { pos: [-0.0262, 0.045, z], scale: [0.25, 1, len / 0.024] });
-    b.add(BODY, 'lens', new SphereGeometry(0.0135, 16, 10), { pos: [-0.0268, 0.045, z], scale: [0.3, 1, len / 0.024], uv: 'keep' });
+    b.add(BODY, 'veins', new SphereGeometry(0.012, 16, 10), {
+      pos: [-0.0262, 0.045, z],
+      scale: [0.25, 1, len / 0.024],
+    });
+    b.add(BODY, 'lens', new SphereGeometry(0.0135, 16, 10), {
+      pos: [-0.0268, 0.045, z],
+      scale: [0.3, 1, len / 0.024],
+      uv: 'keep',
+    });
     b.add(BODY, 'brass', new TorusGeometry(0.0135, 0.0012, 6, 24), {
       pos: [-0.0282, 0.045, z],
       rot: [0, 90, 0],
@@ -160,8 +178,14 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     });
   }
   // Jaw root: a gold collar the mandibles grow from.
-  b.add(BODY, 'brass', new TorusGeometry(0.026, 0.004, 8, 28), { pos: [0, BORE_Y, JAW_Z + 0.012], paint: 0.9 });
-  b.add(BODY, 'chitin', new SphereGeometry(0.026, 20, 14), { pos: [0, BORE_Y, JAW_Z + 0.02], scale: [1, 1, 0.8] });
+  b.add(BODY, 'brass', new TorusGeometry(0.026, 0.004, 8, 28), {
+    pos: [0, BORE_Y, JAW_Z + 0.012],
+    paint: 0.9,
+  });
+  b.add(BODY, 'chitin', new SphereGeometry(0.026, 20, 14), {
+    pos: [0, BORE_Y, JAW_Z + 0.02],
+    scale: [1, 1, 0.8],
+  });
   b.add(BODY, 'veins', cylinderZ(0.006, 0.006, 0.004, 14), { pos: [0, BORE_Y, JAW_Z - 0.001] });
 
   // --- mandibles: flattened curved blades, glowing inner edges, bone spikes ---
@@ -170,7 +194,11 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     ['prongR', 1],
   ] as const) {
     const root: [number, number, number] = [side * 0.022, BORE_Y, JAW_Z];
-    const rel = (x: number, y: number, z: number): [number, number, number] => [side * x - root[0], y - root[1], z - root[2]];
+    const rel = (x: number, y: number, z: number): [number, number, number] => [
+      side * x - root[0],
+      y - root[1],
+      z - root[2],
+    ];
     const blade = [
       rel(0.022, BORE_Y, JAW_Z),
       rel(0.056, BORE_Y + 0.006, JAW_Z - 0.06),
@@ -225,11 +253,20 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       paint: 0.9,
     });
   }
-  b.add('cell', 'shard', crystalZ(0.0095, 0.084, 6), { pos: [CELL.x, CELL.y, CELL.z + 0.042], rot: [0, 0, 15] });
-  b.add('cell', 'brass', cylinderZ(0.006, 0.006, 0.008, 12), { pos: [CELL.x, CELL.y, CELL.z + 0.045], paint: 0.9 });
+  b.add('cell', 'shard', crystalZ(0.0095, 0.084, 6), {
+    pos: [CELL.x, CELL.y, CELL.z + 0.042],
+    rot: [0, 0, 15],
+  });
+  b.add('cell', 'brass', cylinderZ(0.006, 0.006, 0.008, 12), {
+    pos: [CELL.x, CELL.y, CELL.z + 0.045],
+    paint: 0.9,
+  });
 
   // --- grip, trigger claw ---
-  b.add(BODY, 'chitin', roundedBox(0.032, 0.108, 0.044, 0.012, 3), { pos: gripAxis(0.05), rot: [GRIP_TILT, 0, 0] });
+  b.add(BODY, 'chitin', roundedBox(0.032, 0.108, 0.044, 0.012, 3), {
+    pos: gripAxis(0.05),
+    rot: [GRIP_TILT, 0, 0],
+  });
   for (let i = 0; i < 3; i++) {
     b.add(BODY, 'brass', roundedBox(0.0335, 0.004, 0.045, 0.0015), {
       pos: gripAxis(0.03 + i * 0.03),
@@ -286,7 +323,9 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   );
 
   // --- claw-ring sight ---
-  b.add('sight', 'chitin', roundedBox(0.012, SIGHT_Y - 0.098, 0.014, 0.003), { pos: [0, (SIGHT_Y + 0.08) / 2 - 0.004, -0.02] });
+  b.add('sight', 'chitin', roundedBox(0.012, SIGHT_Y - 0.098, 0.014, 0.003), {
+    pos: [0, (SIGHT_Y + 0.08) / 2 - 0.004, -0.02],
+  });
   for (let i = 0; i < 4; i++) {
     const a = (i * Math.PI) / 2 + Math.PI / 4;
     const c = Math.cos(a);
@@ -323,7 +362,8 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   const extras: ExtraAnimator[] = [
     (fx) => {
       const breathe = 1 + MOTION.breathe * Math.sin(fx.time * MOTION.breatheRate);
-      const flare = fx.sinceShot < MOTION.flareTime ? 1 + MOTION.flare * (1 - fx.sinceShot / MOTION.flareTime) : 1;
+      const flare =
+        fx.sinceShot < MOTION.flareTime ? 1 + MOTION.flare * (1 - fx.sinceShot / MOTION.flareTime) : 1;
       tear.scale.set(breathe * flare, 1 + (flare - 1) * 0.25, 1);
     },
   ];
@@ -335,8 +375,24 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     readoutSpec,
     readout,
     [
-      { material: rift, intensity: 2.6, pulseRate: 2.3, pulseDepth: 0.2, flash: 6, flickerRate: 23, flickerDepth: 0.25 },
-      { material: riftHalo, intensity: 0.7, pulseRate: 1.7, pulseDepth: 0.3, flash: 2.5, flickerRate: 31, flickerDepth: 0.3 },
+      {
+        material: rift,
+        intensity: 2.6,
+        pulseRate: 2.3,
+        pulseDepth: 0.2,
+        flash: 6,
+        flickerRate: 23,
+        flickerDepth: 0.25,
+      },
+      {
+        material: riftHalo,
+        intensity: 0.7,
+        pulseRate: 1.7,
+        pulseDepth: 0.3,
+        flash: 2.5,
+        flickerRate: 31,
+        flickerDepth: 0.3,
+      },
       { material: veins, intensity: 1.9, pulseRate: 1.4, pulseDepth: 0.35, flash: 3, heat: 2 },
       { material: shard, intensity: 2, pulseRate: 1.1, pulseDepth: 0.25, flash: 1 },
     ],

@@ -365,7 +365,10 @@ export const RUN_MENU = {
       weakpoints: 'Kerntreffer',
       accuracy: 'Präzision',
       time: 'Überlebt',
-      score: 'Punkte',
+      /** Economy points credited during the run (M4) – "Punkte" like the HUD counter. */
+      pointsEarned: 'Punkte verdient',
+      /** The run score (RunStats.computeScore): not the economy points, so its own name. */
+      score: 'Wertung',
     },
     restart: 'Neu starten',
     mainMenu: 'Hauptmenü',

@@ -85,12 +85,12 @@ export const CHAINLIGHTNING_VIEWMODEL: WeaponViewmodelDef | null = {
       },
     ],
     boltRelease: [
-      // A quarter crank of the four-fin rotor (symmetric: the jump back to 0 is invisible).
+      // A quarter crank of the four-fin rotor, ending at rest (four-fold: the jump to 90° is invisible).
       {
         part: 'coils',
         type: 'tween',
-        from: { rot: V(0, 0, 0) },
-        pose: { rot: V(0, 0, -90) },
+        from: { rot: V(0, 0, 90) },
+        pose: {},
         duration: 0.16,
         ease: 'outBack',
       },

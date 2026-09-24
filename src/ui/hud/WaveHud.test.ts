@@ -280,4 +280,46 @@ describe('Hud damage direction with enemy hits', () => {
     expect(flash()).toBe(0);
     hud.dispose();
   });
+
+  it("resetRun() drops the last run's kill confirmation, hitmarker and kill streak", () => {
+    const events = new EventBus<GameEvents>();
+    const root = document.createElement('div');
+    const hud = new Hud(root, events, settings(events));
+    const kill = (): void => {
+      events.emit('combat:damage', {
+        targetId: 3,
+        amount: 90,
+        zone: 'head',
+        point: { x: 0, y: 1, z: -4 },
+        killed: true,
+        weaponId: 'rifle',
+        element: 'physical',
+        source: 'player',
+      });
+      events.emit('combat:kill', {
+        targetId: 3,
+        zone: 'head',
+        weaponId: 'rifle',
+        position: { x: 0, y: 0, z: -4 },
+        source: 'player',
+      });
+    };
+    const opacity = (sel: string): number => Number(root.querySelector<HTMLElement>(sel)!.style.opacity);
+    // A streak right before the death: the death sequence runs a fraction of a second of game time
+    // and the game over screen freezes the HUD – the confirmation would still be up afterwards.
+    for (let i = 0; i < 3; i++) kill();
+    hud.update(0.1, 0);
+    expect(opacity('.hud-kill')).toBeGreaterThan(0);
+    expect(opacity('.hud-hitmarker')).toBeGreaterThan(0);
+    expect(root.querySelector('.hud-kill__count')!.textContent).toBe('×3');
+    hud.resetRun();
+    hud.update(1 / 60, 0);
+    expect(opacity('.hud-kill')).toBe(0);
+    expect(opacity('.hud-hitmarker')).toBe(0);
+    // The first kill of the new run starts a new streak.
+    kill();
+    hud.update(1 / 60, 0);
+    expect(root.querySelector('.hud-kill__count')!.textContent).toBe('');
+    hud.dispose();
+  });
 });

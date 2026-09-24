@@ -362,7 +362,10 @@ function flickerNoise(t: number): number {
  * Remove parts from the animator-bound part table (they keep their place in the hierarchy): the
  * model animates them itself (floating cores, idle-spinning rings). Returns them by name.
  */
-export function freeParts<const K extends string>(built: BuiltModel, names: readonly K[]): Record<K, Object3D> {
+export function freeParts<const K extends string>(
+  built: BuiltModel,
+  names: readonly K[],
+): Record<K, Object3D> {
   const out = {} as Record<K, Object3D>;
   for (const n of names) {
     const obj = built.parts[n];
@@ -401,12 +404,22 @@ class HelixCurve extends Curve<Vector3> {
 
   override getPoint(t: number, target = new Vector3()): Vector3 {
     const a = t * this.turns * Math.PI * 2;
-    return target.set(Math.cos(a) * this.radius, Math.sin(a) * this.radius, -t * this.length + this.length / 2);
+    return target.set(
+      Math.cos(a) * this.radius,
+      Math.sin(a) * this.radius,
+      -t * this.length + this.length / 2,
+    );
   }
 }
 
 /** Wire coil wound around the Z axis (centered, running along −Z). */
-export function helixZ(radius: number, wire: number, length: number, turns: number, segmentsPerTurn = 14): BufferGeometry {
+export function helixZ(
+  radius: number,
+  wire: number,
+  length: number,
+  turns: number,
+  segmentsPerTurn = 14,
+): BufferGeometry {
   return new TubeGeometry(
     new HelixCurve(radius, length, turns),
     Math.max(8, Math.round(turns * segmentsPerTurn)),
@@ -504,7 +517,10 @@ export function reformScale(sinceShot: number, regrow: number, min: number): num
  * Closed Catmull-Rom smoothing of a 2D outline (organic carapaces): `samples` points per control
  * segment. Feed the result to profileX / profileZ.
  */
-export function smoothOutline(points: readonly (readonly [number, number])[], samples = 4): [number, number][] {
+export function smoothOutline(
+  points: readonly (readonly [number, number])[],
+  samples = 4,
+): [number, number][] {
   const n = points.length;
   const out: [number, number][] = [];
   for (let i = 0; i < n; i++) {

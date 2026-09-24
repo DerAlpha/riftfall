@@ -30,6 +30,10 @@ const CHEAT_SHEET: readonly CheatRow[] = [
   { label: 'Dash', actions: ['dash'] },
   { label: 'Klettern', text: 'Sprung an Kante' },
   { label: 'Zielen', actions: ['ads'] },
+  { label: 'Schießen', actions: ['fire'] },
+  { label: 'Nachladen', actions: ['reload'] },
+  { label: 'Nahkampf', actions: ['melee'] },
+  { label: 'Kaufen / Reparieren', actions: ['interact'] },
   { label: 'Pause', actions: ['pause'] },
 ];
 

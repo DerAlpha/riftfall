@@ -421,8 +421,9 @@ export class Hud {
 
   /**
    * A new run starts on this map (restart, or main menu → start, which emits no run:restart):
-   * wave widgets back to the placeholder, the last run's damage arcs, hit flash and damage
-   * numbers gone. Call before the new run's wave director starts (its intermission shows again).
+   * wave widgets back to the placeholder, the last run's damage arcs, hit flash, damage numbers,
+   * hitmarker, kill confirmation and streak gone. Call before the new run's wave director starts
+   * (its intermission shows again).
    */
   resetRun(): void {
     this.waves.reset();
@@ -435,7 +436,7 @@ export class Hud {
         ind.el.style.opacity = '0';
       }
     }
-    this.combat.numbers.clear();
+    this.combat.reset();
     this.economy.reset();
   }
 

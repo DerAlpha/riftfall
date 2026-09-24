@@ -43,7 +43,14 @@ export const PLASMA_VIEWMODEL: WeaponViewmodelDef | null = {
       releaseEase: 'in',
     },
     // The emptied cell unlatches: it rides up out of its cradle until the reload pulls it.
-    { part: 'cell', type: 'tween', pose: { pos: V(-0.004, 0.003, 0) }, delay: 0.05, duration: 0.08, ease: 'outBack' },
+    {
+      part: 'cell',
+      type: 'tween',
+      pose: { pos: V(-0.004, 0.003, 0) },
+      delay: 0.05,
+      duration: 0.08,
+      ease: 'outBack',
+    },
     { ...TRIGGER_PULL, pose: { rot: V(-14, 0, 0) } },
   ],
   dryFire: [{ ...TRIGGER_PULL, pose: { rot: V(-18, 0, 0) }, release: 0.05 }],

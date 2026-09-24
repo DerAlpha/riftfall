@@ -115,7 +115,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     ),
     { paint: P.gunmetal.paint },
   );
-  b.add(BODY, 'darkMetal', roundedBox(0.058, 0.012, 0.2, 0.003), { pos: [0, 0.018, -0.04], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.058, 0.012, 0.2, 0.003), {
+    pos: [0, 0.018, -0.04],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.2), { pos: [-0.0272, 0.068, -0.03] });
   b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.2), { pos: [0.0272, 0.068, -0.03] });
   // Hazard stripes on the receiver nose.
@@ -128,13 +131,27 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   }
   // Regulator: brass valve wheel on the left, feeding the hose from the tank.
   b.add(BODY, 'darkMetal', cylinderX(0.009, 0.012, 16), { pos: [-0.032, 0.05, -0.105], paint: 0.4 });
-  b.add(BODY, 'brass', new TorusGeometry(0.009, 0.0022, 6, 18), { pos: [-0.04, 0.05, -0.105], rot: [0, 90, 0], paint: 0.8 });
-  b.add(BODY, 'brass', cylinderX(0.0024, 0.02, 8), { pos: [-0.04, 0.05, -0.105], rot: [0, 0, 90], paint: 0.8 });
+  b.add(BODY, 'brass', new TorusGeometry(0.009, 0.0022, 6, 18), {
+    pos: [-0.04, 0.05, -0.105],
+    rot: [0, 90, 0],
+    paint: 0.8,
+  });
+  b.add(BODY, 'brass', cylinderX(0.0024, 0.02, 8), {
+    pos: [-0.04, 0.05, -0.105],
+    rot: [0, 0, 90],
+    paint: 0.8,
+  });
 
   // --- heat-shield wand with glowing vent slots, front sight post ---
   const wandLen = WAND.back - WAND.front;
-  b.add(BODY, 'darkMetal', cylinderZ(0.011, 0.011, wandLen, 14), { pos: [0, BORE_Y, (WAND.back + WAND.front) / 2], paint: 0.4 });
-  b.add(BODY, 'gunmetal', tubeZ(WAND.r, WAND.r - 0.003, wandLen, 28), { pos: [0, BORE_Y, WAND.back], paint: P.gunmetal.paint });
+  b.add(BODY, 'darkMetal', cylinderZ(0.011, 0.011, wandLen, 14), {
+    pos: [0, BORE_Y, (WAND.back + WAND.front) / 2],
+    paint: 0.4,
+  });
+  b.add(BODY, 'gunmetal', tubeZ(WAND.r, WAND.r - 0.003, wandLen, 28), {
+    pos: [0, BORE_Y, WAND.back],
+    paint: P.gunmetal.paint,
+  });
   for (let i = 0; i < 6; i++) {
     const z = WAND.back - 0.04 - i * 0.045;
     for (const a of [120, 150, 180]) {
@@ -164,7 +181,9 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     ),
     { paint: P.darkMetal.paint },
   );
-  b.add(BODY, 'sight', new BoxGeometry(0.003, 0.003, 0.003), { pos: [0, SIGHT_Y - 0.0015, WAND.front + 0.015] });
+  b.add(BODY, 'sight', new BoxGeometry(0.003, 0.003, 0.003), {
+    pos: [0, SIGHT_Y - 0.0015, WAND.front + 0.015],
+  });
   // Tank brackets (hanging from the wand) and the front handle.
   for (const z of [TANK.back - 0.03, TANK.front + 0.03]) {
     b.add(BODY, 'darkMetal', roundedBox(0.03, 0.012, 0.016, 0.002), {
@@ -196,11 +215,27 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   });
 
   // --- pilot burner under the nozzle (static) ---
-  b.add(BODY, 'darkMetal', cylinderZ(0.0045, 0.0045, 0.06, 12), { pos: [0, PILOT.y, PILOT.z + 0.034], paint: 0.4 });
-  b.add(BODY, 'brass', latheZHard([[0.003, 0], [0.0052, 0.002], [0.0052, 0.008], [0.0035, 0.01]], 12), {
-    pos: [0, PILOT.y, PILOT.z + 0.004],
-    paint: 0.8,
+  b.add(BODY, 'darkMetal', cylinderZ(0.0045, 0.0045, 0.06, 12), {
+    pos: [0, PILOT.y, PILOT.z + 0.034],
+    paint: 0.4,
   });
+  b.add(
+    BODY,
+    'brass',
+    latheZHard(
+      [
+        [0.003, 0],
+        [0.0052, 0.002],
+        [0.0052, 0.008],
+        [0.0035, 0.01],
+      ],
+      12,
+    ),
+    {
+      pos: [0, PILOT.y, PILOT.z + 0.004],
+      paint: 0.8,
+    },
+  );
   b.add(BODY, 'darkMetal', roundedBox(0.006, BORE_Y - PILOT.y - 0.01, 0.008, 0.001), {
     pos: [0, (BORE_Y + PILOT.y) / 2 - 0.006, PILOT.z + 0.04],
     paint: 0.4,
@@ -225,7 +260,19 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     ),
     { pos: [0, BORE_Y, NOZZLE_Z], paint: P.darkMetal.paint },
   );
-  b.add('nozzle', 'heat', latheZ([[0.0125, 0.016], [0.02, 0.032], [0.027, 0.052]], 24), { pos: [0, BORE_Y, NOZZLE_Z] });
+  b.add(
+    'nozzle',
+    'heat',
+    latheZ(
+      [
+        [0.0125, 0.016],
+        [0.02, 0.032],
+        [0.027, 0.052],
+      ],
+      24,
+    ),
+    { pos: [0, BORE_Y, NOZZLE_Z] },
+  );
   b.add('nozzle', 'accentPaint', tubeZ(WAND.r + 0.0032, WAND.r + 0.001, 0.006, 28), {
     pos: [0, BORE_Y, NOZZLE_Z - 0.003],
     paint: P.accentPaint.paint,
@@ -244,7 +291,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   });
 
   // --- pilot flame (hidden while the tank is dry) ---
-  b.add('pilot', 'pilotFlame', latheZ(flameProfile(0.0042, 0.03), 12), { pos: [0, PILOT.y, PILOT.z - 0.001], uv: 'keep' });
+  b.add('pilot', 'pilotFlame', latheZ(flameProfile(0.0042, 0.03), 12), {
+    pos: [0, PILOT.y, PILOT.z - 0.001],
+    uv: 'keep',
+  });
 
   // --- grip, trigger guard, trigger ---
   b.add(
@@ -318,16 +368,33 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
         [-0.08, 0.02],
       ],
       0.04,
-      { bevel: 0.004, holes: [[[-0.12, 0.05], [-0.26, 0.048], [-0.26, -0.014], [-0.2, 0.004], [-0.12, 0.024]]] },
+      {
+        bevel: 0.004,
+        holes: [
+          [
+            [-0.12, 0.05],
+            [-0.26, 0.048],
+            [-0.26, -0.014],
+            [-0.2, 0.004],
+            [-0.12, 0.024],
+          ],
+        ],
+      },
     ),
     { paint: P.polymer.paint },
   );
-  b.add(BODY, 'grip', roundedBox(0.044, 0.1, 0.016, 0.005), { pos: [0, 0.012, 0.306], uvDensity: VIEWMODEL_ART.knurlDensity });
+  b.add(BODY, 'grip', roundedBox(0.044, 0.1, 0.016, 0.005), {
+    pos: [0, 0.012, 0.306],
+    uvDensity: VIEWMODEL_ART.knurlDensity,
+  });
 
   // --- fuel tank (left flank): red shell, hazard band, sight glass, gauge cap, hose ---
   const tankLen = TANK.back - TANK.front;
   const tankZ = (TANK.back + TANK.front) / 2;
-  b.add('tank', 'shellHull', cylinderZ(TANK.r, TANK.r, tankLen - 0.02, 28), { pos: [TANK.x, TANK.y, tankZ], paint: 0.55 });
+  b.add('tank', 'shellHull', cylinderZ(TANK.r, TANK.r, tankLen - 0.02, 28), {
+    pos: [TANK.x, TANK.y, tankZ],
+    paint: 0.55,
+  });
   for (const [z, flip] of [
     [TANK.front + 0.01, 180],
     [TANK.back - 0.01, 0],
@@ -364,12 +431,19 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     paint: 0.4,
   });
   b.add('tank', 'fuel', roundedBox(0.0026, 0.0068, 0.08, 0.001), {
-    pos: [TANK.x + Math.cos(glassA) * (TANK.r + 0.0012), TANK.y + Math.sin(glassA) * (TANK.r + 0.0012), tankZ + 0.005],
+    pos: [
+      TANK.x + Math.cos(glassA) * (TANK.r + 0.0012),
+      TANK.y + Math.sin(glassA) * (TANK.r + 0.0012),
+      tankZ + 0.005,
+    ],
     rot: [0, 0, 150],
   });
   // Gauge bezel on the rear cap, LED arc facing the shooter.
   const gaugeZ = TANK.back + 0.012;
-  b.add('tank', 'darkMetal', cylinderZ(0.017, 0.017, 0.006, 24), { pos: [TANK.x, TANK.y, gaugeZ], paint: 0.4 });
+  b.add('tank', 'darkMetal', cylinderZ(0.017, 0.017, 0.006, 24), {
+    pos: [TANK.x, TANK.y, gaugeZ],
+    paint: 0.4,
+  });
   b.add('tank', 'bore', cylinderZ(0.0145, 0.0145, 0.001, 24), { pos: [TANK.x, TANK.y, gaugeZ + 0.0031] });
   for (let i = 0; i < LEDS; i++) {
     const a = ((200 - (i * 220) / (LEDS - 1)) * Math.PI) / 180;
@@ -427,8 +501,24 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   return new EnergyWeaponModel('flamethrower', def, built, glow, readoutSpec, readout, [
     { material: fuel, intensity: 2.6, pulseRate: 1.1, pulseDepth: 0.15, boost: 1.2 },
     { material: vents, intensity: 0.05, heat: 4, boost: 3.2, flickerRate: 19, flickerDepth: 0.2 },
-    { material: pilotFlame, intensity: 2.8, flickerRate: 27, flickerDepth: 0.35, boost: 1.5, wave: 0.0009, waveBoost: 0.0012 },
-    { material: flareFlame, intensity: 1.2, flickerRate: 33, flickerDepth: 0.4, boost: 3, wave: 0.002, waveBoost: 0.003 },
+    {
+      material: pilotFlame,
+      intensity: 2.8,
+      flickerRate: 27,
+      flickerDepth: 0.35,
+      boost: 1.5,
+      wave: 0.0009,
+      waveBoost: 0.0012,
+    },
+    {
+      material: flareFlame,
+      intensity: 1.2,
+      flickerRate: 33,
+      flickerDepth: 0.4,
+      boost: 3,
+      wave: 0.002,
+      waveBoost: 0.003,
+    },
   ]);
 }
 

@@ -13,7 +13,7 @@ export const DRUM_STEP_DEG = 22.5;
 const BOLT_TRAVEL = 0.05;
 
 export const AUTOSHOTGUN_VIEWMODEL: WeaponViewmodelDef = {
-  hip: { pos: V(0.14, -0.165, -0.355), rot: V(0, 2, 0) },
+  hip: { pos: V(0.14, -0.156, -0.365), rot: V(0, 2, 0) },
   adsEyeDistance: 0.19,
   sprint: { pos: V(-0.035, -0.045, 0.03), rot: V(-14, 33, -26) },
   lowered: LONG_GUN_LOWERED,

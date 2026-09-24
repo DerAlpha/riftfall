@@ -216,6 +216,13 @@ describe('menus', () => {
   it('switches the start screen cheat sheet to gamepad labels when the pad is used', async () => {
     act(() => menus.showStart());
     expect(root.querySelector('.start__keys')!.textContent).toBe('W A S D');
+    const kbmKeysOf = (label: string): string | null | undefined =>
+      [...root.querySelectorAll('.start__sheetrow')]
+        .find((r) => r.textContent?.startsWith(label))
+        ?.querySelector('.start__keys')?.textContent;
+    // M4: how to buy / repair – the economy's one new control.
+    expect(kbmKeysOf('Kaufen / Reparieren')).toBe('F');
+    expect(kbmKeysOf('Nachladen')).toBe('R');
     (input as { device: 'kbm' | 'gamepad' }).device = 'gamepad';
     act(() => events.emit('input:deviceChanged', { device: 'gamepad' }));
     await flush();

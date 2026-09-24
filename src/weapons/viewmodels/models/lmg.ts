@@ -341,14 +341,15 @@ export const buildLmg: ViewmodelBuilder = (kit) => {
     pos: [0, RAIL_TOP - 0.0055, -0.055],
     paint: P.darkMetal.paint,
   });
-  for (let i = 0; i < 17; i++) {
+  // Teeth from the sight base forward: nothing stair-steps under the aimed eye.
+  for (let i = 0; i < 14; i++) {
     b.add('cover', 'darkMetal', new BoxGeometry(0.024, 0.0035, 0.0062), {
-      pos: [0, RAIL_TOP - 0.00175, 0.046 - i * 0.0128],
+      pos: [0, RAIL_TOP - 0.00175, 0.0 - i * 0.0128],
       paint: P.darkMetal.paint,
     });
   }
-  b.add('cover', 'darkMetal', roundedBox(0.03, 0.008, 0.012, 0.002), {
-    pos: [0, 0.092, 0.074],
+  b.add('cover', 'darkMetal', roundedBox(0.024, 0.006, 0.01, 0.002), {
+    pos: [0, 0.089, 0.074],
     paint: 0.45,
   });
 
@@ -378,11 +379,11 @@ export const buildLmg: ViewmodelBuilder = (kit) => {
     uv: 'keep',
   });
   const rz = SIGHT_FRONT + 0.002;
-  b.add('sight', 'sight', new BoxGeometry(0.0006, 0.0068, 0.0003), { pos: [0, SIGHT_Y - 0.0042, rz] });
+  b.add('sight', 'sight', new BoxGeometry(0.0009, 0.0072, 0.0003), { pos: [0, SIGHT_Y - 0.0046, rz] });
   for (const s of [-1, 1]) {
-    b.add('sight', 'sight', new BoxGeometry(0.005, 0.0004, 0.0003), { pos: [s * 0.004, SIGHT_Y, rz] });
+    b.add('sight', 'sight', new BoxGeometry(0.0062, 0.00055, 0.0003), { pos: [s * 0.0048, SIGHT_Y, rz] });
   }
-  b.add('sight', 'sight', cylinderZ(0.00045, 0.00045, 0.0003, 10), { pos: [0, SIGHT_Y, rz] });
+  b.add('sight', 'sight', cylinderZ(0.0006, 0.0006, 0.0003, 10), { pos: [0, SIGHT_Y, rz] });
 
   // --- ammo box (left) with lid, strap and a 10-LED level gauge ---
   b.add('magazine', 'polymer', roundedBox(bw, bh, bd, 0.004, 2), {

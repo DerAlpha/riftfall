@@ -10,7 +10,7 @@ import type { WeaponViewmodelDef } from '../viewmodels';
 import { LONG_GUN_LOWERED, TRIGGER_PULL, V } from '../viewmodelParts';
 
 export const CRYONOVA_VIEWMODEL: WeaponViewmodelDef | null = {
-  hip: { pos: V(0.135, -0.145, -0.33), rot: V(0, 2, 0) },
+  hip: { pos: V(0.135, -0.158, -0.33), rot: V(0, 2, 0) },
   adsEyeDistance: 0.21,
   sprint: { pos: V(-0.035, -0.04, 0.03), rot: V(-14, 32, -24) },
   lowered: LONG_GUN_LOWERED,

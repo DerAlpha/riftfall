@@ -1,6 +1,6 @@
 /**
- * Game over screen (M3): "DU BIST GEFALLEN", the wave reached, the run's statistics and score,
- * "Neu starten" / "Hauptmenü". The stats reveal one after another (CSS delays); the buttons only
+ * Game over screen (M3): "DU BIST GEFALLEN", the wave reached, the run's statistics, the points
+ * earned (M4 economy) next to the score, "Neu starten" / "Hauptmenü". The stats reveal one after another (CSS delays); the buttons only
  * react after RUN_MENU.gameOver.inputDelayMs, then "Neu starten" takes the focus – a trigger or
  * jump held through the death must not restart by accident. Keyboard: Tab / arrow keys between
  * the buttons, Enter; gamepad: D-pad + A (MenuPadNavigator).
@@ -95,6 +95,7 @@ export function GameOverScreen({
   const modeLabel = stats.mode ? G.modeLabels[stats.mode] : undefined;
   const sub = [mapName, modeLabel].filter((v): v is string => !!v).join(' · ');
   const rows = statRows(stats);
+  const points = stats.pointsEarned;
 
   // Without the API a lock request can only fail: restart lock-less right away.
   const restart = (): void => onRestart(lockProblem === 'unsupported' ? { lockless: true } : undefined);
@@ -138,9 +139,17 @@ export function GameOverScreen({
             </div>
           ))}
         </dl>
-        <div class="gameover__score" style={delay()}>
-          <span class="gameover__scorelabel">{G.labels.score}</span>
-          <span class="gameover__scorevalue">{formatCount(stats.score)}</span>
+        <div class="gameover__totals">
+          {points !== undefined ? (
+            <div class="gameover__total gameover__points" style={delay()}>
+              <span class="gameover__scorelabel">{G.labels.pointsEarned}</span>
+              <span class="gameover__pointsvalue">{formatCount(points)}</span>
+            </div>
+          ) : null}
+          <div class="gameover__total gameover__score" style={delay()}>
+            <span class="gameover__scorelabel">{G.labels.score}</span>
+            <span class="gameover__scorevalue">{formatCount(stats.score)}</span>
+          </div>
         </div>
         <nav class={`gameover__nav${ready ? ' is-ready' : ''}`} ref={navRef} onKeyDown={onNavKey}>
           <button

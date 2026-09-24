@@ -104,7 +104,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     { paint: P.gunmetal.paint },
   );
   // Belly panel and the dark cradle plate the cell sits against (left flank).
-  b.add(BODY, 'darkMetal', roundedBox(0.056, 0.014, 0.19, 0.004), { pos: [0, 0.017, -0.06], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', roundedBox(0.056, 0.014, 0.19, 0.004), {
+    pos: [0, 0.017, -0.06],
+    paint: P.darkMetal.paint,
+  });
   b.add(BODY, 'darkMetal', roundedBox(0.004, 0.036, 0.13, 0.0015), {
     pos: [-0.027, CELL.y, (CELL.front + CELL.back) / 2],
     paint: P.darkMetal.paint,
@@ -122,13 +125,18 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   }
   // Contacts glowing at the cradle ends.
   b.add(BODY, 'accent', new BoxGeometry(0.0012, 0.02, 0.0016), { pos: [-0.0292, CELL.y, CELL.back + 0.006] });
-  b.add(BODY, 'accent', new BoxGeometry(0.0012, 0.02, 0.0016), { pos: [-0.0292, CELL.y, CELL.front - 0.006] });
+  b.add(BODY, 'accent', new BoxGeometry(0.0012, 0.02, 0.0016), {
+    pos: [-0.0292, CELL.y, CELL.front - 0.006],
+  });
   // Accent seams along both flanks.
   b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.2), { pos: [-0.0262, 0.0765, -0.03] });
   b.add(BODY, 'accent', new BoxGeometry(0.0008, 0.0018, 0.2), { pos: [0.0262, 0.0765, -0.03] });
 
   // Top rail (behind the vent louvre).
-  b.add(BODY, 'darkMetal', new BoxGeometry(0.02, 0.004, 0.13), { pos: [0, 0.0855, -0.02], paint: P.darkMetal.paint });
+  b.add(BODY, 'darkMetal', new BoxGeometry(0.02, 0.004, 0.13), {
+    pos: [0, 0.0855, -0.02],
+    paint: P.darkMetal.paint,
+  });
   for (let i = 0; i < 9; i++) {
     b.add(BODY, 'darkMetal', new BoxGeometry(0.022, 0.0035, 0.0065), {
       pos: [0, 0.089, 0.036 - i * 0.0135],
@@ -150,7 +158,11 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     rot: [0, 25, 0],
     paint: P.darkMetal.paint,
   });
-  b.add(BODY, 'readout', new PlaneGeometry(0.021, 0.0165), { pos: [-0.0306, 0.058, 0.0635], rot: [0, -65, 0], uv: 'keep' });
+  b.add(BODY, 'readout', new PlaneGeometry(0.021, 0.0165), {
+    pos: [-0.0306, 0.058, 0.0635],
+    rot: [0, -65, 0],
+    uv: 'keep',
+  });
 
   // --- accelerator cage: clamps, four bars, conduit, emitter bell ---
   for (const z of [CAGE.back, CAGE.front]) {
@@ -172,9 +184,14 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     [-CAGE.r, 0, 0.006, 0.012],
     [CAGE.r, 0, 0.006, 0.012],
   ] as const) {
-    b.add(BODY, 'darkMetal', roundedBox(w, h, barLen, 0.0018), { pos: [x, BORE_Y + y, barZ], paint: P.darkMetal.paint });
+    b.add(BODY, 'darkMetal', roundedBox(w, h, barLen, 0.0018), {
+      pos: [x, BORE_Y + y, barZ],
+      paint: P.darkMetal.paint,
+    });
   }
-  b.add(BODY, 'accent', new BoxGeometry(0.0016, 0.0012, barLen - 0.02), { pos: [0, BORE_Y + CAGE.r + 0.0031, barZ] });
+  b.add(BODY, 'accent', new BoxGeometry(0.0016, 0.0012, barLen - 0.02), {
+    pos: [0, BORE_Y + CAGE.r + 0.0031, barZ],
+  });
   b.add(BODY, 'stream', cylinderZ(0.0052, 0.0052, barLen + 0.02, 12), { pos: [0, BORE_Y, barZ] });
   b.add(
     BODY,
@@ -193,8 +210,22 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     ),
     { pos: [0, BORE_Y, CAGE.front - 0.004], paint: P.darkMetal.paint },
   );
-  b.add(BODY, 'ring', new TorusGeometry(0.0205, 0.0022, 8, 28), { pos: [0, BORE_Y, CAGE.front - 0.034], uv: 'keep' });
-  b.add(BODY, 'heat', latheZ([[0.012, 0], [0.019, 0.026]], 20), { pos: [0, BORE_Y, CAGE.front - 0.008] });
+  b.add(BODY, 'ring', new TorusGeometry(0.0205, 0.0022, 8, 28), {
+    pos: [0, BORE_Y, CAGE.front - 0.034],
+    uv: 'keep',
+  });
+  b.add(
+    BODY,
+    'heat',
+    latheZ(
+      [
+        [0.012, 0],
+        [0.019, 0.026],
+      ],
+      20,
+    ),
+    { pos: [0, BORE_Y, CAGE.front - 0.008] },
+  );
   // Laser rail on the right of the front clamp, rail under the cage.
   b.add(BODY, 'darkMetal', roundedBox(0.004, 0.014, 0.036, 0.0012), {
     pos: [0.037, BORE_Y, CAGE.front + 0.03],
@@ -204,8 +235,14 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   // --- coil stack: glowing rings on copper windings (kicks back per bolt) ---
   for (const z of COIL_Z) {
     b.add('coils', 'brass', helixZ(0.0165, 0.0019, 0.018, 5), { pos: [0, BORE_Y, z], paint: 0.8 });
-    b.add('coils', 'ring', new TorusGeometry(0.0178, 0.0034, 10, 30), { pos: [0, BORE_Y, z - 0.012], uv: 'keep' });
-    b.add('coils', 'darkMetal', new TorusGeometry(0.0182, 0.0026, 8, 30), { pos: [0, BORE_Y, z + 0.011], paint: 0.4 });
+    b.add('coils', 'ring', new TorusGeometry(0.0178, 0.0034, 10, 30), {
+      pos: [0, BORE_Y, z - 0.012],
+      uv: 'keep',
+    });
+    b.add('coils', 'darkMetal', new TorusGeometry(0.0182, 0.0026, 8, 30), {
+      pos: [0, BORE_Y, z + 0.011],
+      paint: 0.4,
+    });
   }
 
   // --- foregrip under the cage ---
@@ -333,7 +370,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   b.add('cell', 'plasma', cylinderZ(CELL.r - 0.0022, CELL.r - 0.0022, cellLen - 0.018, 16), {
     pos: [CELL.x, CELL.y, cellZ],
   });
-  b.add('cell', 'lens', cylinderZ(CELL.r, CELL.r, cellLen - 0.018, 20), { pos: [CELL.x, CELL.y, cellZ], uv: 'keep' });
+  b.add('cell', 'lens', cylinderZ(CELL.r, CELL.r, cellLen - 0.018, 20), {
+    pos: [CELL.x, CELL.y, cellZ],
+    uv: 'keep',
+  });
   for (const [z, dir] of [
     [CELL.front, 1],
     [CELL.back, -1],
@@ -354,14 +394,20 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       { pos: [CELL.x, CELL.y, z], rot: [0, dir > 0 ? 180 : 0, 0], paint: P.gunmetal.paint },
     );
   }
-  b.add('cell', 'brass', cylinderZ(0.004, 0.004, 0.006, 12), { pos: [CELL.x, CELL.y, CELL.back + 0.002], paint: 0.8 });
+  b.add('cell', 'brass', cylinderZ(0.004, 0.004, 0.006, 12), {
+    pos: [CELL.x, CELL.y, CELL.back + 0.002],
+    paint: 0.8,
+  });
   b.add('cell', 'accentPaint', tubeZ(CELL.r + 0.0014, CELL.r - 0.001, 0.004, 20), {
     pos: [CELL.x, CELL.y, CELL.front + 0.02],
     paint: P.accentPaint.paint,
   });
 
   // --- vent louvre (hinged at its rear edge) ---
-  b.add('vents', 'gunmetal', roundedBox(0.04, 0.004, 0.062, 0.0015), { pos: [0, 0.0875, -0.13], paint: P.gunmetal.paint });
+  b.add('vents', 'gunmetal', roundedBox(0.04, 0.004, 0.062, 0.0015), {
+    pos: [0, 0.0875, -0.13],
+    paint: P.gunmetal.paint,
+  });
   for (let i = 0; i < 4; i++) {
     b.add('vents', 'darkMetal', roundedBox(0.034, 0.0024, 0.006, 0.001), {
       pos: [0, 0.0905, -0.108 - i * 0.014],
@@ -370,10 +416,19 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   }
 
   // --- holo ring sight ---
-  b.add('sight', 'darkMetal', roundedBox(0.014, 0.012, 0.026, 0.002), { pos: [0, 0.093, -0.036], paint: 0.4 });
-  b.add('sight', 'gunmetal', tubeZ(0.0175, 0.0142, 0.012, 32), { pos: [0, SIGHT_Y, -0.03], paint: P.gunmetal.paint });
+  b.add('sight', 'darkMetal', roundedBox(0.014, 0.012, 0.026, 0.002), {
+    pos: [0, 0.093, -0.036],
+    paint: 0.4,
+  });
+  b.add('sight', 'gunmetal', tubeZ(0.0175, 0.0142, 0.012, 32), {
+    pos: [0, SIGHT_Y, -0.03],
+    paint: P.gunmetal.paint,
+  });
   b.add('sight', 'accent', new TorusGeometry(0.0176, 0.0007, 4, 40), { pos: [0, SIGHT_Y, -0.0302] });
-  b.add('sight', 'darkMetal', roundedBox(0.008, 0.006, 0.014, 0.0015), { pos: [0, SIGHT_Y - 0.019, -0.03], paint: 0.4 });
+  b.add('sight', 'darkMetal', roundedBox(0.008, 0.006, 0.014, 0.0015), {
+    pos: [0, SIGHT_Y - 0.019, -0.03],
+    paint: 0.4,
+  });
   b.add('sight', 'lens', new PlaneGeometry(0.029, 0.029), { pos: [0, SIGHT_Y, -0.041], uv: 'keep' });
   b.add('sight', 'sight', new TorusGeometry(0.0055, 0.00035, 4, 36), { pos: [0, SIGHT_Y, -0.0413] });
   b.add('sight', 'sight', cylinderZ(0.00065, 0.00065, 0.0003, 10), { pos: [0, SIGHT_Y, -0.0413] });

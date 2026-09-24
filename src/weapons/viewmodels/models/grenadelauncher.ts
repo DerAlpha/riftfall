@@ -32,7 +32,7 @@ const P = VIEWMODEL_ART.materials;
 const DRUM = { y: 0.0, chamberR: 0.036, bore: 0.0205, outer: 0.062, back: -0.05, front: -0.19 } as const;
 const BORE_Y = DRUM.y + DRUM.chamberR;
 /** Sight line: center of the reflex window. */
-const SIGHT_Y = 0.136;
+const SIGHT_Y = 0.126;
 const GRIP_TILT = -18;
 const GRIP_TOP = { y: 0.0, z: 0.03 } as const;
 const LEDS = 6;
@@ -83,10 +83,15 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   const drumLen = DRUM.back - DRUM.front;
   const drumZ = (DRUM.back + DRUM.front) / 2;
   const holes = chambers().map(([x, y]) => circleProfile(DRUM.bore, 20, x, y - DRUM.y));
-  b.add('drum', 'gunmetal', profileZ(circleProfile(DRUM.outer, 48), drumLen, { bevel: 0.004, bevelSegments: 2, holes }), {
-    pos: [0, DRUM.y, drumZ],
-    paint: P.gunmetal.paint,
-  });
+  b.add(
+    'drum',
+    'gunmetal',
+    profileZ(circleProfile(DRUM.outer, 48), drumLen, { bevel: 0.004, bevelSegments: 2, holes }),
+    {
+      pos: [0, DRUM.y, drumZ],
+      paint: P.gunmetal.paint,
+    },
+  );
   for (let i = 0; i < 6; i++) {
     const a = Math.PI / 2 + Math.PI / 6 + (i * Math.PI) / 3;
     b.add('drum', 'darkMetal', roundedBox(0.012, 0.004, drumLen - 0.03, 0.0015), {
@@ -97,17 +102,48 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   }
   // Loaded rounds: brass bases (rear) and glowing ogive tips (front) in every chamber.
   for (const [x, y] of chambers()) {
-    b.add('drum', 'brass', latheZHard([[0, 0], [DRUM.bore - 0.0016, 0], [DRUM.bore - 0.0016, 0.012]], 20), {
-      pos: [x, y, DRUM.back - 0.006],
-      paint: 0.85,
+    b.add(
+      'drum',
+      'brass',
+      latheZHard(
+        [
+          [0, 0],
+          [DRUM.bore - 0.0016, 0],
+          [DRUM.bore - 0.0016, 0.012],
+        ],
+        20,
+      ),
+      {
+        pos: [x, y, DRUM.back - 0.006],
+        paint: 0.85,
+      },
+    );
+    b.add('drum', 'darkMetal', cylinderZ(0.004, 0.004, 0.002, 12), {
+      pos: [x, y, DRUM.back - 0.0055],
+      paint: 0.4,
     });
-    b.add('drum', 'darkMetal', cylinderZ(0.004, 0.004, 0.002, 12), { pos: [x, y, DRUM.back - 0.0055], paint: 0.4 });
-    b.add('drum', 'tip', latheZHard([[DRUM.bore - 0.003, 0], [0.012, 0.012], [0.004, 0.02], [0, 0.021]], 16), {
-      pos: [x, y, DRUM.front + 0.012],
-    });
+    b.add(
+      'drum',
+      'tip',
+      latheZHard(
+        [
+          [DRUM.bore - 0.003, 0],
+          [0.012, 0.012],
+          [0.004, 0.02],
+          [0, 0.021],
+        ],
+        16,
+      ),
+      {
+        pos: [x, y, DRUM.front + 0.012],
+      },
+    );
   }
   // Drum axle caps.
-  b.add('drum', 'darkMetal', cylinderZ(0.011, 0.011, drumLen + 0.006, 16), { pos: [0, DRUM.y, drumZ], paint: 0.4 });
+  b.add('drum', 'darkMetal', cylinderZ(0.011, 0.011, drumLen + 0.006, 16), {
+    pos: [0, DRUM.y, drumZ],
+    paint: 0.4,
+  });
 
   // --- frame: rear + front plates, top strap, axle bosses ---
   for (const [z, len] of [
@@ -129,7 +165,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
           [0.046, 0.046],
         ],
         len,
-        { bevel: 0.002, holes: [circleProfile(0.017, 20, GATE.x - 0.0 + 0.0, 0)].slice(0, z > DRUM.back ? 1 : 0) },
+        {
+          bevel: 0.002,
+          holes: [circleProfile(0.017, 20, GATE.x - 0.0 + 0.0, 0)].slice(0, z > DRUM.back ? 1 : 0),
+        },
       ),
       { pos: [0, DRUM.y, z], paint: P.darkMetal.paint },
     );
@@ -138,7 +177,9 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     pos: [0, DRUM.y + DRUM.outer + 0.009, drumZ],
     paint: P.gunmetal.paint,
   });
-  b.add(BODY, 'accent', new BoxGeometry(0.0012, 0.0016, drumLen), { pos: [-0.0152, DRUM.y + DRUM.outer + 0.009, drumZ] });
+  b.add(BODY, 'accent', new BoxGeometry(0.0012, 0.0016, drumLen), {
+    pos: [-0.0152, DRUM.y + DRUM.outer + 0.009, drumZ],
+  });
   // LED row on the left of the rear plate (facing the shooter).
   b.add(BODY, 'darkMetal', roundedBox(0.004, 0.012, 0.054, 0.0012), {
     pos: [-0.048, 0.05, DRUM.back + 0.014],
@@ -192,7 +233,11 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   for (let i = 0; i < 6; i++) {
     const a = (i * Math.PI) / 3 + Math.PI / 6;
     b.add(BODY, 'accent', cylinderZ(0.0024, 0.0024, 0.002, 10), {
-      pos: [Math.cos(a) * (BARREL.r + 0.003), BORE_Y + Math.sin(a) * (BARREL.r + 0.003), BARREL.front - 0.0005],
+      pos: [
+        Math.cos(a) * (BARREL.r + 0.003),
+        BORE_Y + Math.sin(a) * (BARREL.r + 0.003),
+        BARREL.front - 0.0005,
+      ],
     });
   }
   b.add(BODY, 'accentPaint', tubeZ(BARREL.r + 0.0065, BARREL.r + 0.004, 0.008, 28), {
@@ -329,8 +374,14 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       { pos: [x, 0, 0], paint: P.gunmetal.paint },
     );
   }
-  b.add(BODY, 'grip', roundedBox(0.05, 0.1, 0.018, 0.005), { pos: [0, 0.01, 0.305], uvDensity: VIEWMODEL_ART.knurlDensity });
-  b.add(BODY, 'accentPaint', roundedBox(0.051, 0.012, 0.012, 0.002), { pos: [0, 0.054, 0.305], paint: P.accentPaint.paint });
+  b.add(BODY, 'grip', roundedBox(0.05, 0.1, 0.018, 0.005), {
+    pos: [0, 0.01, 0.305],
+    uvDensity: VIEWMODEL_ART.knurlDensity,
+  });
+  b.add(BODY, 'accentPaint', roundedBox(0.051, 0.012, 0.012, 0.002), {
+    pos: [0, 0.054, 0.305],
+    paint: P.accentPaint.paint,
+  });
 
   // --- flip-up reflex sight (on the top strap) ---
   b.add('sight', 'darkMetal', roundedBox(0.026, 0.01, 0.05, 0.002), { pos: [0, 0.098, -0.01], paint: 0.4 });
@@ -343,13 +394,25 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     }),
     { pos: [0, SIGHT_Y - 0.004, -0.03], paint: P.gunmetal.paint },
   );
-  b.add('sight', 'darkMetal', roundedBox(0.006, 0.03, 0.01, 0.0015), { pos: [-0.018, 0.113, -0.03], paint: 0.4 });
-  b.add('sight', 'darkMetal', roundedBox(0.006, 0.03, 0.01, 0.0015), { pos: [0.018, 0.113, -0.03], paint: 0.4 });
+  b.add('sight', 'darkMetal', roundedBox(0.006, 0.024, 0.01, 0.0015), {
+    pos: [-0.018, SIGHT_Y - 0.016, -0.03],
+    paint: 0.4,
+  });
+  b.add('sight', 'darkMetal', roundedBox(0.006, 0.024, 0.01, 0.0015), {
+    pos: [0.018, SIGHT_Y - 0.016, -0.03],
+    paint: 0.4,
+  });
   b.add('sight', 'lens', new PlaneGeometry(0.034, 0.03), { pos: [0, SIGHT_Y - 0.004, -0.036], uv: 'keep' });
   // Reticle: a chevron over stacked range bars (drop compensation for the grenade arc).
   const rz = -0.0363;
-  b.add('sight', 'sight', new BoxGeometry(0.0045, 0.0005, 0.0003), { pos: [-0.002, SIGHT_Y + 0.0018, rz], rot: [0, 0, -35] });
-  b.add('sight', 'sight', new BoxGeometry(0.0045, 0.0005, 0.0003), { pos: [0.002, SIGHT_Y + 0.0018, rz], rot: [0, 0, 35] });
+  b.add('sight', 'sight', new BoxGeometry(0.0045, 0.0005, 0.0003), {
+    pos: [-0.002, SIGHT_Y + 0.0018, rz],
+    rot: [0, 0, -35],
+  });
+  b.add('sight', 'sight', new BoxGeometry(0.0045, 0.0005, 0.0003), {
+    pos: [0.002, SIGHT_Y + 0.0018, rz],
+    rot: [0, 0, 35],
+  });
   for (let i = 0; i < 3; i++) {
     b.add('sight', 'sight', new BoxGeometry(0.008 - i * 0.002, 0.00045, 0.0003), {
       pos: [0, SIGHT_Y - 0.0035 - i * 0.0035, rz],
@@ -357,19 +420,46 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   }
 
   // --- the grenade being loaded (hidden at rest, behind the gate chamber) ---
-  b.add('shells', 'brass', latheZHard([[0, 0], [DRUM.bore - 0.0018, 0], [DRUM.bore - 0.0018, 0.03]], 20), {
-    pos: [GATE.x, GATE.y, DRUM.back + 0.07],
-    paint: 0.85,
-  });
+  b.add(
+    'shells',
+    'brass',
+    latheZHard(
+      [
+        [0, 0],
+        [DRUM.bore - 0.0018, 0],
+        [DRUM.bore - 0.0018, 0.03],
+      ],
+      20,
+    ),
+    {
+      pos: [GATE.x, GATE.y, DRUM.back + 0.07],
+      paint: 0.85,
+    },
+  );
   b.add('shells', 'darkMetal', tubeZ(DRUM.bore - 0.0012, DRUM.bore - 0.004, 0.006, 20), {
     pos: [GATE.x, GATE.y, DRUM.back + 0.036],
     paint: 0.5,
   });
-  b.add('shells', 'gunmetal', latheZHard([[DRUM.bore - 0.0024, 0], [DRUM.bore - 0.0024, 0.012], [0.013, 0.024], [0, 0.036]], 20), {
-    pos: [GATE.x, GATE.y, DRUM.back + 0.04],
-    paint: P.gunmetal.paint,
+  b.add(
+    'shells',
+    'gunmetal',
+    latheZHard(
+      [
+        [DRUM.bore - 0.0024, 0],
+        [DRUM.bore - 0.0024, 0.012],
+        [0.013, 0.024],
+        [0, 0.036],
+      ],
+      20,
+    ),
+    {
+      pos: [GATE.x, GATE.y, DRUM.back + 0.04],
+      paint: P.gunmetal.paint,
+    },
+  );
+  b.add('shells', 'tip', new TorusGeometry(DRUM.bore - 0.0045, 0.0018, 6, 20), {
+    pos: [GATE.x, GATE.y, DRUM.back + 0.024],
   });
-  b.add('shells', 'tip', new TorusGeometry(DRUM.bore - 0.0045, 0.0018, 6, 20), { pos: [GATE.x, GATE.y, DRUM.back + 0.024] });
 
   // --- sockets & mounts ---
   b.socket('muzzle', [0, BORE_Y, BARREL.front - 0.002]);

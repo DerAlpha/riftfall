@@ -28,6 +28,8 @@ import type {
   HitZone,
   ImpactKind,
   MovementState,
+  PointsReason,
+  PurchaseKind,
   SurfaceType,
   Vec3Like,
 } from './events';
@@ -781,4 +783,104 @@ export interface WaveDirectorApi {
   skipIntermission(): void;
   stop(): void;
   fixedUpdate(dt: number): void;
+}
+
+// ---------------------------------------------------------------------------
+// Economy, stats, interactables, perks, power-ups (M4+)
+// ---------------------------------------------------------------------------
+
+/**
+ * Named gameplay stat (see defs/stats.ts STAT_DEFS for ids, bases and clamps). Perks (M4), Rift Forge
+ * (M5), roguelite cards (M8) and the skill tree (M9) all change gameplay through stat modifiers –
+ * systems read `stats.value(id)` instead of hard-coding bonuses.
+ */
+export type StatId = string;
+
+export interface StatModifier {
+  /** Owner id (e.g. 'perk:quickfire'); removeSource() drops every modifier of it. */
+  source: string;
+  stat: StatId;
+  /** 'add' is summed onto the base, 'mul' multiplies the sum: value = (base + Σadd) × Πmul, then clamped. */
+  op: 'add' | 'mul';
+  value: number;
+}
+
+export interface StatsApi {
+  /** Increments on every change: consumers cache and compare instead of re-reading every tick. */
+  readonly version: number;
+  value(stat: StatId): number;
+  base(stat: StatId): number;
+  addModifier(mod: StatModifier): void;
+  removeSource(source: string): void;
+  hasSource(source: string): boolean;
+  /** Drop every modifier (new run). */
+  reset(): void;
+}
+
+export interface EconomyApi {
+  readonly points: number;
+  /** Earn points (scaled by the points multiplier stat / double points); returns the amount credited. */
+  earn(amount: number, reason: PointsReason, position?: Vec3Like): number;
+  /** Atomic purchase: returns false (and emits economy:purchase ok=false) when unaffordable. */
+  spend(cost: number, item: string, kind: PurchaseKind): boolean;
+  canAfford(cost: number): boolean;
+  /** New run: set points to the mode's start value. */
+  reset(startPoints?: number): void;
+}
+
+/** Something the player can use with the 'interact' action (wall buy, door, box, perk machine, seal). */
+export interface Interactable {
+  readonly id: string;
+  /** World position used for range and view-cone checks (usually the prompt anchor). */
+  readonly position: THREE.Vector3;
+  /** Max use distance (m). */
+  readonly range: number;
+  /** German prompt shown in the HUD, e.g. "KR-7 kaufen". */
+  prompt(): string;
+  /** Cost shown next to the prompt (null = free / not a purchase). */
+  cost(): number | null;
+  /** Usable right now (e.g. the box is not already rolling, the door is still closed). */
+  canInteract(): boolean;
+  /** Seconds the button must be held (0 = press). Repairs hold, purchases press. */
+  holdTime(): number;
+  interact(): void;
+}
+
+export interface InteractionApi {
+  register(i: Interactable): void;
+  unregister(i: Interactable): void;
+  readonly focused: Interactable | null;
+  /** 0..1 hold progress of the focused interactable (HUD ring). */
+  readonly holdProgress: number;
+  fixedUpdate(dt: number): void;
+}
+
+export interface PerkApi {
+  readonly owned: readonly string[];
+  readonly maxPerks: number;
+  has(perkId: string): boolean;
+  /** Grant a perk (applies its stat modifiers / hooks); false when owned or at the limit. */
+  grant(perkId: string): boolean;
+  revoke(perkId: string): void;
+  /** Lose all perks (death with a self-revive, new run). */
+  clear(): void;
+}
+
+export interface PowerUpApi {
+  /** Chance-based drop on an enemy death (respects per-wave caps); `type` forces a specific drop. */
+  rollDrop(position: Vec3Like, type?: string): void;
+  isActive(type: string): boolean;
+  /** Seconds left of a timed power-up (0 when inactive). */
+  remaining(type: string): number;
+  fixedUpdate(dt: number): void;
+  update(dt: number): void;
+  clear(): void;
+}
+
+/** Zone gating for doors/spawns (M4): the WaveDirector's isZoneActive and the navmesh door flags. */
+export interface ZoneApi {
+  isActive(zone: string): boolean;
+  activate(zone: string): void;
+  readonly active: readonly string[];
+  reset(): void;
 }

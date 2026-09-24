@@ -25,6 +25,22 @@ export type HitZone = 'head' | 'body' | 'limb' | 'weakpoint' | 'shield';
 /** Damage elements (M5 elemental mods). 'physical' is the default for bullets. */
 export type DamageElement = 'physical' | 'fire' | 'ice' | 'shock' | 'poison' | 'void';
 
+/** Why points changed (HUD popup text, stats). */
+export type PointsReason =
+  | 'hit'
+  | 'kill'
+  | 'headshot'
+  | 'melee'
+  | 'repair'
+  | 'wave'
+  | 'nuke'
+  | 'carpenter'
+  | 'purchase'
+  | 'refund'
+  | 'dev';
+
+export type PurchaseKind = 'weapon' | 'ammo' | 'door' | 'perk' | 'box' | 'forge' | 'repair' | 'other';
+
 export type ImpactKind = 'bullet' | 'pellet' | 'projectile' | 'melee' | 'explosion' | 'beam';
 
 export interface GameEvents {
@@ -186,6 +202,25 @@ export interface GameEvents {
     score: number;
   };
   'run:restart': Record<string, never>;
+
+  // --- economy / interactables (M4) ---
+  'economy:points': { delta: number; total: number; reason: PointsReason; position?: Vec3Like };
+  'economy:purchase': { item: string; kind: PurchaseKind; cost: number; ok: boolean };
+  'stats:changed': { stats: readonly string[] };
+  'perk:acquired': { perkId: string; slot: number };
+  'perk:lost': { perkId: string };
+  'powerup:spawned': { id: number; type: string; position: Vec3Like };
+  'powerup:collected': { type: string; position: Vec3Like; duration: number };
+  'powerup:expired': { type: string };
+  'door:opened': { doorId: string; zones: readonly string[] };
+  'zone:activated': { zone: string };
+  'box:opened': { boxId: string; position: Vec3Like };
+  'box:resolved': { boxId: string; weaponId: string | null };
+  'box:moved': { boxId: string; from: string; to: string };
+  'seal:broken': { sealId: string; position: Vec3Like };
+  'seal:repaired': { sealId: string; planks: number; position: Vec3Like };
+  /** The interactable in focus changed (HUD prompt). */
+  'interact:focus': { id: string | null; prompt: string | null; cost: number | null; affordable: boolean };
 
   // --- ui ---
   'ui:console': { open: boolean };

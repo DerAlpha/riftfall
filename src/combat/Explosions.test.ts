@@ -137,7 +137,13 @@ describe('Explosions', () => {
     t.player.eyePosition.set(0, 1.6, 6);
     t.explosions.explode({ x: 0, y: 1.6, z: 0 }, BLAST, FROM);
     expect(t.blasts).toEqual([
-      { position: { x: 0, y: 1.6, z: 0 }, radius: 4, element: 'fire', vfx: 'explosion.fire', audio: 'explosion.fire' },
+      {
+        position: { x: 0, y: 1.6, z: 0 },
+        radius: 4,
+        element: 'fire',
+        vfx: 'explosion.fire',
+        audio: 'explosion.fire',
+      },
     ]);
     const reach = BLAST.radius * ARSENAL.explosions.shakeReach;
     expect(t.shakes[0]).toBeCloseTo(BLAST.shake * (1 - 6 / reach), 6);
@@ -151,7 +157,10 @@ describe('Explosions', () => {
     const events = new EventBus<GameEvents>();
     const combat = new CombatWorld({ events, physics });
     combat.setLevel(buildTestLevel([]));
-    physics.addStaticBox({ x: 0, y: -0.5, z: 0 }, { x: 20, y: 0.5, z: 20 }, undefined, { kind: 'world', surface: 'concrete' });
+    physics.addStaticBox({ x: 0, y: -0.5, z: 0 }, { x: 20, y: 0.5, z: 20 }, undefined, {
+      kind: 'world',
+      surface: 'concrete',
+    });
     const crate = physics.addDynamicBox({ x: 2, y: 0.5, z: 0 }, { x: 0.4, y: 0.4, z: 0.4 }, null, {
       data: { kind: 'prop', surface: 'metal' },
     });

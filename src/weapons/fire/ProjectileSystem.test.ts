@@ -95,7 +95,9 @@ class FriendlyTarget implements Damageable {
   constructor(at: Vec3Like) {
     this.boundsCenter = new Vector3(at.x, at.y, at.z);
     this.aimPoint = this.boundsCenter.clone();
-    this.hitboxes = [{ shape: 'sphere', zone: 'body', a: this.boundsCenter.clone(), b: new Vector3(), radius: 0.5 }];
+    this.hitboxes = [
+      { shape: 'sphere', zone: 'body', a: this.boundsCenter.clone(), b: new Vector3(), radius: 0.5 },
+    ];
   }
   applyDamage(_info: DamageInfo): DamageResult {
     this.hits++;
@@ -107,8 +109,18 @@ function setup(opts: { floor?: boolean; wallZ?: number; capacity?: number } = {}
   const events = new EventBus<GameEvents>();
   const combat = new CombatWorld({ events, physics: null });
   const boxes: Parameters<typeof buildTestLevel>[0] = [];
-  if (opts.floor !== false) boxes.push({ material: 'concrete_wall', center: { x: 0, y: -0.5, z: 0 }, size: { x: 200, y: 1, z: 200 } });
-  if (opts.wallZ !== undefined) boxes.push({ material: 'concrete_wall', center: { x: 0, y: 2, z: opts.wallZ }, size: { x: 20, y: 4, z: 0.4 } });
+  if (opts.floor !== false)
+    boxes.push({
+      material: 'concrete_wall',
+      center: { x: 0, y: -0.5, z: 0 },
+      size: { x: 200, y: 1, z: 200 },
+    });
+  if (opts.wallZ !== undefined)
+    boxes.push({
+      material: 'concrete_wall',
+      center: { x: 0, y: 2, z: opts.wallZ },
+      size: { x: 20, y: 4, z: 0.4 },
+    });
   combat.setLevel(buildTestLevel(boxes));
   const blasts: { at: Vec3Like; def: ExplosionDef; from: AreaDamageSource }[] = [];
   const explosions: ExplosionApi = {
@@ -167,7 +179,10 @@ function setup(opts: { floor?: boolean; wallZ?: number; capacity?: number } = {}
   };
   events.on('projectile:spawned', () => void ev.spawned++);
   events.on('projectile:ended', (e) => void ev.ended.push(e.id));
-  events.on('projectile:impact', (e) => void ev.impacts.push({ ...e, position: { ...e.position }, normal: { ...e.normal } }));
+  events.on(
+    'projectile:impact',
+    (e) => void ev.impacts.push({ ...e, position: { ...e.position }, normal: { ...e.normal } }),
+  );
   const tick = (n = 1): void => {
     for (let i = 0; i < n; i++) projectiles.fixedUpdate(DT);
   };
@@ -181,13 +196,31 @@ function setup(opts: { floor?: boolean; wallZ?: number; capacity?: number } = {}
     projectiles.forEachProjectile((_id, _x, _y, _z, vx, vy, vz) => v.set(vx, vy, vz));
     return v;
   };
-  return { events, combat, projectiles, blasts, fieldsSpawned, drawn, vfxLog, specials, ev, tick, where, velocity };
+  return {
+    events,
+    combat,
+    projectiles,
+    blasts,
+    fieldsSpawned,
+    drawn,
+    vfxLog,
+    specials,
+    ev,
+    tick,
+    where,
+    velocity,
+  };
 }
 
 describe('ProjectileSystem', () => {
   it('integrates constant gravity exactly (lobbed arc)', () => {
     const t = setup({ floor: false });
-    t.projectiles.spawn({ origin: { x: 0, y: 50, z: 0 }, direction: { x: 0, y: 0, z: -1 }, def: GRENADE, damage: SOURCE });
+    t.projectiles.spawn({
+      origin: { x: 0, y: 50, z: 0 },
+      direction: { x: 0, y: 0, z: -1 },
+      def: GRENADE,
+      damage: SOURCE,
+    });
     t.tick(30);
     const [p] = t.where();
     const time = 30 * DT;
@@ -211,7 +244,12 @@ describe('ProjectileSystem', () => {
 
   it('bounces off the floor with its restitution, then detonates on the contact after the last bounce', () => {
     const t = setup();
-    t.projectiles.spawn({ origin: { x: 0, y: 3, z: 0 }, direction: { x: 0, y: -1, z: 0 }, def: { ...GRENADE, speed: 10 }, damage: SOURCE });
+    t.projectiles.spawn({
+      origin: { x: 0, y: 3, z: 0 },
+      direction: { x: 0, y: -1, z: 0 },
+      def: { ...GRENADE, speed: 10 },
+      damage: SOURCE,
+    });
     let before = 0;
     for (let i = 0; i < 60 && t.ev.impacts.length === 0; i++) {
       before = -t.velocity().y;
@@ -234,13 +272,23 @@ describe('ProjectileSystem', () => {
 
   it('a fuse detonates wherever it is; the lifetime ends a harmless bolt without a blast', () => {
     const t = setup({ floor: false });
-    t.projectiles.spawn({ origin: { x: 0, y: 10, z: 0 }, direction: { x: 1, y: 0, z: 0 }, def: { ...GRENADE, gravity: 0, fuse: 0.5 }, damage: SOURCE });
+    t.projectiles.spawn({
+      origin: { x: 0, y: 10, z: 0 },
+      direction: { x: 1, y: 0, z: 0 },
+      def: { ...GRENADE, gravity: 0, fuse: 0.5 },
+      damage: SOURCE,
+    });
     t.tick(29);
     expect(t.blasts).toHaveLength(0);
     t.tick(1);
     expect(t.blasts).toHaveLength(1);
     expect(t.blasts[0]!.at.x).toBeCloseTo(38 * 29 * DT, 6);
-    t.projectiles.spawn({ origin: { x: 0, y: 10, z: 0 }, direction: { x: 1, y: 0, z: 0 }, def: { ...BOLT, lifetime: 0.25 }, damage: SOURCE });
+    t.projectiles.spawn({
+      origin: { x: 0, y: 10, z: 0 },
+      direction: { x: 1, y: 0, z: 0 },
+      def: { ...BOLT, lifetime: 0.25 },
+      damage: SOURCE,
+    });
     t.tick(20);
     expect(t.projectiles.active).toBe(0);
     expect(t.blasts).toHaveLength(1);
@@ -268,7 +316,11 @@ describe('ProjectileSystem', () => {
     expect(target.received[0]!.statusBuildup).toBe(1);
     expect(t.blasts).toHaveLength(1);
     expect(t.blasts[0]!.def.radius).toBeCloseTo(BLAST.radius * 1.2, 9);
-    expect(t.blasts[0]!.from).toMatchObject({ weaponId: 'test', areaScale: 1.3, special: { kind: 'lifesteal' } });
+    expect(t.blasts[0]!.from).toMatchObject({
+      weaponId: 'test',
+      areaScale: 1.3,
+      special: { kind: 'lifesteal' },
+    });
     expect(t.specials).toHaveLength(1);
     expect(t.specials[0]).toMatchObject({ via: 'direct', primary: true, applied: 100 });
     expect(t.ev.impacts[0]!.detonated).toBe(true);
@@ -280,7 +332,12 @@ describe('ProjectileSystem', () => {
     for (const f of targets) t.combat.register(f);
     const friend = new FriendlyTarget({ x: 0, y: 1.1, z: -2 });
     t.combat.register(friend);
-    t.projectiles.spawn({ origin: { x: 0, y: 1.1, z: 0 }, direction: { x: 0, y: 0, z: -1 }, def: { ...BOLT, pierce: 2 }, damage: SOURCE });
+    t.projectiles.spawn({
+      origin: { x: 0, y: 1.1, z: 0 },
+      direction: { x: 0, y: 0, z: -1 },
+      def: { ...BOLT, pierce: 2 },
+      damage: SOURCE,
+    });
     t.tick(40);
     expect(targets.map((f) => f.received.length)).toEqual([1, 1, 1, 0]);
     expect(friend.hits).toBe(0);
@@ -293,31 +350,56 @@ describe('ProjectileSystem', () => {
     const t = setup({ floor: false, wallZ: -12 });
     const impacts: GameEvents['combat:impact'][] = [];
     t.events.on('combat:impact', (e) => void impacts.push({ ...e }));
-    t.projectiles.spawn({ origin: { x: 0, y: 1.5, z: 0 }, direction: { x: 0, y: 0, z: -1 }, def: { ...BOLT, explosion: BLAST, field: FIELD }, damage: SOURCE });
+    t.projectiles.spawn({
+      origin: { x: 0, y: 1.5, z: 0 },
+      direction: { x: 0, y: 0, z: -1 },
+      def: { ...BOLT, explosion: BLAST, field: FIELD },
+      damage: SOURCE,
+    });
     t.tick(30);
     expect(t.blasts).toHaveLength(1);
     expect(t.fieldsSpawned).toHaveLength(1);
     expect(t.fieldsSpawned[0]!.def).toBe(FIELD);
     expect(t.fieldsSpawned[0]!.at.z).toBeCloseTo(-11.8 + ARSENAL.projectiles.blastLift, 3);
     expect(impacts).toHaveLength(0);
-    t.projectiles.spawn({ origin: { x: 0, y: 1.5, z: 0 }, direction: { x: 0, y: 0, z: -1 }, def: BOLT, damage: SOURCE });
+    t.projectiles.spawn({
+      origin: { x: 0, y: 1.5, z: 0 },
+      direction: { x: 0, y: 0, z: -1 },
+      def: BOLT,
+      damage: SOURCE,
+    });
     t.tick(30);
     expect(impacts).toHaveLength(1);
-    expect(impacts[0]).toMatchObject({ kind: 'projectile', weaponId: 'test', decal: true, surface: 'concrete' });
+    expect(impacts[0]).toMatchObject({
+      kind: 'projectile',
+      weaponId: 'test',
+      decal: true,
+      surface: 'concrete',
+    });
   });
 
   it('homing turns towards the enemy nearest its flight line', () => {
     const t = setup({ floor: false });
     const target = new FakeTarget({ x: 4, y: 0, z: -14 }, 1000);
     t.combat.register(target);
-    t.projectiles.spawn({ origin: { x: 0, y: 1.25, z: 0 }, direction: { x: 0, y: 0, z: -1 }, def: { ...BOLT, speed: 20, homing: 4 }, damage: SOURCE });
+    t.projectiles.spawn({
+      origin: { x: 0, y: 1.25, z: 0 },
+      direction: { x: 0, y: 0, z: -1 },
+      def: { ...BOLT, speed: 20, homing: 4 },
+      damage: SOURCE,
+    });
     t.tick(80);
     expect(target.received).toHaveLength(1);
     // Without homing it flies past.
     const u = setup({ floor: false });
     const miss = new FakeTarget({ x: 4, y: 0, z: -14 }, 1000);
     u.combat.register(miss);
-    u.projectiles.spawn({ origin: { x: 0, y: 1.25, z: 0 }, direction: { x: 0, y: 0, z: -1 }, def: { ...BOLT, speed: 20 }, damage: SOURCE });
+    u.projectiles.spawn({
+      origin: { x: 0, y: 1.25, z: 0 },
+      direction: { x: 0, y: 0, z: -1 },
+      def: { ...BOLT, speed: 20 },
+      damage: SOURCE,
+    });
     u.tick(80);
     expect(miss.received).toHaveLength(0);
   });
@@ -353,7 +435,12 @@ describe('ProjectileSystem', () => {
   it('pooled: refuses beyond capacity, clear() ends every projectile (visuals, events)', () => {
     const t = setup({ floor: false, capacity: 2 });
     const spawn = (): number =>
-      t.projectiles.spawn({ origin: { x: 0, y: 1, z: 0 }, direction: { x: 0, y: 0, z: -1 }, def: BOLT, damage: SOURCE });
+      t.projectiles.spawn({
+        origin: { x: 0, y: 1, z: 0 },
+        direction: { x: 0, y: 0, z: -1 },
+        def: BOLT,
+        damage: SOURCE,
+      });
     expect(spawn()).toBeGreaterThan(0);
     expect(spawn()).toBeGreaterThan(0);
     expect(spawn()).toBe(0);
@@ -366,7 +453,21 @@ describe('ProjectileSystem', () => {
     // Slots are reused.
     expect(spawn()).toBeGreaterThan(0);
     // Garbage in: refused, never thrown.
-    expect(t.projectiles.spawn({ origin: { x: Number.NaN, y: 0, z: 0 }, direction: { x: 0, y: 0, z: -1 }, def: BOLT, damage: SOURCE })).toBe(0);
-    expect(t.projectiles.spawn({ origin: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: 0, z: 0 }, def: BOLT, damage: SOURCE })).toBe(0);
+    expect(
+      t.projectiles.spawn({
+        origin: { x: Number.NaN, y: 0, z: 0 },
+        direction: { x: 0, y: 0, z: -1 },
+        def: BOLT,
+        damage: SOURCE,
+      }),
+    ).toBe(0);
+    expect(
+      t.projectiles.spawn({
+        origin: { x: 0, y: 0, z: 0 },
+        direction: { x: 0, y: 0, z: 0 },
+        def: BOLT,
+        damage: SOURCE,
+      }),
+    ).toBe(0);
   });
 });

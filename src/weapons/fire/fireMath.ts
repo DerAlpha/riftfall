@@ -25,7 +25,10 @@ export function chargeStep(amount: number, dt: number, time: number): number {
  * Damage factor of a release at `amount`: 0 below `minCharge` (fizzle – no shot), `damageAtMin`
  * at the threshold, linear up to 1 at full charge.
  */
-export function chargeDamageFactor(amount: number, def: Pick<WeaponChargeDef, 'minCharge' | 'damageAtMin'>): number {
+export function chargeDamageFactor(
+  amount: number,
+  def: Pick<WeaponChargeDef, 'minCharge' | 'damageAtMin'>,
+): number {
   if (!(amount >= def.minCharge) || !(amount > 0)) return 0;
   const span = 1 - def.minCharge;
   const t = span > 0 ? Math.min(1, (amount - def.minCharge) / span) : 1;
@@ -37,7 +40,12 @@ export function chargeDamageFactor(amount: number, def: Pick<WeaponChargeDef, 'm
 // ---------------------------------------------------------------------------
 
 /** Barrel spin after `dt`: up over `time` while held, down over `spinDown` otherwise (0..1). */
-export function spinStep(spin: number, held: boolean, dt: number, def: Pick<WeaponSpinUpDef, 'time' | 'spinDown'>): number {
+export function spinStep(
+  spin: number,
+  held: boolean,
+  dt: number,
+  def: Pick<WeaponSpinUpDef, 'time' | 'spinDown'>,
+): number {
   if (held) {
     const up = def.time > 0 ? spin + dt / def.time : 1;
     return up >= 1 - TIME_EPS ? 1 : up;
@@ -277,7 +285,13 @@ export function turnTowards<T extends Vec3Like>(v: Vec3Like, to: Vec3Like, maxAn
  * the point from the flight line (lower = better), or -1 when it is behind, out of `range` or
  * outside the cone (`cosCone`).
  */
-export function homingScore(p: Vec3Like, dir: Vec3Like, target: Vec3Like, range: number, cosCone: number): number {
+export function homingScore(
+  p: Vec3Like,
+  dir: Vec3Like,
+  target: Vec3Like,
+  range: number,
+  cosCone: number,
+): number {
   const vx = target.x - p.x;
   const vy = target.y - p.y;
   const vz = target.z - p.z;

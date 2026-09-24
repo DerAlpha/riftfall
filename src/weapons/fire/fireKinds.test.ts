@@ -36,7 +36,11 @@ interface VfxCalls {
   charges: { visual: string; amount: number }[];
 }
 
-function setup(defs: Record<string, WeaponDef>, loadout: string[], walls: Parameters<typeof buildTestLevel>[0] = []) {
+function setup(
+  defs: Record<string, WeaponDef>,
+  loadout: string[],
+  walls: Parameters<typeof buildTestLevel>[0] = [],
+) {
   const events = new EventBus<GameEvents>();
   const input = new FakeWeaponInput();
   const player = new FakePlayer();
@@ -44,14 +48,18 @@ function setup(defs: Record<string, WeaponDef>, loadout: string[], walls: Parame
   const render = fakeRenderCamera(EYE);
   const combat = new CombatWorld({ events, physics: null });
   combat.setLevel(
-    buildTestLevel([{ material: 'concrete_wall', center: { x: 0, y: 1.5, z: -40 }, size: { x: 40, y: 3, z: 0.5 } }, ...walls]),
+    buildTestLevel([
+      { material: 'concrete_wall', center: { x: 0, y: 1.5, z: -40 }, size: { x: 40, y: 3, z: 0.5 } },
+      ...walls,
+    ]),
   );
   const calls: VfxCalls = { beams: [], charges: [] };
   const vfx: ArsenalVfxApi = {
     projectileStart: () => 1,
     projectileMove: () => {},
     projectileEnd: () => {},
-    beam: (visual, from, to, _arcs, arcs) => void calls.beams.push({ visual, from: { ...from }, to: { ...to }, arcs }),
+    beam: (visual, from, to, _arcs, arcs) =>
+      void calls.beams.push({ visual, from: { ...from }, to: { ...to }, arcs }),
     fieldStart: () => 1,
     fieldEnd: () => {},
     charge: (visual, amount) => void calls.charges.push({ visual, amount }),
@@ -170,9 +178,11 @@ describe('beam weapons', () => {
 
   it('cone beams hit everything inside the cone with line of sight, up to the wall', () => {
     const cone = precise(WEAPONS.flamethrower);
-    const t = setup({ flamethrower: cone }, ['flamethrower'], [
-      { material: 'concrete_wall', center: { x: -3, y: 1.5, z: -4 }, size: { x: 1.5, y: 3, z: 0.3 } },
-    ]);
+    const t = setup(
+      { flamethrower: cone },
+      ['flamethrower'],
+      [{ material: 'concrete_wall', center: { x: -3, y: 1.5, z: -4 }, size: { x: 1.5, y: 3, z: 0.3 } }],
+    );
     t.equip();
     const center = new FakeTarget({ x: 0, y: 0.4, z: -5 }, 1e6);
     const side = new FakeTarget({ x: 1.1, y: 0.4, z: -6 }, 1e6);
@@ -357,9 +367,11 @@ describe('projectile weapons and fire-time specials', () => {
 
   it('ricochet bounces a ray off the wall towards the nearest enemy (world tracer segment)', () => {
     const def = precise(WEAPONS.pistol, { special: { kind: 'ricochet', bounces: 1, damageKeep: 0.5 } });
-    const t = setup({ pistol: def }, ['pistol'], [
-      { material: 'concrete_wall', center: { x: 0, y: 1.5, z: -6 }, size: { x: 6, y: 3, z: 0.3 } },
-    ]);
+    const t = setup(
+      { pistol: def },
+      ['pistol'],
+      [{ material: 'concrete_wall', center: { x: 0, y: 1.5, z: -6 }, size: { x: 6, y: 3, z: 0.3 } }],
+    );
     t.equip();
     const side = new FakeTarget({ x: 4, y: 0, z: -3 }, 1e6);
     t.combat.register(side);
@@ -382,7 +394,9 @@ describe('Rift Forge and attachments (setWeaponMods)', () => {
     const before = t.weapons.ammo!.mag;
     expect(before).toBeLessThan(WEAPONS.rifle.magazine);
     t.weapons.setWeaponMods('rifle', { tier: 1, attachments: ['reddot', 'thermal', 'choke', 'nope'] });
-    expect(t.of('forge:upgraded')).toEqual([{ weaponId: 'rifle', tier: 1, name: WEAPONS.rifle.upgrades[0]!.name }]);
+    expect(t.of('forge:upgraded')).toEqual([
+      { weaponId: 'rifle', tier: 1, name: WEAPONS.rifle.upgrades[0]!.name },
+    ]);
     // One optic slot (the later one wins), incompatible and unknown ids dropped.
     expect(t.of('weapon:modsChanged').at(-1)).toEqual({
       weaponId: 'rifle',
@@ -421,7 +435,9 @@ describe('roster: beam, charge and spin-up weapons through the weapon system', (
       t.frame(60);
       const ticks = t.of('weapon:fired').length;
       expect(Math.abs(ticks - def.beam!.tickRate)).toBeLessThanOrEqual(1);
-      expect(def.magazine - t.weapons.ammo!.mag).toBe(Math.min(def.magazine, Math.floor(def.beam!.ammoPerSecond)));
+      expect(def.magazine - t.weapons.ammo!.mag).toBe(
+        Math.min(def.magazine, Math.floor(def.beam!.ammoPerSecond)),
+      );
     });
   }
   for (const def of defs.filter((d) => d.kind === 'charge')) {

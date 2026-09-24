@@ -43,7 +43,11 @@ export function createFireCommands(deps: FireCommandDeps): ConsoleCommand[] {
         if (sub === 'element') return [...ELEMENTS, 'none'].filter((e) => e.startsWith(arg));
         if (sub === 'attach') {
           const def = weapons.currentDef;
-          return def ? attachmentsFor(def).map((a) => a.id).filter((a) => a.startsWith(arg)) : [];
+          return def
+            ? attachmentsFor(def)
+                .map((a) => a.id)
+                .filter((a) => a.startsWith(arg))
+            : [];
         }
         return SUBS.filter((s) => s.startsWith(sub));
       },
@@ -75,7 +79,8 @@ export function createFireCommands(deps: FireCommandDeps): ConsoleCommand[] {
               weapons.setWeaponMods(id, { ...current, element: null });
               return describe(id);
             }
-            if (!ELEMENTS.includes(el as DamageElement)) throw new Error(`Element: ${ELEMENTS.join(', ')}, none`);
+            if (!ELEMENTS.includes(el as DamageElement))
+              throw new Error(`Element: ${ELEMENTS.join(', ')}, none`);
             weapons.setWeaponMods(id, { ...current, element: el as DamageElement });
             return describe(id);
           }

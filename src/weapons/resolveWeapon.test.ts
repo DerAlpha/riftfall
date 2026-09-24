@@ -100,7 +100,10 @@ describe('resolveWeapon (M5): tiers, attachments, kind data', () => {
     const acog = ATTACHMENTS.acog.mods;
     const drum = ATTACHMENTS.drum.mods;
     expect(r.ads.inTime).toBeCloseTo(WEAPONS.rifle.ads.inTime * acog.adsTime * drum.adsTime, 9);
-    expect(r.spread.hip).toBeCloseTo(WEAPONS.rifle.spread.hip * acog.hipSpread * ATTACHMENTS.tacticallaser.mods.hipSpread, 9);
+    expect(r.spread.hip).toBeCloseTo(
+      WEAPONS.rifle.spread.hip * acog.hipSpread * ATTACHMENTS.tacticallaser.mods.hipSpread,
+      9,
+    );
     expect(r.spread.ads).toBeCloseTo(WEAPONS.rifle.spread.ads, 9);
     expect(r.magazine).toBe(Math.round(WEAPONS.rifle.magazine * drum.magazine));
     expect(r.ads.moveSpeedMultiplier).toBeCloseTo(WEAPONS.rifle.ads.moveSpeedMultiplier * drum.moveSpeed, 9);
@@ -108,13 +111,18 @@ describe('resolveWeapon (M5): tiers, attachments, kind data', () => {
     const light = resolveWeapon(WEAPONS.shotgun, { attachments: ['shortbarrel'] });
     expect(light.equipTime).toBeCloseTo(WEAPONS.shotgun.equipTime * 0.9, 9);
     // Heavy weapons keep their carry speed (× moveSpeed mods).
-    expect(resolveWeapon(WEAPONS.minigun, { tier: 1 }).carrySpeedMultiplier).toBe(WEAPONS.minigun.carrySpeedMultiplier);
+    expect(resolveWeapon(WEAPONS.minigun, { tier: 1 }).carrySpeedMultiplier).toBe(
+      WEAPONS.minigun.carrySpeedMultiplier,
+    );
   });
 
   it('projectile data follows damage, projectileSpeed and blastRadius; an element mod retargets the blast', () => {
     const gl = WEAPONS.grenadelauncher as WeaponDef;
     const p = gl.projectile!;
-    const r = resolveWeapon(gl, { mods: [{ damage: 2, projectileSpeed: 1.5, blastRadius: 1.2 }], element: 'fire' });
+    const r = resolveWeapon(gl, {
+      mods: [{ damage: 2, projectileSpeed: 1.5, blastRadius: 1.2 }],
+      element: 'fire',
+    });
     expect(r.projectile!.speed).toBeCloseTo(p.speed * 1.5, 9);
     expect(r.projectile!.explosion!.damage).toBeCloseTo(p.explosion!.damage * 2, 9);
     expect(r.projectile!.explosion!.radius).toBeCloseTo(p.explosion!.radius * 1.2, 9);
@@ -128,7 +136,10 @@ describe('resolveWeapon (M5): tiers, attachments, kind data', () => {
     const bh = WEAPONS.blackhole as WeaponDef;
     const b2 = resolveWeapon(bh, { mods: [{ damage: 1.5 }] });
     expect(b2.projectile!.field!.dps).toBeCloseTo(bh.projectile!.field!.dps * 1.5, 9);
-    expect(b2.projectile!.field!.collapse!.damage).toBeCloseTo(bh.projectile!.field!.collapse!.damage * 1.5, 9);
+    expect(b2.projectile!.field!.collapse!.damage).toBeCloseTo(
+      bh.projectile!.field!.collapse!.damage * 1.5,
+      9,
+    );
     expect(b2.projectile!.field!.radius).toBe(bh.projectile!.field!.radius);
     // The base def is never mutated.
     expect(gl.projectile!.explosion!.element).toBe('physical');

@@ -472,7 +472,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     this.lookupDef = options.defs ?? getWeaponDef;
     this.rng = new Rng(options.seed ?? 'weapons');
     this.arsenal =
-      deps.arsenal ?? new Arsenal({ events: deps.events, combat: deps.combat, physics: deps.physics ?? null });
+      deps.arsenal ??
+      new Arsenal({ events: deps.events, combat: deps.combat, physics: deps.physics ?? null });
     for (let i = 0; i < ARSENAL.specials.maxChain * 2; i++) this.beamArcs.push(new Vector3());
     this.player.adsProvider = this;
     this.camera.lookModifier = this;
@@ -1409,7 +1410,13 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     src.statusBuildup = statusBuildupFor(def.damage.element);
     src.special = def.special ?? null;
     src.areaScale = scale;
-    const opts = (this.spawnOpts ??= { origin: _eye, direction: _dir, visualFrom: _muzzle, def: p, damage: src });
+    const opts = (this.spawnOpts ??= {
+      origin: _eye,
+      direction: _dir,
+      visualFrom: _muzzle,
+      def: p,
+      damage: src,
+    });
     opts.def = p;
     opts.damage = src;
     const pellets = Math.max(1, Math.floor(def.pellets));
@@ -1841,9 +1848,18 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     for (let i = 0; i < list.length && hits < ARSENAL.beam.maxConeTargets; i++) {
       const t = list[i]!;
       if (!t.alive || t.team === 'player') continue;
-      const along = coneReach(_eye, dir, tanHalf, reach, t.boundsCenter, t.boundsRadius, ARSENAL.beam.coneBoundsFactor);
+      const along = coneReach(
+        _eye,
+        dir,
+        tanHalf,
+        reach,
+        t.boundsCenter,
+        t.boundsRadius,
+        ARSENAL.beam.coneBoundsFactor,
+      );
       if (along < 0) continue;
-      if (!this.combat.lineOfSight(_eye, t.aimPoint) && !this.combat.lineOfSight(_eye, t.boundsCenter)) continue;
+      if (!this.combat.lineOfSight(_eye, t.aimPoint) && !this.combat.lineOfSight(_eye, t.boundsCenter))
+        continue;
       const amount = hitDamage(def.damage, 'body', along, 1, this.damageScale);
       _aim.subVectors(t.boundsCenter, _eye).normalize();
       this.dealBeam(def, t, amount, 'body', t.aimPoint, _aim, def.damage.impulse, true);

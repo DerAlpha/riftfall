@@ -34,8 +34,28 @@ const PULL: FieldDef = {
   vfx: 'field.pull.void',
   audio: 'field.pull.void',
 };
-const FIRE: FieldDef = { ...PULL, kind: 'damage', radius: 2.4, duration: 4, dps: 45, element: 'fire', strength: 0, collapse: null, vfx: 'field.damage.fire' };
-const FROST: FieldDef = { ...PULL, kind: 'slow', radius: 6, duration: 5, dps: 0, element: 'ice', strength: 0.35, collapse: null, vfx: 'field.slow.ice' };
+const FIRE: FieldDef = {
+  ...PULL,
+  kind: 'damage',
+  radius: 2.4,
+  duration: 4,
+  dps: 45,
+  element: 'fire',
+  strength: 0,
+  collapse: null,
+  vfx: 'field.damage.fire',
+};
+const FROST: FieldDef = {
+  ...PULL,
+  kind: 'slow',
+  radius: 6,
+  duration: 5,
+  dps: 0,
+  element: 'ice',
+  strength: 0.35,
+  collapse: null,
+  vfx: 'field.slow.ice',
+};
 const FROM: AreaDamageSource = { weaponId: 'blackhole', source: 'player', statusBuildup: 1 };
 
 function setup(capacity?: number) {

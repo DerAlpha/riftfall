@@ -262,7 +262,14 @@ export class FieldSystem implements FieldApi {
   forEachField(fn: (id: number, def: FieldDef, x: number, y: number, z: number, age: number) => void): void {
     for (let k = 0; k < this.activeCount; k++) {
       const i = this.activeList[k]!;
-      fn(this.ids[i]!, this.defs[i]!, this.pos[i * 3]!, this.pos[i * 3 + 1]!, this.pos[i * 3 + 2]!, this.age[i]!);
+      fn(
+        this.ids[i]!,
+        this.defs[i]!,
+        this.pos[i * 3]!,
+        this.pos[i * 3 + 1]!,
+        this.pos[i * 3 + 2]!,
+        this.age[i]!,
+      );
     }
   }
 
@@ -280,7 +287,11 @@ export class FieldSystem implements FieldApi {
     const cz = this.pos[o + 2]!;
     const source = this.sources[i]!;
     const spare = source === 'player' ? 'player' : source === 'enemy' ? 'enemy' : null;
-    const list = this.combat.queryRadius(_center.set(cx, cy, cz), def.radius + ARSENAL.fields.height, this.list);
+    const list = this.combat.queryRadius(
+      _center.set(cx, cy, cz),
+      def.radius + ARSENAL.fields.height,
+      this.list,
+    );
     const amount = def.dps * interval * this.areaScale[i]!;
     const lift = ARSENAL.fields.losLift;
     this.stats.ticks++;
@@ -332,7 +343,14 @@ export class FieldSystem implements FieldApi {
   }
 
   /** Inside field i's floor cylinder (a body of `radius` counts with part of its bounds)? */
-  private insideFloorField(i: number, def: FieldDef, x: number, y: number, z: number, radius: number): boolean {
+  private insideFloorField(
+    i: number,
+    def: FieldDef,
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+  ): boolean {
     const o = i * 3;
     const dy = y - this.pos[o + 1]!;
     if (dy < -radius - ARSENAL.fields.depthTolerance || dy > ARSENAL.fields.height + radius) return false;

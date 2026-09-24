@@ -486,6 +486,33 @@ function flames(count: Range, size: Range, life: Range, speed: Range, intensity:
   };
 }
 
+/**
+ * Licking flame tongues: 'petal' sprites stretched along their rise (the tip leads), narrowing and
+ * slowing as they burn out – burning pools, burning enemies, flame hits.
+ */
+function tongues(count: Range, width: Range, life: Range, speed: Range, intensity: number, extra: Partial<EmitterDef> = {}): EmitterDef {
+  return {
+    blend: 'add',
+    sprite: 'petal',
+    count,
+    life,
+    speed,
+    axis: 'up',
+    spread: 10,
+    size: width,
+    sizeEnd: 0.45,
+    color: [1, 0.62, 0.22],
+    intensity,
+    colorEnd: FIRE_END,
+    intensityEnd: intensity * 0.25,
+    alpha: 1,
+    gravity: -0.35,
+    drag: 1.8,
+    stretch: 0.22,
+    ...extra,
+  };
+}
+
 /** Energy-weapon muzzle light (no viewmodel light: the rig has its own muzzle light). */
 function muzzleLight(color: Rgb, intensity: number, range: number, duration = 0.05): LightFlashDef {
   return { color, intensity, range, duration, offset: MUZZLE_LIGHT_OFFSET, priority: 1, viewmodel: false };
@@ -1827,7 +1854,8 @@ export const VFX_EFFECTS = {
   },
   'impact.fire': {
     emitters: [
-      flames([2, 3], [0.14, 0.24], [0.25, 0.45], [0.6, 1.6], 3.5, { axis: 'normal', spread: 30 }),
+      tongues([2, 3], [0.1, 0.16], [0.2, 0.4], [1.2, 2.6], 3.4, { axis: 'normal', spread: 30 }),
+      flames([1, 2], [0.14, 0.24], [0.25, 0.45], [0.6, 1.6], 3, { axis: 'normal', spread: 30 }),
       motes([1, 0.55, 0.18], [2, 4], [1, 3.5], [0.4, 0.9], 9, { axis: 'normal', spread: 60, gravity: 0.2 }),
       billow('smoke', SOOT, [0, 1], [0.12, 0.2], 4, [0.8, 1.4], [0.3, 0.8], 0.4),
     ],
@@ -2146,7 +2174,8 @@ export const VFX_EFFECTS = {
   },
   'beam.flame.hit': {
     emitters: [
-      flames([1, 2], [0.2, 0.34], [0.3, 0.5], [0.8, 1.8], 3, { spread: 35 }),
+      tongues([1, 2], [0.14, 0.24], [0.3, 0.5], [1.4, 2.8], 3.2, { spread: 25 }),
+      flames([1, 1], [0.2, 0.34], [0.3, 0.5], [0.8, 1.8], 2.6, { spread: 35 }),
       motes([1, 0.55, 0.18], [1, 2], [1, 3], [0.4, 0.9], 9, { spread: 90 }),
       billow('smoke', SOOT, [0, 1], [0.2, 0.3], 4, [1.2, 2], [0.4, 1], 0.4, { axis: 'up' }),
     ],
@@ -2176,7 +2205,8 @@ export const VFX_EFFECTS = {
   },
   'field.fire.flames': {
     emitters: [
-      flames([1, 2], [0.25, 0.45], [0.35, 0.6], [0.8, 2], 3, { minCount: 1, spread: 15, sizeEnd: 1.6 }),
+      tongues([1, 1], [0.12, 0.22], [0.3, 0.55], [1.4, 2.8], 3.4, { minCount: 1 }),
+      flames([0, 1], [0.2, 0.32], [0.3, 0.5], [0.6, 1.4], 2.4, { spread: 15, sizeEnd: 1.6 }),
       motes([1, 0.55, 0.16], [0, 1], [0.8, 2.5], [0.6, 1.2], 9, { axis: 'up', spread: 40, gravity: -0.3 }),
     ],
   },
@@ -2253,7 +2283,8 @@ export const VFX_EFFECTS = {
   // --- M5 status visuals on enemies (package B spawns them at small rates; no bouncing = no probes) ---
   'status.burn': {
     emitters: [
-      flames([1, 2], [0.18, 0.3], [0.25, 0.45], [0.8, 1.6], 3, { minCount: 1, spread: 20, sizeEnd: 1.6 }),
+      tongues([1, 2], [0.1, 0.18], [0.25, 0.45], [1.2, 2.4], 3.2, { minCount: 1, spread: 18 }),
+      flames([0, 1], [0.14, 0.24], [0.2, 0.35], [0.6, 1.2], 2.6, { spread: 20, sizeEnd: 1.6 }),
       motes([1, 0.55, 0.16], [1, 2], [0.8, 2], [0.4, 0.9], 9, { axis: 'up', spread: 50, gravity: -0.25 }),
       billow('smoke', SOOT, [0, 1], [0.12, 0.2], 4, [0.8, 1.3], [0.4, 0.9], 0.35, { axis: 'up', spread: 25 }),
     ],

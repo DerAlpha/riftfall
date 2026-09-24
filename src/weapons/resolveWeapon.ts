@@ -147,7 +147,12 @@ function retargetId(id: string, from: DamageElement, to: DamageElement): string 
   for (const prefix of own) {
     if (id === prefix || id.startsWith(`${prefix}.`)) {
       const rest = id.slice(prefix.length);
-      const head = to === 'physical' ? (prefix === 'explosion.frag' ? 'explosion.frag' : 'explosion.physical') : `explosion.${to}`;
+      const head =
+        to === 'physical'
+          ? prefix === 'explosion.frag'
+            ? 'explosion.frag'
+            : 'explosion.physical'
+          : `explosion.${to}`;
       return head + rest;
     }
   }
@@ -257,7 +262,9 @@ export function resolveWeapon(base: WeaponDef, state: WeaponModState = {}): Weap
   const k = f.recoil;
   const special = upgrade ? specialAt(base, tier) : (base.special ?? null);
   const look = upgrade ? getForgeLook(forgePaletteId(base, tier)) : undefined;
-  const tracerColor = upgrade ? (upgrade.tracerColor ?? look?.tracer ?? base.tracer.color) : base.tracer.color;
+  const tracerColor = upgrade
+    ? (upgrade.tracerColor ?? look?.tracer ?? base.tracer.color)
+    : base.tracer.color;
   const carry = (base.carrySpeedMultiplier ?? 1) * f.moveSpeed;
   const out: WeaponDef = {
     ...base,

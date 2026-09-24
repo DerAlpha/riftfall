@@ -41,7 +41,14 @@ import type {
   WeaponCombatApi,
 } from '../../core/contracts';
 import type { EventBus } from '../../core/EventBus';
-import type { DamageElement, FleshSurface, GameEvents, HitZone, SurfaceType, Vec3Like } from '../../core/events';
+import type {
+  DamageElement,
+  FleshSurface,
+  GameEvents,
+  HitZone,
+  SurfaceType,
+  Vec3Like,
+} from '../../core/events';
 import { ARSENAL } from '../../defs/combat';
 import type { ExplosionDef, WeaponProjectileDef, WeaponSpecialDef } from '../../defs/weapons';
 import { DEG2RAD } from '../../core/math';
@@ -351,7 +358,16 @@ export class ProjectileSystem implements ProjectileApi {
 
   /** Live projectiles (debug / tests): simulated position, velocity, weapon id. */
   forEachProjectile(
-    fn: (id: number, x: number, y: number, z: number, vx: number, vy: number, vz: number, weaponId: string) => void,
+    fn: (
+      id: number,
+      x: number,
+      y: number,
+      z: number,
+      vx: number,
+      vy: number,
+      vz: number,
+      weaponId: string,
+    ) => void,
   ): void {
     for (let k = 0; k < this.activeCount; k++) {
       const i = this.activeList[k]!;
@@ -410,7 +426,8 @@ export class ProjectileSystem implements ProjectileApi {
     this.vel[o + 1] = vy - def.gravity * dt;
 
     const P = ARSENAL.projectiles;
-    for (let contact = 0; contact < P.maxContactsPerTick; contact++) {
+    let contact = 0;
+    for (; contact < P.maxContactsPerTick; contact++) {
       _d.subVectors(_e, _s);
       const len = _d.length();
       if (!(len > 1e-6)) break;
@@ -466,6 +483,8 @@ export class ProjectileSystem implements ProjectileApi {
       this.detonateOrEnd(i, def, _c, _n.x, _n.y, _n.z, surface);
       return true;
     }
+    // Out of contacts this tick (a corner): stay at the last free point instead of tunnelling.
+    if (contact >= P.maxContactsPerTick) _e.copy(_s);
     this.pos[o] = _e.x;
     this.pos[o + 1] = _e.y;
     this.pos[o + 2] = _e.z;

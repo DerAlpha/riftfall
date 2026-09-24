@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { AreaDamageSource, ArsenalVfxApi, Damageable, ExplosionApi, FieldApi } from '../../core/contracts';
+import type {
+  AreaDamageSource,
+  ArsenalVfxApi,
+  Damageable,
+  ExplosionApi,
+  FieldApi,
+} from '../../core/contracts';
 import { EventBus } from '../../core/EventBus';
 import type { DamageElement, GameEvents, Vec3Like } from '../../core/events';
 import { CombatWorld } from '../../combat/CombatWorld';
@@ -38,7 +44,9 @@ function setup(opts: { wall?: boolean } = {}) {
   const combat = new CombatWorld({ events, physics: null });
   combat.setLevel(
     buildTestLevel(
-      opts.wall ? [{ material: 'concrete_wall', center: { x: 3, y: 1.5, z: 0 }, size: { x: 0.3, y: 3, z: 8 } }] : [],
+      opts.wall
+        ? [{ material: 'concrete_wall', center: { x: 3, y: 1.5, z: 0 }, size: { x: 0.3, y: 3, z: 8 } }]
+        : [],
     ),
   );
   const blasts: { at: Vec3Like; def: ExplosionDef; from: AreaDamageSource }[] = [];
@@ -119,7 +127,12 @@ describe('WeaponSpecials', () => {
     t.hit(always, target, { primary: false });
     expect(t.blasts).toHaveLength(2);
     expect(t.blasts[0]!.def).toBe(SMALL);
-    expect(t.blasts[0]!.from).toMatchObject({ weaponId: 'w', source: 'player', special: null, statusBuildup: statusBuildupFor('shock') });
+    expect(t.blasts[0]!.from).toMatchObject({
+      weaponId: 'w',
+      source: 'player',
+      special: null,
+      statusBuildup: statusBuildupFor('shock'),
+    });
     // A chance of 0.25 procs about a quarter of the time (seeded).
     const u = setup();
     const quarter: WeaponSpecialDef = { kind: 'explosiveRounds', chance: 0.25, explosion: SMALL };
@@ -143,7 +156,11 @@ describe('WeaponSpecials', () => {
     expect(next.received).toHaveLength(1);
     expect(walled.received).toHaveLength(0);
     expect(far.received).toHaveLength(0);
-    expect(near.received[0]).toMatchObject({ amount: 50, element: ARSENAL.specials.arcElement, kind: 'beam' });
+    expect(near.received[0]).toMatchObject({
+      amount: 50,
+      element: ARSENAL.specials.arcElement,
+      kind: 'beam',
+    });
     // Arcs are inert: an arc hit never arcs again.
     t.hit(arc, first, { via: 'arc' });
     expect(near.received).toHaveLength(1);

@@ -89,10 +89,9 @@ describe('area damage math', () => {
     expect(distanceToHitboxes({ x: 0.1, y: 1, z: 0 }, boxes, out)).toBe(0);
     expect(distanceToHitboxes({ x: 0, y: 0, z: 0 }, [], out)).toBe(Number.POSITIVE_INFINITY);
     // The player's body: a vertical capsule from the feet (+radius) to the eye.
-    expect(distanceToBody({ x: 3, y: 1, z: 0 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 1.6, z: 0 }, 0.4)).toBeCloseTo(
-      2.6,
-      9,
-    );
+    expect(
+      distanceToBody({ x: 3, y: 1, z: 0 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 1.6, z: 0 }, 0.4),
+    ).toBeCloseTo(2.6, 9);
   });
 });
 
@@ -124,7 +123,9 @@ describe('beam math', () => {
 describe('split shots, bounces, homing', () => {
   it('split fans alternate right/left, one step further every second ray', () => {
     const a = 0.1;
-    expect([1, 2, 3, 4, 5].map((k) => splitYawOffset(k, a))).toEqual([0.1, -0.1, 0.2, -0.2, 0.30000000000000004]);
+    expect([1, 2, 3, 4, 5].map((k) => splitYawOffset(k, a))).toEqual([
+      0.1, -0.1, 0.2, -0.2, 0.30000000000000004,
+    ]);
     const out = new Vector3();
     yawAround({ x: 0, y: 0, z: -1 }, { x: 0, y: 1, z: 0 }, Math.PI / 2, out);
     expect(out.x).toBeCloseTo(-1, 9);

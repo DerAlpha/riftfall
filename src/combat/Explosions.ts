@@ -34,12 +34,7 @@ import { ARSENAL, COMBAT } from '../defs/combat';
 import { MOVEMENT } from '../defs/movement';
 import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import type { ExplosionDef } from '../defs/weapons';
-import {
-  blastFalloff,
-  distanceToBody,
-  distanceToHitboxes,
-  linearFade,
-} from '../weapons/fire/fireMath';
+import { blastFalloff, distanceToBody, distanceToHitboxes, linearFade } from '../weapons/fire/fireMath';
 import { createSpecialHit, type SpecialsHook } from '../weapons/fire/types';
 
 const log = createLogger('explosions');
@@ -174,7 +169,8 @@ export class Explosions implements ExplosionApi {
           closest.copy(t.boundsCenter);
         }
         if (d > r) continue;
-        if (!this.combat.lineOfSight(center, closest) && !this.combat.lineOfSight(center, t.aimPoint)) continue;
+        if (!this.combat.lineOfSight(center, closest) && !this.combat.lineOfSight(center, t.aimPoint))
+          continue;
         const f = blastFalloff(d, r, def.minFalloffMultiplier);
         if (!(f > 0)) continue;
         const info = this.info;

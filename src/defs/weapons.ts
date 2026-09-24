@@ -15,13 +15,29 @@ import type { DamageElement, GameEvents } from '../core/events';
 import type { Action } from './input';
 
 export type WeaponCategory =
-  'pistol' | 'smg' | 'rifle' | 'shotgun' | 'lmg' | 'marksman' | 'sniper' | 'launcher' | 'special';
+  | 'pistol'
+  | 'smg'
+  | 'rifle'
+  | 'shotgun'
+  | 'lmg'
+  | 'marksman'
+  | 'sniper'
+  | 'launcher'
+  /** Energy / experimental weapons (M5). */
+  | 'energy'
+  /** Box-only wonder weapons (M5). */
+  | 'wonder'
+  | 'special';
 
 /** semi: one shot per press · auto: fires while held · burst: `burst.count` shots per press · pump: fires on press or hold, one pump cycle per shot. */
 export type FireMode = 'semi' | 'auto' | 'burst' | 'pump';
 
-/** Only 'hitscan' is implemented in M2; 'projectile' and 'beam' are reserved for M5. */
-export type WeaponKind = 'hitscan' | 'projectile' | 'beam';
+/**
+ * hitscan: instant rays (M2) · projectile: simulated bolts/grenades/orbs (`projectile`) · beam: a
+ * continuous ray/cone while fire is held (`beam`) · charge: hold to charge, release fires a hitscan
+ * shot scaled by the charge (`charge`). Kinds are M5 except hitscan.
+ */
+export type WeaponKind = 'hitscan' | 'projectile' | 'beam' | 'charge';
 
 /** Kinds the weapon system can fire; defs of any other kind are refused (never fired as hitscan). */
 export const IMPLEMENTED_WEAPON_KINDS: readonly WeaponKind[] = ['hitscan'];
@@ -229,6 +245,155 @@ export interface WeaponRumbleDef {
   readonly ms: number;
 }
 
+/**
+ * Area damage (M5): projectile detonations, grenades, forge specials. Damage falls off linearly
+ * from `damage` at the center to `damage × minFalloffMultiplier` at `radius`; line of sight to
+ * the static world is required.
+ */
+export interface ExplosionDef {
+  readonly radius: number;
+  readonly damage: number;
+  readonly minFalloffMultiplier: number;
+  readonly element: DamageElement;
+  /** Knockback (m/s) at the center, scaled like the damage. */
+  readonly impulse: number;
+  /** Impulse (N·s) on dynamic props at the center. */
+  readonly propImpulse: number;
+  /** Fraction of the damage the player takes from their own blast (0 = none). */
+  readonly selfDamageScale: number;
+  /** camera:shake trauma at the player's position (fades out over 3 × radius). */
+  readonly shake: number;
+  /** VFX preset (defs/vfx) and sound id. */
+  readonly vfx: string;
+  readonly audio: string;
+}
+
+/**
+ * Lingering area effect (M5): singularity pull, fire pool, poison cloud, frost field. Ticks
+ * `dps` of `element` damage to enemies inside; `pull` accelerates them towards the center,
+ * `slow` multiplies their speed by `strength`. An optional collapse explosion ends it.
+ */
+export interface FieldDef {
+  readonly kind: 'pull' | 'damage' | 'slow';
+  readonly radius: number;
+  readonly duration: number;
+  readonly dps: number;
+  readonly element: DamageElement;
+  /** pull: acceleration towards the center (m/s²) · slow: speed multiplier · damage: unused. */
+  readonly strength: number;
+  readonly collapse: ExplosionDef | null;
+  readonly vfx: string;
+  readonly audio: string;
+}
+
+/** Simulated projectile (M5 kind 'projectile', grenades). */
+export interface WeaponProjectileDef {
+  /** Launch speed (m/s). */
+  readonly speed: number;
+  /** Downward acceleration (m/s², 0 = straight line). */
+  readonly gravity: number;
+  /** Collision radius against the world and hitboxes (m). */
+  readonly radius: number;
+  /** Removed (or detonated, with an explosion) after this long (s). */
+  readonly lifetime: number;
+  /** World bounces before it stops/detonates (0 = impact). */
+  readonly bounces: number;
+  /** Velocity kept per bounce (0..1). */
+  readonly restitution: number;
+  /** Detonates after this time whatever it hit (s, 0 = on impact only). */
+  readonly fuse: number;
+  /** Damageables it passes through before stopping. */
+  readonly pierce: number;
+  /** Homing turn rate towards the enemy nearest the flight line (rad/s, 0 = none). */
+  readonly homing: number;
+  /** Direct hit damage uses the weapon's `damage`; the detonation this (null = none). */
+  readonly explosion: ExplosionDef | null;
+  /** Area left behind on detonation (null = none). */
+  readonly field: FieldDef | null;
+  /** Projectile visual preset (defs/vfx) and trail preset (null = none). */
+  readonly visual: string;
+  readonly trail: string | null;
+  /** Positional flight loop (null = silent). */
+  readonly flightAudio: string | null;
+}
+
+/**
+ * Continuous beam while fire is held (M5 kind 'beam'): Kettenblitz, flamethrower. Damage
+ * `damage.base` per tick; ammo drains per second from the magazine.
+ */
+export interface WeaponBeamDef {
+  readonly range: number;
+  /** Damage ticks per second. */
+  readonly tickRate: number;
+  /** 0 = a ray; > 0 = a cone of this half-angle (deg) hitting everything inside (flamethrower). */
+  readonly coneDeg: number;
+  /** Arcs jumping from the primary target to nearby enemies (null = none). */
+  readonly chain: { readonly count: number; readonly range: number; readonly damageKeep: number } | null;
+  readonly ammoPerSecond: number;
+  /** Beam visual preset (defs/vfx) and positional loop while firing. */
+  readonly visual: string;
+  readonly loopAudio: string;
+}
+
+/** Hold fire to charge, release to fire one hitscan shot (M5 kind 'charge'): railgun. */
+export interface WeaponChargeDef {
+  /** Seconds to full charge. */
+  readonly time: number;
+  /** Releasing below this charge (0..1) fizzles without a shot (ammo kept). */
+  readonly minCharge: number;
+  /** Damage multiplier at `minCharge` (1 at full charge, linear in between). */
+  readonly damageAtMin: number;
+  /** Fires by itself this long after reaching full charge (s, 0 = hold as long as you like). */
+  readonly autoReleaseAfter: number;
+  readonly chargeAudio: string;
+  /** Charge glow preset on the viewmodel/muzzle (defs/vfx). */
+  readonly visual: string;
+}
+
+/** Barrel spin-up (M5, minigun): the rate ramps up while fire is held. */
+export interface WeaponSpinUpDef {
+  /** Seconds from standstill to full rpm. */
+  readonly time: number;
+  /** Rate fraction at which it starts firing (0..1). */
+  readonly startFraction: number;
+  /** Seconds from full rpm to standstill after fire is released. */
+  readonly spinDown: number;
+  readonly loopAudio: string;
+}
+
+/**
+ * Special effect of a Rift Forge tier or wonder weapon (M5), interpreted by the weapon system per
+ * hit/shot/kill; data only, no per-weapon code.
+ */
+export type WeaponSpecialDef =
+  /** A hit detonates a small explosion (chance per hit). */
+  | { readonly kind: 'explosiveRounds'; readonly chance: number; readonly explosion: ExplosionDef }
+  /** Rays bounce off world surfaces towards the nearest enemy. */
+  | { readonly kind: 'ricochet'; readonly bounces: number; readonly damageKeep: number }
+  /** A hit arcs lightning to nearby enemies. */
+  | {
+      readonly kind: 'chainArc';
+      readonly chance: number;
+      readonly count: number;
+      readonly range: number;
+      readonly damage: number;
+    }
+  /** Hits build up an element's status (without changing the damage element). */
+  | {
+      readonly kind: 'elementProc';
+      readonly element: DamageElement;
+      readonly chance: number;
+      readonly amount: number;
+    }
+  /** A fraction of the damage dealt heals the player. */
+  | { readonly kind: 'lifesteal'; readonly fraction: number }
+  /** Every shot splits into extra rays/projectiles fanned out by `angleDeg`. */
+  | { readonly kind: 'splitShot'; readonly count: number; readonly angleDeg: number }
+  /** Every Nth shot deals `multiplier` × damage (with a distinct tracer). */
+  | { readonly kind: 'critBurst'; readonly everyNth: number; readonly multiplier: number }
+  /** A kill leaves a field (singularity, fire pool …) at the corpse. */
+  | { readonly kind: 'fieldOnKill'; readonly chance: number; readonly field: FieldDef };
+
 /** Multiplicative stat modifiers (1 = unchanged) – Rift Forge tiers, attachments, perks (M5). */
 export interface WeaponStatMods {
   readonly damage?: number;
@@ -244,15 +409,35 @@ export interface WeaponStatMods {
   readonly extraPellets?: number;
   /** Replaces the damage element (elemental mods). */
   readonly element?: DamageElement;
+  /** Handling (M5 attachments): ADS in/out time, ADS zoom (FOV multiplier factor), equip time. */
+  readonly adsTime?: number;
+  readonly adsZoom?: number;
+  readonly equipTime?: number;
+  /** Player move speed while carrying/aiming (ads.moveSpeedMultiplier factor). */
+  readonly moveSpeed?: number;
+  /** Hip-fire spread only (spread above applies to hip and ADS). */
+  readonly hipSpread?: number;
+  /** Projectile speed / explosion radius factors (projectile weapons). */
+  readonly projectileSpeed?: number;
+  readonly blastRadius?: number;
 }
 
-/** One Rift Forge upgrade tier (M5). */
+/**
+ * One Rift Forge upgrade tier (M5). Tiers are cumulative (tier 3 has the mods of 1–3); the look
+ * (viewmodel palette/camo, defs/forge.ts) comes from the tier unless `palette` overrides it.
+ */
 export interface WeaponUpgradeTier {
   readonly tier: 1 | 2 | 3;
-  /** Player-facing name (German). */
+  /** Player-facing name (German), replaces the weapon name at this tier. */
   readonly name: string;
   readonly cost: number;
   readonly mods: WeaponStatMods;
+  /** Special effect gained at this tier (kept by higher tiers unless they define their own). */
+  readonly special?: WeaponSpecialDef | null;
+  /** Tracer color override at this tier (linear hex). */
+  readonly tracerColor?: number;
+  /** Palette override (defs/forge.ts FORGE_LOOKS id). */
+  readonly palette?: string;
 }
 
 export interface WeaponDef {
@@ -303,6 +488,14 @@ export interface WeaponDef {
   readonly boxOnly?: boolean;
   readonly attachmentSlots: readonly AttachmentSlot[];
   readonly upgrades: readonly WeaponUpgradeTier[];
+  /** Kind-specific data (M5): required for their kind, ignored otherwise. */
+  readonly projectile?: WeaponProjectileDef | null;
+  readonly beam?: WeaponBeamDef | null;
+  readonly charge?: WeaponChargeDef | null;
+  /** Optional barrel spin-up on any automatic weapon (minigun). */
+  readonly spinUp?: WeaponSpinUpDef | null;
+  /** Base special effect (wonder weapons); Rift Forge tiers may add or replace it. */
+  readonly special?: WeaponSpecialDef | null;
 }
 
 /** Shared melee swing (all M2 weapons bash with the same arm motion). */

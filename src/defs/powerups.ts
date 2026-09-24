@@ -76,10 +76,11 @@ export const POWERUP_GLYPHS = {
     'M10.5 19.5V17 M13.5 19.5V17 M11.3 14.8 12 13.6 12.7 14.8',
   /** Three rounds. */
   ammo:
-    'M4 20V11C4 8.8 4.9 7 6 6 7.1 7 8 8.8 8 11V20Z M10 20V9C10 6.8 10.9 5 12 4 13.1 5 14 6.8 14 9V20Z ' +
-    'M16 20V11C16 8.8 16.9 7 18 6 19.1 7 20 8.8 20 11V20Z M2.5 20H21.5',
-  /** Shielded lattice. */
-  lattice: 'M12 2.5 20 7V17L12 21.5 4 17V7Z M7.2 9.5H16.8 M7.2 12.5H16.8 M7.2 15.5H16.8 M12 5.5V18.5',
+    'M4.5 19.5V11C4.5 9 5.2 7.3 6 6.3 6.8 7.3 7.5 9 7.5 11V19.5Z ' +
+    'M10.5 19.5V9C10.5 7 11.2 5.3 12 4.3 12.8 5.3 13.5 7 13.5 9V19.5Z ' +
+    'M16.5 19.5V11C16.5 9 17.2 7.3 18 6.3 18.8 7.3 19.5 9 19.5 11V19.5Z M3 21.5H21',
+  /** A shield barred like a seal. */
+  lattice: 'M12 2.5 20 6V12.5C20 17 16.6 20.2 12 21.5 7.4 20.2 4 17 4 12.5V6Z M8 9.5H16 M8 13.5H16',
   /** Hourglass. */
   hourglass:
     'M6 3H18 M6 21H18 M7 3C7 8 10.5 10 12 12 13.5 10 17 8 17 3 M7 21C7 16 10.5 14 12 12 13.5 14 17 16 17 21 ' +
@@ -259,9 +260,9 @@ export const POWERUPS = {
     shaftHeight: 3.2,
     shaftWidth: 1.1,
     floorRadius: 1.3,
-    intensity: { glyph: 5, ring: 2.2, shaft: 1.4, floor: 0.9, flash: 5 },
+    intensity: { glyph: 4.5, ring: 2.2, shaft: 1.4, floor: 0.9, flash: 5 },
     /** Canvas atlas: cell size (px), columns, stroke width (glyph units), glow blur (px). */
-    atlas: { cell: 128, cols: 4, stroke: 2.1, glowBlur: 9 },
+    atlas: { cell: 128, cols: 4, stroke: 1.9, glowBlur: 7 },
     renderOrder: 3,
   },
   effects: {

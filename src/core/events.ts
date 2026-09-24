@@ -41,6 +41,9 @@ export type PointsReason =
 
 export type PurchaseKind = 'weapon' | 'ammo' | 'door' | 'perk' | 'box' | 'forge' | 'repair' | 'other';
 
+/** Status effects (M5 elemental mods, defs/elements.ts). */
+export type StatusId = 'burn' | 'chill' | 'frozen' | 'shocked' | 'poisoned' | 'voidMark';
+
 export type ImpactKind = 'bullet' | 'pellet' | 'projectile' | 'melee' | 'explosion' | 'beam';
 
 export interface GameEvents {
@@ -226,6 +229,50 @@ export interface GameEvents {
   'seal:repaired': { sealId: string; planks: number; position: Vec3Like };
   /** The interactable in focus changed (HUD prompt). */
   'interact:focus': { id: string | null; prompt: string | null; cost: number | null; affordable: boolean };
+
+  // --- arsenal (M5) ---
+  /** Charge weapons: charge level changed (0..1; 0 after a release or fizzle). Reused payload. */
+  'weapon:charge': { weaponId: string; amount: number };
+  /** Beam weapons started / stopped emitting. */
+  'weapon:beam': { weaponId: string; active: boolean };
+  /** Spin-up weapons: barrel spin (0..1). Reused payload. */
+  'weapon:spin': { weaponId: string; amount: number };
+  /** A projectile hit something or detonated. Reused payload. */
+  'projectile:impact': {
+    weaponId: string;
+    position: Vec3Like;
+    normal: Vec3Like;
+    /** It exploded (the explosion also emits combat:explosion). */
+    detonated: boolean;
+  };
+  /** A lingering field (singularity, fire pool, poison cloud, frost field) started. */
+  'field:spawned': {
+    id: number;
+    kind: string;
+    element: DamageElement;
+    position: Vec3Like;
+    radius: number;
+    duration: number;
+  };
+  'field:ended': { id: number };
+  /** A status effect was applied/raised on a damageable (reused payload). */
+  'combat:status': { targetId: number; status: StatusId; stacks: number; position: Vec3Like };
+  /** Two statuses reacted (elemental combo) on a damageable. */
+  'combat:combo': { targetId: number; combo: string; position: Vec3Like };
+  /** Rift Forge upgrade of a carried weapon. */
+  'forge:upgraded': { weaponId: string; tier: number; name: string };
+  /** Attachment (or element module) fitted to / removed from a carried weapon. */
+  'weapon:modsChanged': {
+    weaponId: string;
+    tier: number;
+    attachments: readonly string[];
+    element: DamageElement | null;
+  };
+  'grenade:thrown': { grenadeId: string; position: Vec3Like };
+  'grenade:changed': { grenadeId: string; count: number; max: number };
+  'ability:used': { abilityId: string; cooldown: number; duration: number };
+  'ability:ready': { abilityId: string };
+  'ability:ended': { abilityId: string };
 
   // --- ui ---
   'ui:console': { open: boolean };

@@ -20,8 +20,8 @@ const GLYPH_BOX = 24;
 /** Share of a cell the glyph box fills (the rest pads the blur and the mip chain). */
 const GLYPH_FILL = 0.78;
 /** The glow pass: stroke width multiplier and opacity. */
-const GLOW_WIDTH = 1.9;
-const GLOW_ALPHA = 0.55;
+const GLOW_WIDTH = 1.5;
+const GLOW_ALPHA = 0.32;
 
 /** Atlas cell of a glyph id (-1 if unknown). */
 export function glyphCell(glyph: string): number {

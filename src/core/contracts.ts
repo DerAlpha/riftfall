@@ -12,6 +12,7 @@ import type * as THREE from 'three';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import type { Action, Binding } from '../defs/input';
 import type { MapAtmosphereDef } from '../defs/maps';
+import type { ExplosionDef, FieldDef, WeaponProjectileDef } from '../defs/weapons';
 import type {
   AccessibilitySettings,
   AudioSettings,
@@ -30,6 +31,7 @@ import type {
   MovementState,
   PointsReason,
   PurchaseKind,
+  StatusId,
   SurfaceType,
   Vec3Like,
 } from './events';
@@ -888,5 +890,130 @@ export interface ZoneApi {
   isActive(zone: string): boolean;
   activate(zone: string): void;
   readonly active: readonly string[];
+  reset(): void;
+}
+
+// ---------------------------------------------------------------------------
+// Arsenal (M5): projectiles, explosions, status effects, grenades, abilities
+// ---------------------------------------------------------------------------
+
+/** What a projectile/explosion/field deals (copied at spawn; the def objects are shared data). */
+export interface DamageSource {
+  weaponId: string;
+  source: DamageInfo['source'];
+  /** Damage of a direct projectile hit (0 = none) and its element. */
+  damage: number;
+  element: DamageElement;
+  headMultiplier: number;
+  weakpointMultiplier: number;
+  /** Status build-up per damage point for this source's element (elemental mods), 0 = none. */
+  statusBuildup: number;
+}
+
+/** Area damage (explosions) – projectiles, grenades, forge specials, perks, enemies. */
+export interface ExplosionApi {
+  /**
+   * Damage every damageable (and the player, scaled by `selfDamageScale` for player sources)
+   * inside `def.radius` with line of sight, push props, emit combat:explosion. Returns the
+   * number of damageables hit.
+   */
+  explode(
+    position: Vec3Like,
+    def: ExplosionDef,
+    from: Pick<DamageSource, 'weaponId' | 'source' | 'statusBuildup'>,
+  ): number;
+}
+
+export interface ProjectileSpawnOptions {
+  origin: Vec3Like;
+  /** Normalized launch direction. */
+  direction: Vec3Like;
+  def: WeaponProjectileDef;
+  damage: DamageSource;
+  /** Initial velocity added to the launch (the thrower's movement), optional. */
+  inherit?: Vec3Like;
+  /** Speed/blast factors (attachments, stats); default 1. */
+  speedScale?: number;
+  blastScale?: number;
+}
+
+/** Pooled simulated projectiles (fixed tick) with interpolated visuals (per frame). */
+export interface ProjectileApi {
+  /** Returns the projectile id (0 when the pool refused it). */
+  spawn(opts: ProjectileSpawnOptions): number;
+  readonly active: number;
+  fixedUpdate(dt: number): void;
+  update(dt: number, alpha: number): void;
+  clear(): void;
+}
+
+/** Lingering area effects (FieldDef). */
+export interface FieldApi {
+  spawn(
+    position: Vec3Like,
+    def: FieldDef,
+    from: Pick<DamageSource, 'weaponId' | 'source' | 'statusBuildup'>,
+  ): number;
+  /** Pull velocity (m/s, written into `out`) a field applies to a point this tick; false = none. */
+  pullAt(position: Vec3Like, out: THREE.Vector3): boolean;
+  /** Speed multiplier from slow fields at a point (1 = none). */
+  slowAt(position: Vec3Like): number;
+  readonly active: number;
+  fixedUpdate(dt: number): void;
+  update(dt: number): void;
+  clear(): void;
+}
+
+/**
+ * Status effects on damageables (M5 elements): burn (DoT), chill → frozen (slow, then immobile;
+ * shatter bonus), shocked (stun + arcs), poisoned (stacking DoT), voidMark (damage taken up,
+ * implodes). Combos when two react (defs/elements.ts). Enemies read the queries every tick.
+ */
+export interface StatusEffectsApi {
+  /** Build up `element`'s status on `target` by `amount` (damage × build-up factor). */
+  applyElement(
+    target: Damageable,
+    element: DamageElement,
+    amount: number,
+    source: DamageInfo['source'],
+  ): void;
+  has(targetId: number, status: StatusId): boolean;
+  /** Movement/attack speed multiplier (chill, frozen = 0), 1 = unaffected. */
+  speedMultiplier(targetId: number): number;
+  /** No AI actions (stunned, frozen). */
+  incapacitated(targetId: number): boolean;
+  /** Damage-taken multiplier (void mark), 1 = none. */
+  damageTakenMultiplier(targetId: number): number;
+  /** Tint for the enemy renderer's rim (linear RGB hex) and strength 0..1; false = none. */
+  rimFor(targetId: number, out: { color: number; strength: number }): boolean;
+  clear(targetId: number): void;
+  reset(): void;
+  fixedUpdate(dt: number): void;
+}
+
+/** Grenades (M5): one selected type, counts per type, thrown with the 'grenade' action. */
+export interface GrenadeApi {
+  readonly selected: string;
+  count(grenadeId: string): number;
+  max(grenadeId: string): number;
+  /** Add grenades (max ammo power-up refills the selected type). */
+  add(grenadeId: string, n: number): number;
+  refill(): void;
+  select(grenadeId: string): void;
+  fixedUpdate(dt: number): void;
+  reset(): void;
+}
+
+/** Active ability with cooldown (M5), used with the 'ability' action. */
+export interface AbilityApi {
+  readonly equipped: string | null;
+  /** Seconds until ready (0 = ready) and the full cooldown (HUD ring). */
+  readonly cooldownLeft: number;
+  readonly cooldown: number;
+  /** An effect with a duration is running. */
+  readonly active: boolean;
+  equip(abilityId: string | null): void;
+  use(): boolean;
+  fixedUpdate(dt: number): void;
   reset(): void;
 }

@@ -155,7 +155,7 @@ void main() {
     float ring2 = exp(-abs(r - uRing * 2.0 * 0.88) * 70.0) * 0.35;
     float halo = exp(-r * 2.6) * 0.3;
     float scan = 0.82 + 0.18 * sin(vUv.y * 110.0 - uTime * 7.0);
-    col = vColor * ((g * 0.45 + core * 1.3) * uGlyphI * scan + (ring + ring2) * uRingI + halo);
+    col = vColor * ((g * 0.28 + core * 1.2) * uGlyphI * scan + (ring + ring2) * uRingI + halo);
     col += vec3(1.0) * (core + ring * 0.5) * flash * uFlashI;
     col *= 1.0 - smoothstep(0.9, 1.0, r);
   } else if (vPart < 1.5) {

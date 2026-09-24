@@ -718,9 +718,7 @@ async function renderDef(
     let chans: Float32Array<ArrayBuffer>[] = [];
     for (let c = 0; c < def.channels; c++) {
       chans.push(
-        rendered
-          .getChannelData(c)
-          .slice(v * slotSamples, v * slotSamples + Math.ceil(def.duration * rate)),
+        rendered.getChannelData(c).slice(v * slotSamples, v * slotSamples + Math.ceil(def.duration * rate)),
       );
     }
     if (def.loop) {

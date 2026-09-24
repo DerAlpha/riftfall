@@ -204,7 +204,11 @@ export class PositionalLoopSet {
    * Per frame: voiced sources follow their source's position (and Doppler); every
    * `checkInterval` s every source is re-measured and the voices go to the nearest.
    */
-  update(dt: number, listener: Vec3Like | null, source: ((id: number, out: PositionOut) => boolean) | null): void {
+  update(
+    dt: number,
+    listener: Vec3Like | null,
+    source: ((id: number, out: PositionOut) => boolean) | null,
+  ): void {
     if (this.count === 0) return;
     this.checkTimer -= dt;
     const rank = this.checkTimer <= 0;
@@ -525,7 +529,8 @@ export class ArsenalAudio {
     this.gameTime += dt;
     this.projectileImpactWeapon = '';
     if (this.beamHandle !== 0 && this.gameTime - this.beamLastTick > AR.beam.watchdog) this.stopBeam(false);
-    if (this.chargeHandle !== 0 && this.gameTime - this.chargeEventAt > AR.charge.watchdog) this.endCharge(false);
+    if (this.chargeHandle !== 0 && this.gameTime - this.chargeEventAt > AR.charge.watchdog)
+      this.endCharge(false);
     const l = this.listenerOrNull();
     this.flights.update(dt, l, this.sources.projectiles ? this.projectilePosition : null);
     this.fields.update(dt, l, this.sources.fields?.positionOf ? this.fieldPosition : null);
@@ -702,7 +707,8 @@ export class ArsenalAudio {
     if (upgraded) return;
     const B = AR.bench;
     if (elementChanged && e.element !== null) this.play(B.element.id, B.element.gain, 0);
-    else if (added > 0 || (elementChanged && e.element === null)) this.play(B.attach.id, B.attach.gain, W.handlingPitchVariance);
+    else if (added > 0 || (elementChanged && e.element === null))
+      this.play(B.attach.id, B.attach.gain, W.handlingPitchVariance);
     else if (removed > 0) this.play(B.attach.id, B.attach.gain, 0, 'sfx', B.detachPitch);
   }
 
@@ -771,7 +777,13 @@ export class ArsenalAudio {
     return id;
   }
 
-  private play(id: string, volume: number, pitchVariance: number, bus: PlayOptions['bus'] = 'sfx', pitch = 1): void {
+  private play(
+    id: string,
+    volume: number,
+    pitchVariance: number,
+    bus: PlayOptions['bus'] = 'sfx',
+    pitch = 1,
+  ): void {
     const o = this.opts;
     o.volume = volume;
     o.pitchVariance = pitchVariance;

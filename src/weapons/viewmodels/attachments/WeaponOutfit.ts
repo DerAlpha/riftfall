@@ -10,7 +10,7 @@
  * instances are kept for a later refit; their accents use the host weapon's accent material (they
  * follow its forge look and its breathing / shot flashes).
  */
-import { Box3, Group, Mesh, Vector3, type Material, type Object3D } from 'three';
+import { Box3, Group, Mesh, Object3D, Vector3, type Material } from 'three';
 import { getAttachmentDef, type AttachmentLaserDef } from '../../../defs/attachments';
 import type { AttachmentSlot } from '../../../defs/weapons';
 import { MAGAZINE_PARTS, OUTFIT_MATERIALS } from '../../../defs/weaponOutfit';
@@ -26,6 +26,10 @@ const SLOT_MOUNT: Readonly<Record<Exclude<AttachmentSlot, 'magazine'>, MountName
   stock: 'stock',
   laser: 'laser',
 };
+
+/** Fallback stock mount: height above the grip pivot and inset from the model's rear (m). */
+const REAR_MOUNT_Y = 0.035;
+const REAR_MOUNT_INSET = 0.015;
 
 const _box = new Box3();
 const _size = new Vector3();
@@ -56,6 +60,7 @@ export class WeaponOutfit {
   private magazinePart: Object3D | null | undefined = undefined;
   private magazineShape: MagazineShape | null = null;
   private hostAccent: Material | null | undefined = undefined;
+  private rear: Object3D | null = null;
   private applied = '';
 
   constructor(
@@ -108,8 +113,10 @@ export class WeaponOutfit {
       parent = this.findMagazinePart();
     } else {
       parent = this.model.mounts[SLOT_MOUNT[def.slot]] ?? null;
-      // Energy weapons carry their muzzle devices on the muzzle socket itself.
+      // Energy weapons carry their muzzle devices on the muzzle socket itself; a stock slot
+      // without a stock mount gets one at the rear of the model.
       if (!parent && def.slot === 'muzzle') parent = this.model.muzzle;
+      if (!parent && def.slot === 'stock') parent = this.rearMount();
     }
     if (!parent) return null;
     let inst = this.spare.get(id) ?? null;
@@ -195,6 +202,27 @@ export class WeaponOutfit {
     }
     this.duplicate.position.set(offset[0], offset[1], offset[2]);
     part.add(this.duplicate);
+  }
+
+  /** Fallback stock mount: centered at the rear end of the model, at the grip's top. */
+  private rearMount(): Object3D {
+    if (this.rear) return this.rear;
+    const box = new Box3();
+    this.model.root.updateMatrixWorld(true);
+    const inv = this.model.root.matrixWorld.clone().invert();
+    this.model.root.traverse((o) => {
+      const m = o as Mesh;
+      if (!m.isMesh || m.name.startsWith('att-')) return;
+      const geo = m.geometry;
+      if (!geo.boundingBox) geo.computeBoundingBox();
+      if (geo.boundingBox) box.union(_box.copy(geo.boundingBox).applyMatrix4(m.matrixWorld).applyMatrix4(inv));
+    });
+    const rear = new Object3D();
+    rear.name = 'mount-stock-fallback';
+    rear.position.set(0, REAR_MOUNT_Y, box.isEmpty() ? 0 : box.max.z - REAR_MOUNT_INSET);
+    this.model.root.add(rear);
+    this.rear = rear;
+    return rear;
   }
 
   private findMagazinePart(): Object3D | null {

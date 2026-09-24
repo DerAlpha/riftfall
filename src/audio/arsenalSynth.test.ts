@@ -77,7 +77,17 @@ describe('M5 arsenal sound ids', () => {
       ids.push(`explosion.${el}`, `explosion.${el}.small`);
       for (const kind of ['pull', 'damage', 'slow']) ids.push(`field.${kind}.${el}`);
     }
-    for (const v of ['plasma', 'grenade', 'frag', 'incendiary', 'cryo', 'singularity', 'voidorb', 'shockorb', 'cryoorb'])
+    for (const v of [
+      'plasma',
+      'grenade',
+      'frag',
+      'incendiary',
+      'cryo',
+      'singularity',
+      'voidorb',
+      'shockorb',
+      'cryoorb',
+    ])
       ids.push(`projectile.${v}.flight`);
     for (const s of STATUS_IDS) ids.push(`status.${s}`);
     for (const c of COMBOS) ids.push(`combo.${c.id}`);
@@ -85,7 +95,12 @@ describe('M5 arsenal sound ids', () => {
     ids.push('grenade.throw', 'grenade.bounce', 'grenade.pin', 'ability.ready', 'ability.end');
     for (const a of ['schockwelle', 'phasenbarriere', 'ueberladung', 'chronofeld']) ids.push(`ability.${a}`);
     ids.push('forge.upgrade', 'forge.deny', 'bench.attach', 'bench.open', 'bench.close', 'element.install');
-    ids.push('weapon.tail.energy', 'weapon.tail.explosive', AUDIO.arsenal.charge.full.id, AUDIO.arsenal.charge.fizzle.id);
+    ids.push(
+      'weapon.tail.energy',
+      'weapon.tail.explosive',
+      AUDIO.arsenal.charge.full.id,
+      AUDIO.arsenal.charge.fizzle.id,
+    );
     for (const s of ids) expect(resolveSynthId(s), s).not.toBeNull();
     // Statuses, combos, gear and the forge are real recipes, not aliases.
     for (const s of STATUS_IDS) expect(Object.hasOwn(ARSENAL_SYNTH_DEFS, `status.${s}`)).toBe(true);
@@ -101,7 +116,10 @@ describe('M5 arsenal sound ids', () => {
   });
 
   it('keeps aliases pointing at real recipes without shadowing M2 recipes or aliases', () => {
-    for (const [from, to] of [...Object.entries(ELEMENT_SYNTH_ALIASES), ...Object.entries(GEAR_SYNTH_ALIASES)]) {
+    for (const [from, to] of [
+      ...Object.entries(ELEMENT_SYNTH_ALIASES),
+      ...Object.entries(GEAR_SYNTH_ALIASES),
+    ]) {
       expect(Object.hasOwn(SYNTH_DEFS, from), from).toBe(false);
       expect(Object.hasOwn(SYNTH_DEFS, to), to).toBe(true);
     }
@@ -194,7 +212,8 @@ class FakeSource extends FakeNode {
     super(log);
   }
   start(t: number, offset = 0): void {
-    if (!Number.isFinite(t) || t < 0 || !Number.isFinite(offset) || offset < 0) this.log.push(`start(${t}, ${offset})`);
+    if (!Number.isFinite(t) || t < 0 || !Number.isFinite(offset) || offset < 0)
+      this.log.push(`start(${t}, ${offset})`);
     this.starts.push(t);
   }
   stop(t: number): void {
@@ -219,7 +238,11 @@ class FakeOfflineContext {
     return Object.assign(new FakeNode(this.errors), { gain: this.param() });
   }
   createBiquadFilter() {
-    return Object.assign(new FakeNode(this.errors), { type: 'lowpass', frequency: this.param(), Q: this.param() });
+    return Object.assign(new FakeNode(this.errors), {
+      type: 'lowpass',
+      frequency: this.param(),
+      Q: this.param(),
+    });
   }
   createOscillator() {
     return Object.assign(new FakeSource(this.errors, this.starts), { type: 'sine', frequency: this.param() });

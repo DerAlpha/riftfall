@@ -70,11 +70,15 @@ export const RIFT_FORGE_MACHINE = {
   layout: {
     plinth: { height: 0.16, inset: 0.02 },
     base: { width: 2.95, depth: 1.5, height: 0.56 },
-    tower: { width: 1.7, depth: 0.8, back: -0.84, top: 3.55 },
+    tower: { width: 1.9, depth: 0.8, back: -0.84, top: 3.55 },
     crown: { height: 0.3, overhang: 0.07 },
     pylon: { x: 1.3, width: 0.34, depth: 0.7, back: -0.55, top: 2.62 },
     /** Rift core window on the tower front. */
-    core: { y: 2.38, radius: 0.56, ring: 0.085, segments: 48, recess: 0.1 },
+    core: { y: 2.4, radius: 0.62, ring: 0.095, segments: 48, recess: 0.1, corona: 1.9 },
+    /** Coolant tanks behind the pylons with glowing rift-fluid windows. */
+    tank: { x: 1.28, z: -0.6, radius: 0.2, height: 2.1, window: 0.06 },
+    /** Exhaust stack on the crown. */
+    stack: { radius: 0.2, height: 0.5, z: -0.45 },
     anvil: {
       z: 0.34,
       pedestal: [0.52, 0.34, 0.42] as Vec3Tuple,
@@ -95,12 +99,12 @@ export const RIFT_FORGE_MACHINE = {
       liftDeg: 105,
       /** The arms rear back this much further while the weapon is fed in (deg). */
       cockDeg: 12,
-      beam: 0.12,
-      shoulder: 0.15,
-      head: [0.3, 0.2, 0.3] as Vec3Tuple,
+      beam: 0.15,
+      shoulder: 0.17,
+      head: [0.36, 0.24, 0.34] as Vec3Tuple,
     },
     /** Front panel (tier prices) on the base: size, height of its center. */
-    panel: { width: 1.9, height: 0.36, y: 0.37, canvas: [512, 96] as readonly [number, number] },
+    panel: { width: 2.2, height: 0.4, y: 0.4, canvas: [640, 116] as readonly [number, number] },
     strip: { width: 0.05, inset: 0.05 },
     vent: { width: 0.5, height: 0.9, y: 1.2, slats: 6 },
   },
@@ -110,6 +114,8 @@ export const RIFT_FORGE_MACHINE = {
   coreColor: [0.62, 0.2, 1.0] as Rgb,
   coreHotColor: [1.0, 0.55, 0.16] as Rgb,
   coreIntensity: 1.6,
+  /** Soft additive corona around the core ring (fraction of the core intensity). */
+  corona: { intensity: 0.55, forgingBoost: 2 },
   /** Heat vents on the tower flanks (dark when idle). */
   ventColor: [1.0, 0.3, 0.04] as Rgb,
   ventIntensity: 6,
@@ -137,7 +143,7 @@ export const RIFT_FORGE_MACHINE = {
     // Ladedock (the last blast door): against the loading platform, west of the entrance arch.
     lab: [{ id: 'forge_dock', position: [-10.2, 0, -26.5], facing: 'pz', zone: 'dock' }],
     // Calibration hall: west of the spawn, facing east across the spawn area.
-    testroom: [{ id: 'forge_test', position: [-9.4, 0, 22.5], facing: 'px', zone: 'hall' }],
+    testroom: [{ id: 'forge_test', position: [-14.2, 0, 25.2], facing: 'px', zone: 'hall' }],
   } as Readonly<Record<string, readonly WorkshopPlacementDef[]>>,
 } as const;
 
@@ -201,7 +207,7 @@ export const WORKBENCH = {
   },
   placements: {
     // Atrium (mid-map, behind the first door): on the east wall between the rift tear and the hall.
-    lab: [{ id: 'bench_atrium', position: [14, 0, 2.2], facing: 'nx', zone: 'atrium' }],
+    lab: [{ id: 'bench_atrium', position: [14, 0, 3.6], facing: 'nx', zone: 'atrium' }],
     // Calibration hall: east of the spawn, facing west.
     testroom: [{ id: 'bench_test', position: [10.8, 0, 25.4], facing: 'nx', zone: 'hall' }],
   } as Readonly<Record<string, readonly WorkshopPlacementDef[]>>,

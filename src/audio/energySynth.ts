@@ -40,11 +40,30 @@ function clunk(k: Kit, t: number, seat: number, ring: number, peak = 1, pan = 0)
 
 /** Pneumatic hiss (cells, canisters, vents). */
 function hiss(k: Kit, t: number, from: number, to: number, decay: number, peak: number, pan = 0): void {
-  k.noise(t, { color: 'white', filter: 'bandpass', freq: from, sweepTo: to, q: 0.8, attack: 0.005, decay, peak, pan });
+  k.noise(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: from,
+    sweepTo: to,
+    q: 0.8,
+    attack: 0.005,
+    decay,
+    peak,
+    pan,
+  });
 }
 
 function whoosh(k: Kit, t: number, from: number, to: number, decay: number, peak: number): void {
-  k.noise(t, { color: 'pink', filter: 'bandpass', freq: from, sweepTo: to, q: 1.1, attack: decay * 0.4, decay, peak });
+  k.noise(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: from,
+    sweepTo: to,
+    q: 1.1,
+    attack: decay * 0.4,
+    decay,
+    peak,
+  });
 }
 
 /** Energy cell out: latch, hiss, the cell slides free, power-down blip. */
@@ -53,7 +72,16 @@ function cellOut(o: { seat: number; ring: number; hissFrom: number; hissTo: numb
     const k = kitOf(g);
     k.click(t, 3800, 0.004, 0.6);
     hiss(k, t + 0.01, o.hissFrom, o.hissTo, 0.2, 0.55);
-    k.noise(t + 0.06, { color: 'pink', filter: 'bandpass', freq: 1400, sweepTo: 900, q: 1.8, attack: 0.01, decay: 0.06, peak: 0.35 });
+    k.noise(t + 0.06, {
+      color: 'pink',
+      filter: 'bandpass',
+      freq: 1400,
+      sweepTo: 900,
+      q: 1.8,
+      attack: 0.01,
+      decay: 0.06,
+      peak: 0.35,
+    });
     clunk(k, t + 0.14, o.seat, o.ring, 0.55);
     if (o.blip) k.tone(t, 'sine', o.blip, o.blip * 0.25, 0.003, 0.15, 0.15);
   };
@@ -63,7 +91,16 @@ function cellOut(o: { seat: number; ring: number; hissFrom: number; hissTo: numb
 function cellIn(o: { seat: number; ring: number; chirp: number; hum?: number }): Recipe {
   return (g, t) => {
     const k = kitOf(g);
-    k.noise(t, { color: 'pink', filter: 'bandpass', freq: 900, sweepTo: 1500, q: 1.8, attack: 0.01, decay: 0.05, peak: 0.4 });
+    k.noise(t, {
+      color: 'pink',
+      filter: 'bandpass',
+      freq: 900,
+      sweepTo: 1500,
+      q: 1.8,
+      attack: 0.01,
+      decay: 0.05,
+      peak: 0.4,
+    });
     const b = k.bus({ drive: 1.6 });
     clunk(b, t + 0.08, o.seat, o.ring, 1.05);
     k.tone(t + 0.16, 'sine', o.chirp, o.chirp * 2, 0.004, 0.05, 0.22);
@@ -85,10 +122,34 @@ const plasmaFire: Recipe = (g, t) => {
   b.fm(t, 900 * k.j(0.05), 1.41, 5, 0.001, 0.09, 0.35, 0, 180);
   b.thump(t, { f0: 120 * k.j(0.05), f1: 48, pitchTime: 0.03, decay: 0.14, peak: 1, drive: 2.5 });
   b.thump(t, { f0: 60, f1: 38, pitchTime: 0.05, decay: 0.18, peak: 0.6 });
-  b.noise(t + 0.002, { color: 'pink', filter: 'bandpass', freq: 1800, sweepTo: 500, q: 1, decay: 0.08, peak: 0.6 });
+  b.noise(t + 0.002, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 1800,
+    sweepTo: 500,
+    q: 1,
+    decay: 0.08,
+    peak: 0.6,
+  });
   k.crackle(t + 0.004, 0.06, 150, 5000, 3, 0.2, 0.5);
-  b.noise(t + 0.005, { color: 'pink', filter: 'bandpass', freq: 2200, q: 1, decay: 0.03, peak: 0.25, pan: -0.6 });
-  b.noise(t + 0.009, { color: 'pink', filter: 'bandpass', freq: 1700, q: 1, decay: 0.035, peak: 0.25, pan: 0.6 });
+  b.noise(t + 0.005, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 2200,
+    q: 1,
+    decay: 0.03,
+    peak: 0.25,
+    pan: -0.6,
+  });
+  b.noise(t + 0.009, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 1700,
+    q: 1,
+    decay: 0.035,
+    peak: 0.25,
+    pan: 0.6,
+  });
 };
 
 /** Coils recharge between bolts: a quiet rising chirp, a vent tick. */
@@ -97,7 +158,15 @@ const plasmaMech: Recipe = (g, t) => {
   k.tone(t + 0.04, 'sine', 500 * k.j(0.05), 1500, 0.02, 0.1, 0.25, 0.2);
   k.tone(t + 0.04, 'triangle', 1000, 3000, 0.02, 0.08, 0.08, 0.2);
   k.click(t + 0.12, 4200, 0.003, 0.3, 0.25);
-  k.noise(t + 0.12, { color: 'white', filter: 'bandpass', freq: 6000, q: 2, decay: 0.05, peak: 0.1, pan: 0.25 });
+  k.noise(t + 0.12, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 6000,
+    q: 2,
+    decay: 0.05,
+    peak: 0.1,
+    pan: 0.25,
+  });
 };
 
 const plasmaEquip: Recipe = (g, t) => {
@@ -112,7 +181,17 @@ const plasmaEquip: Recipe = (g, t) => {
 const plasmaVent: Recipe = (g, t) => {
   const k = kitOf(g);
   k.click(t, 3600, 0.004, 0.5);
-  k.swell(t + 0.01, { color: 'white', filter: 'highpass', freq: 2500, sweepTo: 3800, attack: 0.01, hold: 0.12, release: 0.3, peak: 0.55, pan: 0.2 });
+  k.swell(t + 0.01, {
+    color: 'white',
+    filter: 'highpass',
+    freq: 2500,
+    sweepTo: 3800,
+    attack: 0.01,
+    hold: 0.12,
+    release: 0.3,
+    peak: 0.55,
+    pan: 0.2,
+  });
   k.bell(t + 0.32, 2600, 0.25, 0.16);
 };
 
@@ -136,7 +215,12 @@ const lightningStrike: Recipe = (g, t) => {
 const lightningLoop: Recipe = (g, t) => {
   const k = kitOf(g);
   const tonal = k.loopBus(t);
-  tonal.drone(t, LD, 100, 0.16, { type: 'sawtooth', lowpass: 900, detune: 10, tremolo: { rate: 13, depth: 0.3 } });
+  tonal.drone(t, LD, 100, 0.16, {
+    type: 'sawtooth',
+    lowpass: 900,
+    detune: 10,
+    tremolo: { rate: 13, depth: 0.3 },
+  });
   tonal.drone(t, LD, 50, 0.1, { type: 'square', lowpass: 300 });
   tonal.drone(t, LD, 300, 0.04, { type: 'sawtooth', lowpass: 2400, tremolo: { rate: 23, depth: 0.8 } });
   k.bed(t, LD, 'white', 'highpass', 4500, 0.7, 0.08, { gainLfo: { rate: 23, depth: 0.6 } });
@@ -190,19 +274,46 @@ const railFire: Recipe = (g, t) => {
   b.click(t, 7000, 0.002, 1);
   b.noise(t, { color: 'white', filter: 'highpass', freq: 3500, attack: 0.0003, decay: 0.02, peak: 1 });
   for (const pan of [-0.4, 0.4]) {
-    k.noise(t + 0.001, { color: 'white', filter: 'bandpass', freq: 9000 * k.j(0.05), sweepTo: 1200, q: 2, attack: 0.001, decay: 0.16, peak: 0.8, pan });
+    k.noise(t + 0.001, {
+      color: 'white',
+      filter: 'bandpass',
+      freq: 9000 * k.j(0.05),
+      sweepTo: 1200,
+      q: 2,
+      attack: 0.001,
+      decay: 0.16,
+      peak: 0.8,
+      pan,
+    });
   }
   k.ring(t, 3100 * k.j(0.03), [1, 1.47, 2.09, 2.76, 3.52], 0.45, 0.22, 0.1);
   b.fm(t, 420, 3.3, 6, 0.001, 0.25, 0.5, 0, 90);
   b.thump(t, { f0: 90, f1: 26, pitchTime: 0.08, decay: 0.55, peak: 1, drive: 2.2 });
   b.thump(t, { f0: 170, f1: 55, pitchTime: 0.025, decay: 0.16, peak: 0.9, drive: 3 });
-  b.noise(t, { color: 'white', filter: 'lowpass', freq: 6000, sweepTo: 1200, attack: 0.0008, decay: 0.05, peak: 0.6 });
+  b.noise(t, {
+    color: 'white',
+    filter: 'lowpass',
+    freq: 6000,
+    sweepTo: 1200,
+    attack: 0.0008,
+    decay: 0.05,
+    peak: 0.6,
+  });
   const e = k.bus({ lowpass: 2000, highpass: 120 });
   for (const [d, gain, pan] of [
     [0.09, 0.22, -0.5],
     [0.2, 0.13, 0.5],
   ] as const) {
-    e.noise(t + d, { color: 'pink', filter: 'bandpass', freq: 700, q: 0.7, attack: 0.004, decay: 0.2, peak: gain, pan });
+    e.noise(t + d, {
+      color: 'pink',
+      filter: 'bandpass',
+      freq: 700,
+      q: 0.7,
+      attack: 0.004,
+      decay: 0.2,
+      peak: gain,
+      pan,
+    });
   }
 };
 
@@ -225,7 +336,16 @@ const railCharge: Recipe = (g, t) => {
 /** After the shot: coolant vents, the rails tick as they cool, a discharge whine falls. */
 const railMech: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.swell(t + 0.05, { color: 'white', filter: 'highpass', freq: 3000, attack: 0.01, hold: 0.1, release: 0.35, peak: 0.5, pan: 0.3 });
+  k.swell(t + 0.05, {
+    color: 'white',
+    filter: 'highpass',
+    freq: 3000,
+    attack: 0.01,
+    hold: 0.1,
+    release: 0.35,
+    peak: 0.5,
+    pan: 0.3,
+  });
   k.tone(t + 0.01, 'sine', 2600, 700, 0.002, 0.3, 0.12);
   k.ticks(t + 0.15, 6, 0.5, 5200, 8, 0.18, 0.3);
   clunk(k, t + 0.12, 200, 1200, 0.6, 0.2);
@@ -262,7 +382,16 @@ const flameIgnite: Recipe = (g, t) => {
   k.click(t, 5000, 0.003, 0.7);
   k.crackle(t, 0.04, 200, 5000, 3, 0.35, 0.3);
   const b = k.bus({ drive: 1.6, lowpass: 9000 });
-  b.swell(t + 0.02, { color: 'pink', filter: 'lowpass', freq: 250, sweepTo: 3000, attack: 0.07, hold: 0.08, release: 0.3, peak: 1 });
+  b.swell(t + 0.02, {
+    color: 'pink',
+    filter: 'lowpass',
+    freq: 250,
+    sweepTo: 3000,
+    attack: 0.07,
+    hold: 0.08,
+    release: 0.3,
+    peak: 1,
+  });
   b.thump(t + 0.03, { f0: 90, f1: 40, pitchTime: 0.06, decay: 0.3, peak: 0.9, drive: 2 });
   b.noise(t + 0.03, { color: 'brown', filter: 'lowpass', freq: 400, attack: 0.02, decay: 0.35, peak: 0.8 });
 };
@@ -274,8 +403,16 @@ const flameLoop: Recipe = (g, t) => {
     freqLfo: { rate: 3.5, depth: 250 },
     gainLfo: { rate: 11, depth: 0.25 },
   });
-  k.bed(t, LD, 'pink', 'bandpass', 900, 0.7, 0.7, { freqLfo: { rate: 1.5, depth: 400 }, gainLfo: { rate: 9, depth: 0.3 }, pan: -0.55 });
-  k.bed(t, LD, 'pink', 'bandpass', 1300, 0.7, 0.55, { freqLfo: { rate: 2.5, depth: 500 }, gainLfo: { rate: 13, depth: 0.3 }, pan: 0.55 });
+  k.bed(t, LD, 'pink', 'bandpass', 900, 0.7, 0.7, {
+    freqLfo: { rate: 1.5, depth: 400 },
+    gainLfo: { rate: 9, depth: 0.3 },
+    pan: -0.55,
+  });
+  k.bed(t, LD, 'pink', 'bandpass', 1300, 0.7, 0.55, {
+    freqLfo: { rate: 2.5, depth: 500 },
+    gainLfo: { rate: 13, depth: 0.3 },
+    pan: 0.55,
+  });
   k.bed(t, LD, 'white', 'highpass', 4000, 0.7, 0.1);
   k.bed(t, LD, 'brown', 'lowpass', 120, 0.7, 0.4);
   k.crackle(t, LD, 25, 2500, 2, 0.35, 0.6, 0.5);
@@ -287,7 +424,15 @@ const flameStop: Recipe = (g, t) => {
   k.click(t, 2600, 0.006, 0.5);
   k.noise(t, { color: 'white', filter: 'bandpass', freq: 3000, q: 0.8, decay: 0.12, peak: 0.35 });
   k.noise(t + 0.01, { color: 'pink', filter: 'lowpass', freq: 600, decay: 0.15, peak: 0.7 });
-  k.noise(t + 0.03, { color: 'pink', filter: 'bandpass', freq: 700, q: 1, attack: 0.02, decay: 0.25, peak: 0.3 });
+  k.noise(t + 0.03, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 700,
+    q: 1,
+    attack: 0.02,
+    decay: 0.25,
+    peak: 0.3,
+  });
   k.ticks(t + 0.02, 5, 0.3, 2400, 2, 0.2, 0.4);
 };
 
@@ -296,7 +441,16 @@ const flameEquip: Recipe = (g, t) => {
   whoosh(k, t, 420, 1100, 0.14, 0.5);
   k.click(t + 0.1, 4500, 0.003, 0.6);
   k.click(t + 0.22, 4500, 0.003, 0.6);
-  k.swell(t + 0.25, { color: 'pink', filter: 'lowpass', freq: 300, sweepTo: 1500, attack: 0.04, hold: 0.05, release: 0.2, peak: 0.5 });
+  k.swell(t + 0.25, {
+    color: 'pink',
+    filter: 'lowpass',
+    freq: 300,
+    sweepTo: 1500,
+    attack: 0.04,
+    hold: 0.05,
+    release: 0.2,
+    peak: 0.5,
+  });
   k.noise(t + 0.25, { color: 'white', filter: 'highpass', freq: 3500, attack: 0.02, decay: 0.3, peak: 0.1 });
   clunk(k, t + 0.45, 190, 900, 0.7);
 };
@@ -313,14 +467,32 @@ const flameTankOn: Recipe = (g, t) => {
   const b = k.bus({ drive: 1.6 });
   clunk(b, t, 190, 800, 1.05);
   k.ticks(t + 0.06, 4, 0.12, 3500, 6, 0.3);
-  k.swell(t + 0.2, { color: 'white', filter: 'bandpass', freq: 2000, sweepTo: 3500, attack: 0.05, hold: 0.1, release: 0.15, peak: 0.35 });
+  k.swell(t + 0.2, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 2000,
+    sweepTo: 3500,
+    attack: 0.05,
+    hold: 0.1,
+    release: 0.15,
+    peak: 0.35,
+  });
 };
 
 const flamePilot: Recipe = (g, t) => {
   const k = kitOf(g);
   k.click(t, 4500, 0.003, 0.6);
   k.click(t + 0.1, 4500, 0.003, 0.6);
-  k.swell(t + 0.14, { color: 'pink', filter: 'lowpass', freq: 300, sweepTo: 1600, attack: 0.04, hold: 0.05, release: 0.22, peak: 0.6 });
+  k.swell(t + 0.14, {
+    color: 'pink',
+    filter: 'lowpass',
+    freq: 300,
+    sweepTo: 1600,
+    attack: 0.04,
+    hold: 0.05,
+    release: 0.22,
+    peak: 0.6,
+  });
   k.noise(t + 0.14, { color: 'white', filter: 'highpass', freq: 3500, attack: 0.02, decay: 0.25, peak: 0.1 });
 };
 
@@ -333,13 +505,45 @@ const launcherFire: Recipe = (g, t) => {
   const k = kitOf(g);
   const b = k.bus({ drive: 1.6, lowpass: 7000 });
   b.thump(t, { f0: 190 * k.j(0.05), f1: 75, pitchTime: 0.05, decay: 0.2, peak: 1, drive: 1.8 });
-  b.noise(t, { color: 'pink', filter: 'bandpass', freq: 260 * k.j(0.05), q: 6, attack: 0.002, decay: 0.12, peak: 0.9 });
-  b.noise(t, { color: 'pink', filter: 'bandpass', freq: 520 * k.j(0.05), q: 5, attack: 0.002, decay: 0.08, peak: 0.4 });
+  b.noise(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 260 * k.j(0.05),
+    q: 6,
+    attack: 0.002,
+    decay: 0.12,
+    peak: 0.9,
+  });
+  b.noise(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 520 * k.j(0.05),
+    q: 5,
+    attack: 0.002,
+    decay: 0.08,
+    peak: 0.4,
+  });
   b.thump(t, { f0: 60, f1: 35, pitchTime: 0.08, decay: 0.3, peak: 0.8 });
   b.noise(t + 0.004, { color: 'pink', filter: 'lowpass', freq: 1200, sweepTo: 300, decay: 0.1, peak: 0.5 });
   b.click(t, 2000, 0.006, 0.5);
-  b.noise(t + 0.006, { color: 'pink', filter: 'bandpass', freq: 900, q: 1, decay: 0.05, peak: 0.25, pan: -0.6 });
-  b.noise(t + 0.01, { color: 'pink', filter: 'bandpass', freq: 750, q: 1, decay: 0.05, peak: 0.25, pan: 0.6 });
+  b.noise(t + 0.006, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 900,
+    q: 1,
+    decay: 0.05,
+    peak: 0.25,
+    pan: -0.6,
+  });
+  b.noise(t + 0.01, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 750,
+    q: 1,
+    decay: 0.05,
+    peak: 0.25,
+    pan: 0.6,
+  });
 };
 
 /** The drum indexes (viewmodel: 0.1 s after the shot). */
@@ -367,7 +571,15 @@ const launcherEquip: Recipe = (g, t) => {
 /** A 40 mm round pushed into the drum: slide, hollow thunk, detent. */
 const launcherShellIn: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.noise(t, { color: 'pink', filter: 'bandpass', freq: 900 * k.j(0.08), q: 1.5, attack: 0.01, decay: 0.04, peak: 0.6 });
+  k.noise(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 900 * k.j(0.08),
+    q: 1.5,
+    attack: 0.01,
+    decay: 0.04,
+    peak: 0.6,
+  });
   k.thump(t + 0.03, { f0: 210 * k.j(0.05), f1: 140, pitchTime: 0.01, decay: 0.05, peak: 0.85 });
   k.click(t + 0.03, 2600, 0.006, 0.6);
   k.ring(t + 0.03, 1000 * k.j(0.05), [1, 2.2], 0.06, 0.2);
@@ -393,14 +605,33 @@ const launcherWind: Recipe = (g, t) => {
 /** Inhale, then a sub drop with a warped "wom", an FM growl and a thin eerie shimmer. */
 const blackholeFire: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.swell(t, { color: 'white', filter: 'bandpass', freq: 400, sweepTo: 3000, q: 1, attack: 0.12, hold: 0.12, release: 0.02, peak: 0.5, expRise: true });
+  k.swell(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 400,
+    sweepTo: 3000,
+    q: 1,
+    attack: 0.12,
+    hold: 0.12,
+    release: 0.02,
+    peak: 0.5,
+    expRise: true,
+  });
   const t0 = t + 0.12;
   const b = k.bus({ drive: 1.8, lowpass: 9000 });
   b.click(t0, 5000, 0.003, 0.5);
   b.thump(t0, { f0: 80, f1: 18, pitchTime: 0.25, decay: 0.8, peak: 1, drive: 2 });
   b.note(t0, 'sine', 110, 40, 0.005, 0.4, 0.3, 0.5, { vibrato: { rate: 7, depth: 6 } });
   b.fm(t0, 70, 1.5, 4, 0.004, 0.6, 0.35, 0, 30);
-  b.noise(t0, { color: 'brown', filter: 'lowpass', freq: 400, sweepTo: 60, attack: 0.004, decay: 0.7, peak: 0.8 });
+  b.noise(t0, {
+    color: 'brown',
+    filter: 'lowpass',
+    freq: 400,
+    sweepTo: 60,
+    attack: 0.004,
+    decay: 0.7,
+    peak: 0.8,
+  });
   k.ringMod(t0 + 0.02, 1200, 330, 0.01, 0.5, 0.12, { carrierTo: 400, modTo: 90, pan: -0.3 });
   k.ringMod(t0 + 0.05, 900, 250, 0.01, 0.45, 0.09, { carrierTo: 300, modTo: 70, pan: 0.3 });
 };
@@ -415,9 +646,30 @@ const blackholeMech: Recipe = (g, t) => {
 
 const blackholeEquip: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.swell(t, { color: 'brown', filter: 'lowpass', freq: 150, sweepTo: 500, attack: 0.5, hold: 0.5, release: 0.2, peak: 0.6, expRise: true });
+  k.swell(t, {
+    color: 'brown',
+    filter: 'lowpass',
+    freq: 150,
+    sweepTo: 500,
+    attack: 0.5,
+    hold: 0.5,
+    release: 0.2,
+    peak: 0.6,
+    expRise: true,
+  });
   k.tone(t + 0.02, 'sine', 300, 1600, 0.5, 0.15, 0.2);
-  k.swell(t + 0.1, { color: 'white', filter: 'bandpass', freq: 800, sweepTo: 4000, q: 2, attack: 0.4, hold: 0.4, release: 0.05, peak: 0.15, expRise: true });
+  k.swell(t + 0.1, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 800,
+    sweepTo: 4000,
+    q: 2,
+    attack: 0.4,
+    hold: 0.4,
+    release: 0.05,
+    peak: 0.15,
+    expRise: true,
+  });
   clunk(k, t + 0.6, 170, 1000, 0.9);
 };
 
@@ -431,7 +683,16 @@ const blackholeCellOut: Recipe = (g, t) => {
 
 const blackholeCellIn: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.noise(t, { color: 'pink', filter: 'bandpass', freq: 800, sweepTo: 1300, q: 1.8, attack: 0.01, decay: 0.05, peak: 0.4 });
+  k.noise(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 800,
+    sweepTo: 1300,
+    q: 1.8,
+    attack: 0.01,
+    decay: 0.05,
+    peak: 0.4,
+  });
   clunk(k, t + 0.08, 160, 900, 1.05);
   k.note(t + 0.1, 'sine', 55, 110, 0.2, 0.25, 0.15, 0.35);
 };
@@ -452,32 +713,91 @@ const riftFire: Recipe = (g, t) => {
   const b = k.bus({ drive: 2, lowpass: 15000 });
   b.click(t, 6500, 0.002, 1);
   b.noise(t, { color: 'white', filter: 'highpass', freq: 3000, attack: 0.0004, decay: 0.015, peak: 0.8 });
-  const tear = k.bus({ comb: { delay: 0.004, sweepTo: 0.0008, sweepTime: 0.3, feedback: 0.72, damp: 7000, wet: 0.9, start: t } });
-  tear.noise(t, { color: 'white', filter: 'bandpass', freq: 2500, q: 0.8, attack: 0.005, decay: 0.35, peak: 0.55, pan: -0.2 });
-  tear.noise(t + 0.01, { color: 'pink', filter: 'bandpass', freq: 1600, q: 0.8, attack: 0.005, decay: 0.3, peak: 0.45, pan: 0.2 });
+  const tear = k.bus({
+    comb: { delay: 0.004, sweepTo: 0.0008, sweepTime: 0.3, feedback: 0.72, damp: 7000, wet: 0.9, start: t },
+  });
+  tear.noise(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 2500,
+    q: 0.8,
+    attack: 0.005,
+    decay: 0.35,
+    peak: 0.55,
+    pan: -0.2,
+  });
+  tear.noise(t + 0.01, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 1600,
+    q: 0.8,
+    attack: 0.005,
+    decay: 0.3,
+    peak: 0.45,
+    pan: 0.2,
+  });
   let at = t + 0.02;
   let gap = 0.06;
   for (let i = 0; i < 6; i++) {
-    k.noise(at, { color: 'white', filter: 'bandpass', freq: 1800 * k.j(0.2), q: 2, attack: 0.001, decay: 0.012, peak: 0.45 * (1 - i * 0.12), pan: i % 2 ? 0.5 : -0.5 });
+    k.noise(at, {
+      color: 'white',
+      filter: 'bandpass',
+      freq: 1800 * k.j(0.2),
+      q: 2,
+      attack: 0.001,
+      decay: 0.012,
+      peak: 0.45 * (1 - i * 0.12),
+      pan: i % 2 ? 0.5 : -0.5,
+    });
     at += gap;
     gap *= 0.76;
   }
   b.ringMod(t, 900, 173, 0.002, 0.4, 0.3, { type: 'sawtooth', carrierTo: 120, modTo: 40 });
   b.thump(t, { f0: 110, f1: 30, pitchTime: 0.06, decay: 0.45, peak: 1, drive: 2.5 });
-  b.noise(t, { color: 'brown', filter: 'lowpass', freq: 500, sweepTo: 80, attack: 0.004, decay: 0.5, peak: 0.6 });
+  b.noise(t, {
+    color: 'brown',
+    filter: 'lowpass',
+    freq: 500,
+    sweepTo: 80,
+    attack: 0.004,
+    decay: 0.5,
+    peak: 0.6,
+  });
 };
 
 /** Rift energy settles: a reversed shimmer, a ringing tone, a soft thud. */
 const riftMech: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.swell(t + 0.05, { color: 'white', filter: 'bandpass', freq: 5000, q: 3, attack: 0.15, hold: 0.15, release: 0.05, peak: 0.2, expRise: true, pan: 0.2 });
+  k.swell(t + 0.05, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 5000,
+    q: 3,
+    attack: 0.15,
+    hold: 0.15,
+    release: 0.05,
+    peak: 0.2,
+    expRise: true,
+    pan: 0.2,
+  });
   k.note(t + 0.2, 'sine', 500, 450, 0.01, 0.1, 0.3, 0.12, { vibrato: { rate: 6, depth: 8 } });
   k.thump(t + 0.2, { f0: 120, f1: 60, pitchTime: 0.02, decay: 0.08, peak: 0.4 });
 };
 
 const riftEquip: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.swell(t, { color: 'white', filter: 'bandpass', freq: 600, sweepTo: 4000, q: 1.2, attack: 0.3, hold: 0.3, release: 0.1, peak: 0.45, expRise: true });
+  k.swell(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 600,
+    sweepTo: 4000,
+    q: 1.2,
+    attack: 0.3,
+    hold: 0.3,
+    release: 0.1,
+    peak: 0.45,
+    expRise: true,
+  });
   k.ringMod(t + 0.1, 400, 90, 0.2, 0.3, 0.12, { carrierTo: 1200 });
   k.thump(t + 0.32, { f0: 110, f1: 40, pitchTime: 0.04, decay: 0.25, peak: 0.8, drive: 2 });
   clunk(k, t + 0.45, 190, 1100, 0.7);
@@ -544,7 +864,9 @@ const harpMech: Recipe = (g, t) => {
 const harpEquip: Recipe = (g, t) => {
   const k = kitOf(g);
   const scale = [62, 64, 65, 67, 69, 71, 72, 74];
-  scale.forEach((note, i) => k.pluck(t + 0.05 + i * 0.045, midi(note), 0.6, 0.18, -0.6 + (1.2 * i) / (scale.length - 1), 0.7));
+  scale.forEach((note, i) =>
+    k.pluck(t + 0.05 + i * 0.045, midi(note), 0.6, 0.18, -0.6 + (1.2 * i) / (scale.length - 1), 0.7),
+  );
   k.note(t, 'triangle', midi(50), midi(50), 0.2, 0.3, 0.3, 0.1);
   k.click(t + 0.5, 4000, 0.004, 0.4);
 };
@@ -567,7 +889,9 @@ const harpCellIn: Recipe = (g, t) => {
 const harpStrum: Recipe = (g, t) => {
   const k = kitOf(g);
   const notes = [74, 69, 65, 62, 57, 50];
-  notes.forEach((note, i) => k.pluck(t + i * 0.02, midi(note), 0.8, 0.2, 0.5 - (i / (notes.length - 1)) * 1, 0.8));
+  notes.forEach((note, i) =>
+    k.pluck(t + i * 0.02, midi(note), 0.8, 0.2, 0.5 - (i / (notes.length - 1)) * 1, 0.8),
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -581,7 +905,15 @@ export function icePing(k: Kit, t: number, f: number, decay: number, peak: numbe
 }
 
 /** A cascade of glassy pings over `span` s (frequencies log-random in [lo, hi]). */
-export function iceCascade(k: Kit, t: number, count: number, span: number, lo: number, hi: number, peak: number): void {
+export function iceCascade(
+  k: Kit,
+  t: number,
+  count: number,
+  span: number,
+  lo: number,
+  hi: number,
+  peak: number,
+): void {
   for (let i = 0; i < count; i++) {
     const at = t + Math.pow(k.rng.next(), 1.6) * span;
     const f = lo * Math.pow(hi / lo, k.rng.next());
@@ -596,7 +928,16 @@ const cryoFire: Recipe = (g, t) => {
   b.click(t, 7000, 0.002, 0.7);
   b.thump(t, { f0: 130, f1: 50, pitchTime: 0.04, decay: 0.2, peak: 0.9, drive: 1.5 });
   b.noise(t, { color: 'pink', filter: 'lowpass', freq: 1500, sweepTo: 400, decay: 0.12, peak: 0.6 });
-  k.noise(t + 0.003, { color: 'white', filter: 'bandpass', freq: 7000, sweepTo: 3500, q: 1.2, attack: 0.002, decay: 0.3, peak: 0.5 });
+  k.noise(t + 0.003, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 7000,
+    sweepTo: 3500,
+    q: 1.2,
+    attack: 0.002,
+    decay: 0.3,
+    peak: 0.5,
+  });
   iceCascade(k, t + 0.005, 14, 0.35, 2500, 9000, 0.3);
   k.bell(t + 0.01, 1318, 0.6, 0.22, -0.2);
   k.bell(t + 0.03, 1975, 0.5, 0.14, 0.2);
@@ -605,7 +946,16 @@ const cryoFire: Recipe = (g, t) => {
 
 const cryoMech: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.swell(t + 0.04, { color: 'white', filter: 'highpass', freq: 4000, attack: 0.01, hold: 0.08, release: 0.25, peak: 0.45, pan: 0.25 });
+  k.swell(t + 0.04, {
+    color: 'white',
+    filter: 'highpass',
+    freq: 4000,
+    attack: 0.01,
+    hold: 0.08,
+    release: 0.25,
+    peak: 0.45,
+    pan: 0.25,
+  });
   k.ticks(t + 0.06, 5, 0.3, 6000, 7, 0.22, 0.3);
   k.bell(t + 0.1, 2637, 0.2, 0.06);
 };
@@ -613,7 +963,15 @@ const cryoMech: Recipe = (g, t) => {
 const cryoEquip: Recipe = (g, t) => {
   const k = kitOf(g);
   whoosh(k, t, 500, 1400, 0.12, 0.45);
-  k.swell(t + 0.08, { color: 'white', filter: 'highpass', freq: 3500, attack: 0.05, hold: 0.15, release: 0.2, peak: 0.35 });
+  k.swell(t + 0.08, {
+    color: 'white',
+    filter: 'highpass',
+    freq: 3500,
+    attack: 0.05,
+    hold: 0.15,
+    release: 0.2,
+    peak: 0.35,
+  });
   k.bell(t + 0.2, 1568, 0.5, 0.2, -0.2);
   k.bell(t + 0.26, 2349, 0.45, 0.14, 0.2);
   clunk(k, t + 0.45, 210, 1400, 0.8);
@@ -630,14 +988,31 @@ const cryoCanisterOut: Recipe = (g, t) => {
 const cryoCanisterIn: Recipe = (g, t) => {
   const k = kitOf(g);
   clunk(k.bus({ drive: 1.5 }), t + 0.04, 210, 1300, 1.05);
-  k.swell(t + 0.08, { color: 'white', filter: 'highpass', freq: 4500, attack: 0.02, hold: 0.06, release: 0.15, peak: 0.3 });
+  k.swell(t + 0.08, {
+    color: 'white',
+    filter: 'highpass',
+    freq: 4500,
+    attack: 0.02,
+    hold: 0.06,
+    release: 0.15,
+    peak: 0.3,
+  });
   k.bell(t + 0.2, 2093, 0.35, 0.14);
 };
 
 /** Fins deploy: a metallic "shing" and an icy chime. */
 const cryoFins: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.noise(t, { color: 'white', filter: 'bandpass', freq: 6000, sweepTo: 9000, q: 5, attack: 0.005, decay: 0.15, peak: 0.45 });
+  k.noise(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 6000,
+    sweepTo: 9000,
+    q: 5,
+    attack: 0.005,
+    decay: 0.15,
+    peak: 0.45,
+  });
   k.ring(t, 3400 * k.j(0.03), [1, 1.5, 2.2], 0.25, 0.25);
   k.bell(t + 0.08, 2637, 0.35, 0.14);
 };
@@ -677,8 +1052,9 @@ function step(duration: number, recipe: Recipe, level = 0.85): SynthDef {
   return { variants: 1, duration, channels: 1, level, recipe };
 }
 
+/** Weapon loops: textures below ~10 kHz, rendered at half rate (SynthDef.rate). */
 function loop(recipe: Recipe, level = 0.85): SynthDef {
-  return { variants: 1, duration: LD, channels: 2, level, loop: true, recipe };
+  return { variants: 1, duration: LD, channels: 2, level, loop: true, rate: AUDIO.synth.darkRate, recipe };
 }
 
 export const ENERGY_WEAPON_SYNTH_DEFS = {
@@ -686,7 +1062,10 @@ export const ENERGY_WEAPON_SYNTH_DEFS = {
   'weapon.plasma.fire': fire(0.4, plasmaFire),
   'weapon.plasma.mech': mech(0.25, plasmaMech, 0.45),
   'weapon.plasma.equip': step(0.6, plasmaEquip, 0.72),
-  'weapon.plasma.magOut': step(0.4, cellOut({ seat: 200, ring: 1200, hissFrom: 3500, hissTo: 1500, blip: 900 })),
+  'weapon.plasma.magOut': step(
+    0.4,
+    cellOut({ seat: 200, ring: 1200, hissFrom: 3500, hissTo: 1500, blip: 900 }),
+  ),
   'weapon.plasma.magIn': step(0.4, cellIn({ seat: 210, ring: 1300, chirp: 700 }), 0.9),
   'weapon.plasma.boltRelease': step(0.6, plasmaVent, 0.8),
   // --- EX-1 „Kettenblitz“ ---
@@ -694,7 +1073,10 @@ export const ENERGY_WEAPON_SYNTH_DEFS = {
   'weapon.chainlightning.mech': mech(0.5, lightningRelease, 0.6),
   'weapon.chainlightning.loop': loop(lightningLoop, 0.8),
   'weapon.chainlightning.equip': step(0.65, lightningEquip, 0.72),
-  'weapon.chainlightning.magOut': step(0.42, cellOut({ seat: 190, ring: 1100, hissFrom: 3000, hissTo: 1400, blip: 700 })),
+  'weapon.chainlightning.magOut': step(
+    0.42,
+    cellOut({ seat: 190, ring: 1100, hissFrom: 3000, hissTo: 1400, blip: 700 }),
+  ),
   'weapon.chainlightning.magIn': step(0.45, cellIn({ seat: 200, ring: 1200, chirp: 600, hum: 100 }), 0.9),
   'weapon.chainlightning.boltRelease': step(0.35, lightningProngs, 0.85),
   // --- RG-9 „Lanze“ ---
@@ -702,7 +1084,10 @@ export const ENERGY_WEAPON_SYNTH_DEFS = {
   'weapon.railgun.mech': mech(0.7, railMech, 0.55),
   'weapon.railgun.charge': loop(railCharge, 0.8),
   'weapon.railgun.equip': step(0.85, railEquip, 0.75),
-  'weapon.railgun.magOut': step(0.42, cellOut({ seat: 180, ring: 1000, hissFrom: 3000, hissTo: 1200, blip: 700 })),
+  'weapon.railgun.magOut': step(
+    0.42,
+    cellOut({ seat: 180, ring: 1000, hissFrom: 3000, hissTo: 1200, blip: 700 }),
+  ),
   'weapon.railgun.magIn': step(0.45, cellIn({ seat: 190, ring: 1100, chirp: 1000, hum: 55 }), 0.9),
   'weapon.railgun.boltRelease': step(0.45, railLock, 0.95),
   // --- FW-4 „Inferno“ ---
@@ -717,7 +1102,13 @@ export const ENERGY_WEAPON_SYNTH_DEFS = {
   'weapon.grenadelauncher.fire': fire(0.5, launcherFire, SV),
   'weapon.grenadelauncher.mech': mech(0.25, launcherMech, 0.55),
   'weapon.grenadelauncher.equip': step(0.65, launcherEquip, 0.75),
-  'weapon.grenadelauncher.shellIn': { variants: 3, duration: 0.2, channels: 1, level: 0.85, recipe: launcherShellIn },
+  'weapon.grenadelauncher.shellIn': {
+    variants: 3,
+    duration: 0.2,
+    channels: 1,
+    level: 0.85,
+    recipe: launcherShellIn,
+  },
   'weapon.grenadelauncher.pump': step(0.5, launcherWind, 0.95),
   // --- SX-0 „Ereignishorizont“ ---
   'weapon.blackhole.fire': { ...fire(1.3, blackholeFire, HV), rate: AUDIO.synth.darkRate },
@@ -750,4 +1141,3 @@ export const ENERGY_WEAPON_SYNTH_DEFS = {
   // --- RX-6 „Kreissäge“ spin loop ---
   'weapon.minigun.spin': loop(minigunSpin, 0.8),
 } as const satisfies Record<string, SynthDef>;
-

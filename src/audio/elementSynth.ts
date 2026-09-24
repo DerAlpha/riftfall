@@ -15,7 +15,16 @@
 import type { StatusId } from '../core/events';
 import { AUDIO } from '../defs/audio';
 import type { ComboId } from '../defs/elements';
-import { LOOP_DURATION, LOOP_SECONDS, LOOP_XF, kitOf, loopHz, midi, type Kit, type Recipe } from './arsenalKit';
+import {
+  LOOP_DURATION,
+  LOOP_SECONDS,
+  LOOP_XF,
+  kitOf,
+  loopHz,
+  midi,
+  type Kit,
+  type Recipe,
+} from './arsenalKit';
 import { iceCascade } from './energySynth';
 import type { SynthDef } from './synth';
 
@@ -40,7 +49,15 @@ function stutter(k: Kit, t: number, count: number, gap: number, freq: number, pe
   let at = t;
   let dt = gap;
   for (let i = 0; i < count; i++) {
-    k.noise(at, { color: 'white', filter: 'bandpass', freq: freq * k.j(0.15), q: 2, attack: 0.001, decay: 0.012, peak: peak * (1 - i * 0.1) });
+    k.noise(at, {
+      color: 'white',
+      filter: 'bandpass',
+      freq: freq * k.j(0.15),
+      q: 2,
+      attack: 0.001,
+      decay: 0.012,
+      peak: peak * (1 - i * 0.1),
+    });
     at += dt;
     dt *= 0.76;
   }
@@ -48,7 +65,18 @@ function stutter(k: Kit, t: number, count: number, gap: number, freq: number, pe
 
 /** Reverse suction: noise rising exponentially with a climbing band, cut at `t + dur`. */
 function inhale(k: Kit, t: number, dur: number, from: number, to: number, peak: number): void {
-  k.swell(t, { color: 'white', filter: 'bandpass', freq: from, sweepTo: to, q: 1, attack: dur, hold: dur, release: 0.015, peak, expRise: true });
+  k.swell(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: from,
+    sweepTo: to,
+    q: 1,
+    attack: dur,
+    hold: dur,
+    release: 0.015,
+    peak,
+    expRise: true,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -61,12 +89,43 @@ const explosionPhysical: Recipe = (g, t) => {
   const b = k.bus({ drive: 2.4, lowpass: 8000 });
   b.click(t, 1800 * k.j(0.1), 0.03, 1);
   b.thump(t, { f0: 120 * k.j(0.08), f1: 24, pitchTime: 0.1, decay: 0.85, peak: 1, drive: 1.8 });
-  b.noise(t, { color: 'brown', filter: 'lowpass', freq: 1800 * k.j(0.1), sweepTo: 100, attack: 0.003, decay: 1.1, peak: 1 });
-  b.noise(t + 0.006, { color: 'pink', filter: 'bandpass', freq: 750 * k.j(0.12), sweepTo: 180, q: 0.8, attack: 0.004, decay: 0.45, peak: 0.65 });
-  b.noise(t, { color: 'white', filter: 'lowpass', freq: 3500, sweepTo: 500, attack: 0.001, decay: 0.12, peak: 0.6 });
+  b.noise(t, {
+    color: 'brown',
+    filter: 'lowpass',
+    freq: 1800 * k.j(0.1),
+    sweepTo: 100,
+    attack: 0.003,
+    decay: 1.1,
+    peak: 1,
+  });
+  b.noise(t + 0.006, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 750 * k.j(0.12),
+    sweepTo: 180,
+    q: 0.8,
+    attack: 0.004,
+    decay: 0.45,
+    peak: 0.65,
+  });
+  b.noise(t, {
+    color: 'white',
+    filter: 'lowpass',
+    freq: 3500,
+    sweepTo: 500,
+    attack: 0.001,
+    decay: 0.12,
+    peak: 0.6,
+  });
   k.ticks(t + 0.08, 16, 0.8, 3000, 3, 0.18);
   for (let i = 0; i < 4; i++) {
-    k.thump(t + 0.15 + k.rng.next() * 0.45, { f0: 200 * k.j(0.2), f1: 90, pitchTime: 0.01, decay: 0.03, peak: 0.2 });
+    k.thump(t + 0.15 + k.rng.next() * 0.45, {
+      f0: 200 * k.j(0.2),
+      f1: 90,
+      pitchTime: 0.01,
+      decay: 0.03,
+      peak: 0.2,
+    });
   }
   k.noise(t + 0.1, { color: 'brown', filter: 'lowpass', freq: 150, attack: 0.1, decay: 1.2, peak: 0.5 });
 };
@@ -76,8 +135,24 @@ const explosionPhysicalSmall: Recipe = (g, t) => {
   const b = k.bus({ drive: 2, lowpass: 9000 });
   b.click(t, 2200 * k.j(0.1), 0.015, 0.9);
   b.thump(t, { f0: 150 * k.j(0.08), f1: 45, pitchTime: 0.04, decay: 0.22, peak: 1, drive: 1.5 });
-  b.noise(t, { color: 'brown', filter: 'lowpass', freq: 2500, sweepTo: 200, attack: 0.002, decay: 0.25, peak: 0.8 });
-  b.noise(t + 0.003, { color: 'pink', filter: 'bandpass', freq: 1000, sweepTo: 300, q: 0.8, decay: 0.1, peak: 0.5 });
+  b.noise(t, {
+    color: 'brown',
+    filter: 'lowpass',
+    freq: 2500,
+    sweepTo: 200,
+    attack: 0.002,
+    decay: 0.25,
+    peak: 0.8,
+  });
+  b.noise(t + 0.003, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 1000,
+    sweepTo: 300,
+    q: 0.8,
+    decay: 0.1,
+    peak: 0.5,
+  });
   k.ticks(t + 0.03, 6, 0.25, 3500, 3, 0.15);
 };
 
@@ -86,8 +161,25 @@ const explosionFire: Recipe = (g, t) => {
   const k = kitOf(g);
   const b = k.bus({ drive: 1.8, lowpass: 9000 });
   b.click(t, 1500, 0.02, 0.7);
-  b.swell(t, { color: 'pink', filter: 'lowpass', freq: 300, sweepTo: 2600, attack: 0.06, hold: 0.12, release: 0.6, peak: 1 });
-  b.noise(t + 0.02, { color: 'brown', filter: 'lowpass', freq: 900, sweepTo: 200, attack: 0.03, decay: 1, peak: 0.8 });
+  b.swell(t, {
+    color: 'pink',
+    filter: 'lowpass',
+    freq: 300,
+    sweepTo: 2600,
+    attack: 0.06,
+    hold: 0.12,
+    release: 0.6,
+    peak: 1,
+  });
+  b.noise(t + 0.02, {
+    color: 'brown',
+    filter: 'lowpass',
+    freq: 900,
+    sweepTo: 200,
+    attack: 0.03,
+    decay: 1,
+    peak: 0.8,
+  });
   b.thump(t, { f0: 90 * k.j(0.08), f1: 30, pitchTime: 0.08, decay: 0.6, peak: 0.9, drive: 1.5 });
   k.ticks(t + 0.15, 40, 1.2, 2200, 2, 0.35);
   k.noise(t + 0.05, { color: 'white', filter: 'highpass', freq: 3500, attack: 0.05, decay: 0.7, peak: 0.15 });
@@ -96,7 +188,16 @@ const explosionFire: Recipe = (g, t) => {
 const explosionFireSmall: Recipe = (g, t) => {
   const k = kitOf(g);
   k.click(t, 1800, 0.012, 0.5);
-  k.swell(t, { color: 'pink', filter: 'lowpass', freq: 400, sweepTo: 2000, attack: 0.03, hold: 0.04, release: 0.25, peak: 0.9 });
+  k.swell(t, {
+    color: 'pink',
+    filter: 'lowpass',
+    freq: 400,
+    sweepTo: 2000,
+    attack: 0.03,
+    hold: 0.04,
+    release: 0.25,
+    peak: 0.9,
+  });
   k.thump(t, { f0: 120, f1: 45, pitchTime: 0.04, decay: 0.15, peak: 0.8 });
   k.ticks(t + 0.05, 10, 0.5, 2400, 2, 0.3);
 };
@@ -127,10 +228,27 @@ const explosionPoison: Recipe = (g, t) => {
   const k = kitOf(g);
   const b = k.bus({ drive: 1.4, lowpass: 8000 });
   b.thump(t, { f0: 110 * k.j(0.08), f1: 45, pitchTime: 0.04, decay: 0.25, peak: 0.9, drive: 1.2 });
-  b.noise(t, { color: 'pink', filter: 'bandpass', freq: 450 * k.j(0.1), sweepTo: 180, q: 3, attack: 0.002, decay: 0.2, peak: 0.8 });
+  b.noise(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 450 * k.j(0.1),
+    sweepTo: 180,
+    q: 3,
+    attack: 0.002,
+    decay: 0.2,
+    peak: 0.8,
+  });
   k.ticks(t + 0.01, 12, 0.3, 1200, 5, 0.4);
   bubbles(k, t + 0.1, 12, 0.8, 200, 600, 0.25);
-  k.swell(t + 0.02, { color: 'pink', filter: 'highpass', freq: 1500, attack: 0.02, hold: 0.1, release: 0.7, peak: 0.4 });
+  k.swell(t + 0.02, {
+    color: 'pink',
+    filter: 'highpass',
+    freq: 1500,
+    attack: 0.02,
+    hold: 0.1,
+    release: 0.7,
+    peak: 0.4,
+  });
   k.note(t, 'sine', 55, 50, 0.02, 0.3, 0.5, 0.2);
 };
 
@@ -139,7 +257,15 @@ const explosionPoisonSmall: Recipe = (g, t) => {
   k.thump(t, { f0: 120, f1: 55, pitchTime: 0.03, decay: 0.12, peak: 0.8 });
   k.noise(t, { color: 'pink', filter: 'bandpass', freq: 500, sweepTo: 200, q: 3, decay: 0.1, peak: 0.7 });
   bubbles(k, t + 0.05, 5, 0.35, 250, 650, 0.25);
-  k.swell(t + 0.02, { color: 'pink', filter: 'highpass', freq: 1800, attack: 0.02, hold: 0.05, release: 0.3, peak: 0.3 });
+  k.swell(t + 0.02, {
+    color: 'pink',
+    filter: 'highpass',
+    freq: 1800,
+    attack: 0.02,
+    hold: 0.05,
+    release: 0.3,
+    peak: 0.3,
+  });
 };
 
 /** Freezing burst: a whump, a gust of cold air, a shower of glass, ice cracking. */
@@ -149,7 +275,16 @@ const explosionIce: Recipe = (g, t) => {
   const b = k.bus({ drive: 1.5, lowpass: 14000 });
   b.thump(t, { f0: 110 * k.j(0.08), f1: 40, pitchTime: 0.05, decay: 0.3, peak: 0.9, drive: 1.5 });
   b.noise(t, { color: 'pink', filter: 'lowpass', freq: 1800, sweepTo: 300, decay: 0.15, peak: 0.6 });
-  k.noise(t + 0.004, { color: 'white', filter: 'bandpass', freq: 5000, sweepTo: 1500, q: 0.9, attack: 0.005, decay: 0.45, peak: 0.55 });
+  k.noise(t + 0.004, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 5000,
+    sweepTo: 1500,
+    q: 0.9,
+    attack: 0.005,
+    decay: 0.45,
+    peak: 0.55,
+  });
   iceCascade(k, t + 0.005, 30, 0.6, 2000, 10000, 0.35);
   k.ticks(t, 20, 0.5, 5000, 5, 0.45);
   k.bell(t + 0.01, 1760, 0.5, 0.15);
@@ -176,7 +311,15 @@ const explosionVoid: Recipe = (g, t) => {
   const b = k.bus({ drive: 2.2, lowpass: 9000 });
   b.click(t0, 3000, 0.01, 0.8);
   b.thump(t0, { f0: 100, f1: 20, pitchTime: 0.15, decay: 0.9, peak: 1, drive: 2.2 });
-  b.noise(t0, { color: 'brown', filter: 'lowpass', freq: 700, sweepTo: 60, attack: 0.003, decay: 1, peak: 0.9 });
+  b.noise(t0, {
+    color: 'brown',
+    filter: 'lowpass',
+    freq: 700,
+    sweepTo: 60,
+    attack: 0.003,
+    decay: 1,
+    peak: 0.9,
+  });
   k.ring(t0, 180 * k.j(0.05), [1, 1.73, 2.61, 3.9], 1, 0.25);
   k.note(t0, 'sine', 440, 110, 0.01, 0.5, 0.3, 0.12, { vibrato: { rate: 6, depth: 15 } });
   k.ringMod(t0 + 0.05, 2400, 190, 0.02, 0.8, 0.08, { carrierTo: 900 });
@@ -200,7 +343,10 @@ const explosionVoidSmall: Recipe = (g, t) => {
 /** Singularity: vortex roar, sweeping whistles, a sub throb and an eerie tone. */
 const fieldPullVoid: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.bed(t, LD, 'brown', 'lowpass', 220, 0.7, 0.7, { freqLfo: { rate: 1, depth: 90 }, gainLfo: { rate: 2, depth: 0.35 } });
+  k.bed(t, LD, 'brown', 'lowpass', 220, 0.7, 0.7, {
+    freqLfo: { rate: 1, depth: 90 },
+    gainLfo: { rate: 2, depth: 0.35 },
+  });
   k.bed(t, LD, 'pink', 'bandpass', 700, 5, 0.6, { freqLfo: { rate: 0.5, depth: 450 } });
   k.bed(t, LD, 'pink', 'bandpass', 1400, 6, 0.4, { freqLfo: { rate: 1.5, depth: 600 } });
   k.bed(t, LD, 'white', 'bandpass', 3200, 2, 0.08, { gainLfo: { rate: 2, depth: 0.8 } });
@@ -213,7 +359,10 @@ const fieldPullVoid: Recipe = (g, t) => {
 /** Fire pool: fluttering flames, a low roar, crackling pops and a faint hiss. */
 const fieldDamageFire: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.bed(t, LD, 'pink', 'bandpass', 600, 0.8, 0.5, { gainLfo: { rate: 7, depth: 0.4 }, freqLfo: { rate: 1.5, depth: 200 } });
+  k.bed(t, LD, 'pink', 'bandpass', 600, 0.8, 0.5, {
+    gainLfo: { rate: 7, depth: 0.4 },
+    freqLfo: { rate: 1.5, depth: 200 },
+  });
   k.bed(t, LD, 'brown', 'lowpass', 350, 0.7, 0.6, { gainLfo: { rate: 3, depth: 0.25 } });
   k.crackle(t, LD, 30, 2200, 2, 0.4, 0, 0.5);
   k.bed(t, LD, 'white', 'highpass', 5000, 0.7, 0.03);
@@ -262,7 +411,12 @@ const fieldSlowIce: Recipe = (g, t) => {
 const fieldSlowVoid: Recipe = (g, t) => {
   const k = kitOf(g);
   const tonal = k.loopBus(t);
-  tonal.drone(t, LD, 55, 0.2, { type: 'sawtooth', lowpass: 300, detune: 10, tremolo: { rate: 0.5, depth: 0.3 } });
+  tonal.drone(t, LD, 55, 0.2, {
+    type: 'sawtooth',
+    lowpass: 300,
+    detune: 10,
+    tremolo: { rate: 0.5, depth: 0.3 },
+  });
   tonal.drone(t, LD, 880, 0.03, { vibrato: { rate: 0.5, depth: 30 } });
   // Periodic ticks start after the crossfade region, so the loop point keeps their rhythm.
   const ticks = 4;
@@ -270,7 +424,16 @@ const fieldSlowVoid: Recipe = (g, t) => {
     const at = t + LOOP_XF + (i * LOOP_SECONDS) / ticks;
     k.click(at, 2500, 0.01, 0.5);
     k.thump(at, { f0: 400, f1: 300, pitchTime: 0.01, decay: 0.02, peak: 0.3 });
-    k.swell(at + 0.05, { color: 'pink', filter: 'bandpass', freq: 800, attack: 0.3, hold: 0.3, release: 0.02, peak: 0.12, expRise: true });
+    k.swell(at + 0.05, {
+      color: 'pink',
+      filter: 'bandpass',
+      freq: 800,
+      attack: 0.3,
+      hold: 0.3,
+      release: 0.02,
+      peak: 0.12,
+      expRise: true,
+    });
   }
 };
 
@@ -305,7 +468,10 @@ const flightVoid: Recipe = (g, t) => {
   tonal.drone(t, LD, 67.5, 0.2, { detune: 12 });
   tonal.drone(t, LD, 880, 0.05, { vibrato: { rate: 5, depth: 20 } });
   k.bed(t, LD, 'pink', 'bandpass', 320, 2, 0.6, { freqLfo: { rate: 0.5, depth: 150 } });
-  k.bed(t, LD, 'pink', 'bandpass', 700, 3, 0.4, { freqLfo: { rate: 1, depth: 300 }, gainLfo: { rate: 3, depth: 0.5 } });
+  k.bed(t, LD, 'pink', 'bandpass', 700, 3, 0.4, {
+    freqLfo: { rate: 1, depth: 300 },
+    gainLfo: { rate: 3, depth: 0.5 },
+  });
   k.bed(t, LD, 'pink', 'bandpass', 1500, 3, 0.25, { gainLfo: { rate: 1.5, depth: 0.7 } });
 };
 
@@ -313,7 +479,8 @@ const flightVoid: Recipe = (g, t) => {
 const flightShock: Recipe = (g, t) => {
   const k = kitOf(g);
   const tonal = k.loopBus(t);
-  for (const note of [62, 65, 69]) tonal.drone(t, LD, loopHz(midi(note)), 0.12, { tremolo: { rate: 6, depth: 0.5 } });
+  for (const note of [62, 65, 69])
+    tonal.drone(t, LD, loopHz(midi(note)), 0.12, { tremolo: { rate: 6, depth: 0.5 } });
   tonal.drone(t, LD, 73.5, 0.08, { type: 'sawtooth', lowpass: 400 });
   k.crackle(t, LD, 30, 5000, 3, 0.25, 0, 0);
 };
@@ -339,7 +506,16 @@ const flightCryo: Recipe = (g, t) => {
 
 const statusBurn: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.swell(t, { color: 'pink', filter: 'lowpass', freq: 400, sweepTo: 2200, attack: 0.03, hold: 0.03, release: 0.2, peak: 0.7 });
+  k.swell(t, {
+    color: 'pink',
+    filter: 'lowpass',
+    freq: 400,
+    sweepTo: 2200,
+    attack: 0.03,
+    hold: 0.03,
+    release: 0.2,
+    peak: 0.7,
+  });
   k.ticks(t + 0.02, 10, 0.45, 2600, 2, 0.35);
   k.thump(t, { f0: 120, f1: 60, pitchTime: 0.02, decay: 0.1, peak: 0.4 });
 };
@@ -357,7 +533,15 @@ const statusFrozen: Recipe = (g, t) => {
   let at = t;
   for (let i = 0; i < 16; i++) {
     const u = i / 15;
-    k.noise(at, { color: 'white', filter: 'bandpass', freq: 3000 + 4000 * u, q: 6, attack: 0.0005, decay: 0.008, peak: 0.25 + 0.2 * u });
+    k.noise(at, {
+      color: 'white',
+      filter: 'bandpass',
+      freq: 3000 + 4000 * u,
+      q: 6,
+      attack: 0.0005,
+      decay: 0.008,
+      peak: 0.25 + 0.2 * u,
+    });
     at += 0.03 * (1 - u * 0.7);
   }
   const lock = t + 0.3;
@@ -380,7 +564,16 @@ const statusShocked: Recipe = (g, t) => {
 const statusPoisoned: Recipe = (g, t) => {
   const k = kitOf(g);
   bubbles(k, t + 0.02, 6, 0.3, 180, 420, 0.3);
-  k.noise(t, { color: 'pink', filter: 'bandpass', freq: 380, sweepTo: 250, q: 4, attack: 0.01, decay: 0.2, peak: 0.5 });
+  k.noise(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 380,
+    sweepTo: 250,
+    q: 4,
+    attack: 0.01,
+    decay: 0.2,
+    peak: 0.5,
+  });
   k.noise(t + 0.03, { color: 'pink', filter: 'highpass', freq: 2000, attack: 0.02, decay: 0.25, peak: 0.25 });
   k.fm(t, 150, 0.5, 2, 0.02, 0.3, 0.15);
 };
@@ -404,7 +597,17 @@ const statusVoidMark: Recipe = (g, t) => {
 const comboThermoshock: Recipe = (g, t) => {
   const k = kitOf(g);
   k.click(t, 5000, 0.005, 1);
-  k.swell(t, { color: 'white', filter: 'bandpass', freq: 3500, sweepTo: 1800, q: 0.7, attack: 0.005, hold: 0.1, release: 0.5, peak: 0.9 });
+  k.swell(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 3500,
+    sweepTo: 1800,
+    q: 0.7,
+    attack: 0.005,
+    hold: 0.1,
+    release: 0.5,
+    peak: 0.9,
+  });
   const b = k.bus({ drive: 2, lowpass: 9000 });
   b.thump(t, { f0: 120, f1: 35, pitchTime: 0.06, decay: 0.35, peak: 1, drive: 2 });
   b.noise(t, { color: 'brown', filter: 'lowpass', freq: 1200, sweepTo: 120, decay: 0.5, peak: 0.7 });
@@ -428,7 +631,16 @@ const comboToxicblaze: Recipe = (g, t) => {
   const k = kitOf(g);
   k.noise(t, { color: 'pink', filter: 'bandpass', freq: 500, q: 3, decay: 0.08, peak: 0.6 });
   const b = k.bus({ drive: 1.8, lowpass: 9000 });
-  b.swell(t + 0.04, { color: 'pink', filter: 'lowpass', freq: 300, sweepTo: 3000, attack: 0.05, hold: 0.06, release: 0.4, peak: 1 });
+  b.swell(t + 0.04, {
+    color: 'pink',
+    filter: 'lowpass',
+    freq: 300,
+    sweepTo: 3000,
+    attack: 0.05,
+    hold: 0.06,
+    release: 0.4,
+    peak: 1,
+  });
   b.thump(t + 0.04, { f0: 90, f1: 30, pitchTime: 0.07, decay: 0.45, peak: 1, drive: 2 });
   bubbles(k, t + 0.08, 8, 0.4, 250, 700, 0.25);
   k.ticks(t + 0.1, 25, 0.8, 2400, 2, 0.35);
@@ -488,7 +700,16 @@ const impactShock: Recipe = (g, t) => {
 
 const impactFire: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.swell(t, { color: 'pink', filter: 'lowpass', freq: 600, sweepTo: 2200, attack: 0.01, hold: 0.02, release: 0.12, peak: 0.7 });
+  k.swell(t, {
+    color: 'pink',
+    filter: 'lowpass',
+    freq: 600,
+    sweepTo: 2200,
+    attack: 0.01,
+    hold: 0.02,
+    release: 0.12,
+    peak: 0.7,
+  });
   k.ticks(t + 0.01, 6, 0.2, 2400, 2, 0.3);
   k.thump(t, { f0: 110, f1: 60, pitchTime: 0.02, decay: 0.05, peak: 0.4 });
 };
@@ -526,7 +747,8 @@ function blast(duration: number, recipe: Recipe, variants = 1, level = 1, rate: 
   return { variants, duration, channels: 1, level, rate, recipe };
 }
 
-function monoLoop(recipe: Recipe, level = 0.85, rate = 1): SynthDef {
+/** Positional loops (fields, flights): textures below ~10 kHz, rendered at half rate. */
+function monoLoop(recipe: Recipe, level = 0.85, rate: number = DARK): SynthDef {
   return { variants: 1, duration: LD, channels: 1, level, loop: true, rate, recipe };
 }
 

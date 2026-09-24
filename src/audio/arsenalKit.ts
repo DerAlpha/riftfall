@@ -462,7 +462,8 @@ export class Kit {
       if (o.lowpass) last = chain(last, this.filter('lowpass', o.lowpass, o.q ?? 0.707));
       const g = this.ctx.createGain();
       g.gain.value = level / voices.length;
-      if (o.tremolo) this.lfo(t, dur, { ...o.tremolo, depth: (o.tremolo.depth * level) / voices.length }, g.gain);
+      if (o.tremolo)
+        this.lfo(t, dur, { ...o.tremolo, depth: (o.tremolo.depth * level) / voices.length }, g.gain);
       last.connect(g);
       this.route(g, o.pan ?? 0);
     }
@@ -560,9 +561,26 @@ export class Kit {
     for (let k = 1; k <= n; k++) {
       const fk = f * k * Math.sqrt(1 + 0.0004 * k * k);
       const amp = (peak / k) * Math.pow(brightness, k - 1);
-      this.tone(t, k === 1 ? 'triangle' : 'sine', fk, fk * 0.999, 0.0015, decay / (1 + (k - 1) * 0.45), amp, pan);
+      this.tone(
+        t,
+        k === 1 ? 'triangle' : 'sine',
+        fk,
+        fk * 0.999,
+        0.0015,
+        decay / (1 + (k - 1) * 0.45),
+        amp,
+        pan,
+      );
     }
-    this.noise(t, { color: 'white', filter: 'bandpass', freq: f * 6, q: 1.2, decay: 0.012, peak: peak * 0.25, pan });
+    this.noise(t, {
+      color: 'white',
+      filter: 'bandpass',
+      freq: f * 6,
+      q: 1.2,
+      decay: 0.012,
+      peak: peak * 0.25,
+      pan,
+    });
   }
 
   /**
@@ -596,7 +614,12 @@ export class Kit {
         const osc = ctx.createOscillator();
         osc.type = 'sawtooth';
         osc.frequency.value = notes[n]! * Math.pow(2, ((v - 1) * 9 + (this.rng.next() - 0.5) * 4) / 1200);
-        this.lfo(t, stop - t, { rate: (o.vibrato ?? 5) * this.j(0.15), depth: notes[n]! * 0.006 }, osc.frequency);
+        this.lfo(
+          t,
+          stop - t,
+          { rate: (o.vibrato ?? 5) * this.j(0.15), depth: notes[n]! * 0.006 },
+          osc.frequency,
+        );
         const g = ctx.createGain();
         g.gain.value = 1 / (notes.length * 3);
         const pan = this.stereo ? (v - 1) * spread * 0.8 + (this.rng.next() - 0.5) * 0.2 : 0;

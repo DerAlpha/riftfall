@@ -736,7 +736,7 @@ export const FIELD_VISUALS = {
   },
   /** Frost field: rime crystals racing out over the floor, cold mist, glittering ice dust. */
   'field.slow.ice': {
-    disc: { style: 'frost', color: FROST, intensity: 1.2, radiusScale: 1, maxRadius: 7, ground: true },
+    disc: { style: 'frost', color: [0.35, 0.7, 1], intensity: 1, radiusScale: 1, maxRadius: 7, ground: true },
     glows: [],
     coreHeight: 0,
     ambient: [

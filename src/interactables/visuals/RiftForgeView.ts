@@ -140,6 +140,7 @@ export class RiftForgeView implements RiftForgeViewApi {
   private readonly screenMat: MeshStandardMaterial;
   private readonly core: CoreMaterial;
   private readonly pool: Mesh<PlaneGeometry, PoolMaterial>;
+  private readonly corona: Mesh<PlaneGeometry, PoolMaterial>;
   private readonly holo: Mesh;
   private readonly holoMat: HoloMaterial;
   private readonly arms: Arm[] = [];
@@ -211,6 +212,21 @@ export class RiftForgeView implements RiftForgeViewApi {
     pb.boxMinMax('hazard', -T.width / 2, T.top - 0.12, tz0, T.width / 2, T.top, tz1 + 0.01);
     pb.boxMinMax('trim', -T.width / 2 - C.overhang, T.top, tz0 - C.overhang, T.width / 2 + C.overhang, T.top + C.height, tz1 + C.overhang);
     pb.box('strip', 0, T.top + C.height + 0.05, tz1 - 0.1, 0.5, 0.1, 0.12);
+
+    // Exhaust stack with a glowing throat.
+    const SK = L.stack;
+    pb.cylinder('trim', 0, T.top + C.height + SK.height / 2, SK.z, SK.radius, SK.height, 'y', CYL_SEGMENTS);
+    pb.cylinder('coreBack', 0, T.top + C.height + SK.height + 0.005, SK.z, SK.radius * 0.72, 0.012, 'y', CYL_SEGMENTS);
+    pb.cylinder('hazard', 0, T.top + C.height + SK.height * 0.7, SK.z, SK.radius + 0.012, 0.06, 'y', CYL_SEGMENTS);
+    // Coolant tanks behind the pylons: rift fluid glowing through a front window.
+    const TK = L.tank;
+    for (const s of [-1, 1]) {
+      const x = s * TK.x;
+      pb.cylinder('body', x, baseTop + TK.height / 2, TK.z, TK.radius, TK.height, 'y', CYL_SEGMENTS);
+      pb.cylinder('trim', x, baseTop + TK.height + 0.04, TK.z, TK.radius + 0.03, 0.08, 'y', CYL_SEGMENTS);
+      pb.cylinder('trim', x, baseTop + 0.05, TK.z, TK.radius + 0.03, 0.1, 'y', CYL_SEGMENTS);
+      pb.box('coreBack', x, baseTop + TK.height / 2, TK.z + TK.radius - 0.005, TK.window, TK.height * 0.8, 0.02);
+    }
 
     // --- rift core window ---
     const K = L.core;
@@ -305,6 +321,12 @@ export class RiftForgeView implements RiftForgeViewApi {
       this.arms.push({ pivot, side, strike, rest, since: Number.POSITIVE_INFINITY });
     }
     this.strikePoint.set(0, anvilTop + N.holoLift, N.z);
+
+    // Soft corona around the ring (an upright light pool).
+    this.corona = createLightPool(M.coreColor, M.corona.intensity, K.radius * K.corona);
+    this.corona.rotation.x = Math.PI / 2;
+    this.corona.position.set(0, K.y, tz1 + 0.03);
+    g.add(this.corona);
 
     // --- rift core swirl (additive, volumetric layer) ---
     this.core = createCoreMaterial();
@@ -430,6 +452,8 @@ export class RiftForgeView implements RiftForgeViewApi {
     this.strips.emissiveIntensity = M.stripIntensity * breathe * lerp(1, B.strips, heat) + flash * M.stripIntensity * 0.4;
     this.vents.emissiveIntensity = M.ventIntensity * heat * heat;
     this.pool.material.uniforms.uIntensity.value = M.glowPool.intensity * breathe * lerp(1, B.pool, heat);
+    this.corona.material.uniforms.uIntensity.value =
+      M.corona.intensity * breathe * lerp(1, M.corona.forgingBoost, heat) + flash * 0.2;
 
     // Arms: raised at rest, cocked while the weapon is fed in, hammer blows on the strikes.
     const cock = r.forging && !r.released ? smoothstep(0, SEQ.holoIn * 2, t) : 0;
@@ -473,6 +497,7 @@ export class RiftForgeView implements RiftForgeViewApi {
     this.core.dispose();
     this.holoMat.dispose();
     this.pool.material.dispose();
+    this.corona.material.dispose();
     this.surface?.texture.dispose();
   }
 }

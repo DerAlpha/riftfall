@@ -26,7 +26,17 @@ function clunk(k: Kit, t: number, seat: number, ring: number, peak = 1, pan = 0)
 /** Pin pulled (scrape + tink), the spoon flicks off with a ping. */
 const grenadePin: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.noise(t, { color: 'white', filter: 'bandpass', freq: 3500 * k.j(0.05), sweepTo: 5000, q: 3, attack: 0.01, decay: 0.04, peak: 0.4, pan: 0.2 });
+  k.noise(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 3500 * k.j(0.05),
+    sweepTo: 5000,
+    q: 3,
+    attack: 0.01,
+    decay: 0.04,
+    peak: 0.4,
+    pan: 0.2,
+  });
   k.ring(t + 0.05, 4200 * k.j(0.04), [1, 2.4, 3.9], 0.12, 0.3, 0.2);
   k.tone(t + 0.05, 'sine', 1800, 1600, 0.001, 0.08, 0.08, 0.2);
   k.click(t + 0.12, 5500, 0.003, 0.5, 0.3);
@@ -36,10 +46,38 @@ const grenadePin: Recipe = (g, t) => {
 /** Arm swing: a rising whoosh, a thinner air layer, the release. */
 const grenadeThrow: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.noise(t, { color: 'pink', filter: 'bandpass', freq: 350, sweepTo: 1800 * k.j(0.08), q: 1.2, attack: 0.09, decay: 0.15, peak: 0.8, pan: 0.2 });
-  k.noise(t + 0.02, { color: 'white', filter: 'bandpass', freq: 1200, sweepTo: 3000, q: 2, attack: 0.08, decay: 0.12, peak: 0.3, pan: 0.3 });
+  k.noise(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 350,
+    sweepTo: 1800 * k.j(0.08),
+    q: 1.2,
+    attack: 0.09,
+    decay: 0.15,
+    peak: 0.8,
+    pan: 0.2,
+  });
+  k.noise(t + 0.02, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 1200,
+    sweepTo: 3000,
+    q: 2,
+    attack: 0.08,
+    decay: 0.12,
+    peak: 0.3,
+    pan: 0.3,
+  });
   k.ticks(t + 0.01, 3, 0.1, 2200, 4, 0.15);
-  k.noise(t + 0.12, { color: 'pink', filter: 'bandpass', freq: 2500, q: 1.5, decay: 0.04, peak: 0.3, pan: 0.4 });
+  k.noise(t + 0.12, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 2500,
+    q: 1.5,
+    decay: 0.04,
+    peak: 0.3,
+    pan: 0.4,
+  });
 };
 
 /** A grenade (or any bouncing round) hits a surface: a heavy clunk, rattle, scrape. */
@@ -67,7 +105,17 @@ const abilityShockwave: Recipe = (g, t) => {
   b.thump(t0, { f0: 110, f1: 30, pitchTime: 0.08, decay: 0.5, peak: 1, drive: 2.2 });
   b.fm(t0, 2500, 2.3, 7, 0.001, 0.3, 0.4, 0, 150);
   for (const pan of [-0.7, 0.7]) {
-    k.noise(t0 + 0.01, { color: 'white', filter: 'bandpass', freq: 3000, sweepTo: 500, q: 1.2, attack: 0.01, decay: 0.6, peak: 0.5, pan });
+    k.noise(t0 + 0.01, {
+      color: 'white',
+      filter: 'bandpass',
+      freq: 3000,
+      sweepTo: 500,
+      q: 1.2,
+      attack: 0.01,
+      decay: 0.6,
+      peak: 0.5,
+      pan,
+    });
   }
   k.ticks(t0, 50, 0.8, 4200, 4, 0.4, 0.8);
   k.ringMod(t0, 180, 57, 0.005, 0.4, 0.25, { type: 'sawtooth', carrierTo: 80 });
@@ -76,8 +124,20 @@ const abilityShockwave: Recipe = (g, t) => {
 /** Phasenbarriere: a phaser sweep rising into a resonant hum and a glassy "shing". */
 const abilityBarrier: Recipe = (g, t) => {
   const k = kitOf(g);
-  const ph = k.bus({ comb: { delay: 0.006, sweepTo: 0.0012, sweepTime: 0.35, feedback: 0.7, damp: 8000, wet: 0.8, start: t } });
-  ph.swell(t, { color: 'pink', filter: 'bandpass', freq: 800, sweepTo: 3000, q: 0.8, attack: 0.3, hold: 0.3, release: 0.3, peak: 0.5 });
+  const ph = k.bus({
+    comb: { delay: 0.006, sweepTo: 0.0012, sweepTime: 0.35, feedback: 0.7, damp: 8000, wet: 0.8, start: t },
+  });
+  ph.swell(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 800,
+    sweepTo: 3000,
+    q: 0.8,
+    attack: 0.3,
+    hold: 0.3,
+    release: 0.3,
+    peak: 0.5,
+  });
   const hum = k.bus({ lowpass: 900 });
   hum.note(t + 0.1, 'sawtooth', 110, 110, 0.15, 0.6, 0.3, 0.2);
   k.note(t + 0.1, 'sine', 440, 440, 0.15, 0.6, 0.3, 0.08, { pan: -0.4 });
@@ -89,18 +149,38 @@ const abilityBarrier: Recipe = (g, t) => {
 /** Überladung: two heartbeats, a power surge rising, crackle, a final zap. */
 const abilityOverdrive: Recipe = (g, t) => {
   const k = kitOf(g);
-  for (const at of [0, 0.28]) k.thump(t + at, { f0: 60, f1: 40, pitchTime: 0.04, decay: 0.12, peak: 0.9, drive: 1.5 });
+  for (const at of [0, 0.28])
+    k.thump(t + at, { f0: 60, f1: 40, pitchTime: 0.04, decay: 0.12, peak: 0.9, drive: 1.5 });
   const b = k.bus({ lowpass: 2500 });
   b.note(t + 0.05, 'sawtooth', 110, 440, 0.5, 0.6, 0.2, 0.3, { expRise: true });
   k.crackle(t + 0.3, 0.5, 60, 4500, 3, 0.35, 0.7);
-  k.swell(t + 0.1, { color: 'white', filter: 'highpass', freq: 2000, attack: 0.4, hold: 0.5, release: 0.2, peak: 0.25 });
+  k.swell(t + 0.1, {
+    color: 'white',
+    filter: 'highpass',
+    freq: 2000,
+    attack: 0.4,
+    hold: 0.5,
+    release: 0.2,
+    peak: 0.25,
+  });
   k.fm(t + 0.6, 3000, 2.1, 5, 0.001, 0.1, 0.3, 0, 800);
 };
 
 /** Chronofeld: a reversed whoosh into a deep "whoom", the clock ticking slower and slower. */
 const abilityChrono: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.swell(t, { color: 'white', filter: 'bandpass', freq: 400, sweepTo: 3000, q: 1, attack: 0.35, hold: 0.35, release: 0.02, peak: 0.5, expRise: true });
+  k.swell(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 400,
+    sweepTo: 3000,
+    q: 1,
+    attack: 0.35,
+    hold: 0.35,
+    release: 0.02,
+    peak: 0.5,
+    expRise: true,
+  });
   const t0 = t + 0.36;
   k.thump(t0, { f0: 70, f1: 25, pitchTime: 0.3, decay: 0.8, peak: 1, drive: 1.5 });
   k.note(t0, 'sine', 220, 55, 0.01, 0.7, 0.3, 0.3);
@@ -116,7 +196,18 @@ const abilityChrono: Recipe = (g, t) => {
 /** Unknown abilities: a generic activation. */
 const abilityGeneric: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.swell(t, { color: 'white', filter: 'bandpass', freq: 600, sweepTo: 3000, q: 1, attack: 0.12, hold: 0.12, release: 0.02, peak: 0.35, expRise: true });
+  k.swell(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 600,
+    sweepTo: 3000,
+    q: 1,
+    attack: 0.12,
+    hold: 0.12,
+    release: 0.02,
+    peak: 0.35,
+    expRise: true,
+  });
   k.fm(t + 0.12, 1800, 2.1, 4, 0.001, 0.12, 0.3, 0, 400);
   k.thump(t + 0.12, { f0: 110, f1: 45, pitchTime: 0.04, decay: 0.25, peak: 0.8, drive: 1.5 });
 };
@@ -126,7 +217,16 @@ const abilityReady: Recipe = (g, t) => {
   const k = kitOf(g);
   k.bell(t, 1318, 0.35, 0.3, -0.15);
   k.bell(t + 0.09, 1975, 0.45, 0.35, 0.15);
-  k.swell(t, { color: 'white', filter: 'bandpass', freq: 3000, q: 2, attack: 0.08, hold: 0.05, release: 0.2, peak: 0.08 });
+  k.swell(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 3000,
+    q: 2,
+    attack: 0.08,
+    hold: 0.05,
+    release: 0.2,
+    peak: 0.08,
+  });
 };
 
 /** A timed ability ends: a falling power-down. */
@@ -134,7 +234,17 @@ const abilityEnd: Recipe = (g, t) => {
   const k = kitOf(g);
   const b = k.bus({ lowpass: 1800 });
   b.note(t, 'sawtooth', 440, 110, 0.01, 0.3, 0.2, 0.2);
-  k.swell(t, { color: 'white', filter: 'bandpass', freq: 3000, sweepTo: 800, q: 1.5, attack: 0.02, hold: 0.2, release: 0.2, peak: 0.12 });
+  k.swell(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 3000,
+    sweepTo: 800,
+    q: 1.5,
+    attack: 0.02,
+    hold: 0.2,
+    release: 0.2,
+    peak: 0.12,
+  });
   k.thump(t + 0.3, { f0: 110, f1: 60, pitchTime: 0.03, decay: 0.1, peak: 0.4 });
 };
 
@@ -155,7 +265,17 @@ function anvil(k: Kit, t: number, pitch: number, peak: number): void {
 const forgeUpgrade: Recipe = (g, t) => {
   const k = kitOf(g);
   // Furnace roar building, a rift whine climbing, the fire crackling.
-  k.swell(t, { color: 'brown', filter: 'lowpass', freq: 200, sweepTo: 1400, attack: 1.2, hold: 1.2, release: 0.5, peak: 0.7, expRise: true });
+  k.swell(t, {
+    color: 'brown',
+    filter: 'lowpass',
+    freq: 200,
+    sweepTo: 1400,
+    attack: 1.2,
+    hold: 1.2,
+    release: 0.5,
+    peak: 0.7,
+    expRise: true,
+  });
   const whine = k.bus({ lowpass: 1500 });
   whine.note(t, 'sawtooth', 55, 220, 1.2, 1.3, 0.3, 0.25, { vibrato: { rate: 5, depth: 1.5 } });
   k.crackle(t + 0.3, 1.5, 35, 2400, 2, 0.3, 0.6, 0.4);
@@ -168,7 +288,17 @@ const forgeUpgrade: Recipe = (g, t) => {
   k.thump(t2, { f0: 80, f1: 30, pitchTime: 0.12, decay: 0.8, peak: 0.9, drive: 1.5 });
   k.choir(t2, [midi(60), midi(64), midi(67), midi(72)], 0.25, 0.9, 0.6, 0.55);
   k.bell(t2 + 0.15, 2093, 1.2, 0.25, 0.2);
-  k.swell(t2, { color: 'white', filter: 'bandpass', freq: 6000, sweepTo: 1500, q: 1.5, attack: 0.02, hold: 0.1, release: 0.6, peak: 0.3 });
+  k.swell(t2, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 6000,
+    sweepTo: 1500,
+    q: 1.5,
+    attack: 0.02,
+    hold: 0.1,
+    release: 0.6,
+    peak: 0.3,
+  });
 };
 
 /** The machine refuses: a detuned buzz, a heavy clunk, a puff of steam. */
@@ -179,13 +309,31 @@ const forgeDeny: Recipe = (g, t) => {
   k.thump(t, { f0: 120, f1: 70, pitchTime: 0.02, decay: 0.12, peak: 0.9, drive: 1.5 });
   k.click(t, 2600, 0.008, 0.6);
   k.ring(t, 600 * k.j(0.04), [1, 2.3, 3.7], 0.25, 0.3);
-  k.swell(t + 0.15, { color: 'white', filter: 'highpass', freq: 2500, attack: 0.01, hold: 0.05, release: 0.25, peak: 0.3 });
+  k.swell(t + 0.15, {
+    color: 'white',
+    filter: 'highpass',
+    freq: 2500,
+    attack: 0.01,
+    hold: 0.05,
+    release: 0.25,
+    peak: 0.3,
+  });
 };
 
 /** Bench menu opens: a tool drawer slides, stops; a rising UI chirp. */
 const benchOpen: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.noise(t, { color: 'pink', filter: 'bandpass', freq: 1500, sweepTo: 2200, q: 2, attack: 0.05, decay: 0.15, peak: 0.4, pan: -0.2 });
+  k.noise(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 1500,
+    sweepTo: 2200,
+    q: 2,
+    attack: 0.05,
+    decay: 0.15,
+    peak: 0.4,
+    pan: -0.2,
+  });
   k.click(t + 0.18, 3800, 0.005, 0.5);
   k.ring(t + 0.18, 2000, [1, 2.4], 0.05, 0.15);
   k.tone(t + 0.2, 'sine', 1200, 1200, 0.001, 0.05, 0.15, -0.1);
@@ -196,14 +344,33 @@ const benchClose: Recipe = (g, t) => {
   const k = kitOf(g);
   k.tone(t, 'sine', 1800, 1800, 0.001, 0.05, 0.14, 0.1);
   k.tone(t + 0.06, 'sine', 1200, 1200, 0.001, 0.05, 0.14, -0.1);
-  k.noise(t + 0.08, { color: 'pink', filter: 'bandpass', freq: 2200, sweepTo: 1500, q: 2, attack: 0.04, decay: 0.1, peak: 0.35, pan: -0.2 });
+  k.noise(t + 0.08, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 2200,
+    sweepTo: 1500,
+    q: 2,
+    attack: 0.04,
+    decay: 0.1,
+    peak: 0.35,
+    pan: -0.2,
+  });
   clunk(k, t + 0.2, 240, 1600, 0.55);
 };
 
 /** An attachment slides onto its rail and locks: scrape, "ch-chk", a screw tightened. */
 const benchAttach: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.noise(t, { color: 'white', filter: 'bandpass', freq: 2800 * k.j(0.05), sweepTo: 3600, q: 3, attack: 0.02, decay: 0.06, peak: 0.45 });
+  k.noise(t, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 2800 * k.j(0.05),
+    sweepTo: 3600,
+    q: 3,
+    attack: 0.02,
+    decay: 0.06,
+    peak: 0.45,
+  });
   k.click(t + 0.07, 4200, 0.004, 0.8);
   k.click(t + 0.11, 3000, 0.006, 0.9);
   k.thump(t + 0.11, { f0: 330, f1: 220, pitchTime: 0.01, decay: 0.03, peak: 0.5 });
@@ -215,7 +382,17 @@ const benchAttach: Recipe = (g, t) => {
 const elementInstall: Recipe = (g, t) => {
   const k = kitOf(g);
   clunk(k.bus({ drive: 1.5 }), t, 180, 1300, 1);
-  k.swell(t + 0.05, { color: 'white', filter: 'bandpass', freq: 800, sweepTo: 6000, q: 2, attack: 0.5, hold: 0.5, release: 0.3, peak: 0.35 });
+  k.swell(t + 0.05, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 800,
+    sweepTo: 6000,
+    q: 2,
+    attack: 0.5,
+    hold: 0.5,
+    release: 0.3,
+    peak: 0.35,
+  });
   const hum = k.bus({ lowpass: 1200 });
   hum.note(t + 0.05, 'sawtooth', 110, 220, 0.4, 0.6, 0.4, 0.18);
   k.crackle(t + 0.2, 0.6, 50, 6000, 3, 0.2, 0.7);

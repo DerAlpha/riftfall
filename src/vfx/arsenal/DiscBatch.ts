@@ -111,7 +111,7 @@ void main() {
     float cover = 1.0 - smoothstep(reach - 0.3, reach, r + (1.0 - spikes) * 0.18);
     float front = exp(-pow((r - reach) / 0.05, 2.0)) * step(grow, 0.999);
     float glint = step(0.93, aNoise(p * 38.0 + floor(t * 7.0) * 1.37)) * 1.6;
-    a = cover * (0.12 + 0.22 * n + veins * 0.85 + spikes * 0.25 + glint) + front * 0.8;
+    a = cover * (0.12 + 0.22 * n + veins * 0.85 + spikes * 0.25 + glint) + front * 0.5;
     core = cover * (veins * 0.25 + glint * 0.4);
   }
   a *= 1.0 - smoothstep(0.9, 1.0, r);

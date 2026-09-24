@@ -165,7 +165,13 @@ export function gunshot(p: GunProfile): Recipe {
     if (p.ring) k.ring(t + 0.002, p.ring.base * k.j(0.05), p.ring.ratios, p.ring.decay, p.ring.peak, 0.2);
     if (p.boom) {
       const lb = k.bus({ drive: 1.5, lowpass: 900 });
-      lb.thump(t, { f0: p.boom.f0 * k.j(0.05), f1: p.boom.f1, pitchTime: 0.06, decay: p.boom.decay, peak: p.boom.peak });
+      lb.thump(t, {
+        f0: p.boom.f0 * k.j(0.05),
+        f1: p.boom.f1,
+        pitchTime: 0.06,
+        decay: p.boom.decay,
+        peak: p.boom.peak,
+      });
       lb.noise(t, {
         color: 'brown',
         filter: 'lowpass',
@@ -190,7 +196,13 @@ export function gunshot(p: GunProfile): Recipe {
           peak: gain,
           pan: i % 2 === 0 ? -0.55 : 0.55,
         });
-        eb.thump(t + d, { f0: p.body.f1 * 1.6, f1: p.body.f1, pitchTime: 0.03, decay: 0.12, peak: gain * 0.6 });
+        eb.thump(t + d, {
+          f0: p.body.f1 * 1.6,
+          f1: p.body.f1,
+          pitchTime: 0.03,
+          decay: 0.12,
+          peak: gain * 0.6,
+        });
       });
     }
     if (p.roll) {
@@ -427,12 +439,20 @@ function cycle(p: CycleProfile): Recipe {
       pan: p.pan,
     });
     k.ring(t1, p.back.ring * k.j(0.06), [1, 2.45, 3.95], p.back.decay * 3, 0.24, p.pan);
-    if (p.spring) k.tone(t1 + 0.004, 'sawtooth', p.spring * k.j(0.08), p.spring * 0.72, 0.002, 0.03, 0.07, p.pan);
+    if (p.spring)
+      k.tone(t1 + 0.004, 'sawtooth', p.spring * k.j(0.08), p.spring * 0.72, 0.002, 0.03, 0.07, p.pan);
     const t2 = t + p.t2 * k.j(0.1);
     k.click(t2, p.home.click, 0.006, 0.75 * p.home.peak, p.pan);
-    k.thump(t2, { f0: p.home.thump, f1: p.home.thump * 0.65, pitchTime: 0.009, decay: 0.025, peak: 0.45 * p.home.peak });
+    k.thump(t2, {
+      f0: p.home.thump,
+      f1: p.home.thump * 0.65,
+      pitchTime: 0.009,
+      decay: 0.025,
+      peak: 0.45 * p.home.peak,
+    });
     k.ring(t2, p.home.ring * k.j(0.06), [1, 2.25, 3.6], 0.055, 0.22 * p.home.peak, p.pan);
-    if (p.rattle) k.ticks(t1 + 0.01, p.rattle.count, p.rattle.span, p.rattle.freq, 6, p.rattle.peak, p.pan * 1.3);
+    if (p.rattle)
+      k.ticks(t1 + 0.01, p.rattle.count, p.rattle.span, p.rattle.freq, 6, p.rattle.peak, p.pan * 1.3);
   };
 }
 
@@ -628,14 +648,31 @@ const HANDLING = {
 } satisfies Record<string, HandlingProfile>;
 
 function whoosh(k: Kit, t: number, from: number, to: number, decay: number, peak: number, pan = 0): void {
-  k.noise(t, { color: 'pink', filter: 'bandpass', freq: from, sweepTo: to, q: 1.1, attack: decay * 0.4, decay, peak, pan });
+  k.noise(t, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: from,
+    sweepTo: to,
+    q: 1.1,
+    attack: decay * 0.4,
+    decay,
+    peak,
+    pan,
+  });
 }
 
 /** Heavy/light metal contact: click + short thump + ring (the atom of every mechanism). */
 function clack(k: Kit, t: number, h: HandlingProfile, peak = 1, pan = 0, drive = 0): void {
   const b = drive > 0 ? k.bus({ drive }) : k;
   b.click(t, 2400 + h.ring, 0.007, 0.85 * peak, pan);
-  b.thump(t, { f0: h.seat * k.j(0.05), f1: h.seat * 0.55, pitchTime: 0.011, decay: 0.045, peak: 0.8 * peak, drive: drive > 0 ? 1.5 : 0 });
+  b.thump(t, {
+    f0: h.seat * k.j(0.05),
+    f1: h.seat * 0.55,
+    pitchTime: 0.011,
+    decay: 0.045,
+    peak: 0.8 * peak,
+    drive: drive > 0 ? 1.5 : 0,
+  });
   b.ring(t, h.ring * 0.7 * k.j(0.05), [1, 2.25, 3.6], 0.08, 0.3 * peak, pan);
 }
 
@@ -700,7 +737,16 @@ function snap(h: HandlingProfile, lead = 0): Recipe {
 }
 
 /** A few ratchet clicks spaced `from` → `to` s apart (cylinder spins, drum winds, side chargers). */
-function ratchet(k: Kit, t: number, count: number, from: number, to: number, freq: number, peak: number, pan = 0): number {
+function ratchet(
+  k: Kit,
+  t: number,
+  count: number,
+  from: number,
+  to: number,
+  freq: number,
+  peak: number,
+  pan = 0,
+): number {
   let at = t;
   for (let i = 0; i < count; i++) {
     const u = count > 1 ? i / (count - 1) : 0;
@@ -711,7 +757,10 @@ function ratchet(k: Kit, t: number, count: number, from: number, to: number, fre
   return at;
 }
 
-function equipBasic(h: HandlingProfile, o: { whoosh: [number, number, number]; rackAt: number; heavy?: boolean }): Recipe {
+function equipBasic(
+  h: HandlingProfile,
+  o: { whoosh: [number, number, number]; rackAt: number; heavy?: boolean },
+): Recipe {
   return (g, t) => {
     const k = kitOf(g);
     whoosh(k, t, o.whoosh[0], o.whoosh[1], o.whoosh[2], 0.55);
@@ -804,7 +853,11 @@ const burstrifleEquip: Recipe = (g, t) => {
   k.tone(t + 0.345, 'sine', 2400, 2400, 0.002, 0.04, 0.14);
 };
 
-const battlerifleEquip = equipBasic(HANDLING.battlerifle, { whoosh: [400, 1200, 0.15], rackAt: 0.2, heavy: true });
+const battlerifleEquip = equipBasic(HANDLING.battlerifle, {
+  whoosh: [400, 1200, 0.15],
+  rackAt: 0.2,
+  heavy: true,
+});
 
 /** Auto shotgun: the shells rattle in the drum, then the bolt slams. */
 const autoshotgunEquip: Recipe = (g, t) => {
@@ -844,7 +897,15 @@ const doublebarrelOpen: Recipe = (g, t) => {
   k.ring(stop, 820 * k.j(0.04), [1, 2.63, 4.93], 0.2, 0.25);
   for (let i = 0; i < 2; i++) {
     const at = stop + 0.03 + i * 0.022;
-    k.noise(at, { color: 'pink', filter: 'bandpass', freq: 1300 * k.j(0.1), q: 2.5, decay: 0.03, peak: 0.55, pan: 0.3 });
+    k.noise(at, {
+      color: 'pink',
+      filter: 'bandpass',
+      freq: 1300 * k.j(0.1),
+      q: 2.5,
+      decay: 0.03,
+      peak: 0.55,
+      pan: 0.3,
+    });
     k.thump(at, { f0: 520, f1: 380, pitchTime: 0.005, decay: 0.02, peak: 0.4 });
     // Hulls tumbling onto the floor.
     k.thump(at + 0.2 + k.rng.next() * 0.08, { f0: 480, f1: 360, pitchTime: 0.005, decay: 0.02, peak: 0.25 });
@@ -855,7 +916,16 @@ const doublebarrelLoad: Recipe = (g, t) => {
   const k = kitOf(g);
   for (let i = 0; i < 2; i++) {
     const at = t + i * 0.12 * k.j(0.08);
-    k.noise(at, { color: 'pink', filter: 'bandpass', freq: 1100 * k.j(0.08), sweepTo: 700, q: 1.8, attack: 0.01, decay: 0.04, peak: 0.45 });
+    k.noise(at, {
+      color: 'pink',
+      filter: 'bandpass',
+      freq: 1100 * k.j(0.08),
+      sweepTo: 700,
+      q: 1.8,
+      attack: 0.01,
+      decay: 0.04,
+      peak: 0.45,
+    });
     k.thump(at + 0.03, { f0: 250, f1: 160, pitchTime: 0.01, decay: 0.035, peak: 0.75 });
     k.click(at + 0.03, 3200, 0.004, 0.45);
   }
@@ -919,7 +989,15 @@ const minigunEquip: Recipe = (g, t) => {
   const m = k.bus({ lowpass: 2600 });
   m.note(t + 0.35, 'sawtooth', 90, 330, 0.25, 0.3, 0.3, 0.2);
   k.note(t + 0.35, 'sine', 900, 2400, 0.25, 0.3, 0.3, 0.06);
-  m.noise(t + 0.4, { color: 'pink', filter: 'bandpass', freq: 1100, q: 1.5, attack: 0.15, decay: 0.35, peak: 0.35 });
+  m.noise(t + 0.4, {
+    color: 'pink',
+    filter: 'bandpass',
+    freq: 1100,
+    q: 1.5,
+    attack: 0.15,
+    decay: 0.35,
+    peak: 0.35,
+  });
 };
 
 const minigunMagOut: Recipe = (g, t) => {
@@ -1022,7 +1100,15 @@ function sideCharger(h: HandlingProfile): Recipe {
 /** Energy weapons: a dark synthetic bloom with a falling "wom" and a faint shimmer. */
 const tailEnergy: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.noise(t, { color: 'brown', filter: 'lowpass', freq: 420 * k.j(0.1), sweepTo: 120, attack: 0.012, decay: 0.45, peak: 1 });
+  k.noise(t, {
+    color: 'brown',
+    filter: 'lowpass',
+    freq: 420 * k.j(0.1),
+    sweepTo: 120,
+    attack: 0.012,
+    decay: 0.45,
+    peak: 1,
+  });
   for (const pan of [-0.45, 0.45]) {
     k.noise(t + 0.012 + k.rng.next() * 0.02, {
       color: 'pink',
@@ -1037,13 +1123,29 @@ const tailEnergy: Recipe = (g, t) => {
     });
   }
   k.tone(t + 0.005, 'sine', 180 * k.j(0.08), 70, 0.01, 0.35, 0.25);
-  k.noise(t + 0.02, { color: 'white', filter: 'bandpass', freq: 6000, q: 3, attack: 0.02, decay: 0.2, peak: 0.06 });
+  k.noise(t + 0.02, {
+    color: 'white',
+    filter: 'bandpass',
+    freq: 6000,
+    q: 3,
+    attack: 0.02,
+    decay: 0.2,
+    peak: 0.06,
+  });
 };
 
 /** Launchers: a hollow low bloom and a soft whump. */
 const tailExplosive: Recipe = (g, t) => {
   const k = kitOf(g);
-  k.noise(t, { color: 'brown', filter: 'lowpass', freq: 280 * k.j(0.1), sweepTo: 80, attack: 0.015, decay: 0.6, peak: 1 });
+  k.noise(t, {
+    color: 'brown',
+    filter: 'lowpass',
+    freq: 280 * k.j(0.1),
+    sweepTo: 80,
+    attack: 0.015,
+    decay: 0.6,
+    peak: 1,
+  });
   for (const pan of [-0.4, 0.4]) {
     k.noise(t + 0.015 + k.rng.next() * 0.02, {
       color: 'pink',
@@ -1170,7 +1272,13 @@ const BALLISTIC_DEFS = {
   'weapon.autoshotgun.boltRelease': step(0.36, chargingHandle(H.autoshotgun, 0.13), 1),
   // --- DB-2 „Zwilling“ ---
   'weapon.doublebarrel.fire': fireDef(0.8, gunshot(GUN.doublebarrel), HV, 1, DARK),
-  'weapon.doublebarrel.mech': { variants: 1, duration: 0.5, channels: 2, level: 0.55, recipe: doubleBarrelMech },
+  'weapon.doublebarrel.mech': {
+    variants: 1,
+    duration: 0.5,
+    channels: 2,
+    level: 0.55,
+    recipe: doubleBarrelMech,
+  },
   'weapon.doublebarrel.equip': equip(0.5, doublebarrelEquip),
   'weapon.doublebarrel.magOut': step(0.5, doublebarrelOpen, 0.9),
   'weapon.doublebarrel.magIn': step(0.3, doublebarrelLoad, 0.85),
@@ -1192,7 +1300,13 @@ const BALLISTIC_DEFS = {
   // --- HX-50 „Richtfeuer“ ---
   'weapon.sniper.fire': fireDef(1.3, gunshot(GUN.sniper), HV, 1, DARK),
   'weapon.sniper.mech': { variants: 1, duration: 0.4, channels: 2, level: 0.5, recipe: sniperMech },
-  'weapon.sniper.pump': { variants: 1, duration: 0.7, channels: 2, level: 0.85, recipe: boltAction(0.3, 0.2) },
+  'weapon.sniper.pump': {
+    variants: 1,
+    duration: 0.7,
+    channels: 2,
+    level: 0.85,
+    recipe: boltAction(0.3, 0.2),
+  },
   'weapon.sniper.equip': equip(0.65, sniperEquip),
   'weapon.sniper.magOut': step(0.26, magOut(H.sniper), 0.85),
   'weapon.sniper.magIn': step(0.26, magIn(H.sniper), 0.95),
@@ -1205,8 +1319,22 @@ const BALLISTIC_DEFS = {
   'weapon.marksman.magIn': step(0.26, magIn(H.marksman), 0.95),
   'weapon.marksman.boltRelease': step(0.3, chargingHandle(H.marksman, 0.09), 1),
   // --- shared ---
-  'weapon.tail.energy': { variants: 2, duration: 0.9, channels: 2, level: 0.72, rate: DARK, recipe: tailEnergy },
-  'weapon.tail.explosive': { variants: 1, duration: 1, channels: 2, level: 0.8, rate: DARK, recipe: tailExplosive },
+  'weapon.tail.energy': {
+    variants: 2,
+    duration: 0.9,
+    channels: 2,
+    level: 0.72,
+    rate: DARK,
+    recipe: tailEnergy,
+  },
+  'weapon.tail.explosive': {
+    variants: 1,
+    duration: 1,
+    channels: 2,
+    level: 0.8,
+    rate: DARK,
+    recipe: tailExplosive,
+  },
   'weapon.energy.dry': { variants: 2, duration: 0.12, channels: 1, level: 0.75, recipe: energyDry },
   'weapon.charge.full': { variants: 1, duration: 0.32, channels: 2, level: 0.7, recipe: chargeFull },
   'weapon.charge.fizzle': { variants: 2, duration: 0.45, channels: 2, level: 0.7, recipe: chargeFizzle },
@@ -1294,7 +1422,8 @@ export function m5SynthAlias(id: string, known: (id: string) => boolean): string
   aliasTable ??= buildAliases(known);
   const a = aliasTable.get(id);
   if (a !== undefined) return a;
-  if (id.startsWith('explosion.')) return id.endsWith('.small') ? 'explosion.physical.small' : 'explosion.physical';
+  if (id.startsWith('explosion.'))
+    return id.endsWith('.small') ? 'explosion.physical.small' : 'explosion.physical';
   if (id.startsWith('field.pull.')) return 'field.pull.void';
   if (id.startsWith('field.slow.')) return 'field.slow.ice';
   if (id.startsWith('field.damage.')) return 'field.damage.fire';

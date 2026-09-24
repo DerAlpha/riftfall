@@ -1001,9 +1001,30 @@ export const WEAPON_SYNTH_DEFS = {
   'weapon.shotgun.boom': { variants: 2, duration: 0.7, channels: 1, level: 1, recipe: shotgunBoom },
   'weapon.shotgun.pumpCycle': { variants: 3, duration: 0.55, channels: 2, level: 0.85, recipe: pump(0.16) },
   // Dark blooms (< 1 kHz): rendered at half rate (SynthDef.rate).
-  'weapon.tail.small': { variants: 2, duration: 0.5, channels: 2, level: 0.7, rate: DARK, recipe: tail(0.3, 420) },
-  'weapon.tail.medium': { variants: 3, duration: 0.7, channels: 2, level: 0.75, rate: DARK, recipe: tail(0.45, 380) },
-  'weapon.tail.large': { variants: 2, duration: 1.1, channels: 2, level: 0.85, rate: DARK, recipe: tail(0.75, 320) },
+  'weapon.tail.small': {
+    variants: 2,
+    duration: 0.5,
+    channels: 2,
+    level: 0.7,
+    rate: DARK,
+    recipe: tail(0.3, 420),
+  },
+  'weapon.tail.medium': {
+    variants: 3,
+    duration: 0.7,
+    channels: 2,
+    level: 0.75,
+    rate: DARK,
+    recipe: tail(0.45, 380),
+  },
+  'weapon.tail.large': {
+    variants: 2,
+    duration: 1.1,
+    channels: 2,
+    level: 0.85,
+    rate: DARK,
+    recipe: tail(0.75, 320),
+  },
   // --- explosions (mono → HRTF) ---
   explosion: { variants: 3, duration: 1.9, channels: 1, level: 1, rate: DARK, recipe: explosion },
   // --- handling ---

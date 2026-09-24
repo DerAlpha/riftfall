@@ -294,6 +294,33 @@ describe('EnemyRenderer: CPU pose mirror', () => {
 });
 
 describe('EnemyRenderer: culling', () => {
+  it('culls single instances in the vertex shaders with the type reach (color, depth, distance)', () => {
+    const { r } = make();
+    for (const [id, def] of Object.entries(ENEMY_VISUALS) as [string, EnemyVisualDef][]) {
+      const m = mesh(r, id);
+      const reach = cullReach(buildTypeGeometry(compileRig(id, def).parts), def.cullMargin);
+      expect(reach).toBeGreaterThan(0);
+      // One uniform object shared by the lit material and both shadow materials.
+      let radius: { value: number } | undefined;
+      for (const mat of [m.material as Material, m.customDepthMaterial!, m.customDistanceMaterial!]) {
+        const shader = {
+          vertexShader: '#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',
+          fragmentShader:
+            '#include <common>\n#include <clipping_planes_fragment>\n#include <color_fragment>\n' +
+            '#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <normal_fragment_maps>\n' +
+            '#include <emissivemap_fragment>\n#include <lights_physical_fragment>\n#include <dithering_fragment>',
+          uniforms: {} as Record<string, { value: number }>,
+        };
+        mat.onBeforeCompile(shader as never, null as never);
+        const u = shader.uniforms.rfCullRadius;
+        expect(u?.value, `${id} ${mat.type}`).toBeCloseTo(reach, 6);
+        radius ??= u;
+        expect(u).toBe(radius);
+      }
+    }
+    r.dispose();
+  });
+
   it('the cull reach covers every visible vertex of every pose (no popping at the screen edge)', () => {
     for (const [id, def] of Object.entries(ENEMY_VISUALS) as [string, EnemyVisualDef][]) {
       const rig = compileRig(id, def);

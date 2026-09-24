@@ -1,5 +1,5 @@
 /** Audio engine tuning. Volumes are linear gain 0..1, times in seconds. */
-import type { FleshSurface, HitZone, ImpactKind, SurfaceType } from '../core/events';
+import type { FleshSurface, HitZone, ImpactKind, StatusId, SurfaceType } from '../core/events';
 
 export const AUDIO = {
   buses: ['music', 'sfx', 'voice', 'ui'] as const,
@@ -450,6 +450,176 @@ export const AUDIO = {
     zone: { id: 'zone.unlock', gain: 0.55, mergeSeconds: 0.5 },
     /** Loop lengths of the procedural hum / shimmer (s, + AUDIO.synth.slideLoopCrossfade). */
     synth: { humLoopSeconds: 2.4, shimmerLoopSeconds: 2.4 },
+  },
+
+  /**
+   * Arsenal sounds (M5, AudioEventBridge → ArsenalAudio; recipes in audio/arsenalSynth.ts,
+   * elementSynth.ts, gearSynth.ts). Ids follow the M5 naming convention (weapon.<id>.*, loops
+   * weapon.<id>.loop|charge|spin, projectile.<visual>.flight, explosion.<element>[.small],
+   * field.<kind>.<element>, status.<StatusId>, combo.<comboId>, grenade.*, ability.*, forge.*,
+   * bench.*, element.install). Loops of the player's weapon are 2D; projectile flight and field
+   * loops are positional (HRTF) and voice-limited (nearest first, with hysteresis `margin` m).
+   */
+  arsenal: {
+    /** Procedural loops: body length (s, + AUDIO.synth.slideLoopCrossfade); whole cycles on a 1/loopSeconds Hz grid. */
+    synth: { loopSeconds: 2, fireVariants: 4, semiFireVariants: 3 },
+    /**
+     * Gunshot tails (fire layers starting with `tailPrefix`) follow the room (reverb zone): smaller
+     * rooms shorten (pitch up) and duck them, halls lengthen them.
+     */
+    tailPrefix: 'weapon.tail.',
+    roomTails: {
+      small: { gain: 0.72, pitch: 1.1 },
+      medium: { gain: 0.9, pitch: 1.03 },
+      large: { gain: 1, pitch: 1 },
+      hangar: { gain: 1.12, pitch: 0.93 },
+    } satisfies Record<'small' | 'medium' | 'large' | 'hangar', { gain: number; pitch: number }>,
+    /**
+     * Minimum spacing of one fire layer index of the same weapon (s): body always, the mechanical
+     * layer and the tail thin out at very high rates (minigun, machine pistol) – dense tails blur
+     * into one anyway, and 40 shots/s must not flood the voices.
+     */
+    fireLayerMinInterval: [0, 0.04, 0.085] as readonly number[],
+    /** Loops follow the event values within this time (s). */
+    retune: 0.03,
+    /**
+     * Beam weapons (weapon:beam): fire layer 0 is the ignition, the loop runs while it fires, the
+     * remaining fire layers (release + tail) play when it stops. Their per-tick weapon:fired is
+     * absorbed (no gunshot per damage tick); the loop stops by itself `watchdog` s (game time)
+     * after the last tick.
+     */
+    beam: {
+      gain: 0.78,
+      startGain: 0.85,
+      stopGain: 0.7,
+      fadeIn: 0.05,
+      fadeOut: 0.16,
+      watchdog: 0.4,
+      maxSeconds: 90,
+    },
+    /** Charge weapons (weapon:charge 0..1): the charge loop rises in pitch and level with the charge. */
+    charge: {
+      gain: 0.72,
+      pitch: [0.62, 1.32] as const,
+      volume: [0.5, 1] as const,
+      fadeIn: 0.04,
+      fadeOut: 0.05,
+      watchdog: 0.3,
+      maxSeconds: 30,
+      /** Full charge cue, and the power-down when a charge ends without a shot (from `fizzleMin`). */
+      full: { id: 'weapon.charge.full', gain: 0.55 },
+      fizzle: { id: 'weapon.charge.fizzle', gain: 0.6, min: 0.12 },
+    },
+    /** Spin-up weapons (weapon:spin 0..1): motor/barrel loop pitched and leveled by the spin. */
+    spin: {
+      gain: 0.72,
+      pitch: [0.38, 1] as const,
+      volume: [0.35, 1] as const,
+      fadeIn: 0.06,
+      fadeOut: 0.12,
+      maxSeconds: 120,
+    },
+    /** Projectile flight loops (projectile:spawned/ended, positions from the ProjectileApi per frame). */
+    flight: {
+      gain: 0.62,
+      maxVoices: 6,
+      maxTracked: 64,
+      maxDistance: 45,
+      margin: 2,
+      fadeIn: 0.03,
+      fadeOut: 0.1,
+      /** Voices are re-ranked (nearest first) this often (s, game time). */
+      checkInterval: 0.1,
+      maxSeconds: 12,
+      /** Doppler: pitch = speedOfSound / (speedOfSound + radial speed × scale), clamped, smoothed. */
+      doppler: { speedOfSound: 343, scale: 1.4, range: [0.72, 1.32] as const, response: 0.06 },
+    },
+    /** Lingering field loops (field:spawned/ended, `field.<kind>.<element>`). */
+    fields: {
+      gain: 0.7,
+      maxVoices: 4,
+      maxTracked: 32,
+      maxDistance: 50,
+      margin: 3,
+      fadeIn: 0.35,
+      fadeOut: 0.7,
+      checkInterval: 0.25,
+      /** Safety stop after the field's duration (s). */
+      overrun: 1,
+    },
+    /**
+     * Impacts: energy weapons play their impact profile (the def's vfx.impact id when it names a
+     * sound, e.g. impact.plasma) instead of the surface sound; beam impacts sound at most every
+     * `beamMinInterval` s; bouncing projectiles clunk (`bounce`, positional, token bucket).
+     */
+    impacts: {
+      bulletImpact: 'impact.bullet',
+      energyGain: 0.72,
+      beamMinInterval: 0.13,
+      bounce: { id: 'grenade.bounce', gain: 0.75, pitchVariance: 0.08, burst: 4, refillPerSecond: 12 },
+    },
+    /** Explosions (combat:explosion `audio`, else explosion.<element>): token bucket against chain reactions. */
+    explosions: { burst: 6, refillPerSecond: 14, prefix: 'explosion.' },
+    /** Status sounds (combat:status, positional): per status a token bucket; stacks raise the pitch. */
+    status: {
+      gain: 0.5,
+      pitchVariance: 0.07,
+      maxDistance: 40,
+      burst: 3,
+      refillPerSecond: 5,
+      stackPitch: 0.035,
+      ids: {
+        burn: 'status.burn',
+        chill: 'status.chill',
+        frozen: 'status.frozen',
+        shocked: 'status.shocked',
+        poisoned: 'status.poisoned',
+        voidMark: 'status.voidMark',
+      } satisfies Record<StatusId, string>,
+    },
+    /** Combo stingers (combat:combo → `combo.<comboId>`, positional). */
+    combos: {
+      prefix: 'combo.',
+      gain: 0.92,
+      pitchVariance: 0.03,
+      maxDistance: 70,
+      burst: 3,
+      refillPerSecond: 4,
+    },
+    grenades: {
+      pin: { id: 'grenade.pin', gain: 0.5 },
+      throw: { id: 'grenade.throw', gain: 0.65 },
+      /** Selecting another grenade type: the pin clip, quieter and higher. */
+      select: { gain: 0.3, pitch: 1.25 },
+      pitchVariance: 0.05,
+    },
+    /** Abilities: `ability.<abilityId>` (unknown ids: `fallback`), ready cue, power-down after a timed effect. */
+    abilities: {
+      prefix: 'ability.',
+      fallback: 'ability.generic',
+      gain: 0.82,
+      ready: { id: 'ability.ready', gain: 0.5 },
+      end: { id: 'ability.end', gain: 0.5 },
+    },
+    /**
+     * Rift Forge and Werkbank: the upgrade sequence (roar, three anvil strikes, rift choir peaking
+     * about 2.2 s in – apply the upgrade when the machine starts), a denied forge purchase, bench
+     * menus (ui:menu names in `menus`), attachments and element modules (weapon:modsChanged).
+     */
+    forge: {
+      upgrade: { id: 'forge.upgrade', gain: 0.85 },
+      deny: { id: 'forge.deny', gain: 0.6 },
+      purchaseKind: 'forge',
+    },
+    bench: {
+      menus: ['bench', 'workbench', 'werkbank'] as readonly string[],
+      open: { id: 'bench.open', gain: 0.5 },
+      close: { id: 'bench.close', gain: 0.45 },
+      attach: { id: 'bench.attach', gain: 0.6 },
+      /** Removing an attachment plays the attach sound lower. */
+      detachPitch: 0.84,
+      element: { id: 'element.install', gain: 0.7 },
+    },
   },
 } as const;
 

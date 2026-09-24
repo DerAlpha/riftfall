@@ -1,4 +1,13 @@
-import { Euler, Matrix4, Vector3 } from 'three';
+import {
+  Euler,
+  Frustum,
+  Matrix4,
+  OrthographicCamera,
+  PerspectiveCamera,
+  Quaternion,
+  Sphere,
+  Vector3,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 import { onLog } from '../../core/log';
 import { ENEMY_RENDER, ENEMY_VISUALS, type EnemyVisualDef } from '../../defs/enemyVisuals';
@@ -21,6 +30,7 @@ import {
   computeDrivers,
   createDrivers,
   evaluateRig,
+  instanceInFrustum,
   motionValue,
   slotModelToWorld,
   yawToward,
@@ -546,5 +556,71 @@ describe('hitboxes follow the pose', () => {
     expect(h.a.x).toBeCloseTo(5 + r.a.z * 2, 4);
     expect(h.a.z).toBeCloseTo(-2 - r.a.x * 2, 4);
     expect(h.radius).toBeCloseTo(r.radius * 2, 5);
+  });
+});
+
+describe('per-instance frustum culling (CPU mirror of the vertex shader test)', () => {
+  /** Deterministic 0..1 sequence. */
+  function rand(seed: number): () => number {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(a ^ (a >>> 15), a | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  it('matches three.js frustum culling of the reach sphere for the main camera, spot and cascade cameras', () => {
+    const next = rand(42);
+    const persp = new PerspectiveCamera(70, 16 / 9, 0.05, 300);
+    // A spot light shadow camera (narrow cone, short range) and a CSM cascade (asymmetric ortho box).
+    const spot = new PerspectiveCamera(40, 1, 0.5, 12);
+    const cascade = new OrthographicCamera(-14, 9, 11, -6, -30, 45);
+    const frustum = new Frustum();
+    const mesh = new Matrix4(); // the enemy root: identity world matrix
+    const mv = new Matrix4();
+    const inst = new Matrix4();
+    const sphere = new Sphere();
+    const rot = new Quaternion();
+    const UP = new Vector3(0, 1, 0);
+    let culled = 0;
+    let kept = 0;
+    for (const cam of [persp, spot, cascade]) {
+      for (let k = 0; k < 400; k++) {
+        cam.position.set((next() - 0.5) * 30, next() * 10, (next() - 0.5) * 30);
+        cam.lookAt((next() - 0.5) * 30, 0, (next() - 0.5) * 30);
+        cam.updateMatrixWorld();
+        mv.multiplyMatrices(cam.matrixWorldInverse, mesh);
+        frustum.setFromProjectionMatrix(new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+        const scale = 0.6 + next();
+        const pos = new Vector3((next() - 0.5) * 50, next() * 4, (next() - 0.5) * 50);
+        inst.compose(pos, rot.setFromAxisAngle(UP, next() * Math.PI * 2), new Vector3(scale, scale, scale));
+        const reach = 0.5 + next() * 2;
+        sphere.set(pos, reach * scale);
+        const expected = frustum.intersectsSphere(sphere);
+        // Skip spheres grazing a plane (float noise decides them either way).
+        let grazing = false;
+        for (const p of frustum.planes) {
+          if (Math.abs(p.distanceToPoint(pos) + reach * scale) < 1e-4) grazing = true;
+        }
+        if (grazing) continue;
+        const got = instanceInFrustum(cam.projectionMatrix.elements, mv.elements, inst.elements, reach);
+        expect(got, `${cam.type} #${k}`).toBe(expected);
+        if (got) kept++;
+        else culled++;
+      }
+    }
+    // The sample covers both outcomes for every camera kind.
+    expect(culled).toBeGreaterThan(200);
+    expect(kept).toBeGreaterThan(200);
+  });
+
+  it('never culls with radius 0 (culling off)', () => {
+    const cam = new PerspectiveCamera(70, 1, 0.1, 10);
+    cam.updateMatrixWorld();
+    const far = new Matrix4().makeTranslation(0, 0, 500);
+    expect(instanceInFrustum(cam.projectionMatrix.elements, cam.matrixWorldInverse.elements, far.elements, 0)).toBe(true);
+    expect(instanceInFrustum(cam.projectionMatrix.elements, cam.matrixWorldInverse.elements, far.elements, 1)).toBe(false);
   });
 });

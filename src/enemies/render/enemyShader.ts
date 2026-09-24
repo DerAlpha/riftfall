@@ -4,7 +4,11 @@
  * Vertex: the rig interpreter (RIG_GLSL) evaluates the per-instance pose attributes against the
  * packed rig texture (poseMath.compileRig) – the same formulas as poseMath.evaluateRig – and
  * deforms position + normal from the vertex's bone up to the root, before three's instancing.
- * The depth/distance materials (shadows) run the identical deformation and clips.
+ * The depth/distance materials (shadows) run the identical deformation and clips. Per-instance
+ * culling: an instance whose reach sphere lies outside the frustum of the camera drawing it (main
+ * camera, every shadow cascade / spot shadow camera) skips the rig and collapses to a point – the
+ * InstancedMesh itself is only culled as a whole (one bounding sphere around all instances), so
+ * without it every shadow map would run the rig of every enemy on the map.
  *
  * Fragment: per-part material zones (uniform palette), triplanar procedural surface in rest-pose
  * space (blotches, plate seams, pores → albedo/roughness/clearcoat + bump), emissive veins with
@@ -45,7 +49,7 @@ import {
 const log = createLogger('EnemyShader');
 
 /** Bump when the injected GLSL changes (program cache keys). */
-export const ENEMY_SHADER_KEY = 'rf-enemy-2';
+export const ENEMY_SHADER_KEY = 'rf-enemy-3';
 
 /** vec4 entries per material zone in `rfZones`. */
 export const ZONE_VEC4 = 6;
@@ -92,6 +96,7 @@ uniform ivec4 rfLayout; // attackBase, boneBase, partBase, motionBase (texels)
 uniform ivec4 rfCounts; // attacks, bones, parts, motions
 uniform vec2 rfLook; // look yaw / pitch limits (rad)
 uniform float rfTime;
+uniform float rfCullRadius; // reach around the feet (m at scale 1, EnemyRenderer cullReach); <= 0: off
 
 float rfLoc;
 float rfPhase;
@@ -111,6 +116,30 @@ int rfActive;
 
 vec4 rfTex( int i ) {
 	return texelFetch( rfRig, ivec2( i - ( i / RF_RIG_WIDTH ) * RF_RIG_WIDTH, i / RF_RIG_WIDTH ), 0 );
+}
+
+bool rfInsidePlane( vec4 plane, vec4 p, float r ) {
+	return dot( plane, p ) >= - r * length( plane.xyz );
+}
+
+// Reach sphere of this instance against the frustum of the camera drawing it (planes from the
+// rows of the projection matrix, view space). Mirrors poseMath.instanceInFrustum.
+bool rfInstanceVisible() {
+#ifdef USE_INSTANCING
+	if ( rfCullRadius <= 0.0 ) return true;
+	vec4 c = vec4( ( modelViewMatrix * instanceMatrix * vec4( 0.0, 0.0, 0.0, 1.0 ) ).xyz, 1.0 );
+	float r = rfCullRadius * length( instanceMatrix[ 0 ].xyz );
+	mat4 P = projectionMatrix;
+	vec4 r0 = vec4( P[ 0 ][ 0 ], P[ 1 ][ 0 ], P[ 2 ][ 0 ], P[ 3 ][ 0 ] );
+	vec4 r1 = vec4( P[ 0 ][ 1 ], P[ 1 ][ 1 ], P[ 2 ][ 1 ], P[ 3 ][ 1 ] );
+	vec4 r2 = vec4( P[ 0 ][ 2 ], P[ 1 ][ 2 ], P[ 2 ][ 2 ], P[ 3 ][ 2 ] );
+	vec4 r3 = vec4( P[ 0 ][ 3 ], P[ 1 ][ 3 ], P[ 2 ][ 3 ], P[ 3 ][ 3 ] );
+	return rfInsidePlane( r3 + r0, c, r ) && rfInsidePlane( r3 - r0, c, r ) &&
+		rfInsidePlane( r3 + r1, c, r ) && rfInsidePlane( r3 - r1, c, r ) &&
+		rfInsidePlane( r3 + r2, c, r ) && rfInsidePlane( r3 - r2, c, r );
+#else
+	return true;
+#endif
 }
 
 float rfSmooth01( float x ) {
@@ -287,11 +316,13 @@ flat varying vec4 vRfFx;
 /** Rest-pose position + per-instance offset: stable noise space for dissolve and texturing. */
 const DISSOLVE_POS = 'position + vec3( rfSeed * 37.0, 0.0, rfSeed * 23.0 )';
 
+// Culled instances: every vertex at the feet (zero-area triangles, nothing rasterizes).
 const VERTEX_DEFORM_COLOR = /* glsl */ `
 rfSetup();
-vec3 rfPos;
-vec3 rfNrm;
-rfDeform( position, objectNormal, rfPos, rfNrm );
+vec3 rfPos = vec3( 0.0 );
+vec3 rfNrm = vec3( 0.0, 1.0, 0.0 );
+rfZone = 0.0;
+if ( rfInstanceVisible() ) rfDeform( position, objectNormal, rfPos, rfNrm );
 objectNormal = rfNrm;
 `;
 
@@ -308,7 +339,8 @@ vRfState = vec4( rfZone, rfGlowBoost, rfLife, rfEmergeInv );
 const VERTEX_DEFORM_DEPTH = /* glsl */ `
 rfSetup();
 vec3 rfNrmUnused;
-rfDeform( position, vec3( 0.0, 1.0, 0.0 ), transformed, rfNrmUnused );
+transformed = vec3( 0.0 );
+if ( rfInstanceVisible() ) rfDeform( position, vec3( 0.0, 1.0, 0.0 ), transformed, rfNrmUnused );
 vRfDissolvePos = ${DISSOLVE_POS};
 vRfLocalY = transformed.y;
 vRfFx = vec4( rfPose2.x, rfRimAttr.w, rfPose1.z, rfPose1.w );
@@ -561,6 +593,8 @@ export function packZones(rig: CompiledRig, def: EnemyVisualDef): Float32Array {
 
 export interface EnemyTypeUniforms {
   readonly rfRig: { value: DataTexture };
+  /** Per-instance frustum culling reach (m at scale 1); 0 disables it. */
+  readonly rfCullRadius: { value: number };
   readonly rfLayout: { value: Vector4 };
   readonly rfCounts: { value: Vector4 };
   readonly rfLook: { value: Vector2 };
@@ -606,7 +640,8 @@ function install(
 /**
  * Materials of one enemy type: the lit physical material and the shadow depth / distance
  * materials, all sharing the type's rig texture and uniforms. Call RenderApi.setupMaterial on
- * `material` afterwards (CSM).
+ * `material` afterwards (CSM). `cullRadius`: the type's reach around the feet for the
+ * per-instance frustum culling (EnemyRenderer cullReach; 0 = draw every instance).
  */
 export function createEnemyMaterials(
   type: string,
@@ -614,6 +649,7 @@ export function createEnemyMaterials(
   def: EnemyVisualDef,
   rigTexture: DataTexture,
   shared: EnemySharedUniforms,
+  cullRadius = 0,
 ): EnemyMaterialSet {
   const L = rig.layout;
   const D = def.dissolve;
@@ -627,6 +663,7 @@ export function createEnemyMaterials(
   const seam = def.rift;
   const uniforms: EnemyTypeUniforms = {
     rfRig: { value: rigTexture },
+    rfCullRadius: { value: Math.max(0, cullRadius) },
     rfLayout: { value: new Vector4(L.attackBase, L.boneBase, L.partBase, L.motionBase) },
     rfCounts: {
       value: new Vector4(rig.attackIds.length, rig.bones.length, rig.parts.length, rig.motionCount),

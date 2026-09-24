@@ -1004,3 +1004,62 @@ export function boundsOfPacked(
   out[outOffset + 3] = radius;
   return radius;
 }
+
+function planeKeeps(
+  px: number,
+  py: number,
+  pz: number,
+  pw: number,
+  x: number,
+  y: number,
+  z: number,
+  r: number,
+): boolean {
+  return px * x + py * y + pz * z + pw >= -r * Math.sqrt(px * px + py * py + pz * pz);
+}
+
+/**
+ * CPU mirror of the per-instance culling in the enemy vertex shaders (enemyShader RIG_GLSL
+ * rfInstanceVisible): is the sphere of `radius` × instance scale around the instance origin inside
+ * the frustum given by `projection` (planes from its rows, view space)? Matrices are column-major
+ * element arrays (three's Matrix4.elements): the camera projection, the mesh's model-view and the
+ * instance matrix. radius <= 0 never culls. Conservative (sphere vs planes).
+ */
+export function instanceInFrustum(
+  projection: ArrayLike<number>,
+  modelView: ArrayLike<number>,
+  instance: ArrayLike<number>,
+  radius: number,
+): boolean {
+  if (!(radius > 0)) return true;
+  const I = instance;
+  const M = modelView;
+  // Instance origin in the mesh frame, then in view space.
+  const ox = I[12]!;
+  const oy = I[13]!;
+  const oz = I[14]!;
+  const x = M[0]! * ox + M[4]! * oy + M[8]! * oz + M[12]!;
+  const y = M[1]! * ox + M[5]! * oy + M[9]! * oz + M[13]!;
+  const z = M[2]! * ox + M[6]! * oy + M[10]! * oz + M[14]!;
+  const r = radius * Math.hypot(I[0]!, I[1]!, I[2]!);
+  const P = projection;
+  // Row i of the projection: P[i], P[4 + i], P[8 + i], P[12 + i].
+  for (let i = 0; i < 3; i++) {
+    for (let s = 1; s >= -1; s -= 2) {
+      if (
+        !planeKeeps(
+          P[3]! + s * P[i]!,
+          P[7]! + s * P[4 + i]!,
+          P[11]! + s * P[8 + i]!,
+          P[15]! + s * P[12 + i]!,
+          x,
+          y,
+          z,
+          r,
+        )
+      )
+        return false;
+    }
+  }
+  return true;
+}

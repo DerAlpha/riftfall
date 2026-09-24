@@ -14,7 +14,8 @@
  *               (frustum culling works for the camera AND the shadow cascades).
  *
  * Draw calls: 1 per type with visible instances (+ shadow cascades) and 1 shared rift-tear draw
- * while enemies emerge. One shader program for all types; warmup() compiles the color and shadow
+ * while enemies emerge. The vertex shader culls single instances outside the drawing camera's
+ * frustum (enemyShader: shadow cascades / spot shadow maps skip the rig of the others). One shader program for all types; warmup() compiles the color and shadow
  * variants up front. Nothing allocates per frame/tick (computeHitboxes may grow `out` once).
  */
 import {
@@ -509,7 +510,8 @@ export class EnemyRenderer implements EnemyVisualsApi {
     rigTexture.minFilter = NearestFilter;
     rigTexture.generateMipmaps = false;
     rigTexture.needsUpdate = true;
-    const mats = createEnemyMaterials(id, rig, def, rigTexture, this.shared);
+    const reach = cullReach(geometry, def.cullMargin);
+    const mats = createEnemyMaterials(id, rig, def, rigTexture, this.shared, reach);
     render.setupMaterial(mats.material);
 
     const slots = Math.max(1, capacity);
@@ -576,7 +578,7 @@ export class EnemyRenderer implements EnemyVisualsApi {
       worldBounds: new Float32Array(slots * 4),
       worldValid: new Uint8Array(slots),
       worldStride: rig.hitboxes.length * HITBOX_STRIDE,
-      reach: cullReach(geometry, def.cullMargin),
+      reach,
       sphere,
       drawn: 0,
     };

@@ -81,6 +81,11 @@ describe('enemy shader ↔ CPU pose math consistency', () => {
       expect(u.rfCounts.value.x).toBe(rig.attackIds.length);
       expect(u.rfLook.value.x).toBeCloseTo(rig.lookYawMax, 6);
       expect(u.rfLook.value.y).toBeCloseTo(rig.lookPitchMax, 6);
+      // No reach given: per-instance culling is off.
+      expect(u.rfCullRadius.value).toBe(0);
+      expect(createEnemyMaterials(id, rig, def, tex, createSharedUniforms(null), 2.5).uniforms.rfCullRadius.value).toBe(
+        2.5,
+      );
       expect(set.material.customProgramCacheKey()).toBe(
         createEnemyMaterials(id, rig, def, tex, createSharedUniforms(null)).material.customProgramCacheKey(),
       );
@@ -154,6 +159,27 @@ describe('shader patches (three r186 chunks)', () => {
     // Only the bare identifier is replaced (uDissolveEdge / uDissolveColor stay uniforms).
     expect(inst).toContain('uDissolveEdge');
     expect(inst).toContain('uDissolveColor');
+  });
+
+  it('cull single instances outside the drawing camera frustum before running the rig (color and shadows)', () => {
+    const color = patchEnemyVertex(ShaderLib.physical.vertexShader, false)!;
+    const depth = [ShaderLib.depth, ShaderLib.distance].map((l) => patchEnemyVertex(l.vertexShader, true)!);
+    expect(color).toContain('if ( rfInstanceVisible() ) rfDeform( position, objectNormal, rfPos, rfNrm );');
+    // A culled instance collapses onto its feet (zero-area triangles) with defined varyings.
+    expect(color).toContain('vec3 rfPos = vec3( 0.0 );');
+    expect(color).toContain('rfZone = 0.0;');
+    for (const d of depth) {
+      expect(d).toContain('transformed = vec3( 0.0 );');
+      expect(d).toContain('if ( rfInstanceVisible() ) rfDeform( position, vec3( 0.0, 1.0, 0.0 ), transformed');
+    }
+    for (const src of [color, ...depth]) {
+      expect(src.indexOf('bool rfInstanceVisible()')).toBeLessThan(src.indexOf('if ( rfInstanceVisible() )'));
+      expect(src.indexOf('bool rfInsidePlane(')).toBeLessThan(src.indexOf('bool rfInstanceVisible()'));
+    }
+    // Instancing only (instanceMatrix): the planes of all six frustum sides, radius × instance scale.
+    expect(RIG_GLSL).toMatch(/#ifdef USE_INSTANCING[\s\S]*instanceMatrix[\s\S]*#else\s*return true;/);
+    expect(RIG_GLSL.match(/rfInsidePlane\( r3 [+-] r[012], c, r \)/g)).toHaveLength(6);
+    expect(RIG_GLSL).toContain('float r = rfCullRadius * length( instanceMatrix[ 0 ].xyz );');
   });
 
   it('refuses shaders without the anchors (renders undeformed instead of crashing)', () => {

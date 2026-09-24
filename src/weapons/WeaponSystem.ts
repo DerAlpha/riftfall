@@ -243,6 +243,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   private fireHeld = false;
   private adsHeld = false;
   private latched = 0;
+  /** Pad X is shared by reload and interact: true while a press means "interact" (setReloadSuppressor). */
+  private reloadSuppressed: () => boolean = () => false;
   private edgeMask = 0;
   private edgeFrame = -1;
   private inputFrame = 0;
@@ -560,6 +562,11 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   }
 
   /** Gameplay stats (perks, cards; see the file header). null = def values. */
+  /** M4: a reload press is ignored while `suppress()` is true (pad X buying at an interactable). */
+  setReloadSuppressor(suppress: (() => boolean) | null): void {
+    this.reloadSuppressed = suppress ?? (() => false);
+  }
+
   setStats(stats: StatsApi | null): void {
     this.statSource = stats;
     this.statVersion = -1;
@@ -624,7 +631,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       } else this.reloadSprintOk = true;
     }
     if ((edges & EDGE_MELEE) !== 0) this.tryMelee();
-    if ((edges & EDGE_RELOAD) !== 0) this.tryReload();
+    if ((edges & EDGE_RELOAD) !== 0 && !this.reloadSuppressed()) this.tryReload();
     if ((edges & EDGE_INSPECT) !== 0) this.tryInspect();
 
     // --- state machine ---

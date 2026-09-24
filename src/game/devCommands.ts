@@ -305,5 +305,4 @@ export function registerDevCommands(game: DevCommandHost): void {
       },
     });
   }
-  later('points', 'points <menge>', 'Punkte geben', 4);
 }

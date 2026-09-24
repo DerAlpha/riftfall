@@ -12,6 +12,7 @@ import { createLogger } from '../core/log';
 import type { LevelInstance, SaveData } from '../core/contracts';
 import { BOOT_PROGRESS, ENGINE } from '../defs/engine';
 import { MOVEMENT } from '../defs/movement';
+import { POWERUPS } from '../defs/powerups';
 import { GRAPHICS_PRESETS, RENDER } from '../defs/graphics';
 import { COLLISION_GROUP, interactionGroups } from '../defs/physics';
 import { POSTFX } from '../defs/postfx';
@@ -63,6 +64,19 @@ import { createWaveCommands } from '../spawning/waveCommands';
 import { RunFlow } from '../modes/RunFlow';
 import { createRunCommands } from '../modes/runCommands';
 import { deathCameraOffset } from '../modes/deathCamera';
+import { StatSystem } from '../stats/StatSystem';
+import { EconomySystem } from '../economy/EconomySystem';
+import { PointsRules } from '../economy/PointsRules';
+import { PerkSystem } from '../economy/PerkSystem';
+import { createEconomyCommands } from '../economy/economyCommands';
+import { ZoneSystem } from '../interactables/ZoneSystem';
+import { InteractionSystem } from '../interactables/InteractionSystem';
+import { placeInteractables, type InteractablesHandle } from '../interactables/placeInteractables';
+import { createWeaponAdapter } from '../interactables/types';
+import { createInteractCommands } from '../interactables/interactCommands';
+import { SealSystem } from '../seals/SealSystem';
+import { PowerUpSystem } from '../powerups/PowerUpSystem';
+import { createPowerUpCommands } from '../powerups/powerupCommands';
 import { GamePersistence } from './GamePersistence';
 import { MenuPadNavigator } from './MenuPadNavigator';
 import { PauseController } from './PauseController';
@@ -142,6 +156,17 @@ export interface GameSystems {
   enemies: EnemyManager;
   waves: WaveDirector;
   runFlow: RunFlow;
+  // M4
+  stats: StatSystem;
+  economy: EconomySystem;
+  pointsRules: PointsRules;
+  perks: PerkSystem;
+  zones: ZoneSystem;
+  interaction: InteractionSystem;
+  interactables: InteractablesHandle;
+  /** Rift seals at the spawn points (wave maps only). */
+  seals: SealSystem | null;
+  powerUps: PowerUpSystem;
 }
 
 export class Game {
@@ -306,13 +331,6 @@ export class Game {
       render,
       reduceFlashing: settings.current.accessibility.reduceFlashing,
     });
-    render.setVolumetricContentProbe(
-      () =>
-        vfx.hasVolumetricContent ||
-        (targets?.hasVolumetricContent ?? false) ||
-        (isMapLevel(level) && level.hasVolumetricContent) ||
-        enemyVisuals.hasVolumetricContent,
-    );
 
     progress(BOOT_PROGRESS.environment, 'Kalibriere Umgebung…');
     const hdri = level.atmosphere.environment.hdri
@@ -349,6 +367,16 @@ export class Game {
     });
     viewmodel.setAdsSource(weapons);
 
+    // M4 stats: every consumer re-reads them on its next tick/frame/damage call.
+    const runSeed = `run:${level.id}:${Date.now()}`;
+    const stats = new StatSystem({ events });
+    player.setStats(stats);
+    health.setStats(stats);
+    weapons.setStats(stats);
+    const economy = new EconomySystem({ events, stats });
+    const pointsRules = new PointsRules({ events, economy });
+    const perks = new PerkSystem({ events, stats, combat, player, seed: `perks:${runSeed}` });
+
     let gameRef: Game | null = null;
     const runFlow = new RunFlow({
       events,
@@ -356,7 +384,8 @@ export class Game {
         if (gameRef) gameRef.loop.timeScale = scale;
       },
       getPlayerPosition: () => player.position,
-      killPlayer: () => void health.damage(health.health + health.armor),
+      // Bypasses revives and damage stats (Phoenix, damageTaken): `run kill` always ends the run.
+      killPlayer: () => void health.kill(),
       showGameOver: (summary) => gameRef?.showGameOver(summary),
     });
 
@@ -375,7 +404,6 @@ export class Game {
       },
       damage: (amount, direction) => health.damage(amount, direction),
     };
-    const runSeed = `run:${level.id}:${Date.now()}`;
     const enemies = new EnemyManager({
       events,
       combat,
@@ -388,6 +416,7 @@ export class Game {
       seed: runSeed,
     });
     for (const [type, count] of ENEMY_PREWARM) enemies.prewarm(type, count);
+    const zones = ZoneSystem.forLevel(level, events);
     const waves = new WaveDirector({
       events,
       enemies,
@@ -397,14 +426,100 @@ export class Game {
       rng: new Rng(`waves:${runSeed}`),
       lineOfSight: (a, b) => combat.lineOfSight(a, b),
       randomPoint: (c, r, out) => nav.randomPointAround(c, r, out),
+      isZoneActive: (z) => zones.isActive(z),
     });
     audioBridge.setEnemySource(enemies);
+
+    // M4 economy world: interaction focus, doors/wall buys/box/perk machines, rift seals, power-ups.
+    const playing = (): boolean => !health.dead && runFlow.state !== 'dying' && runFlow.state !== 'over';
+    const interaction = new InteractionSystem({
+      events,
+      input,
+      viewer: player,
+      economy,
+      lineOfSight: (a, b) => combat.lineOfSight(a, b),
+      enabled: playing,
+    });
+    // Pad X is shared by reload and interact: at an interactable it buys instead of reloading.
+    weapons.setReloadSuppressor(() => interaction.offering && input.device === 'gamepad');
+    const reduceFlashing = settings.current.accessibility.reduceFlashing;
+    const interactables = placeInteractables({
+      level,
+      events,
+      economy,
+      weapons: createWeaponAdapter(weapons),
+      perks,
+      zones,
+      interaction,
+      physics,
+      combat,
+      nav,
+      rng: new Rng(`box:${runSeed}`),
+      vfx,
+      player: { position: player.position, radius: MOVEMENT.collider.radius },
+      visuals: { scene: render.scene, materials, render, reduceFlashing },
+      mapId: map.id,
+    });
+    const seals =
+      map.waves && (level.spawnPoints?.length ?? 0) > 0
+        ? new SealSystem({
+            events,
+            spawnPoints: level.spawnPoints ?? [],
+            scene: render.scene,
+            setupMaterial: (m) => render.setupMaterial(m),
+            vfx,
+            rewards: pointsRules,
+            probe: (o, d, max) => physics.raycast(o, d, max, { groups: SUN_PROBE_GROUPS })?.distance ?? max,
+            reduceFlashing,
+          })
+        : null;
+    seals?.attach(interaction);
+    enemies.setBreach(seals);
+    const nukeFx = POWERUPS.effects.nuke;
+    const powerUps = new PowerUpSystem({
+      events,
+      player: player,
+      canCollect: playing,
+      stats,
+      economy,
+      enemies,
+      weapons,
+      seals,
+      armor: health,
+      snapToFloor: (p, out) => nav.closestPoint(p, out),
+      vfx,
+      fx: {
+        nuke: (p) => {
+          render.addShockwave(p, nukeFx.radius, 1);
+          events.emit('fx:hitPulse', { strength: nukeFx.pulse });
+          events.emit('camera:shake', { trauma: nukeFx.shake });
+        },
+      },
+      scene: render.scene,
+      seed: `powerups:${runSeed}`,
+      reduceFlashing,
+    });
+    perks.setAmmoDropHandler(powerUps.dropAmmo);
+
+    // Particles/tracers, target barriers, holograms, seals and pickups share the volumetric layer:
+    // its pass runs only while one of them (or the level's volumetrics) draws.
+    render.setVolumetricContentProbe(
+      () =>
+        vfx.hasVolumetricContent ||
+        (targets?.hasVolumetricContent ?? false) ||
+        (isMapLevel(level) && level.hasVolumetricContent) ||
+        enemyVisuals.hasVolumetricContent ||
+        interactables.hasVolumetricContent ||
+        (seals?.hasVolumetricContent ?? false) ||
+        powerUps.hasVolumetricContent,
+    );
 
     const hud = new Hud(el('hud'), events, settings);
     hud.setCamera(render.camera);
     // The countdown shows the director's clock (fixed ticks; frozen while the player is dead).
     hud.setWaveCountdownSource(() => waves.intermissionLeft);
     health.announce();
+    economy.announce();
     const debug = new DebugOverlay(el('debug'), events);
     const devConsole = new DevConsole(el('console'), events);
 
@@ -458,6 +573,15 @@ export class Game {
       enemies,
       waves,
       runFlow,
+      stats,
+      economy,
+      pointsRules,
+      perks,
+      zones,
+      interaction,
+      interactables,
+      seals,
+      powerUps,
     });
     gameRef = game;
     game.registerCommands();
@@ -536,9 +660,15 @@ export class Game {
       enemies,
       runFlow,
       audioBridge,
+      interaction,
+      interactables,
+      seals,
+      powerUps,
     } = this.sys;
     this.time += dt;
     player.update(dt, alpha);
+    // Every frame: advances the once-per-frame press latch of the interact binding.
+    interaction.update(dt);
     // Weapons before the camera: ADS blend, recoil counter-pull and FOV zoom of this frame.
     weapons.update(dt);
     playerCamera.update(dt);
@@ -552,6 +682,9 @@ export class Game {
     viewmodel.update(dt);
     // VFX after the viewmodel: muzzle flashes and casings use this frame's socket positions.
     vfx.update(dt);
+    interactables.update(dt, alpha);
+    seals?.update(dt);
+    powerUps.update(dt);
     // Shockwaves age on game time with their explosion (frozen while paused, slowed by timeScale).
     render.advanceWorldTime(dt);
     level.update(dt, this.time);
@@ -571,7 +704,7 @@ export class Game {
     });
     render.setViewmodelSunVisibility(blocked ? 0 : 1, dt);
 
-    hud.setDash(player.dashCharges, player.unlocks.dash ? MOVEMENT.dash.charges : 0, player.dashRecharge);
+    hud.setDash(player.dashCharges, player.unlocks.dash ? player.maxDashCharges : 0, player.dashRecharge);
     hud.setMovement(Math.hypot(player.velocity.x, player.velocity.z), player.state);
     // The crosshair gap shows the real cone: projected with this frame's FOV (after playerCamera).
     hud.setSpreadCone(weapons.spreadDegrees, render.camera.fov);
@@ -626,6 +759,17 @@ export class Game {
       }),
       ...createWaveCommands({ waves }),
       ...createRunCommands({ run: runFlow }),
+      ...createEconomyCommands({ economy: this.sys.economy, perks: this.sys.perks, stats: this.sys.stats }),
+      ...createInteractCommands({
+        doors: this.sys.interactables.doors,
+        box: this.sys.interactables.box,
+        zones: this.sys.zones,
+      }),
+      ...createPowerUpCommands({
+        powerups: this.sys.powerUps,
+        seals: this.sys.seals,
+        player: () => ({ position: player.position, yaw: player.yaw }),
+      }),
     ];
     for (const c of commands) devConsole.register(c);
   }
@@ -667,8 +811,12 @@ export class Game {
     });
     this.sys.events.on('fx:hitPulse', ({ strength }) => this.sys.render.addHitPulse(strength));
     this.sys.events.on('settings:changed', ({ settings, sections }) => {
-      if (sections.includes('accessibility'))
-        this.sys.enemyVisuals.setReducedFlashing(settings.accessibility.reduceFlashing);
+      if (!sections.includes('accessibility')) return;
+      const reduce = settings.accessibility.reduceFlashing;
+      this.sys.enemyVisuals.setReducedFlashing(reduce);
+      this.sys.interactables.setReducedFlashing(reduce);
+      this.sys.seals?.setReducedFlashing(reduce);
+      this.sys.powerUps.setReducedFlashing(reduce);
     });
     this.sys.events.on('player:died', () => {
       this.sys.viewmodel.setVisible(false);
@@ -747,11 +895,22 @@ export class Game {
   private resetRunSystems(startWaves = true): void {
     const { enemies, waves, health, player, level, weapons, viewmodel, vfx, map, hud, audioBridge } =
       this.sys;
+    const { powerUps, perks, stats, economy, pointsRules, zones, interactables, interaction, seals } = this.sys;
     enemies.clear();
     waves.reset();
     vfx.clear();
+    // Timed power-ups first (they remove their stat sources), then perks, then the stat table.
+    powerUps.clear();
+    perks.clear();
+    stats.reset();
+    economy.reset();
+    pointsRules.reset();
     health.reset();
     player.teleport(level.spawn.position, level.spawn.yaw);
+    zones.reset();
+    interactables.reset(`box:${level.id}:${this.runSeq}:${Date.now()}`);
+    interaction.reset();
+    seals?.reset();
     const loadout = getLoadout(level.id);
     weapons.setLoadout(loadout.weapons, loadout.slots);
     weapons.refillAmmo(true);

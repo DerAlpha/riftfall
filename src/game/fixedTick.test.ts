@@ -23,6 +23,10 @@ function recorder(calls: string[]): FixedTickSystems {
     waves: step('waves'),
     enemies: step('enemies'),
     runFlow: step('runFlow'),
+    interaction: step('interaction'),
+    interactables: step('interactables'),
+    powerUps: step('powerUps'),
+    perks: step('perks'),
     physics: { step: () => void calls.push('physics') },
     health: step('health'),
     level: {
@@ -62,17 +66,21 @@ function box(d: Damageable, zone: HitZone): Hitbox {
 }
 
 describe('runFixedTick', () => {
-  it('steps player → weapons → targets → waves → enemies → physics → health → level → runFlow', () => {
+  it('steps player → interaction → weapons → targets → waves → enemies → interactables → powerUps → physics → health → perks → level → runFlow', () => {
     const calls: string[] = [];
     runFixedTick(recorder(calls), DT);
     expect(calls).toEqual([
       'player',
+      'interaction',
       'weapons',
       'targets',
       'waves',
       'enemies',
+      'interactables',
+      'powerUps',
       'physics',
       'health',
+      'perks',
       'level',
       'runFlow',
     ]);
@@ -85,6 +93,10 @@ describe('runFixedTick', () => {
     s.waves = null;
     s.enemies = null;
     s.runFlow = null;
+    s.interaction = null;
+    s.interactables = null;
+    s.powerUps = null;
+    s.perks = null;
     s.player.position.y = PHYSICS.killPlaneY - 1;
     runFixedTick(s, DT);
     expect(calls).toEqual(['player', 'weapons', 'teleport', 'physics', 'health', 'level']);

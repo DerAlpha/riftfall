@@ -747,13 +747,19 @@ export class AudioEventBridge {
         }
         // Tails follow the room: shorter and quieter in small rooms, longer in halls.
         const room = roomTail(this.audio.activeReverbZone);
+        // A suppressor: no tail, a quieter, thinner body, the action as it is, plus the can.
+        const sup = e.suppressed === true ? W.suppressed : null;
         for (let i = 0; i < layers.length; i++) {
           if (!this.layerDue(i, now)) continue;
           const id = layers[i]!;
           const tail = id.startsWith(AR.tailPrefix);
-          const gain = W.fireGain * fireLayerGain(i) * (tail ? room.gain : 1);
-          this.play(id, gain, 0, 'sfx', tail ? pitch * room.pitch : pitch);
+          if (tail && sup) continue;
+          const k = sup ? (i === 0 ? sup.bodyGain : sup.mechGain) : 1;
+          const gain = W.fireGain * fireLayerGain(i) * (tail ? room.gain : 1) * k;
+          const p = tail ? pitch * room.pitch : sup && i === 0 ? pitch * sup.pitch : pitch;
+          this.play(id, gain, 0, 'sfx', p);
         }
+        if (sup) this.play(sup.id, W.fireGain * sup.gain, 0, 'sfx', pitch);
         const extra = extraFireSoundLayers(e.weaponId);
         for (let i = 0; i < extra.length; i++) {
           this.play(extra[i]!, W.fireGain * W.extraLayerGain, W.handlingPitchVariance);

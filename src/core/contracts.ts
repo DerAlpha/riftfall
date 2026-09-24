@@ -823,7 +823,8 @@ export interface VfxWeaponApi extends VfxApi {
   /**
    * A shot was fired: viewmodel flash, world flash light, muzzle smoke and casing, resolved at this
    * frame's sockets. `muzzle` / `direction`: world muzzle and aim at fire time (no sockets).
-   * `lightColor`: linear hex, 0 = preset color.
+   * `lightColor`: linear hex, 0 = preset color. `suppressed` (M5 suppressor): a smaller, dimmer
+   * flash and light (VFX.muzzleFlash.suppressed).
    */
   muzzle(
     preset: string,
@@ -832,6 +833,7 @@ export interface VfxWeaponApi extends VfxApi {
     ads: boolean,
     muzzle: Vec3Like,
     direction: Vec3Like,
+    suppressed?: boolean,
   ): void;
   /**
    * A shot hit a surface. `profile`: weapon impact profile id, null = by impact kind. `decal` false

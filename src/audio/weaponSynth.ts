@@ -468,6 +468,27 @@ const rifleMech: Recipe = (g, t) => {
   k.ring(t2, 1350 * k.j(0.06), [1, 2.2, 3.6], 0.05, 0.22, pan);
 };
 
+/**
+ * Suppressed report (M5 suppressor): the gas leaves the can as a pneumatic "thwup" – low-passed
+ * noise sweeping down, a muffled mid knock, a faint crack and a soft low body; no bloom.
+ */
+const suppressedShot: Recipe = (g, t) => {
+  const k = kitOf(g);
+  const b = k.bus({ drive: 1.4, lowpass: 3400 });
+  b.noise(t, {
+    color: 'pink',
+    filter: 'lowpass',
+    freq: 2600 * k.j(0.1),
+    sweepTo: 380,
+    attack: 0.0015,
+    decay: 0.075,
+    peak: 0.95,
+  });
+  b.noise(t, { color: 'white', filter: 'bandpass', freq: 1250 * k.j(0.12), q: 1.5, decay: 0.032, peak: 0.5 });
+  b.thump(t, { f0: 160 * k.j(0.08), f1: 60, pitchTime: 0.028, decay: 0.07, peak: 0.6, drive: 1.3 });
+  k.click(t, 4200 * k.j(0.1), 0.004, 0.16);
+};
+
 /** Extra low boom under the shotgun blast. */
 const shotgunBoom: Recipe = (g, t) => {
   const k = kitOf(g);
@@ -999,6 +1020,8 @@ export const WEAPON_SYNTH_DEFS = {
   'weapon.pistol.mech': { variants: 3, duration: 0.16, channels: 2, level: 0.7, recipe: pistolMech },
   'weapon.rifle.mech': { variants: 4, duration: 0.12, channels: 2, level: 0.65, recipe: rifleMech },
   'weapon.shotgun.boom': { variants: 2, duration: 0.7, channels: 1, level: 1, recipe: shotgunBoom },
+  // Suppressor layer (replaces the tail, under a quieter body; AUDIO.weapons.suppressed).
+  'weapon.suppressed': { variants: 3, duration: 0.24, channels: 2, level: 0.9, recipe: suppressedShot },
   'weapon.shotgun.pumpCycle': { variants: 3, duration: 0.55, channels: 2, level: 0.85, recipe: pump(0.16) },
   // Dark blooms (< 1 kHz): rendered at half rate (SynthDef.rate).
   'weapon.tail.small': {

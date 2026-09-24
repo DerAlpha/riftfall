@@ -456,6 +456,8 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
   b.mount('optic', [0, 0.0925, -0.066]);
   b.mount('laser', [0.05, 0.046, -0.225]);
   b.mount('underbarrel', [0, 0.001, -0.24]);
+  // Stock kits (the defs' stock slot) join where the skeleton stock leaves the receiver.
+  b.mount('stock', [0, 0.05, 0.08]);
 
   const built = b.build({ ...kit.materials, ...glow, field, slug, sheet, cap });
   return new EnergyWeaponModel('railgun', def, built, glow, readoutSpec, readout, [

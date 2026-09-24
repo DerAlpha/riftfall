@@ -133,6 +133,7 @@ interface PendingShot {
   lightColor: number;
   casing: string | null;
   ads: boolean;
+  suppressed: boolean;
   mx: number;
   my: number;
   mz: number;
@@ -304,6 +305,7 @@ export class VfxSystem implements VfxWeaponApi {
         lightColor: 0,
         casing: null,
         ads: false,
+        suppressed: false,
         mx: 0,
         my: 0,
         mz: 0,
@@ -490,6 +492,7 @@ export class VfxSystem implements VfxWeaponApi {
    * and the casing ejection (resolved in update() at this frame's socket positions).
    * `muzzle` / `direction` are the world muzzle position and aim direction at fire time (used
    * without viewmodel sockets). `lightColor`: linear hex (weapon def), 0 = preset color.
+   * `suppressed`: a smaller, dimmer flash (VFX.muzzleFlash.suppressed).
    */
   muzzle(
     preset: string,
@@ -498,6 +501,7 @@ export class VfxSystem implements VfxWeaponApi {
     ads: boolean,
     muzzle: Vec3Like,
     direction: Vec3Like,
+    suppressed = false,
   ): void {
     if (this.pendingShotCount >= VFX.queue.shots) return;
     const s = this.pendingShots[this.pendingShotCount++]!;
@@ -505,6 +509,7 @@ export class VfxSystem implements VfxWeaponApi {
     s.lightColor = lightColor;
     s.casing = casing;
     s.ads = ads;
+    s.suppressed = suppressed;
     s.mx = muzzle.x;
     s.my = muzzle.y;
     s.mz = muzzle.z;
@@ -796,11 +801,18 @@ export class VfxSystem implements VfxWeaponApi {
         _aim.x = s.dx;
         _aim.y = s.dy;
         _aim.z = s.dz;
-        this.keepInFront(_v, preset.light?.offset ?? 0, _aim);
-        this.play(preset, _v, _aim, 1, false, null, 0, s.lightColor);
+        const sup = s.suppressed ? VFX.muzzleFlash.suppressed : null;
+        const world = sup ? sup.world : 1;
+        this.keepInFront(_v, (preset.light?.offset ?? 0) * world, _aim);
+        this.play(preset, _v, _aim, world, false, null, 0, s.lightColor);
         if (preset.flash) {
           if (this.sockets) this.muzzleFlash.attach(this.sockets.getSocketObject('muzzle'));
-          this.muzzleFlash.fire(preset.flash, s.ads, this.flashScale);
+          this.muzzleFlash.fire(
+            preset.flash,
+            s.ads,
+            this.flashScale * (sup ? sup.intensity : 1),
+            sup ? sup.size : 1,
+          );
           this.muzzleFlash.update(0, this.render.viewmodelCamera);
         }
       }

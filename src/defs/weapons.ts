@@ -523,6 +523,11 @@ export interface WeaponDef {
    * speed (`ads.moveSpeedMultiplier`) applies on top; the `moveSpeed` stat mod scales both.
    */
   readonly carrySpeedMultiplier?: number;
+  /**
+   * A fitted muzzle device suppresses the report (set by resolveWeapon from the attachments'
+   * `suppressed`; weapon:fired carries it): smaller world muzzle flash, quieter, tighter gunshot.
+   */
+  readonly suppressed?: boolean;
 }
 
 /**

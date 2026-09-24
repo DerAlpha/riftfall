@@ -164,6 +164,12 @@ export const AUDIO = {
     firePitchVariance: 0.035,
     /** Gain of WeaponAudioDef.extraFire layers (e.g. the SG-12 pump cycle), relative to fireGain. */
     extraLayerGain: 0.7,
+    /**
+     * Suppressed shots (M5 suppressor, weapon:fired `suppressed`): no tail layer, the body layer
+     * (fire[0]) at `bodyGain` and `pitch` (thinner), the mechanical layers at `mechGain`, plus the
+     * filtered can layer `id` at `gain` (relative to fireGain).
+     */
+    suppressed: { id: 'weapon.suppressed', gain: 0.8, bodyGain: 0.3, mechGain: 1, pitch: 1.1 },
     /** Mechanical "last rounds" tick: from ceil(magazine × fraction) rounds (at most maxRounds) down. */
     lowAmmo: { id: 'weapon.lowAmmo', fraction: 0.25, maxRounds: 6, gain: 0.3, pitchRise: 0.35 },
     dryGain: 0.55,

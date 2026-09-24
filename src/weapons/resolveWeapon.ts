@@ -10,8 +10,9 @@
  * - Reload times scale as a whole: durations AND marker times (`magIn` commit point, shell insert,
  *   pump), so gameplay commits and the viewmodel's marker-synced animation stay aligned.
  * - A Rift Forge tier renames the weapon (the HUD shows `name`), may bring a special (kept by
- *   higher tiers unless they define their own; `null` removes it) and recolors the tracer (the
- *   tier's `tracerColor`, else its forge look's tracer).
+ *   higher tiers unless they define their own; `null` removes it), recolors the tracer (the
+ *   tier's `tracerColor`, else its forge look's tracer) and tints the muzzle-flash light (the
+ *   look's `muzzleLight`). A suppressing muzzle device sets `suppressed`.
  * - Kind data follows the stats: damage scales projectile blasts, field dps/collapses and nothing
  *   else absolute (special damages are tier data) – the shooter's share of a blast stays the base
  *   def's (× the selfDamage factor), damage mods never make the player's own blasts deadlier; rpm scales a beam's tick and drain rates;
@@ -257,16 +258,21 @@ export function resolveWeapon(base: WeaponDef, state: WeaponModState = {}): Weap
   };
   const tier = Math.max(0, Math.floor(state.tier ?? 0));
   for (const u of base.upgrades) if (u.tier <= tier) applyMods(f, u.mods);
+  let suppressed = base.suppressed === true;
   for (const id of state.attachments ?? []) {
     const att = getAttachmentDef(id);
-    if (att) applyMods(f, attachmentMods(att, base));
+    if (!att) continue;
+    applyMods(f, attachmentMods(att, base));
+    if (att.suppressed) suppressed = true;
   }
   for (const m of state.mods ?? []) applyMods(f, m);
   if (state.element) f.element = state.element;
   const baseElement = base.damage.element;
   const element = f.element ?? baseElement;
   const upgrade = currentTier(base, tier);
-  if (neutral(f) && element === baseElement && !upgrade) return base;
+  if (neutral(f) && element === baseElement && !upgrade && suppressed === (base.suppressed === true)) {
+    return base;
+  }
 
   const s = base.spread;
   const r = base.recoil;
@@ -276,6 +282,8 @@ export function resolveWeapon(base: WeaponDef, state: WeaponModState = {}): Weap
   const tracerColor = upgrade
     ? (upgrade.tracerColor ?? look?.tracer ?? base.tracer.color)
     : base.tracer.color;
+  // The world muzzle-flash light takes the forge look's tint (the viewmodel light does too).
+  const muzzleLight = look ? look.muzzleLight : base.vfx.muzzleLightColor;
   const carry = (base.carrySpeedMultiplier ?? 1) * f.moveSpeed;
   const out: WeaponDef = {
     ...base,
@@ -317,6 +325,8 @@ export function resolveWeapon(base: WeaponDef, state: WeaponModState = {}): Weap
     penetration: { ...base.penetration, power: base.penetration.power * f.penetration },
     equipTime: base.equipTime * f.equipTime,
     tracer: tracerColor === base.tracer.color ? base.tracer : { ...base.tracer, color: tracerColor },
+    vfx: muzzleLight === base.vfx.muzzleLightColor ? base.vfx : { ...base.vfx, muzzleLightColor: muzzleLight },
+    suppressed,
     special,
     projectile: scaleProjectile(base.projectile, f, baseElement, element),
     beam: base.beam

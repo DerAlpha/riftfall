@@ -3295,6 +3295,12 @@ export const VFX = {
     /** Side tongue width relative to the star size. */
     petalWidth: 0.55,
     renderOrder: 50,
+    /**
+     * Suppressed shots (M5 suppressor attachment): the world part of the muzzle preset (flash
+     * light, sparks, smoke) plays at `world` scale, the viewmodel flash at `size` × size and
+     * `intensity` × brightness (the viewmodel flash light has OUTFIT_RIG.suppressedFlash).
+     */
+    suppressed: { world: 0.35, size: 0.55, intensity: 0.4 },
   },
   /** Dev console `vfx` / `explode`: aim ray reach, fallback distance, default radius, lift off the surface. */
   devCommands: { aimRange: 80, missDistance: 6, explosionRadius: 4, liftPerRadius: 0.25, maxLift: 1 },

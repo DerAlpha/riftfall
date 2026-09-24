@@ -583,6 +583,8 @@ export class ThemePlayer implements SequencerSink {
   }
 
   private finish(): void {
+    // Voices scheduled during the fade-out ring on under the closed fader: cut them before reuse.
+    this.pool.stopAll(this.ctx.currentTime, 0.05);
     this.seq?.stop();
     this.seq = null;
     this._samples = null;

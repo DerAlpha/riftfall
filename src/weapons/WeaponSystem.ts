@@ -440,6 +440,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     shotIndex: 0,
     ammoInMag: 0,
     ads: false,
+    muzzleLightColor: 0,
+    suppressed: false,
   };
   private readonly impactPayload: GameEvents['combat:impact'] = {
     point: { x: 0, y: 0, z: 0 },
@@ -1381,6 +1383,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     fired.shotIndex = shotIndex;
     fired.ammoInMag = w.mag;
     fired.ads = this._adsAmount >= WEAPON_RULES.adsFiredThreshold;
+    fired.muzzleLightColor = def.vfx.muzzleLightColor;
+    fired.suppressed = def.suppressed === true;
     this.events.emit('weapon:fired', fired);
     return shotIndex;
   }

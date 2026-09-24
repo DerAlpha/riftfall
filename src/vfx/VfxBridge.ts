@@ -71,7 +71,16 @@ export class VfxBridge {
         // Beam weapons report every damage tick as a shot: their continuous muzzle glow, sparks and
         // light come with the beam visual (ArsenalVfx), a per-tick flash burst would strobe.
         if (def.kind === 'beam') return;
-        vfx.muzzle(def.vfx.muzzle, def.vfx.muzzleLightColor, def.vfx.casing, e.ads, e.muzzle, e.direction);
+        // The effective def's light (forge look tint) and suppressor ride on the event.
+        vfx.muzzle(
+          def.vfx.muzzle,
+          e.muzzleLightColor ?? def.vfx.muzzleLightColor,
+          def.vfx.casing,
+          e.ads,
+          e.muzzle,
+          e.direction,
+          e.suppressed === true,
+        );
       }),
       events.on('combat:impact', (e) => {
         const profile = getWeaponDef(e.weaponId)?.vfx.impact ?? null;

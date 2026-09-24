@@ -4,8 +4,9 @@ import { ENEMY_AI } from '../defs/enemies';
 import type { Enemy } from './Enemy';
 import { DT, createEnemyHarness } from './testFakes';
 
-function info(kind: ImpactKind, amount = 0.5): DamageInfo {
+function info(kind: ImpactKind, amount = 0.5, sustained?: boolean): DamageInfo {
   return {
+    ...(sustained === undefined ? {} : { sustained }),
     amount,
     zone: 'body',
     point: { x: 0, y: 1, z: 0 },
@@ -18,7 +19,7 @@ function info(kind: ImpactKind, amount = 0.5): DamageInfo {
 }
 
 /** Hits `e` with `kind` at `rate` Hz for `seconds`; returns the mean and peak hit flash per tick. */
-function sustained(kind: ImpactKind, rate: number, seconds: number) {
+function sustained(kind: ImpactKind, rate: number, seconds: number, flag?: boolean) {
   const h = createEnemyHarness();
   const id = h.manager.spawn('tank', { x: 0, y: 0, z: -10 })!;
   const e = h.manager.enemies.find((x) => x.id === id) as Enemy;
@@ -33,7 +34,7 @@ function sustained(kind: ImpactKind, rate: number, seconds: number) {
     clock += DT;
     if (clock >= every - 1e-9) {
       clock -= every;
-      h.combat.dealDamage(e, info(kind));
+      h.combat.dealDamage(e, info(kind, 0.5, flag));
       peak = Math.max(peak, e.pose.hitFlash);
     }
     h.tick(1);
@@ -50,6 +51,14 @@ describe('enemy hit flash under sustained damage', () => {
     // Before: the flash reset to 1 every 83 ms and averaged ~0.6 (a white body over the burn rim).
     expect(beam.mean).toBeLessThan(0.08);
     expect(beam.mean).toBeGreaterThan(0); // still readable feedback
+  });
+
+  it('4 Hz field ticks (fire pool, singularity) do not strobe white-hot', () => {
+    const field = sustained('explosion', 4, 2, true);
+    expect(field.peak).toBeLessThanOrEqual(ENEMY_AI.pose.sustainedFlash.peak + 1e-6);
+    expect(field.mean).toBeLessThan(0.08);
+    // A one-off blast (no `sustained`) still flashes fully.
+    expect(sustained('explosion', 1, 0.5).peak).toBe(1);
   });
 
   it('bullets keep the full white-hot flash', () => {

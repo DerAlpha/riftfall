@@ -331,8 +331,9 @@ export class MusicSystem implements MusicApi, ConductorSink {
     if (!samples) {
       // Keep the old theme until the new one is rendered (a boss theme takes a moment).
       this.pendingTheme = themeId;
-      void this.bank.load(themeId).then(() => {
-        if (!this.disposed && this.pendingTheme === themeId) this.applyState(this.conductor.state);
+      void this.bank.load(themeId).then((ready) => {
+        // A failed render (null) is not retried: the old theme plays on, stings use their fallback.
+        if (ready && !this.disposed && this.pendingTheme === themeId) this.applyState(this.conductor.state);
       });
       this.updateHold();
       return;
@@ -537,13 +538,17 @@ export class MusicSystem implements MusicApi, ConductorSink {
     this.ensureTimer();
   }
 
+  /**
+   * The context must stay awake while paused when the state plays on the menu route (start screen,
+   * game over) – requested before the context even exists, so the engine never suspends it in
+   * between – or while a sting on the menu / ui route still sounds.
+   */
   private updateHold(): void {
     const g = this.graph;
-    const cur = this.current;
-    const menuMusic = this._enabled && cur !== null && cur.active && !cur.stopping && cur.route === 'menu';
-    const menuPending = this._enabled && this.pendingTheme !== null && this.conductor.policy.route === 'menu';
+    const state = this.conductor.state;
+    const menuRoute = this._enabled && state !== 'off' && MUSIC.states[state].route === 'menu';
     const stings = g !== null && g.ctx.currentTime < this.holdUntil;
-    this.setHold(g !== null && (menuMusic || menuPending || stings));
+    this.setHold(!this.disposed && (menuRoute || stings));
   }
 
   private setHold(hold: boolean): void {

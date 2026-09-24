@@ -128,6 +128,13 @@ export interface GameEvents {
     shotIndex: number;
     ammoInMag: number;
     ads: boolean;
+    /**
+     * M5 effective def (Rift Forge / attachments): muzzle-flash light color (linear hex, the forge
+     * look's tint) and a suppressing muzzle device (smaller flash, quieter report). Absent = the
+     * base def's color, unsuppressed.
+     */
+    muzzleLightColor?: number;
+    suppressed?: boolean;
   };
   'weapon:dryFire': { weaponId: string };
   'weapon:reloadStart': { weaponId: string; empty: boolean; duration: number };

@@ -82,11 +82,14 @@ export class MuzzleFlash {
     return this.root.visible;
   }
 
-  /** Show a new flash; `intensityScale` dims it (reduce-flashing accessibility option). */
-  fire(def: MuzzleFlashDef, ads: boolean, intensityScale = 1): void {
+  /**
+   * Show a new flash; `intensityScale` dims it (reduce-flashing accessibility option, suppressor),
+   * `sizeScale` shrinks it (suppressor).
+   */
+  fire(def: MuzzleFlashDef, ads: boolean, intensityScale = 1, sizeScale = 1): void {
     const r = this.rand;
     const mf = VFX.muzzleFlash;
-    const scale = ads ? def.adsScale : 1;
+    const scale = (ads ? def.adsScale : 1) * Math.max(0, sizeScale);
     const size = def.size * scale * (mf.scaleJitter[0] + (mf.scaleJitter[1] - mf.scaleJitter[0]) * r());
     this.star.scale.set(size, size, 1);
     this.star.rotation.set(0, 0, r() * Math.PI * 2);

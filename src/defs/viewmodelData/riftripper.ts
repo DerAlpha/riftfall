@@ -116,5 +116,5 @@ export const RIFTRIPPER_VIEWMODEL: WeaponViewmodelDef | null = {
     boltRelease: [{ delay: 0.03, pose: { pos: V(0, 0.003, 0.008), rot: V(-2, 0, 0) } }],
   },
   accentLight: { pos: V(0, 0.05, -0.3), color: 0xff3ad8, intensity: 0.04, distance: 0.3 },
-  glow: { accent: 2.5, readout: 2.5, sight: 5, heat: 5 },
+  glow: { accent: 4.8, readout: 2.5, sight: 5, heat: 5 },
 };

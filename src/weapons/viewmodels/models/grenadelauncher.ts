@@ -382,7 +382,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
 
   const built = b.build({ ...kit.materials, ...glow, tip });
   return new EnergyWeaponModel('grenadelauncher', def, built, glow, readoutSpec, readout, [
-    { material: tip, intensity: 1.4, pulseRate: 2.4, pulseDepth: 0.25, flash: 2 },
+    { material: tip, intensity: 2.6, pulseRate: 2.4, pulseDepth: 0.2, flash: 2 },
   ]);
 }
 

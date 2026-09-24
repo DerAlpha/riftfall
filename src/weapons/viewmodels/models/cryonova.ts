@@ -434,8 +434,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       { material: aura, intensity: 0.8, pulseRate: 1.1, pulseDepth: 0.3, flash: 3 },
       { material: cryo, intensity: 1.3, pulseRate: 0.9, pulseDepth: 0.2 },
     ],
-    extras,
-    [armour, ice],
+    { extras, owned: [armour, ice] },
   );
 }
 

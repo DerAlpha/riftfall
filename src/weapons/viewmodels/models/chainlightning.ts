@@ -14,7 +14,6 @@ import { BODY, ModelBuilder } from '../ModelBuilder';
 import { createGlowMaterials, type WeaponMaterialKit } from '../materials';
 import {
   chamferRectProfile,
-  cylinderX,
   cylinderZ,
   latheZHard,
   profileX,
@@ -235,9 +234,9 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     { pos: [0, BORE_Y, HEAD_Z + 0.006], paint: P.gunmetal.paint },
   );
   b.add(BODY, 'arc', new TorusGeometry(0.0095, 0.0018, 8, 20), { pos: [0, BORE_Y, HEAD_Z - 0.002], uv: 'keep' });
-  b.add(BODY, 'accentPaint', profileZ(regularPolygonProfile(0.039, 6, 30), 0.003, {
-    holes: [regularPolygonProfile(0.033, 6, 30)],
-  }), { pos: [0, BORE_Y, HEAD_Z + 0.014], paint: P.accentPaint.paint });
+  b.add(BODY, 'accent', profileZ(regularPolygonProfile(0.039, 6, 30), 0.003, {
+    holes: [regularPolygonProfile(0.036, 6, 30)],
+  }), { pos: [0, BORE_Y, HEAD_Z + 0.014] });
 
   // --- claw prongs (each in its own part, curving out and back in) ---
   for (const [name, deg] of PRONGS) {
@@ -386,12 +385,11 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     { paint: P.polymer.paint },
   );
   b.add(BODY, 'grip', roundedBox(0.044, 0.116, 0.014, 0.004), { pos: [0, 0.014, 0.315], uvDensity: VIEWMODEL_ART.knurlDensity });
-  b.add(BODY, 'accentPaint', roundedBox(0.0408, 0.008, 0.012, 0.002), { pos: [0, 0.052, 0.222], paint: P.accentPaint.paint });
-
+  
   // --- Leyden-jar cell: glass, crawling sparks, caps (local frame: −Y down the well) ---
   b.add('cell', 'jar', new CylinderGeometry(CELL.r - 0.003, CELL.r - 0.003, CELL.len - 0.026, 18), { local: true, pos: [0, -CELL.len / 2, 0] });
   b.add('cell', 'lens', new CylinderGeometry(CELL.r, CELL.r, CELL.len - 0.026, 18), { local: true, pos: [0, -CELL.len / 2, 0], uv: 'keep' });
-  b.add('cell', 'darkMetal', new CylinderGeometry(CELL.r + 0.0016, CELL.r + 0.0016, 0.014, 18), { local: true, pos: [0, -0.007, 0], paint: 0.4 });
+  b.add('cell', 'gunmetal', new CylinderGeometry(CELL.r + 0.0016, CELL.r + 0.0016, 0.014, 18), { local: true, pos: [0, -0.007, 0], paint: 0.25 });
   b.add('cell', 'gunmetal', new CylinderGeometry(CELL.r + 0.0022, CELL.r + 0.0022, 0.013, 18), {
     local: true,
     pos: [0, -CELL.len + 0.0065, 0],
@@ -402,10 +400,9 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     pos: [0, -CELL.len - 0.001, 0],
     paint: P.accentPaint.paint,
   });
-  b.add('cell', 'brass', cylinderX(0.0026, 0.028, 8), { local: true, pos: [0, -CELL.len / 2, 0], rot: [0, 90, 90], paint: 0.8 });
 
   // --- rear aperture sight ---
-  b.add('sight', 'darkMetal', roundedBox(0.016, SIGHT_Y - 0.094, 0.01, 0.0015), {
+  b.add('sight', 'gunmetal', roundedBox(0.016, SIGHT_Y - 0.094, 0.01, 0.0015), {
     pos: [0, (SIGHT_Y + 0.082) / 2 - 0.009, -0.018],
     paint: P.darkMetal.paint,
   });
@@ -433,8 +430,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       { material: halo, intensity: 0.5, pulseRate: 2.3, pulseDepth: 0.3, flash: 1.5, boost: 3, flickerRate: 53, flickerDepth: 0.6 },
       { material: jar, intensity: 1.3, pulseRate: 1.4, pulseDepth: 0.25, boost: 1.5, flickerRate: 29, flickerDepth: 0.25 },
     ],
-    [],
-    [ceramic],
+    { owned: [ceramic] },
   );
 }
 

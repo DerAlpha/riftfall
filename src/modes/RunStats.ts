@@ -1,15 +1,18 @@
 /**
  * Per-run statistics (event driven, counted only while active):
  * - kills / headshot kills / weakpoint kills: enemy:died credited to the player,
- * - shots fired / hit: every weapon:fired is one shot; the first player combat:damage after it
- *   marks the shot as a hit (a shotgun blast is one shot however many pellets land); melee blows
- *   (weapon:melee until the next shot) are not shots,
+ * - shots fired / hit: every weapon:fired is one shot; the first player combat:damage OF THAT
+ *   WEAPON after it marks the shot as a hit (a shotgun blast is one shot however many pellets
+ *   land); melee blows (weapon:melee until the next shot) are not shots, and other player damage
+ *   (perk blasts, M4) never turns a missed shot into a hit,
  * - damage dealt (player combat:damage) / taken (player:damaged), time survived (tick), highest
  *   wave started / completed,
+ * - points earned (M4): every credited economy:points earning (after multipliers) except
+ *   RUN.unearnedPointReasons (refunds, console grants),
  * - score (computeScore, defs/waves.ts RUN.score + the enemy defs' kill points).
  */
 import type { EventBus } from '../core/EventBus';
-import type { GameEvents } from '../core/events';
+import type { GameEvents, PointsReason } from '../core/events';
 import { getEnemyDef } from '../defs/enemies';
 import { RUN } from '../defs/waves';
 
@@ -45,6 +48,8 @@ export interface RunStatsSnapshot {
   wavesCompleted: number;
   /** Kill points so far (enemy defs). */
   killPoints: number;
+  /** Economy points credited this run (M4, after multipliers; no refunds / console grants). */
+  pointsEarned: number;
   score: number;
 }
 
@@ -90,6 +95,8 @@ export interface RunStatsOptions {
   score?: RunScoreDef;
   /** Kill points per enemy type (default: defs/enemies `points`, RUN.score defaults for unknown). */
   killPoints?: (type: string) => KillPoints | undefined;
+  /** economy:points reasons that are no earnings (default RUN.unearnedPointReasons). */
+  unearnedPointReasons?: readonly PointsReason[];
 }
 
 export class RunStats {
@@ -99,6 +106,7 @@ export class RunStats {
   private readonly scoreDef: RunScoreDef;
   private readonly killPointsOf: (type: string) => KillPoints | undefined;
   private readonly defaultPoints: KillPoints;
+  private readonly unearned: readonly PointsReason[];
   private readonly offs: (() => void)[] = [];
 
   private _kills = 0;
@@ -112,13 +120,17 @@ export class RunStats {
   private _wave = 0;
   private _wavesCompleted = 0;
   private _killPoints = 0;
+  private _pointsEarned = 0;
   /** A shot is open for hits until the next shot or a melee swing. */
   private shotOpen = false;
   private shotHit = false;
+  /** Weapon of the open shot: only its damage is the shot's hit. */
+  private shotWeapon = '';
 
   constructor(events: EventBus<GameEvents>, opts: RunStatsOptions = {}) {
     this.scoreDef = opts.score ?? RUN.score;
     this.killPointsOf = opts.killPoints ?? ((type) => getEnemyDef(type)?.points);
+    this.unearned = opts.unearnedPointReasons ?? RUN.unearnedPointReasons;
     const S = this.scoreDef;
     this.defaultPoints = {
       kill: S.defaultKill,
@@ -126,11 +138,12 @@ export class RunStats {
       weakpointBonus: S.defaultWeakpointBonus,
     };
     this.offs.push(
-      events.on('weapon:fired', () => {
+      events.on('weapon:fired', (e) => {
         if (!this.active) return;
         this._shotsFired++;
         this.shotOpen = true;
         this.shotHit = false;
+        this.shotWeapon = e.weaponId;
       }),
       events.on('weapon:melee', () => {
         this.shotOpen = false;
@@ -138,7 +151,7 @@ export class RunStats {
       events.on('combat:damage', (e) => {
         if (!this.active || e.source !== 'player') return;
         if (Number.isFinite(e.amount) && e.amount > 0) this._damageDealt += e.amount;
-        if (this.shotOpen && !this.shotHit) {
+        if (this.shotOpen && !this.shotHit && e.weaponId === this.shotWeapon) {
           this.shotHit = true;
           this._shotsHit++;
         }
@@ -158,6 +171,10 @@ export class RunStats {
       }),
       events.on('wave:complete', (e) => {
         if (this.active) this._wavesCompleted = Math.max(this._wavesCompleted, e.wave);
+      }),
+      events.on('economy:points', (e) => {
+        if (!this.active || !(e.delta > 0) || !Number.isFinite(e.delta)) return;
+        if (!this.unearned.includes(e.reason)) this._pointsEarned += e.delta;
       }),
     );
   }
@@ -195,6 +212,10 @@ export class RunStats {
   get wavesCompleted(): number {
     return this._wavesCompleted;
   }
+  /** Economy points credited this run (after multipliers; no refunds / console grants). */
+  get pointsEarned(): number {
+    return this._pointsEarned;
+  }
   get score(): number {
     return computeScore(
       {
@@ -230,8 +251,10 @@ export class RunStats {
     this._wave = 0;
     this._wavesCompleted = 0;
     this._killPoints = 0;
+    this._pointsEarned = 0;
     this.shotOpen = false;
     this.shotHit = false;
+    this.shotWeapon = '';
   }
 
   /** Copy of the current values (into `out` when given). */
@@ -251,6 +274,7 @@ export class RunStats {
         wave: 0,
         wavesCompleted: 0,
         killPoints: 0,
+        pointsEarned: 0,
         score: 0,
       } satisfies RunStatsSnapshot);
     s.kills = this._kills;
@@ -265,6 +289,7 @@ export class RunStats {
     s.wave = this._wave;
     s.wavesCompleted = this._wavesCompleted;
     s.killPoints = this._killPoints;
+    s.pointsEarned = this._pointsEarned;
     s.score = this.score;
     return s;
   }

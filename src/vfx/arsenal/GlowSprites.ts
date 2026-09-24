@@ -5,8 +5,10 @@
  * draw for every sprite of a blend mode; the instance list is rebuilt each frame by the arsenal
  * renderers (begin → push … → end) and only the live range is uploaded.
  *
- * Emissive sprites are additive; 'dark' sprites (event horizons) use normal blending with black.
- * Both live on RENDER.volumetricLayer (drawn after AO and fog, depth-tested, no depth write), fog
+ * Emissive sprites are additive; 'dark' sprites (event horizons) use normal blending with black
+ * and write depth – drawn first, they hide what lies behind the core (the far side of an accretion
+ * disc, infalling streaks) from the glows drawn after them. Both live on RENDER.volumetricLayer
+ * (drawn after AO and fog, depth-tested; the pass's depth is discarded afterwards), fog
  * themselves like the particles, never shrink below ARSENAL_VFX.glows.minPixelSize and are pulled
  * towards the camera by size × depthPull so a glow at a wall is not cut in half by it.
  */
@@ -174,8 +176,10 @@ void main() {
     core = (1.0 - smoothstep(0.0, 0.45, d)) * s;
   }
 #ifdef DARK
+  // Dark discs write depth (the far half of an accretion disc hides behind the event horizon):
+  // the faint rim must not, or it would cut a hard edge into what is drawn behind it.
   float alpha = a * vColor.a;
-  if (alpha < 0.004) discard;
+  if (alpha < 0.3) discard;
   gl_FragColor = vec4(vColor.rgb, alpha);
 #else
   vec3 hot = vec3(max(vColor.r, max(vColor.g, vColor.b)));
@@ -240,12 +244,13 @@ export class GlowSprites {
       uniforms: {
         uViewportHeight: this.viewportHeight,
         uMinPx: { value: g.minPixelSize },
-        uDepthPull: { value: g.depthPull },
+        // Dark discs sit exactly at their core depth (they write it); glows are pulled forward.
+        uDepthPull: { value: dark ? 0 : g.depthPull },
         uMinDepth: { value: g.depthPullMinDistance },
         fogParams: HEIGHT_FOG_PARAMS,
       },
       transparent: true,
-      depthWrite: false,
+      depthWrite: dark,
       depthTest: true,
       side: THREE.DoubleSide,
       blending: dark ? THREE.NormalBlending : THREE.AdditiveBlending,

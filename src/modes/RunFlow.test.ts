@@ -52,6 +52,7 @@ describe('RunFlow', () => {
       source: 'player',
     });
     flow.fixedUpdate(30);
+    events.emit('economy:points', { delta: 90, total: 590, reason: 'headshot' });
 
     health(40);
     expect(flow.state).toBe('running');
@@ -64,6 +65,7 @@ describe('RunFlow', () => {
     // Health events during the sequence change nothing; stats stop counting.
     health(0);
     flow.fixedUpdate(10);
+    events.emit('economy:points', { delta: 400, total: 990, reason: 'nuke' });
     expect(log).toEqual(['player:died']);
 
     // The slow motion eases towards the end scale (real time).
@@ -82,7 +84,14 @@ describe('RunFlow', () => {
     expect(overs[0]!.timeSurvived).toBeCloseTo(30);
     expect(overs[0]!.score).toBeGreaterThan(0);
     expect(shown.length).toBe(1);
-    expect(shown[0]).toMatchObject({ wave: 4, kills: 1, score: overs[0]!.score, accuracy: 0 });
+    expect(shown[0]).toMatchObject({
+      wave: 4,
+      kills: 1,
+      score: overs[0]!.score,
+      accuracy: 0,
+      // Earned while running; the points after the death do not count.
+      pointsEarned: 90,
+    });
     expect(flow.summary).toBe(shown[0]);
   });
 

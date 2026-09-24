@@ -151,6 +151,9 @@ export const DOORS = {
   emissiveIntensity: 5.5,
   breatheRate: 0.6,
   breatheDepth: 0.25,
+  /** Reduced flashing: the breathing depth × this. Unlock: a flash decaying at this rate (1/s). */
+  reducedBreatheScale: 0.4,
+  unlockFlashDecay: 4,
   /** Holographic price panel in front of each face. */
   panel: {
     width: 1.34,
@@ -366,8 +369,11 @@ export const MYSTERY_BOX = {
   riftIntensity: 6,
   riftPulseRate: 0.8,
   riftPulseDepth: 0.35,
+  /** While busy (not idle): pulse rate and brightness × these; reduced flashing: depth × scale. */
+  riftActive: { rateScale: 3, intensityScale: 1.4 },
+  reducedPulseScale: 0.4,
   /** Glow inside the open chest (additive, linear intensity). */
-  interiorGlow: 0.35,
+  interiorGlow: 0.9,
   /** Weapon hologram over the open box. */
   hologram: {
     /** Real model length × scale, clamped (m). */

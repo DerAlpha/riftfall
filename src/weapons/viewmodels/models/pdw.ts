@@ -3,7 +3,7 @@
  * model space: origin = grip pivot, barrel along −Z). A sculpted polymer shell: rounded nose, a
  * big finger loop in front of the grip, a thumbhole behind it and the butt running back to the
  * shoulder. The 50-round magazine lies on top in a smoked translucent shell: the rounds inside
- * are glowing cells that go dark from the rear as it empties (the ammo readout).
+ * lie crosswise with glowing tips that go dark from the rear as it empties (the ammo readout).
  *
  * Parts: magazine (lifted off the top on a reload), bolt (the left charging handle), trigger.
  * An integrated reflex housing bridges the magazine; its ring reticle sits on the sight line.
@@ -50,7 +50,9 @@ const MUZZLE_Z = -0.26;
 const BUTT_Z = 0.272;
 
 /** Smoked translucent polymer of the magazine shell (content: owned by the model). */
-const MAG_SHELL = { color: 0x16242a, opacity: 0.42, roughness: 0.14, clearcoat: 0.9 } as const;
+const MAG_SHELL = { color: 0x16242a, opacity: 0.5, roughness: 0.14, clearcoat: 0.9 } as const;
+/** Cartridge radius inside the magazine. */
+const ROUND_R = 0.0033;
 
 /** Side silhouette of the shell: nose, receiver bottom, thumbhole slope, butt. */
 const BODY_OUTLINE: readonly ProfilePoint[] = [
@@ -320,10 +322,13 @@ export const buildPdw: ViewmodelBuilder = (kit) => {
       pos: [0, MAG_Y, magZ],
     },
   );
+  // Rounds lie crosswise in the magazine; each readout cell is the glowing tip of one of them.
   const pitch = (magLen - 0.03) / CELLS;
   for (let i = 0; i < CELLS; i++) {
-    b.add('magazine', 'readout', new BoxGeometry(0.034, 0.008, pitch * 0.62), {
-      pos: [0, MAG_Y + 0.001, MAG_FRONT + 0.02 + (i + 0.5) * pitch],
+    const z = MAG_FRONT + 0.02 + (i + 0.5) * pitch;
+    b.add('magazine', 'brass', cylinderX(ROUND_R, MAG_W - 0.018, 10), { pos: [0.003, MAG_Y + 0.001, z] });
+    b.add('magazine', 'readout', new BoxGeometry(0.007, ROUND_R * 2.05, pitch * 0.6), {
+      pos: [-(MAG_W / 2) + 0.0115, MAG_Y + 0.001, z],
       uv: ledUv(i, CELLS),
     });
   }

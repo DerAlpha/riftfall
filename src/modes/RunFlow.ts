@@ -29,6 +29,8 @@ export interface RunSummary extends Readonly<GameEvents['run:over']> {
   readonly damageDealt: number;
   readonly damageTaken: number;
   readonly wavesCompleted: number;
+  /** Economy points credited during the run (M4; RunStats.pointsEarned). */
+  readonly pointsEarned: number;
 }
 
 export interface RunDeathDef {
@@ -241,6 +243,7 @@ export class RunFlow {
       damageDealt: s.damageDealt,
       damageTaken: s.damageTaken,
       wavesCompleted: s.wavesCompleted,
+      pointsEarned: s.pointsEarned,
     };
     this._summary = summary;
     this.events.emit('run:over', {

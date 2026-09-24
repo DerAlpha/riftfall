@@ -409,7 +409,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       { material: field, intensity: 2.3, pulseRate: 1.9, pulseDepth: 0.15, flash: 4, boost: 3 },
       { material: cellGlow, intensity: 1.5, pulseRate: 1.1, pulseDepth: 0.25 },
     ],
-    extras,
+    { extras, readoutTint: [190, 120, 255] },
   );
 }
 

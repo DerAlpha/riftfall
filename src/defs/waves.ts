@@ -14,6 +14,7 @@
  * M6 adds types by adding entries to `types` / `specials` (ids from defs/enemies). M8 modes add
  * more WaveModeDef entries. Units: seconds, meters.
  */
+import type { PointsReason } from '../core/events';
 
 export interface WaveCountCurveDef {
   readonly base: number;
@@ -249,4 +250,9 @@ export const RUN = {
     /** Per kill at 100 % accuracy (scaled by accuracy). */
     accuracyPerKill: 20,
   },
+  /**
+   * economy:points reasons that are no earnings in the run statistics ("Punkte verdient"): a refund
+   * gives a purchase back, console grants are not earned (spending is negative anyway).
+   */
+  unearnedPointReasons: ['refund', 'dev'] as readonly PointsReason[],
 } as const;

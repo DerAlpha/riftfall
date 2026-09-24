@@ -76,5 +76,5 @@ export const GRENADELAUNCHER_VIEWMODEL: WeaponViewmodelDef | null = {
     pump: [{ delay: 0.02, pose: { pos: V(0, 0, -0.006), rot: V(2, 0, -2) } }],
   },
   accentLight: { pos: V(-0.06, 0.02, -0.1), color: 0xffa21c, intensity: 0.025, distance: 0.26 },
-  glow: { accent: 2.3, readout: 2.5, sight: 5, heat: 5 },
+  glow: { accent: 3.1, readout: 2.5, sight: 5, heat: 5 },
 };

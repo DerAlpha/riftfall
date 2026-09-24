@@ -106,7 +106,7 @@ export const CHAINLIGHTNING_VIEWMODEL: WeaponViewmodelDef | null = {
     ],
   },
   accentLight: { pos: V(0, 0.05, -0.33), color: 0x6f9dff, intensity: 0.035, distance: 0.3 },
-  glow: { accent: 2.4, readout: 2.5, sight: 5, heat: 5 },
+  glow: { accent: 4.2, readout: 2.5, sight: 5, heat: 5 },
   drivers: [
     // Beam on: the rotor whirls up, the prongs claw open around the arc, everything burns brighter.
     { part: 'coils', source: 'beam', spin: { axis: 'z', degPerSec: 1080 }, accentBoost: 4, response: 5 },

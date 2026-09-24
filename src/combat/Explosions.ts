@@ -69,9 +69,8 @@ export interface ExplosionsDeps {
 const PROP_QUERY_GROUPS = interactionGroups(COLLISION_GROUP.PROJECTILE, COLLISION_GROUP.PROP);
 const IDENTITY = { x: 0, y: 0, z: 0, w: 1 };
 
-const _center = new Vector3();
-const _closest = new Vector3();
 const _dir = new Vector3();
+const _chest = new Vector3();
 const _impulse = { x: 0, y: 0, z: 0 };
 const _toBlast = { x: 0, y: 0, z: 0 };
 
@@ -85,8 +84,10 @@ export class Explosions implements ExplosionApi {
   private specials: SpecialsHook | null;
   private readonly playerRadius: number;
 
-  /** One candidate list per nesting depth (re-entrant explode()). */
+  /** One candidate list, center and closest point per nesting depth (re-entrant explode()). */
   private readonly lists: Damageable[][] = [];
+  private readonly centers: Vector3[] = [];
+  private readonly closests: Vector3[] = [];
   private depth = 0;
   private readonly balls = new Map<number, RAPIER.Ball>();
   private readonly info: DamageInfo = {
@@ -111,6 +112,7 @@ export class Explosions implements ExplosionApi {
   // Prop query state (the Rapier callback is a bound method: no closure per blast).
   private propRadius = 0;
   private propImpulse = 0;
+  private readonly propCenter = new Vector3();
   private readonly visitProp = (collider: RAPIER.Collider): boolean => {
     this.pushProp(collider);
     return true;
@@ -123,7 +125,11 @@ export class Explosions implements ExplosionApi {
     this.player = deps.player ?? null;
     this.specials = deps.specials ?? null;
     this.playerRadius = deps.playerRadius ?? MOVEMENT.collider.radius;
-    for (let i = 0; i <= ARSENAL.explosions.maxDepth; i++) this.lists.push([]);
+    for (let i = 0; i <= ARSENAL.explosions.maxDepth; i++) {
+      this.lists.push([]);
+      this.centers.push(new Vector3());
+      this.closests.push(new Vector3());
+    }
   }
 
   setPlayer(player: ExplosionPlayer | null): void {
@@ -142,9 +148,10 @@ export class Explosions implements ExplosionApi {
       return 0;
     }
     const list = this.lists[this.depth]!;
+    const center = this.centers[this.depth]!.set(position.x, position.y, position.z);
+    const closest = this.closests[this.depth]!;
     this.depth++;
     this.stats.explosions++;
-    const center = _center.set(position.x, position.y, position.z);
     const scale = from.areaScale !== undefined && from.areaScale >= 0 ? from.areaScale : 1;
     const damage = def.damage * scale;
     const spareTeam = from.source === 'player' ? 'player' : from.source === 'enemy' ? 'enemy' : null;
@@ -158,20 +165,20 @@ export class Explosions implements ExplosionApi {
         const t = list[i]!;
         if (!t.alive || t.team === spareTeam) continue;
         let d: number;
-        if (t.hitboxes.length > 0) d = distanceToHitboxes(center, t.hitboxes, _closest);
+        if (t.hitboxes.length > 0) d = distanceToHitboxes(center, t.hitboxes, closest);
         else {
           d = Math.max(0, t.boundsCenter.distanceTo(center) - t.boundsRadius);
-          _closest.copy(t.boundsCenter);
+          closest.copy(t.boundsCenter);
         }
         if (d > r) continue;
-        if (!this.combat.lineOfSight(center, _closest) && !this.combat.lineOfSight(center, t.aimPoint)) continue;
+        if (!this.combat.lineOfSight(center, closest) && !this.combat.lineOfSight(center, t.aimPoint)) continue;
         const f = blastFalloff(d, r, def.minFalloffMultiplier);
         if (!(f > 0)) continue;
         const info = this.info;
         info.amount = damage * f;
         info.zone = 'body';
-        copyVec(_closest, info.point);
-        _dir.subVectors(_closest, center);
+        copyVec(closest, info.point);
+        _dir.subVectors(closest, center);
         const len = _dir.length();
         if (len > 1e-6) _dir.multiplyScalar(1 / len);
         else _dir.set(0, 1, 0);
@@ -196,7 +203,7 @@ export class Explosions implements ExplosionApi {
           h.weaponId = from.weaponId;
           h.source = from.source;
           h.target = t;
-          copyVec(_closest, h.point);
+          copyVec(closest, h.point);
           h.applied = applied;
           h.killed = killed;
           h.primary = primary;
@@ -239,8 +246,8 @@ export class Explosions implements ExplosionApi {
     const d = distanceToBody(center, p.position, p.eyePosition, this.playerRadius);
     if (d > def.radius) return;
     // Head or chest must be visible from the blast.
-    _closest.set(p.position.x, (p.position.y + p.eyePosition.y) * 0.5, p.position.z);
-    if (!this.combat.lineOfSight(center, p.eyePosition) && !this.combat.lineOfSight(center, _closest)) return;
+    _chest.set(p.position.x, (p.position.y + p.eyePosition.y) * 0.5, p.position.z);
+    if (!this.combat.lineOfSight(center, p.eyePosition) && !this.combat.lineOfSight(center, _chest)) return;
     const f = blastFalloff(d, def.radius, def.minFalloffMultiplier);
     if (!(f > 0)) return;
     // player:damaged convention: from the player TOWARDS the source.
@@ -275,6 +282,7 @@ export class Explosions implements ExplosionApi {
     }
     this.propRadius = radius;
     this.propImpulse = impulse;
+    this.propCenter.copy(center);
     try {
       physics.ensureQueries?.();
       physics.world.intersectionsWithShape(
@@ -294,13 +302,14 @@ export class Explosions implements ExplosionApi {
     const body = collider.parent();
     if (!body || !body.isDynamic()) return;
     const t = body.translation();
-    const dx = t.x - _center.x;
-    const dy = t.y - _center.y;
-    const dz = t.z - _center.z;
+    const c = this.propCenter;
+    const dx = t.x - c.x;
+    const dy = t.y - c.y;
+    const dz = t.z - c.z;
     const d = Math.hypot(dx, dy, dz);
     const f = linearFade(d, this.propRadius);
     if (!(f > 0)) return;
-    if (!this.combat.lineOfSight(_center, t)) return;
+    if (!this.combat.lineOfSight(c, t)) return;
     const k = (this.propImpulse * f) / Math.max(d, COMBAT.minRayLength);
     // Blasts lift what they push (reads better than a flat shove).
     _impulse.x = dx * k;

@@ -547,7 +547,9 @@ export const BEAM_STYLES = {
   },
 } as const satisfies Record<string, BeamStyleDef>;
 
-export const DEFAULT_BEAM_STYLE: BeamStyleDef = BEAM_STYLES['beam.void'];
+/** Unknown beam ids draw the void ray; unknown shot ids (and non-ray shots) too. */
+export const DEFAULT_RAY_STYLE: RayBeamDef = BEAM_STYLES['beam.void'];
+export const DEFAULT_BEAM_STYLE: BeamStyleDef = DEFAULT_RAY_STYLE;
 
 // ---------------------------------------------------------------------------
 // Charge glow (viewmodel muzzle)

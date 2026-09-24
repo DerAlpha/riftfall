@@ -324,8 +324,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       { material: crystal, intensity: 2.6, pulseRate: 1.9, pulseDepth: 0.2, flash: 4 },
       { material: aura, intensity: 0.9, pulseRate: 1.3, pulseDepth: 0.3, flash: 2.5 },
     ],
-    extras,
-    [ivory],
+    { extras, owned: [ivory], readoutTint: [255, 232, 160] },
   );
 }
 

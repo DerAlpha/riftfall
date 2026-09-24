@@ -135,7 +135,7 @@ export const BLACKHOLE_VIEWMODEL: WeaponViewmodelDef | null = {
     boltRelease: [{ delay: 0.05, pose: { pos: V(0, -0.004, 0.008), rot: V(-2, 0, 2) } }],
   },
   accentLight: { pos: V(0, 0.05, -0.3), color: 0x9a4dff, intensity: 0.045, distance: 0.32 },
-  glow: { accent: 2.4, readout: 2.5, sight: 5, heat: 5 },
+  glow: { accent: 6, readout: 2.5, sight: 6, heat: 5 },
   drivers: [
     // Heat spins the containment ring up (it also idles on its own, see the model).
     { part: 'ring', source: 'heat', spin: { axis: 'z', degPerSec: 540 }, accentBoost: 1.5, response: 3 },

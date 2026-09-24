@@ -106,10 +106,10 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
     });
   }
   // Priming-lever slot (right flank).
-  b.add(BODY, 'bore', new BoxGeometry(0.0012, 0.007, 0.068), { pos: [0.0263, 0.064, 0.006] });
+  b.add(BODY, 'darkMetal', new BoxGeometry(0.0012, 0.007, 0.068), { pos: [0.0263, 0.064, 0.006], paint: 0.05 });
 
   // Capacitor tube on the left flank, facing the shooter behind a slotted cage.
-  b.add(BODY, 'bore', new BoxGeometry(0.0014, 0.024, 0.13), { pos: [-0.0262, 0.047, -0.08] });
+  b.add(BODY, 'darkMetal', new BoxGeometry(0.0014, 0.024, 0.13), { pos: [-0.0262, 0.047, -0.08], paint: 0.05 });
   b.add(BODY, 'cap', cylinderZ(0.0085, 0.0085, 0.124, 16), { pos: [-0.0236, 0.047, -0.08] });
   for (const cz of [-0.017, -0.143]) {
     b.add(BODY, 'darkMetal', cylinderZ(0.0105, 0.0105, 0.008, 16), { pos: [-0.0236, 0.047, cz], paint: 0.4 });
@@ -216,9 +216,9 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       pos: [side * RAIL_X, 0, 0],
       paint: P.gunmetal.paint,
     });
-    b.add(part, 'darkMetal', new BoxGeometry(0.0016, 0.022, 0.4), {
+    b.add(part, 'gunmetal', new BoxGeometry(0.0016, 0.022, 0.4), {
       pos: [side * (RAIL_X - 0.0062), BORE_Y, -0.44],
-      paint: 0.5,
+      paint: 0.12,
     });
     b.add(part, 'accent', new BoxGeometry(0.0008, 0.007, 0.38), { pos: [side * (RAIL_X - 0.0072), BORE_Y, -0.445] });
     b.add(part, 'accent', new BoxGeometry(0.0008, 0.0016, 0.36), { pos: [side * (RAIL_X + 0.0062), 0.064, -0.43] });
@@ -250,7 +250,6 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       });
       b.add('coils', 'brass', cylinderX(0.0034, 0.004, 10), { pos: [side * 0.059, BORE_Y + 0.008, z], paint: 0.8 });
     }
-    b.add('coils', 'accent', new BoxGeometry(0.03, 0.0014, 0.0145), { pos: [0, BORE_Y + 0.0383, z] });
   }
 
   // --- magwell, trigger guard, trigger ---
@@ -382,7 +381,7 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
       paint: P.gunmetal.paint,
     });
   }
-  b.add('cell', 'bore', new BoxGeometry(0.0006, 0.05, 0.036), { pos: [-0.0172, -0.064, -0.113] });
+  b.add('cell', 'darkMetal', new BoxGeometry(0.0006, 0.05, 0.036), { pos: [-0.0172, -0.064, -0.113], paint: 0.05 });
   b.add('cell', 'cap', new BoxGeometry(0.0012, 0.04, 0.026), { pos: [-0.0176, -0.064, -0.113] });
   b.add('cell', 'accentPaint', roundedBox(0.04, 0.01, 0.078, 0.003), {
     pos: [0, -0.108, -0.113],

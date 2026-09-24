@@ -33,6 +33,8 @@ export class LightSlots {
   readonly intensity: Float32Array;
   /** Started since the last endFrame(): shown at full peak for the frame it started in. */
   readonly fresh: Uint8Array;
+  /** Bumped by every start(): a sustain handle (see handleOf) is only valid for its own flash. */
+  readonly gen: Uint32Array;
   private lowThisFrame = 0;
 
   constructor(
@@ -47,6 +49,21 @@ export class LightSlots {
     this.phase = new Float32Array(size);
     this.intensity = new Float32Array(size);
     this.fresh = new Uint8Array(size);
+    this.gen = new Uint32Array(size);
+  }
+
+  /** Handle of the flash currently in `slot` (> 0). */
+  handleOf(slot: number): number {
+    return this.gen[slot]! * (this.size + 1) + slot + 1;
+  }
+
+  /** Slot of a handle whose flash is still lit, else -1 (stolen, finished or cleared). */
+  slotOf(handle: number): number {
+    if (!(handle > 0)) return -1;
+    const slot = (handle % (this.size + 1)) - 1;
+    if (slot < 0 || slot >= this.size) return -1;
+    const gen = Math.floor(handle / (this.size + 1));
+    return this.gen[slot] === gen && this.intensity[slot]! > 0 ? slot : -1;
   }
 
   /** Pick a slot for a flash; -1 when none may be taken. Does not start the flash. */
@@ -87,6 +104,7 @@ export class LightSlots {
     this.phase[slot] = phase;
     this.intensity[slot] = peak;
     this.fresh[slot] = 1;
+    this.gen[slot] = (this.gen[slot]! + 1) >>> 0;
   }
 
   /**
@@ -190,6 +208,19 @@ export class LightPool {
     if (!(peak > 0)) return false;
     const slot = this.slots.acquire(def.priority, peak);
     if (slot < 0) return false;
+    this.startFlash(slot, def, position, normal, scale, peak, color);
+    return true;
+  }
+
+  private startFlash(
+    slot: number,
+    def: LightFlashDef,
+    position: Vec3Like,
+    normal: Vec3Like | null,
+    scale: number,
+    peak: number,
+    color: Rgb | number | undefined,
+  ): void {
     const light = this.lights[slot]!;
     const off = (def.offset ?? 0) * scale;
     light.position.set(
@@ -206,7 +237,29 @@ export class LightPool {
     this.slots.start(slot, peak, def.duration, def.priority, def.flicker ?? 0, this.rand());
     this.litViewmodel[slot] = def.viewmodel === false ? 0 : 1;
     light.intensity = peak;
-    return true;
+  }
+
+  /**
+   * Keep a light going for a lasting effect (beam, field, charge): re-flash the slot of `handle`
+   * in place while it still carries that effect's last flash (no slot hopping – a re-flashed beam
+   * never occupies two lights), else start a new flash like flash(). Call it every
+   * def.duration-fraction; returns the new handle (0 = no light free).
+   */
+  sustain(
+    handle: number,
+    def: LightFlashDef,
+    position: Vec3Like,
+    normal: Vec3Like | null,
+    scale = 1,
+    color?: Rgb | number,
+  ): number {
+    const peak = def.intensity * scale * this.intensityScale;
+    if (!(peak > 0)) return 0;
+    let slot = this.slots.slotOf(handle);
+    if (slot < 0) slot = this.slots.acquire(def.priority, peak);
+    if (slot < 0) return 0;
+    this.startFlash(slot, def, position, normal, scale, peak, color);
+    return this.slots.handleOf(slot);
   }
 
   /** Age the flashes (start of the VFX update; flashes of this frame's ticks stay at peak). */

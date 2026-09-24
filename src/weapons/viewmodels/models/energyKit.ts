@@ -30,11 +30,18 @@ import {
   type Material,
   type Object3D,
 } from 'three';
-import type { WeaponViewmodelDef } from '../../../defs/viewmodels';
 import { latheZHard } from '../shapes';
 import type { BuiltModel } from '../ModelBuilder';
 import type { GlowMaterials } from '../materials';
-import { ProceduralWeaponModel, type ReadoutSpec, type ViewmodelFxState } from '../WeaponModel';
+import { VIEWMODEL_ART, type WeaponViewmodelDef } from '../../../defs/viewmodels';
+import {
+  ProceduralWeaponModel,
+  readoutColor,
+  rgbLuminance,
+  type ReadoutSpec,
+  type ViewmodelFxState,
+} from '../WeaponModel';
+import type { Rgb } from '../textures';
 
 // ---------------------------------------------------------------------------
 // Energy material
@@ -240,6 +247,18 @@ function driverBoostSum(def: WeaponViewmodelDef): number {
   return sum;
 }
 
+export interface EnergyModelOptions {
+  /** Free-node motion (floating cores, idle spins), run after the materials each frame. */
+  readonly extras?: readonly ExtraAnimator[];
+  /** Further per-model materials (ceramics, ice, chitin) disposed with the model. */
+  readonly owned?: readonly Material[];
+  /**
+   * The readout's "on" color for this weapon (sRGB bytes) instead of the shared cyan – low/empty
+   * stay amber/red. Its intensity is boosted to the cyan's luminance so it blooms the same.
+   */
+  readonly readoutTint?: Rgb;
+}
+
 export class EnergyWeaponModel extends ProceduralWeaponModel {
   private readonly efx: EnergyFxState = {
     time: 0,
@@ -253,27 +272,57 @@ export class EnergyWeaponModel extends ProceduralWeaponModel {
   private lastTime = -1;
   private lastFlash = 0;
   private readonly boostSum: number;
+  private readonly extras: readonly ExtraAnimator[];
+  private readonly tint: Rgb | null;
+  private readonly tintGain: number;
+  private tintActive = false;
 
   constructor(
     weaponId: string,
     def: WeaponViewmodelDef,
     built: BuiltModel,
-    glow: GlowMaterials,
+    private readonly glowMats: GlowMaterials,
     readoutSpec: ReadoutSpec,
-    readout: { texture: DataTexture; data: Uint8Array } | null,
+    private readonly readoutRef: { texture: DataTexture; data: Uint8Array } | null,
     private readonly channels: readonly EnergyChannel[],
-    private readonly extras: readonly ExtraAnimator[] = [],
-    /** Further per-model materials (ceramics, ice) disposed with the model. */
-    owned: readonly Material[] = [],
+    opts: EnergyModelOptions = {},
   ) {
-    super(weaponId, def, built, glow, readoutSpec, readout, [...channels.map((c) => c.material), ...owned]);
+    super(weaponId, def, built, glowMats, readoutSpec, readoutRef, [
+      ...channels.map((c) => c.material),
+      ...(opts.owned ?? []),
+    ]);
     this.boostSum = driverBoostSum(def);
+    this.extras = opts.extras ?? [];
+    this.tint = opts.readoutTint ?? null;
+    const lum = this.tint ? rgbLuminance(this.tint) : 0;
+    this.tintGain = lum > 0 ? Math.max(1, rgbLuminance(VIEWMODEL_ART.emissive.readoutOn) / lum) : 1;
     // Rest state (also what a warm-up compile or a still screenshot shows).
     for (const c of channels) c.material.uniforms.uIntensity.value = c.intensity;
   }
 
+  override setAmmo(mag: number, magSize: number): void {
+    super.setAmmo(mag, magSize);
+    const t = this.tint;
+    const r = this.readoutRef;
+    if (!t || !r) return;
+    const on = VIEWMODEL_ART.emissive.readoutOn;
+    this.tintActive = readoutColor(mag, magSize) === on;
+    const d = r.data;
+    let changed = false;
+    for (let i = 0; i + 2 < d.length; i += 4) {
+      if (d[i] === on[0] && d[i + 1] === on[1] && d[i + 2] === on[2]) {
+        d[i] = t[0];
+        d[i + 1] = t[1];
+        d[i + 2] = t[2];
+        changed = true;
+      }
+    }
+    if (changed) r.texture.needsUpdate = true;
+  }
+
   override animate(fx: Readonly<ViewmodelFxState>): void {
     super.animate(fx);
+    if (this.tintActive) this.glowMats.readout.emissiveIntensity *= this.tintGain;
     const e = this.efx;
     const dt = this.lastTime < 0 ? 0 : Math.max(0, Math.min(0.1, fx.time - this.lastTime));
     this.lastTime = fx.time;

@@ -425,9 +425,9 @@ function build(kit: WeaponMaterialKit): WeaponViewmodelModel {
 
   const built = b.build({ ...kit.materials, ...glow, fuel, vents, pilotFlame, flareFlame });
   return new EnergyWeaponModel('flamethrower', def, built, glow, readoutSpec, readout, [
-    { material: fuel, intensity: 1.5, pulseRate: 1.1, pulseDepth: 0.2, boost: 1.2 },
+    { material: fuel, intensity: 2.6, pulseRate: 1.1, pulseDepth: 0.15, boost: 1.2 },
     { material: vents, intensity: 0.05, heat: 4, boost: 3.2, flickerRate: 19, flickerDepth: 0.2 },
-    { material: pilotFlame, intensity: 2.2, flickerRate: 27, flickerDepth: 0.35, boost: 1.5, wave: 0.0009, waveBoost: 0.0012 },
+    { material: pilotFlame, intensity: 2.8, flickerRate: 27, flickerDepth: 0.35, boost: 1.5, wave: 0.0009, waveBoost: 0.0012 },
     { material: flareFlame, intensity: 1.2, flickerRate: 33, flickerDepth: 0.4, boost: 3, wave: 0.002, waveBoost: 0.003 },
   ]);
 }

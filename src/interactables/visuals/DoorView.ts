@@ -176,12 +176,13 @@ export class DoorView implements DoorViewApi {
     this.stateTime += dt;
     if (this.state === 'closed') {
       // Slow "locked" breathing (calmer with reduced flashing).
-      const depth = this.ctx.reduceFlashing ? DOORS.breatheDepth * 0.4 : DOORS.breatheDepth;
+      const depth = DOORS.breatheDepth * (this.ctx.reduceFlashing ? DOORS.reducedBreatheScale : 1);
       const b = 0.5 + 0.5 * Math.sin(time * DOORS.breatheRate * Math.PI * 2 + this.slot.position.x);
       this.glow.emissiveIntensity = DOORS.emissiveIntensity * (1 - depth * b);
     } else {
       // Green flash on unlock that settles.
-      this.glow.emissiveIntensity = DOORS.emissiveIntensity * (1 + Math.exp(-this.stateTime * 4));
+      this.glow.emissiveIntensity =
+        DOORS.emissiveIntensity * (1 + Math.exp(-this.stateTime * DOORS.unlockFlashDecay));
     }
   }
 

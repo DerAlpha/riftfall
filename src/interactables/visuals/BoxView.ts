@@ -32,6 +32,11 @@ const B = MYSTERY_BOX;
 const CORNER = 0.09;
 const SEAM = 0.014;
 const SEAM_PROUD = 0.004;
+/** Glowing rim between the chest and its lid: width (m) and how far it rises above the chest top. */
+const LID_GAP_WIDTH = 0.03;
+const LID_GAP_RISE = 0.006;
+/** The interior glow lies just above the (closed) chest top, under the lid. */
+const INTERIOR_LIFT = 0.008;
 const BEAM_SEGMENTS = 28;
 /** Rise / sink of the hologram (s) and how far below the rim it sinks. */
 const HOLO_RISE_TIME = 0.35;
@@ -111,7 +116,15 @@ export class BoxView implements MysteryBoxViewApi {
       pb.boxMinMax('rift', x - SEAM_PROUD / 2, 0.24, -0.12, x + SEAM_PROUD / 2, 0.24 + SEAM, 0.18);
       pb.boxMinMax('rift', x - SEAM_PROUD / 2, 0.24, 0.18 - SEAM, x + SEAM_PROUD / 2, 0.42, 0.18);
     }
-    pb.boxMinMax('rift', -w / 2 - 0.004, h - 0.004, -d / 2 - 0.004, w / 2 + 0.004, h + 0.006, d / 2 + 0.004);
+    // The lid gap is a rim, not a slab: an open lid shows the dark top with the interior glow.
+    const gx = w / 2 + SEAM_PROUD;
+    const gz = d / 2 + SEAM_PROUD;
+    const gy0 = h - SEAM_PROUD;
+    const gy1 = h + LID_GAP_RISE;
+    pb.boxMinMax('rift', -gx, gy0, gz - LID_GAP_WIDTH, gx, gy1, gz);
+    pb.boxMinMax('rift', -gx, gy0, -gz, gx, gy1, -gz + LID_GAP_WIDTH);
+    pb.boxMinMax('rift', -gx, gy0, -gz + LID_GAP_WIDTH, -gx + LID_GAP_WIDTH, gy1, gz - LID_GAP_WIDTH);
+    pb.boxMinMax('rift', gx - LID_GAP_WIDTH, gy0, -gz + LID_GAP_WIDTH, gx, gy1, gz - LID_GAP_WIDTH);
     pb.mesh('hazard', mats.get(B.materials.hazard), this.chest, false);
     pb.mesh('body', mats.get(B.materials.body), this.chest, true);
     pb.mesh('trim', mats.get(B.materials.trim), this.chest, false);
@@ -158,7 +171,7 @@ export class BoxView implements MysteryBoxViewApi {
     // --- interior glow (visible through the open lid) ---
     const interior = createLightPool(B.riftColor, 0, Math.max(w, d) / 2);
     this.interiorMat = interior.material;
-    interior.position.set(0, h - 0.03, 0);
+    interior.position.set(0, h + INTERIOR_LIFT, 0);
     interior.scale.set(1, 1, d / w);
     this.interior = interior;
     this.chest.add(interior);
@@ -256,10 +269,13 @@ export class BoxView implements MysteryBoxViewApi {
 
     // Rift pulse (faster while active).
     const active = s !== 'idle';
-    const rate = B.riftPulseRate * (active ? 3 : 1);
-    const depth = this.ctx.reduceFlashing ? B.riftPulseDepth * 0.4 : B.riftPulseDepth;
+    const A = B.riftActive;
+    const rate = B.riftPulseRate * (active ? A.rateScale : 1);
+    const depth = B.riftPulseDepth * (this.ctx.reduceFlashing ? B.reducedPulseScale : 1);
     this.rift.emissiveIntensity =
-      B.riftIntensity * (1 - depth * (0.5 + 0.5 * Math.sin(time * rate * Math.PI * 2))) * (active ? 1.4 : 1);
+      B.riftIntensity *
+      (1 - depth * (0.5 + 0.5 * Math.sin(time * rate * Math.PI * 2))) *
+      (active ? A.intensityScale : 1);
 
     // Hologram.
     const weapon = box.displayWeapon;

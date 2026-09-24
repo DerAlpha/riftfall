@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EventBus } from '../core/EventBus';
-import type { GameEvents, HitZone } from '../core/events';
+import type { GameEvents, HitZone, PointsReason } from '../core/events';
 import { ENEMIES } from '../defs/enemies';
 import { RUN } from '../defs/waves';
 import { RunStats, accuracyOf, computeScore, killScore } from './RunStats';
@@ -21,34 +21,49 @@ function setup() {
       ammoInMag: 10,
       ads: false,
     });
-  const damage = (amount: number, source: 'player' | 'enemy' = 'player', zone: HitZone = 'body'): void =>
+  const damage = (
+    amount: number,
+    source: 'player' | 'enemy' = 'player',
+    zone: HitZone = 'body',
+    weaponId = 'rifle',
+  ): void =>
     events.emit('combat:damage', {
       targetId: 1,
       amount,
       zone,
       point: O,
       killed: false,
-      weaponId: 'rifle',
+      weaponId,
       element: 'physical',
       source,
     });
   const died = (type: string, zone: HitZone | null, source: 'player' | 'environment' = 'player'): void =>
     events.emit('enemy:died', { id: 1, type, position: O, weaponId: 'rifle', zone, elite: false, source });
-  return { events, stats, fire, damage, died };
+  /** economy:points as EconomySystem emits it: one reused payload. */
+  const payload: GameEvents['economy:points'] = { delta: 0, total: 0, reason: 'dev' };
+  let total = 0;
+  const points = (delta: number, reason: PointsReason): void => {
+    total += delta;
+    payload.delta = delta;
+    payload.total = total;
+    payload.reason = reason;
+    events.emit('economy:points', payload);
+  };
+  return { events, stats, fire, damage, died, points };
 }
 
 describe('RunStats', () => {
   it('counts a shotgun blast as one hit however many pellets land', () => {
     const { stats, fire, damage } = setup();
     fire('shotgun');
-    for (let i = 0; i < 9; i++) damage(12);
+    for (let i = 0; i < 9; i++) damage(12, 'player', 'body', 'shotgun');
     expect(stats.shotsFired).toBe(1);
     expect(stats.shotsHit).toBe(1);
     expect(stats.damageDealt).toBe(9 * 12);
     fire('shotgun'); // miss
     fire('shotgun');
-    damage(12);
-    damage(12);
+    damage(12, 'player', 'body', 'shotgun');
+    damage(12, 'player', 'body', 'shotgun');
     expect(stats.shotsFired).toBe(3);
     expect(stats.shotsHit).toBe(2);
     expect(stats.accuracy).toBeCloseTo(2 / 3);
@@ -68,6 +83,41 @@ describe('RunStats', () => {
     expect(stats.shotsHit).toBe(0);
     damage(20);
     expect(stats.shotsHit).toBe(1);
+  });
+
+  it('only damage by the fired weapon hits the shot: perk blasts after a miss are no hit', () => {
+    const { stats, fire, damage } = setup();
+    fire('rifle'); // miss …
+    damage(80, 'player', 'body', 'perk.kinetic'); // … then a Kinetik blast (source player)
+    damage(35, 'player', 'body', 'perk.nova');
+    expect(stats.shotsHit).toBe(0);
+    expect(stats.accuracy).toBe(0);
+    // The blasts are still the player's damage.
+    expect(stats.damageDealt).toBe(115);
+    fire('rifle');
+    damage(20, 'player', 'head', 'rifle');
+    expect(stats.shotsHit).toBe(1);
+  });
+
+  it('counts the points earned: every credited earning, no refunds, dev grants or spending', () => {
+    const { stats, points } = setup();
+    points(0, 'dev'); // economy.reset() / announce()
+    points(10, 'hit');
+    points(130, 'headshot');
+    points(20, 'repair');
+    points(500, 'wave');
+    points(-950, 'purchase');
+    points(950, 'refund'); // the box moved: the purchase is undone, nothing earned
+    points(5000, 'dev'); // console `points 5000`
+    points(-500, 'dev'); // console `points -500`
+    points(400, 'nuke');
+    expect(stats.pointsEarned).toBe(10 + 130 + 20 + 500 + 400);
+    expect(stats.snapshot().pointsEarned).toBe(1060);
+    stats.active = false; // death sequence: the run's result is fixed
+    points(60, 'kill');
+    expect(stats.pointsEarned).toBe(1060);
+    stats.reset();
+    expect(stats.pointsEarned).toBe(0);
   });
 
   it('counts player kills with head / weakpoint bonus points from the enemy defs', () => {

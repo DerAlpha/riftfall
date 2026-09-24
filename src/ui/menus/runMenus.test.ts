@@ -70,6 +70,7 @@ const SUMMARY = {
   damageDealt: 9000,
   damageTaken: 800,
   wavesCompleted: 6,
+  pointsEarned: 23456,
 };
 
 function button(root: HTMLElement, text: string): HTMLButtonElement {
@@ -245,6 +246,11 @@ describe('run menus', () => {
       expect(stat('accuracy')).toBe('43 %');
       expect(stat('time')).toBe('12:34');
       expect(root.querySelector('.gameover__scorevalue')!.textContent).toBe('45.678');
+      // M4: the points earned next to the score – two different numbers, two different names.
+      expect(root.querySelector('.gameover__pointsvalue')!.textContent).toBe('23.456');
+      const labels = [...root.querySelectorAll('.gameover__scorelabel')].map((l) => l.textContent);
+      expect(labels).toEqual([G.labels.pointsEarned, G.labels.score]);
+      expect(new Set(labels).size).toBe(2);
       expect(menuEvents).toEqual(['gameover:open']);
     });
 
@@ -379,6 +385,10 @@ describe('run menus', () => {
       expect(root.querySelector('.gameover__stat--weakpoints')).toBeNull();
       expect(root.querySelector('.gameover__stat--accuracy dd')!.textContent).toBe('0 %');
       expect(root.querySelector('.gameover__stat--time dd')!.textContent).toBe('0:03');
+      // No economy in the stats: no points block (a run that earned 0 still shows it).
+      expect(root.querySelector('.gameover__points')).toBeNull();
+      act(() => menus.showGameOver({ ...stats, pointsEarned: 0 }));
+      expect(root.querySelector('.gameover__pointsvalue')!.textContent).toBe('0');
     });
   });
 

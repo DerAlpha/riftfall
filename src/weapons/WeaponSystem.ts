@@ -33,11 +33,29 @@
  * the reserve); adsSpeed, headshotMultiplier and meleeDamage apply per use; weaponSlots adds slots
  * to the loadout's count (losing the bonus drops the weapons that no longer fit). Without stats
  * every weapon plays exactly as its def.
+ *
+ * Fire kinds (M5, by def data – `kind`, never the weapon id; the engine is weapons/fire, an Arsenal):
+ * - hitscan: rays as above; projectile: the same shot, but bolts/grenades/orbs through
+ *   ProjectileApi (simulated from the rendered camera, drawn from the muzzle);
+ * - beam: while fire is held the beam ticks at `beam.tickRate` (each tick is a shot: weapon:fired,
+ *   feel, damage; a ray with chain arcs or a cone hitting everything inside) and drains
+ *   `ammoPerSecond`; weapon:beam on start/stop; drawn per frame from the muzzle (updateVisuals);
+ * - charge: hold fire to charge (`charge.time`), release fires one hitscan shot scaled by the
+ *   charge (below `minCharge` it fizzles, ammo kept), auto-release `autoReleaseAfter` after full;
+ *   weapon:charge per tick; a new charge needs a new press after an auto-release;
+ * - spin-up (`spinUp`, any automatic weapon): holding fire spins the barrels up, shots start at
+ *   `startFraction` and the rate follows the spin; weapon:spin per tick while it changes.
+ * Specials (WeaponDef.special of the effective def): splitShot (extra rays/projectiles fanned in
+ * the view plane), critBurst (every Nth shot, distinct tracer) and ricochet (rays bounce off the
+ * world towards the nearest enemy) apply here at fire time; every damage event goes to the
+ * arsenal's WeaponSpecials (explosive rounds, chain arcs, element procs, lifesteal, fields on kill).
+ * Rift Forge / attachments / element: setWeaponMods (weapon:modsChanged, forge:upgraded + refill).
  */
 import { Vector3 } from 'three';
 import type {
   CombatHit,
   DamageInfo,
+  DamageSource,
   Damageable,
   InputApi,
   LookOut,
@@ -48,22 +66,38 @@ import type {
   WeaponSystemApi,
 } from '../core/contracts';
 import type { EventBus } from '../core/EventBus';
-import type { FleshSurface, GameEvents, ImpactKind, SurfaceType, Vec3Like } from '../core/events';
+import type { DamageElement, FleshSurface, GameEvents, ImpactKind, SurfaceType, Vec3Like } from '../core/events';
 import { createLogger } from '../core/log';
 import { DEG2RAD, RAD2DEG, clamp01, lerp } from '../core/math';
 import { Rng } from '../core/Rng';
 import type { Action } from '../defs/input';
 import { GAMEPAD } from '../defs/input';
-import { COMBAT } from '../defs/combat';
+import { ARSENAL, COMBAT } from '../defs/combat';
+import { FORGE } from '../defs/forge';
+import { getAttachmentDef, isAttachmentCompatible } from '../defs/attachments';
 import { MOVEMENT } from '../defs/movement';
 import {
   IMPLEMENTED_WEAPON_KINDS,
   WEAPON_RULES,
   getWeaponDef,
+  type AttachmentSlot,
   type ReloadMarker,
   type WeaponDef,
   type WeaponStatMods,
 } from '../defs/weapons';
+import { Arsenal } from './fire/Arsenal';
+import {
+  beamAmmoStep,
+  chargeDamageFactor,
+  chargeStep,
+  coneReach,
+  splitYawOffset,
+  spinRateFactor,
+  spinStep,
+  yawAround,
+} from './fire/fireMath';
+import { createSpecialHit, type HitVia } from './fire/types';
+import { statusBuildupFor } from './fire/WeaponSpecials';
 import type { WeaponCombatApi, CombatRaycastOptions } from '../combat/types';
 import type { LookModifier, PlayerCamera } from '../player/PlayerCamera';
 import type { AdsProvider, PlayerController } from '../player/PlayerController';
@@ -138,10 +172,15 @@ export interface WeaponSystemDeps {
   /** Shots start at the rendered camera position (WYSIWYG). */
   render: Pick<RenderApi, 'camera'>;
   combat: WeaponCombatApi;
-  /** Reserved for projectile weapons (M5). */
+  /** Dynamic props for the arsenal the system builds itself when none is given (explosion pushes). */
   physics?: PhysicsApi | null;
   /** World-space muzzle of the current viewmodel (tracer/flash origin). */
   getMuzzleWorld: (out: Vector3) => Vector3;
+  /**
+   * M5 fire-kinds engine (projectiles, explosions, fields, specials, arsenal visuals). Game shares
+   * one with grenades/abilities; without it the system builds its own (tests, tools).
+   */
+  arsenal?: Arsenal | null;
 }
 
 export interface WeaponSystemOptions {
@@ -166,6 +205,10 @@ interface WeaponInstance {
   tracerCounter: number;
   /** Sim time its fire cycle (pump, bolt, rpm cap) ends: survives switching away and back. */
   readyAt: number;
+  /** Shots fired (critBurst: every Nth). */
+  shotCount: number;
+  /** Beam weapons: fraction of a round drained but not yet taken from the magazine. */
+  readonly drain: { acc: number };
 }
 
 type ShellPhase = 'start' | 'insert' | 'end';
@@ -213,6 +256,14 @@ const _recover: RecoilKick = { yaw: 0, pitch: 0 };
 const _err: AimError = { yaw: 0, pitch: 0, angle: 0, distance: 0 };
 const _bestErr: AimError = { yaw: 0, pitch: 0, angle: 0, distance: 0 };
 const _spreadCtx: SpreadContext = { ads: 0, speedFactor: 0, airborne: false, crouched: false };
+// M5 fire kinds.
+const _aim = new Vector3();
+const _hitPoint = new Vector3();
+const _hitNormal = new Vector3();
+const _rico = new Vector3();
+const _camFwd = new Vector3();
+const _beamFrom = new Vector3();
+const _beamTo = new Vector3();
 
 export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier {
   /** Dev: shots never consume ammo. */
@@ -303,6 +354,47 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   private meleeHitDone = false;
   private readonly meleeCandidates: Damageable[] = [];
 
+  // --- fire kinds (M5) ---
+  private readonly arsenal: Arsenal;
+  /** Beam: firing, tick clock, last trace (distance along the aim, chain) for the per-frame visual. */
+  private beamActive = false;
+  private beamWeapon = '';
+  private beamTickTimer = 0;
+  private beamDistance = 0;
+  private beamPrimary: Damageable | null = null;
+  private readonly beamHitPoint = new Vector3();
+  private readonly beamChain: Damageable[] = [];
+  private readonly beamArcs: Vector3[] = [];
+  private beamImpacts = 0;
+  /** Charge: 0..1 while charging; time held at full; a new charge needs a new press after an auto-release. */
+  private chargeAmount = 0;
+  private charging = false;
+  private chargeFullTime = 0;
+  private chargeNeedsRelease = false;
+  private chargeWeapon = '';
+  /** Spin-up of the weapon in hand (0..1) and the value last announced. */
+  private spin = 0;
+  private spinSent = 0;
+  private spinWeapon = '';
+  /** Damage factor of the shot being fired (charge level × crit). */
+  private shotDamageScale = 1;
+  /** Tracer color override of the shot being fired (crit), -1 = the def's. */
+  private shotTracerColor = -1;
+  private readonly chargePayload: GameEvents['weapon:charge'] = { weaponId: '', amount: 0 };
+  private readonly spinPayload: GameEvents['weapon:spin'] = { weaponId: '', amount: 0 };
+  private readonly damageSource: DamageSource = {
+    weaponId: '',
+    source: 'player',
+    damage: 0,
+    element: 'physical',
+    headMultiplier: 1,
+    weakpointMultiplier: 1,
+    statusBuildup: 0,
+    special: null,
+    areaScale: 1,
+  };
+  private readonly specialHit = createSpecialHit();
+
   // --- shot scratch ---
   private readonly acc = new HitAccumulator<Damageable>();
   private readonly ignoreList: Damageable[] = [];
@@ -317,6 +409,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     source: 'player',
     kind: 'bullet',
     impulse: 0,
+    statusBuildup: 0,
   };
   private readonly ammoOut = { mag: 0, reserve: 0, magSize: 0 };
   private readonly ammoOfOut = { mag: 0, reserve: 0, magSize: 0, maxReserve: 0 };
@@ -343,6 +436,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     from: { x: 0, y: 0, z: 0 },
     to: { x: 0, y: 0, z: 0 },
     weaponId: '',
+    color: 0,
+    segment: false,
   };
   private readonly ammoPayload: GameEvents['weapon:ammoChanged'] = {
     weaponId: '',
@@ -363,6 +458,9 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     this.getMuzzleWorld = deps.getMuzzleWorld;
     this.lookupDef = options.defs ?? getWeaponDef;
     this.rng = new Rng(options.seed ?? 'weapons');
+    this.arsenal =
+      deps.arsenal ?? new Arsenal({ events: deps.events, combat: deps.combat, physics: deps.physics ?? null });
+    for (let i = 0; i < ARSENAL.specials.maxChain * 2; i++) this.beamArcs.push(new Vector3());
     this.player.adsProvider = this;
     this.camera.lookModifier = this;
     this.setLoadout(options.loadout ?? [], options.slots);
@@ -438,9 +536,32 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     return null;
   }
 
+  // --- M5 fire kinds (debug readouts, HUD) ---
+  /** The fire-kinds engine this system fires through. */
+  get fireKinds(): Arsenal {
+    return this.arsenal;
+  }
+  /** 0..1 charge of the weapon in hand (charge kind). */
+  get chargeLevel(): number {
+    return this.chargeAmount;
+  }
+  /** 0..1 barrel spin of the weapon in hand (spin-up). */
+  get spinLevel(): number {
+    return this.spin;
+  }
+  /** A beam is firing. */
+  get beamFiring(): boolean {
+    return this.beamActive;
+  }
+
   // --- AdsProvider (PlayerController) ---
   get adsMoveSpeedMultiplier(): number {
     return this.current?.def.ads.moveSpeedMultiplier ?? MOVEMENT.ground.adsSpeedMultiplier;
+  }
+  /** Heavy weapons slow the carrier (WeaponDef.carrySpeedMultiplier, moveSpeed mods on top). */
+  get carrySpeedMultiplier(): number {
+    const m = this.current?.def.carrySpeedMultiplier;
+    return m !== undefined && m > 0 && Number.isFinite(m) ? m : 1;
   }
   get blocksSprint(): boolean {
     const w = this.current;
@@ -567,9 +688,12 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   }
 
   /**
-   * Rift Forge tier / attachment mods / elemental mod of a carried weapon (M5 entry point); the
-   * previous mod state is replaced. A running reload of it is cancelled (its timing changed); the
-   * magazine is clamped to the new capacity. False if the weapon is not carried.
+   * Rift Forge tier / attachments / elemental mod of a carried weapon (M5 entry point: the forge
+   * and the workbench); the previous mod state is replaced. Attachments are validated (known,
+   * compatible with the weapon, one per slot – later ones in the list win). A running reload of it
+   * is cancelled (its timing changed); the magazine is clamped to the new capacity. A higher tier
+   * refills the weapon (FORGE.refillOnUpgrade) and emits forge:upgraded; every call emits
+   * weapon:modsChanged. False if the weapon is not carried.
    */
   setWeaponMods(weaponId: string, mods: WeaponModState): boolean {
     this.syncStats();
@@ -577,12 +701,47 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
     const w = slot >= 0 ? this.slots[slot] : null;
     if (!w) return false;
     if (slot === this.currentSlot && this._state === 'reloading') this.finishReload(false);
-    w.mods = mods;
-    w.def = this.resolveDef(w.base, mods);
+    const previousTier = w.mods.tier ?? 0;
+    const maxTier = w.base.upgrades.reduce((m, u) => Math.max(m, u.tier), 0);
+    const tier = Math.max(0, Math.min(maxTier, Math.floor(mods.tier ?? 0)));
+    const attachments = validAttachments(w.base, mods.attachments ?? []);
+    const next: WeaponModState = {
+      tier,
+      attachments,
+      element: mods.element ?? null,
+      ...(mods.mods ? { mods: mods.mods } : {}),
+    };
+    if (slot === this.currentSlot) this.endFireKinds();
+    w.mods = next;
+    w.def = this.resolveDef(w.base, next);
+    const upgraded = tier > previousTier;
+    if (upgraded && FORGE.refillOnUpgrade) {
+      w.mag = Math.max(w.mag, fullMag(w.def));
+      w.reserve = w.def.reserve;
+    }
     w.mag = Math.min(w.mag, fullMag(w.def));
     w.reserve = Math.min(w.reserve, w.def.reserve);
     if (slot === this.currentSlot) this.emitAmmo();
+    this.events.emit('weapon:modsChanged', {
+      weaponId,
+      tier,
+      attachments,
+      element: next.element ?? null,
+    });
+    if (upgraded) this.events.emit('forge:upgraded', { weaponId, tier, name: w.def.name });
     return true;
+  }
+
+  /** Mod state (tier, attachments, element) of a carried weapon; null if not carried. */
+  modsOf(weaponId: string): WeaponModState | null {
+    for (const s of this.slots) if (s?.def.id === weaponId) return s.mods;
+    return null;
+  }
+
+  /** Rift Forge tier of a carried weapon (0 = base, -1 = not carried). */
+  tierOf(weaponId: string): number {
+    const m = this.modsOf(weaponId);
+    return m ? (m.tier ?? 0) : -1;
   }
 
   /** M4: a reload press is ignored while `suppress()` is true (pad X buying at an interactable). */
@@ -789,9 +948,10 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       log.warn(`Unknown weapon "${id}" – ignored`);
       return null;
     }
-    // Never fire an unimplemented kind as hitscan (a launcher def would become an instant rifle).
-    if (!IMPLEMENTED_WEAPON_KINDS.includes(def.kind)) {
-      log.warn(`Weapon "${id}": kind '${def.kind}' is not implemented – ignored`);
+    // Never fire an unimplemented kind as hitscan (a launcher def would become an instant rifle),
+    // nor a kind without its kind data.
+    if (!IMPLEMENTED_WEAPON_KINDS.includes(def.kind) || !hasKindData(def)) {
+      log.warn(`Weapon "${id}": kind '${def.kind}' is not implemented or lacks its data – ignored`);
       return null;
     }
     const effective = this.resolveDef(def, NO_MODS);
@@ -803,6 +963,8 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
       reserve: effective.reserve,
       tracerCounter: 0,
       readyAt: Number.NEGATIVE_INFINITY,
+      shotCount: 0,
+      drain: { acc: 0 },
     };
   }
 
@@ -810,11 +972,7 @@ export class WeaponSystem implements WeaponSystemApi, AdsProvider, LookModifier 
   private resolveDef(base: WeaponDef, mods: WeaponModState): WeaponDef {
     const sm = this.statMods;
     if (!sm) return resolveWeapon(base, mods);
-    return resolveWeapon(base, {
-      tier: mods.tier,
-      element: mods.element,
-      mods: mods.mods ? [...mods.mods, sm] : [sm],
-    });
+    return resolveWeapon(base, { ...mods, mods: mods.mods ? [...mods.mods, sm] : [sm] });
   }
 
   /** Loadout slots + the weaponSlots stat bonus. */
@@ -1681,6 +1839,37 @@ function fullMag(def: WeaponDef): number {
 /** Rounds a reload fills up to: a round left in the chamber of a closed bolt adds one. */
 function capacity(def: WeaponDef, empty: boolean): number {
   return def.magazine + (def.chambered && !empty ? 1 : 0);
+}
+
+/** The def carries the data its kind needs (projectile / beam / charge). */
+function hasKindData(def: WeaponDef): boolean {
+  switch (def.kind) {
+    case 'hitscan':
+      return true;
+    case 'projectile':
+      return !!def.projectile;
+    case 'beam':
+      return !!def.beam && def.beam.tickRate > 0;
+    case 'charge':
+      return !!def.charge;
+  }
+}
+
+/**
+ * Known attachments of `ids` that fit `def`, one per slot (a later id replaces an earlier one of
+ * its slot), in slot order of first appearance.
+ */
+function validAttachments(def: WeaponDef, ids: readonly string[]): readonly string[] {
+  const bySlot = new Map<AttachmentSlot, string>();
+  for (const id of ids) {
+    const att = getAttachmentDef(id);
+    if (!att || !isAttachmentCompatible(att, def)) {
+      log.warn(`Attachment "${id}" does not fit ${def.id} – ignored`);
+      continue;
+    }
+    bySlot.set(att.slot, att.id);
+  }
+  return [...bySlot.values()];
 }
 
 function markerTime(markers: readonly ReloadMarker[], step: ReloadMarker['step']): number {

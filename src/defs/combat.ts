@@ -82,8 +82,14 @@ export const ARSENAL = {
     tickInterval: 0.25,
     /** Floor fields (damage, slow) snap to the floor within this reach below the spawn point. */
     floorProbe: 4,
-    /** Floor fields reach this high above the floor (cylinder). */
+    /** The floor probe starts this far above the spawn point; damageables in the way are passed (passes). */
+    floorLift: 0.2,
+    floorPasses: 3,
+    /** Floor fields reach this high above the floor (cylinder) and this far below it (bounds centers). */
     height: 2.4,
+    depthTolerance: 0.3,
+    /** A body counts inside when its center is within radius + this fraction of its bounds radius. */
+    boundsFactor: 0.5,
     /** Line-of-sight checks start this far above the field center. */
     losLift: 0.5,
     /** Pull: velocity = strength × responseTime × profile, eased in the core, capped. */

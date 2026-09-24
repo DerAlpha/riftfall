@@ -66,7 +66,17 @@ src/
                      flanking, spitter cover/LOS, tank charge/slam, knockback, stuck recovery),
                      render/ EnemyRenderer (one InstancedMesh per type, rig table interpreted by the
                      vertex shader AND poseMath → hitboxes match the drawn pose), types.ts contract
-  spawning/          WaveDirector (classic wave formula, spawn point scoring, intermissions)
+  spawning/          WaveDirector (classic wave formula, spawn point scoring in active zones, intermissions)
+  stats/             StatSystem (StatsApi: player stat table defs/stats.ts, add/mul modifiers by source),
+                     weaponStats (stat → effective weapon def)
+  economy/           EconomySystem (points, spend/earn, multiplier), PointsRules (hit/kill/headshot/melee/
+                     wave/repair points, no dummy or flagged dev-spawn rewards), PerkSystem + perkHooks
+                     (16 perks in defs/perks.ts: stat modifiers + event hooks, Phoenix self revive)
+  interactables/     InteractionSystem (focus: range + view cone + LOS, press/hold), ZoneSystem, Door (nav
+                     area blocking + bullet blocker), WallBuy, MysteryBox ("Rift-Kiste"), PerkMachine,
+                     placeInteractables (per-map placement), visuals/ (holograms, doors, machines, box)
+  seals/             rift seals at wave-map spawn points (enemies breach bar by bar, hold F repairs)
+  powerups/          PowerUpSystem (drops from kills, pooled pickups, timed effects), PickupView
   modes/             RunFlow (run lifecycle, death sequence, game over), RunStats, death camera
   maps/              registry (MAP_REGISTRY: testroom, lab), lab/ research lab builder (zones, door and
                      wall-buy slots for M4, spawn rifts, fog volumes), MapLevelInstance extras
@@ -96,14 +106,16 @@ rAF → GameLoop.advance(dt)
   │     → padNav.update (menus open: D-pad/A/B) → playerCamera.applyLook (unpaused: mouse/stick look
   │       through the weapon LookModifier: ADS sensitivity, gamepad-only aim assist)
   ├─ fixedUpdate (60 Hz, 0..maxSubSteps times, unpaused) – game/fixedTick.ts:
-  │     player.fixedUpdate (samples input, latches edges once per frame) → weapons.fixedUpdate (fire,
-  │     reload, melee: shots resolve NOW) → targets.fixedUpdate → waves.fixedUpdate → enemies.fixedUpdate
-  │     (AI, nav.update – the crowd steps INSIDE the manager –, renderer commitTick)
-  │     → kill plane → physics.step → health.fixedUpdate → level.fixedUpdate → runFlow.fixedUpdate
+  │     player.fixedUpdate (samples input, latches edges once per frame) → interaction (focus, press/
+  │     hold: a purchase's give() is handled this tick) → weapons.fixedUpdate (fire, reload, melee: shots
+  │     resolve NOW) → targets → waves → enemies.fixedUpdate (AI, nav.update – the crowd steps INSIDE
+  │     the manager –, renderer commitTick) → interactables (doors, box) → powerUps (pickups, timers)
+  │     → kill plane → physics.step → health → perks (hook cooldowns) → level → runFlow
   ├─ update (per frame, unpaused): player.update (latches edges of frames without a tick, ADS, eye)
-  │     → weapons.update (ADS blend, recoil counter-pull) → playerCamera.update (bob/roll/shake/
-  │     recoil/FOV incl. ADS zoom/DoF) → viewmodel (sway, bob, animator) → vfx.update (flashes,
-  │     casings, tracers at this frame's sockets) → render.advanceWorldTime (shockwaves)
+  │     → interaction.update (once-per-frame press latch) → weapons.update (ADS blend, recoil
+  │     counter-pull) → playerCamera.update (bob/roll/shake/recoil/FOV incl. ADS zoom/DoF) → viewmodel
+  │     (sway, bob, animator) → vfx.update (flashes, casings, tracers at this frame's sockets)
+  │     → interactables/seals/powerUps visuals → render.advanceWorldTime (shockwaves)
   │     → level.update → targets.update(alpha) → audio listener + sun probe → HUD (crosshair cone
   │     projected with this frame's FOV)
   └─ render (every frame): physics.syncVisuals(alpha) → render.render → quality.onFrame (unpaused only)
@@ -278,6 +290,19 @@ RenderPass(world)                                 (incl. decals, casings, traini
 - **Run flow (M3):** RunFlow owns the run (begin/restart/abandon), the death slow motion (real time) and
   the game over screen; `run:restart` resets enemies, waves, VFX, health, loadout and position.
 
+- **Economy (M4):** every player modifier is a `StatModifier` on the StatSystem (perks `perk:<id>`,
+  power-ups `powerup:<id>`, later skills/cards); consumers re-read stats on their next tick/frame/damage
+  call, so removing a source restores the exact previous value. Points only for player damage; nuke kills
+  pay nothing each (the power-up pays a flat bonus); repairs are capped per wave. Only Phoenix is lost on a
+  revive; `run kill` uses `health.kill()` (bypasses revives and damage stats).
+- **Doors block the navmesh (M4):** NavSystem.setAreaBlocked regenerates the tiles under a door box once
+  (the doorway gets its own polygons), then blocking is an instant poly-flag toggle that queries and the
+  crowd filter respect; blocked areas are re-applied after a rebuild. Perk machines and box spots are
+  blocked the same way. CombatWorld cannot remove static meshes, so opened doors park their bullet
+  blocker far below the world. Interactable props live in their own scene group, never under level.root.
+- **Pad X** is shared by reload and interact: WeaponSystem skips reload presses while an interaction is
+  offered and the gamepad is the active device (`setReloadSuppressor`).
+
 ## Known limitations / next steps
 
 - Only verified on SwiftShader (headless); real-GPU frame times on the High preset still need a pass (M12 budget).
@@ -285,9 +310,10 @@ RenderPass(world)                                 (incl. decals, casings, traini
   fire is implemented: projectile/launcher kinds are refused (M5), so explosions are reachable only via the
   dev console `explode`. `WeaponSystem.setWeaponMods` (Rift Forge / attachments / elements) is wired to
   nothing in gameplay yet (M5).
-- `core/Pool.ts` is still unused (M3 enemies/projectiles are its first candidates).
+- `core/Pool.ts` is still unused (M5 projectiles are its first candidate).
 - KTX2 path is implemented but untested with real files (`toktx` not available when fetching); textures ship as JPG.
 - Height-fog sun glow is not shadowed (indoors it relies on low `sunScatterStrength`); shafts come from the level.
 - Tanks share the medium-agent navmesh (may clip corners); no off-mesh links (no leaps onto platforms).
-- Doors/wall buys: the lab exposes `doorSlots`/`wallBuySlots`, all doorways are open until M4.
-- Next: **Milestone 4** – economy: points, wall buys, doors (nav poly flags), mystery box, perks, power-ups.
+- Doors and seals rely on the navmesh: with the DirectSteering fallback enemies ignore closed doors.
+- Next: **Milestone 5** – all weapons (≥24, projectile/beam/charge kinds), attachments, Rift Forge tiers,
+  elemental mods + status effects, grenades, abilities.
